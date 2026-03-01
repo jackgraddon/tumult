@@ -1,5 +1,5 @@
 <template>
-  <div class="container py-6 space-y-8">
+  <div class="container p-4 py-6 space-y-8">
     <div class="flex items-center justify-between">
       <h1 class="text-3xl font-bold tracking-tight">Home</h1>
     </div>

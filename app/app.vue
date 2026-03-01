@@ -3,10 +3,10 @@
     <ColorModeToggle />
   </div> -->
   <GlobalContextMenu>
-    <div class="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground transition-colors">
-      <CustomTitlebar />
+    <CustomTitlebar />
+    <div class="pt-[30px] h-screen w-screen transition-colors">
       <NuxtRouteAnnouncer />
-      <NuxtPage class="flex-1 min-h-0" />
+      <NuxtPage />
       <UiSonner />
       <VerificationModal />
     </div>

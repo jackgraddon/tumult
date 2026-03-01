@@ -1,7 +1,6 @@
 <template>
   <div class="flex flex-col h-full relative">
     <!-- Voice Call Overlay -->
-    <!-- Voice Call UI -->
     <MatrixVoiceCall 
       v-if="voiceStore.activeRoomId === roomId && voiceStore.lkRoom && voiceStore.isConnected" 
       :room="toRaw(voiceStore.lkRoom) as any" 
@@ -12,7 +11,7 @@
     />
 
     <!-- Room Header -->
-    <header v-if="room" class="pb-4 border-b border-border shrink-0">
+    <header v-if="room" class="flex-none p-4 border-b border-border">
       <div class="flex items-center justify-between">
         <RoomHeader 
           v-if="!isDm"
@@ -80,11 +79,12 @@
       <p class="text-muted-foreground">Loading room...</p>
     </div>
 
-    <div v-else class="flex-1 flex flex-col min-w-0 relative">
-        <div 
-          ref="timelineContainer" 
-          class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1 overflow-hidden"
-        >
+    <!-- Timeline -->
+    <div v-else class="flex-1 flex overflow-y-scroll flex-col relative">
+      <div 
+        ref="timelineContainer" 
+        class="flex-1 overflow-y-auto p-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1 overflow-hidden"
+      >
       <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
         <!-- Call Event -->
         <div v-if="msg.isCallEvent" class="flex flex-col items-center my-6 animate-in fade-in slide-in-from-bottom duration-500">
@@ -434,9 +434,10 @@
         </UiAlertDialogFooter>
       </UiAlertDialogContent>
     </UiAlertDialog>
+    </div>
 
     <!-- Message Composer -->
-    <footer v-if="room" class="pt-4 border-t shrink-0">
+    <footer v-if="room" class="flex-none p-4 border-t shrink-0">
       
       <!-- Reply / Edit Indicator -->
       <div v-if="replyingTo || editingMessage" class="px-4 pb-2 flex items-center justify-between text-sm text-muted-foreground bg-muted/30">
@@ -512,7 +513,6 @@
         </UiInputGroup>
       </form>
     </footer>
-    </div>
   </div>
 </template>
 

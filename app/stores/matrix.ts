@@ -20,6 +20,7 @@ import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/Matri
 import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
 import { isVoiceChannel } from '~/utils/room';
 import { useDebounceFn } from '@vueuse/core';
+import { setPref, getPref, deletePref, setSecret, getSecret, deleteSecret } from '~/composables/useAppStorage';
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -101,13 +102,13 @@ const authResponseHtml = `
 `;
 
 /**
- * Subclass of OidcTokenRefresher that persists rotated tokens to localStorage.
+ * Subclass of OidcTokenRefresher that persists rotated tokens to Stronghold (or localStorage fallback).
  */
 class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
   protected override async persistTokens(tokens: { accessToken: string; refreshToken?: string }): Promise<void> {
-    localStorage.setItem('matrix_access_token', tokens.accessToken);
+    await setSecret('matrix_access_token', tokens.accessToken);
     if (tokens.refreshToken) {
-      localStorage.setItem('matrix_refresh_token', tokens.refreshToken);
+      await setSecret('matrix_refresh_token', tokens.refreshToken);
     }
   }
 }
@@ -163,9 +164,7 @@ export const useMatrixStore = defineStore('matrix', {
     isLoggingIn: false,
     isRestoringKeys: false,
 
-    lastVisitedRooms: (typeof localStorage !== 'undefined' ?
-      JSON.parse(localStorage.getItem('matrix_last_visited_rooms') || '{"dm":null,"rooms":null,"spaces":{}}') :
-      { dm: null, rooms: null, spaces: {} }) as LastVisitedRooms,
+    lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
     hierarchyTrigger: 0,
     isIdle: false,
     pinnedSpaces: [] as string[],
@@ -176,21 +175,13 @@ export const useMatrixStore = defineStore('matrix', {
 
     // Centralized UI State
     ui: {
-      memberListVisible: (typeof localStorage !== 'undefined' ?
-        localStorage.getItem('matrix_member_list_visible') === 'true' :
-        false),
+      memberListVisible: false,
       selectedUserId: null,
       profileCardPos: { top: '0px', right: '0px' },
-      collapsedCategories: (typeof localStorage !== 'undefined' ?
-        JSON.parse(localStorage.getItem('matrix_collapsed_categories') || '[]') :
-        []),
-      showEmptyRooms: (typeof localStorage !== 'undefined' ?
-        localStorage.getItem('matrix_show_empty_rooms') === 'true' :
-        false),
+      collapsedCategories: [],
+      showEmptyRooms: false,
       composerStates: {},
-      uiOrder: (typeof localStorage !== 'undefined' ?
-        JSON.parse(localStorage.getItem('matrix_ui_order') || '{"rootSpaces":[],"categories":{},"rooms":{}}') :
-        { rootSpaces: [], categories: {}, rooms: {} }),
+      uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
     } as UIState,
   }),
 
@@ -212,6 +203,22 @@ export const useMatrixStore = defineStore('matrix', {
 
       const rawMemberships = rtcSession.memberships;
 
+      // Temporary debug logging — remove once resolved
+      console.log(`[VoiceDebug] Room ${roomId} — raw membership count: ${rawMemberships.length}`);
+      rawMemberships.forEach((m: any, i: number) => {
+        console.log(`[VoiceDebug] Member ${i}:`, {
+          userId: m.userId,
+          deviceId: m.deviceId,
+          isExpired: m.isExpired?.(),
+          membership: m.membership,
+          callMembership: m.callMembership,
+          // Raw event content — this is the most important one
+          eventContent: m.getCallMemberEvent?.()?.getContent?.(),
+          // Check what keys exist on the object
+          keys: Object.keys(m),
+        });
+      });
+
       // Debug: Check if there are ANY rtc related state events in the room
       const rtcEvents = room.currentState.getStateEvents('m.rtc.member');
       const msc4143Events = room.currentState.getStateEvents('org.matrix.msc4143.rtc.member');
@@ -227,8 +234,9 @@ export const useMatrixStore = defineStore('matrix', {
           return;
         }
 
-        const isExp = member.isExpired?.() ?? false;
-        const isLeave = (member as any).membership === 'leave';
+        const isExp = member.isExpired?.() ?? true;
+        const isLeave = (member as any).callMembership?.membership === 'leave'
+          || (member as any).getMembershipEvent?.()?.getContent()?.membership === 'leave';
         if (isExp || isLeave) return;
 
         const key = `${member.userId}:${member.deviceId}`;
@@ -354,11 +362,24 @@ export const useMatrixStore = defineStore('matrix', {
   },
 
   actions: {
-    initGameDetection() {
-      // Check if localStorage has "game_activity_enabled"
-      const stored = localStorage.getItem('game_activity_enabled');
+    async initStorage() {
+      // Load all persisted prefs into Pinia state on startup
+      this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
+      this.ui.collapsedCategories = await getPref('matrix_collapsed_categories', []);
+      this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
+      this.ui.uiOrder = await getPref('matrix_ui_order', {
+        rootSpaces: [], categories: {}, rooms: {}
+      });
+      this.lastVisitedRooms = await getPref('matrix_last_visited_rooms', {
+        dm: null, rooms: null, spaces: {}
+      });
+    },
+
+    async initGameDetection() {
+      // Check if Tauri storage has "game_activity_enabled"
+      const stored = await getPref('game_activity_enabled', false);
       console.log('[MatrixStore] Loading game detection config:', stored);
-      this.isGameDetectionEnabled = stored === 'true';
+      this.isGameDetectionEnabled = stored;
       // Sync with backend immediately if supported
       const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
       console.log('[MatrixStore] Syncing with backend. Tauri detected:', tauriCheck);
@@ -374,7 +395,7 @@ export const useMatrixStore = defineStore('matrix', {
     async setGameDetection(enabled: boolean) {
       console.log('[MatrixStore] Setting game detection:', enabled);
       this.isGameDetectionEnabled = enabled;
-      localStorage.setItem('game_activity_enabled', String(enabled));
+      await setPref('game_activity_enabled', enabled);
 
       const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
       console.log('[MatrixStore] Invoking set_scanner_enabled. Tauri detected:', tauriCheck);
@@ -539,9 +560,9 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    toggleMemberList() {
+    async toggleMemberList() {
       this.ui.memberListVisible = !this.ui.memberListVisible;
-      localStorage.setItem('matrix_member_list_visible', String(this.ui.memberListVisible));
+      await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
     setUISelectedUser(userId: string | null, pos?: { top: string; right: string }) {
@@ -561,19 +582,19 @@ export const useMatrixStore = defineStore('matrix', {
       };
     },
 
-    toggleUICategory(categoryId: string) {
+    async toggleUICategory(categoryId: string) {
       const index = this.ui.collapsedCategories.indexOf(categoryId);
       if (index === -1) {
         this.ui.collapsedCategories.push(categoryId);
       } else {
         this.ui.collapsedCategories.splice(index, 1);
       }
-      localStorage.setItem('matrix_collapsed_categories', JSON.stringify(this.ui.collapsedCategories));
+      await setPref('matrix_collapsed_categories', this.ui.collapsedCategories);
     },
 
-    toggleShowEmptyRooms() {
+    async toggleShowEmptyRooms() {
       this.ui.showEmptyRooms = !this.ui.showEmptyRooms;
-      localStorage.setItem('matrix_show_empty_rooms', String(this.ui.showEmptyRooms));
+      await setPref('matrix_show_empty_rooms', this.ui.showEmptyRooms);
     },
 
     cancelLogin(errorReason?: string | null) {
@@ -604,7 +625,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Ensure homeserverUrl has https:// for internal use
       const fullUrl = homeserverUrl.startsWith('http') ? homeserverUrl : `https://${homeserverUrl}`;
-      localStorage.setItem('matrix_homeserver_url', fullUrl);
+      await setPref('matrix_homeserver_url', fullUrl);
 
       // Stop any existing client to release DB locks
       if (this.client) {
@@ -616,10 +637,10 @@ export const useMatrixStore = defineStore('matrix', {
 
 
       // CLEANUP: Remove old session data so the plugin doesn't try to auto-login when we land on the callback page.
-      localStorage.removeItem('matrix_access_token');
-      localStorage.removeItem('matrix_user_id');
-      localStorage.removeItem('matrix_device_id');
-      localStorage.removeItem('matrix_refresh_token');
+      await deleteSecret('matrix_access_token');
+      await deletePref('matrix_user_id');
+      await deletePref('matrix_device_id');
+      await deleteSecret('matrix_refresh_token');
       // Clear stale crypto store so a new device ID doesn't conflict
       await this._clearCryptoStore();
 
@@ -631,15 +652,15 @@ export const useMatrixStore = defineStore('matrix', {
         const oauthPromise = invoke<string>('start_oauth_server');
 
         const redirectUri = "http://localhost:1420";
-        localStorage.setItem('matrix_oidc_redirect_uri', redirectUri);
+        await setPref('matrix_oidc_redirect_uri', redirectUri);
 
         const authConfig = await getOidcConfig(fullUrl);
         const clientId = await registerClient(authConfig, redirectUri);
         const nonce = generateNonce();
 
-        localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
-        localStorage.setItem('matrix_oidc_client_id', clientId);
-        localStorage.setItem('matrix_oidc_nonce', nonce);
+        await setPref('matrix_oidc_config', JSON.stringify(authConfig));
+        await setPref('matrix_oidc_client_id', clientId);
+        await setPref('matrix_oidc_nonce', nonce);
 
         const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri, fullUrl);
 
@@ -675,10 +696,10 @@ export const useMatrixStore = defineStore('matrix', {
         const clientId = await registerClient(authConfig);
         const nonce = generateNonce();
 
-        localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
-        localStorage.setItem('matrix_oidc_client_id', clientId);
-        localStorage.setItem('matrix_oidc_nonce', nonce);
-        localStorage.setItem('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
+        await setPref('matrix_oidc_config', JSON.stringify(authConfig));
+        await setPref('matrix_oidc_client_id', clientId);
+        await setPref('matrix_oidc_nonce', nonce);
+        await setPref('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
 
         const url = await getLoginUrl(authConfig, clientId, nonce, undefined, fullUrl);
         window.location.href = url;
@@ -710,18 +731,18 @@ export const useMatrixStore = defineStore('matrix', {
       const deviceId = (await tempClient.whoami()).device_id || data.tokenResponse.device_id;
 
       // Persist Valid Credentials
-      localStorage.setItem('matrix_access_token', accessToken);
-      localStorage.setItem('matrix_refresh_token', refreshToken);
-      localStorage.setItem('matrix_user_id', userId);
-      if (deviceId) localStorage.setItem('matrix_device_id', deviceId);
+      await setSecret('matrix_access_token', accessToken);
+      await setSecret('matrix_refresh_token', refreshToken);
+      await setPref('matrix_user_id', userId);
+      if (deviceId) await setPref('matrix_device_id', deviceId);
 
       // Persist OIDC session data needed for token refresh on reload
       const issuer = data.oidcClientSettings.issuer;
       const clientId = data.oidcClientSettings.clientId;
       const idTokenClaims = data.idTokenClaims;
 
-      localStorage.setItem('matrix_oidc_issuer', issuer);
-      localStorage.setItem('matrix_oidc_id_token_claims', JSON.stringify(idTokenClaims));
+      await setPref('matrix_oidc_issuer', issuer);
+      await setPref('matrix_oidc_id_token_claims', JSON.stringify(idTokenClaims));
       // clientId is already stored as matrix_oidc_client_id from startLogin
 
       // Initialize
@@ -748,7 +769,7 @@ export const useMatrixStore = defineStore('matrix', {
       // Build tokenRefreshFunction when we have full OIDC context
       let tokenRefreshFunction: sdk.TokenRefreshFunction | undefined;
       if (refreshToken && issuer && clientId && idTokenClaims && deviceId) {
-        const redirectUri = localStorage.getItem('matrix_oidc_redirect_uri') || window.location.origin + '/auth/callback';
+        const redirectUri = await getPref('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
         const refresher = new LocalStorageOidcTokenRefresher(issuer, clientId, redirectUri, deviceId, idTokenClaims);
 
         tokenRefreshFunction = refresher.doRefreshAccessToken.bind(refresher);
@@ -881,6 +902,7 @@ export const useMatrixStore = defineStore('matrix', {
           this.isClientReady = true;
           // Refresh presence now that we are ready
           this.refreshPresence();
+          this.forceRecalculateVoiceMemberships(); // add this
         }
       });
 
@@ -893,10 +915,26 @@ export const useMatrixStore = defineStore('matrix', {
           type === 'm.call.member' ||
           type === 'm.rtc.member';
 
-        const isSticky = (event as any).unstableStickyExpiresAt;
+        if (isMatrixRTC) {
+          // Force the session to reparse BEFORE bumping hierarchyTrigger
+          // Otherwise Vue re-renders with stale memberships data
+          const roomId = event.getRoomId();
+          if (roomId) {
+            const room = this.client?.getRoom(roomId);
+            if (room) {
+              const session = this.client?.matrixRTC.getRoomSession(room);
+              if (session) {
+                if (typeof (session as any).ensureRecalculateSessionMembers === 'function') {
+                  (session as any).ensureRecalculateSessionMembers();
+                }
+                if (typeof (session as any).reloadMemberships === 'function') {
+                  (session as any).reloadMemberships();
+                }
+              }
+            }
+          }
 
-        if (isMatrixRTC || isSticky) {
-          console.log(`[Voice] MatrixRTC event received (${type}, sticky=${!!isSticky}), refreshing hierarchy`);
+          console.log(`[Voice] MatrixRTC event received (${type}), refreshing hierarchy`);
           this.hierarchyTrigger++;
         }
       });
@@ -916,6 +954,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.setupVerificationListeners();
       this.setupHierarchyListeners();
       this.setupMatrixRTCListeners();
+      this.forceRecalculateVoiceMemberships(); // add this
     },
 
     setupHierarchyListeners() {
@@ -959,7 +998,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.directMessageMap = newMap;
     },
 
-    loadUIOrderFromAccountData() {
+    async loadUIOrderFromAccountData() {
       if (!this.client) return;
       const event = (this.client as any).getAccountData('cc.jackg.ruby.ui_order');
       if (event) {
@@ -970,14 +1009,14 @@ export const useMatrixStore = defineStore('matrix', {
             categories: content.categories || {},
             rooms: content.rooms || {}
           };
-          localStorage.setItem('matrix_ui_order', JSON.stringify(this.ui.uiOrder));
+          await setPref('matrix_ui_order', this.ui.uiOrder);
         }
       }
     },
 
     async saveUIOrder() {
       // Optimistic update to local storage
-      localStorage.setItem('matrix_ui_order', JSON.stringify(this.ui.uiOrder));
+      await setPref('matrix_ui_order', this.ui.uiOrder);
 
       if (!this.client) return;
       try {
@@ -1058,7 +1097,7 @@ export const useMatrixStore = defineStore('matrix', {
           // CRITICAL: Save this device ID to your local storage!
           // You must pass this into sdk.createClient({ deviceId }) on future 
           // app boots so End-to-End Encryption (Emojis) works properly!
-          localStorage.setItem('matrix_device_id', deviceId);
+          await setPref('matrix_device_id', deviceId);
         }
 
         // 3. Grab the hardware details
@@ -1729,18 +1768,18 @@ export const useMatrixStore = defineStore('matrix', {
       this.isClientReady = false;
       this._resetVerificationState();
 
-      // Wipe Local Storage, remove critical session data
-      localStorage.removeItem('matrix_access_token');
-      localStorage.removeItem('matrix_refresh_token');
-      localStorage.removeItem('matrix_user_id');
-      localStorage.removeItem('matrix_device_id');
+      // Wipe Tauri Storage, remove critical session data
+      await deleteSecret('matrix_access_token');
+      await deleteSecret('matrix_refresh_token');
+      await deletePref('matrix_user_id');
+      await deletePref('matrix_device_id');
 
       // Remove OIDC data (forces fresh discovery/registration next time)
-      localStorage.removeItem('matrix_oidc_config');
-      localStorage.removeItem('matrix_oidc_client_id');
-      localStorage.removeItem('matrix_oidc_nonce');
-      localStorage.removeItem('matrix_oidc_issuer');
-      localStorage.removeItem('matrix_oidc_id_token_claims');
+      await deletePref('matrix_oidc_config');
+      await deletePref('matrix_oidc_client_id');
+      await deletePref('matrix_oidc_nonce');
+      await deletePref('matrix_oidc_issuer');
+      await deletePref('matrix_oidc_id_token_claims');
 
       // Clear crypto store
       await this._clearCryptoStore();
@@ -1813,7 +1852,7 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    setLastVisitedRoom(context: 'dm' | 'rooms' | string, roomId: string | null) {
+    async setLastVisitedRoom(context: 'dm' | 'rooms' | string, roomId: string | null) {
       if (context === 'dm') {
         this.lastVisitedRooms.dm = roomId;
       } else if (context === 'rooms') {
@@ -1827,9 +1866,7 @@ export const useMatrixStore = defineStore('matrix', {
         }
       }
 
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('matrix_last_visited_rooms', JSON.stringify(this.lastVisitedRooms));
-      }
+      await setPref('matrix_last_visited_rooms', this.lastVisitedRooms);
     },
 
     async pinSpace(roomId: string) {
@@ -1839,6 +1876,7 @@ export const useMatrixStore = defineStore('matrix', {
         const newPinned = [...this.pinnedSpaces, roomId];
         this.pinnedSpaces = newPinned;
         await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
+        await setPref('matrix_pinned_spaces', newPinned);
       }
     },
 
@@ -1848,6 +1886,7 @@ export const useMatrixStore = defineStore('matrix', {
       const newPinned = this.pinnedSpaces.filter(id => id !== roomId);
       this.pinnedSpaces = newPinned;
       await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
+      await setPref('matrix_pinned_spaces', newPinned);
     },
 
     setupMatrixRTCListeners() {
@@ -1864,6 +1903,8 @@ export const useMatrixStore = defineStore('matrix', {
       }, 500);
 
       const onMembershipsChanged = (oldM: any, newM: any) => {
+        // Ensure session has reparsed before Vue re-renders
+        // Note: We can't access the room here directly, but the session is already bound to the room
         triggerHierarchyRefresh();
       };
 
@@ -1906,7 +1947,8 @@ export const useMatrixStore = defineStore('matrix', {
           // Bind to anything that is a voice channel OR already has memberships
           const isVoice = isVoiceChannel(room);
           const hasRtcState = room.currentState.getStateEvents('m.rtc.member').length > 0 ||
-            room.currentState.getStateEvents('org.matrix.msc4143.rtc.member').length > 0;
+            room.currentState.getStateEvents('org.matrix.msc4143.rtc.member').length > 0 ||
+            room.currentState.getStateEvents('org.matrix.msc3401.call.member').length > 0; // ← add this
 
           if (isVoice || hasRtcState) {
             const session = rtc.getRoomSession(room);
@@ -1926,7 +1968,35 @@ export const useMatrixStore = defineStore('matrix', {
           }
         });
       }
-    }
+    },
+
+    forceRecalculateVoiceMemberships() {
+      if (!this.client) return;
+
+      const rooms = this.client.getRooms();
+
+      for (const room of rooms) {
+        try {
+          const session = this.client.matrixRTC.getRoomSession(room);
+          if (!session) continue;
+
+          // Force the SDK to reparse membership state events
+          if (typeof (session as any).ensureRecalculateSessionMembers === 'function') {
+            (session as any).ensureRecalculateSessionMembers();
+          }
+
+          // Also try reloadMemberships if available in newer SDK versions
+          if (typeof (session as any).reloadMemberships === 'function') {
+            (session as any).reloadMemberships();
+          }
+        } catch (e) {
+          console.warn(`[MatrixRTC] Failed to recalculate session for ${room.roomId}:`, e);
+        }
+      }
+
+      // Force Vue to re-evaluate getVoiceParticipants
+      this.hierarchyTrigger++;
+    },
 
   }
 });

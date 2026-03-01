@@ -1,5 +1,5 @@
 <template>
-  <div class="container m-auto py-6 space-y-8 max-w-2xl">
+  <div class="container overflow-y-scroll h-full m-auto py-6 space-y-8 max-w-2xl">
     <h1 class="text-3xl font-bold tracking-tight">Settings</h1>
 
     <NuxtPage />

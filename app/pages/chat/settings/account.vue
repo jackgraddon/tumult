@@ -83,13 +83,25 @@
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Account Linking</h2>
       <p class="text-sm text-muted-foreground">Link your account to other services.</p>
-      <UiButton>Jellyfin</UiButton>
+      <UiButton
+        @click="link('jellyfin')"
+        class="bg-[#AA5CC3] text-white hover:bg-[#AA5CC3]/90"
+      >
+        <Icon name="simple-icons:jellyfin" />
+        Jellyfin
+      </UiButton>
     </div>
 
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Bridging</h2>
       <p class="text-sm text-muted-foreground">Connect your off-platform chats to Matrix. Your homeserver must support the bridges to connect them.</p>
-      <UiButton>Discord</UiButton>
+      <UiButton
+        @click="bridge('discord')"
+        class="bg-[#5865F2] text-white hover:bg-[#5865F2]/90"
+      >
+        <Icon name="simple-icons:discord" />
+        Discord
+    </UiButton>
     </div>
 
     <div class="flex gap-3">
@@ -163,16 +175,37 @@ async function updateProfile() {
   navigateTo('/chat/settings/account');
 }
 
-async function linkAccount(account: string) {
+async function link(account: string) {
   
 }
 
-async function unlinkAccount(account: string) {
+async function unlink(account: string) {
   
 }
 
 async function bridge(account: string) {
+  let bridgeAccount = `@${account}bot:jackg.cc`; // e.g. "discordbot"
   
+  // Check if the user already has a DM with this bridge bot
+  const existingDmRoom = store.directMessageMap[bridgeAccount];
+  
+  if (existingDmRoom) {
+    toast.error(`It looks like you already have a ${account} bridge connected. Please unlink it from your account management page before linking a new one.`);
+    console.log(`Existing bridge account: ${bridgeAccount}`);
+    return;
+  }
+  
+  // Otherwise, open a new DM with the bot to trigger the bridge linking flow
+  try {    
+    await store.client?.createRoom({
+      is_direct: true,
+      invite: [bridgeAccount],
+    });
+    toast.success(`Successfully started ${account} bridge setup. Check your DMs with ${bridgeAccount}`);
+  } catch (err) {
+    console.error(`Failed to create DM with ${bridgeAccount}:`, err);
+    toast.error(`Failed to start ${account} linking flow. Please try again.`);
+  }
 }
 
 

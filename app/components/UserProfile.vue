@@ -10,7 +10,7 @@
           :size="props.size === 'full' ? 120 : props.size === 'regular' ? 48 : 36"
         />
         <div v-if="displayUserId.startsWith('@discord_')" class="absolute bottom-[-5px] right-[-5px] rounded-full w-[20px] h-[20px] flex items-center justify-center" style="background-color: #5865F2;">
-          <Icon name="ic:round-discord" style="width: 12px; height: 12px;" class="text-white"/>
+          <Icon name="simple-icons:discord" style="width: 12px; height: 12px;" class="text-white"/>
         </div>
       </div>
       

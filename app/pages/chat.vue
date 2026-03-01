@@ -1,5 +1,5 @@
 <template>
-    <div class="flex flex-row h-full overflow-hidden bg-neutral-200 dark:bg-background">
+    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background">
         <!-- Servers Sidebar (Guild Bar) -->
         <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
             <!-- Home Button -->
@@ -42,40 +42,40 @@
 
             <!-- Server List -->
             <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
-                    <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
-                        <UiContextMenuTrigger>
-                            <UiButton 
-                                variant="ghost" 
-                                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0"
-                                :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                                as-child
+                <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
+                    <UiContextMenuTrigger>
+                        <UiButton 
+                            variant="ghost" 
+                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0"
+                            :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                            as-child
+                        >
+                            <NuxtLink 
+                                :to="store.lastVisitedRooms.spaces[server.roomId] 
+                                    ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
+                                    : `/chat/spaces/${server.roomId}`" 
+                                :aria-label="server.name"
                             >
-                                <NuxtLink 
-                                    :to="store.lastVisitedRooms.spaces[server.roomId] 
-                                        ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
-                                        : `/chat/spaces/${server.roomId}`" 
-                                    :aria-label="server.name"
-                                >
-                                    <MatrixAvatar 
-                                        :mxc-url="server.getMxcAvatarUrl()" 
-                                        :name="server.name" 
-                                        class="h-full w-full border-0 rounded-none group-hover:rounded-none" 
-                                        :size="64"
-                                    />
-                                </NuxtLink>
-                            </UiButton>
-                        </UiContextMenuTrigger>
-                        <UiContextMenuContent>
-                            <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                                <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
-                                Unpin from Sidebar
-                            </UiContextMenuItem>
-                            <UiContextMenuItem v-else disabled>
-                                <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
-                                Root Space
-                            </UiContextMenuItem>
-                        </UiContextMenuContent>
-                    </UiContextMenu>
+                                <MatrixAvatar 
+                                    :mxc-url="server.getMxcAvatarUrl()" 
+                                    :name="server.name" 
+                                    class="h-full w-full border-0 rounded-none group-hover:rounded-none" 
+                                    :size="64"
+                                />
+                            </NuxtLink>
+                        </UiButton>
+                    </UiContextMenuTrigger>
+                    <UiContextMenuContent>
+                        <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
+                            <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
+                            Unpin from Sidebar
+                        </UiContextMenuItem>
+                        <UiContextMenuItem v-else disabled>
+                            <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
+                            Root Space
+                        </UiContextMenuItem>
+                    </UiContextMenuContent>
+                </UiContextMenu>
             </draggable>
 
             <!-- Add Server / Explorer -->
@@ -92,20 +92,18 @@
         <ChatSidebar ref="sidebarRef"/>
 
         <!-- Main Content -->
-            <!-- <UiResizablePanel :min-size="70" :default-size="75" :max-size="85"> -->
-        <main class="flex flex-1 h-full max-w-full flex-col min-w-0 min-h-0">
-            <div class="mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
+        <main class="flex-1 flex-col min-w-0 min-h-0 p-2">
+            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
                 <NuxtPage class="flex-1 min-h-0" />
             </div>
         </main>
         
+        <!-- Member List Panel -->
         <Transition name="slide-pane">
             <div v-if="store.ui.memberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
                 <RoomMemberList :room="(currentRoom as any)" class="h-full" />
             </div>
         </Transition>
-            <!-- </UiResizablePanel> -->
-        <!-- </UiResizablePanelGroup> -->
     </div>
     <VerificationWarning />
     <VerificationModal />

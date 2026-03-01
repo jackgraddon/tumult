@@ -43,7 +43,7 @@
                             </NuxtLink>
 
                             <div v-if="friend.dmUserId?.startsWith('@discord_')" class="rounded-full w-[20px] h-[20px] flex items-center justify-center shrink-0" style="background-color: #5865F2;">
-                                <Icon name="ic:round-discord" class="text-white" style="width: 12px; height: 12px;"/>
+                                <Icon name="simple-icons:discord" class="text-white" style="width: 12px; height: 12px;"/>
                             </div>
 
                             <div v-if="friend.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">

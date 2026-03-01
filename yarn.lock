@@ -4751,6 +4751,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tauri-apps/plugin-store@npm:^2.4.2":
+  version: 2.4.2
+  resolution: "@tauri-apps/plugin-store@npm:2.4.2"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.8.0"
+  checksum: 10c0/6892417dbd3e97c4a70e00ca437a196a65499831e7b3a5dc5b71646596a16c4030f23dedfa124ed853c73999a5b8e48de129fb0369e7af7c987142e060b58127
+  languageName: node
+  linkType: hard
+
+"@tauri-apps/plugin-stronghold@npm:^2.3.1":
+  version: 2.3.1
+  resolution: "@tauri-apps/plugin-stronghold@npm:2.3.1"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.8.0"
+  checksum: 10c0/f218990063e362f629f35c5a5cba5790bcaa1046206fb57d24f1f52bb6a98185a848619bedd2a09d810649d3cb10533146ba9c7ede639f656d92eaf58eb97ff6
+  languageName: node
+  linkType: hard
+
 "@tybys/wasm-util@npm:^0.10.0, @tybys/wasm-util@npm:^0.10.1":
   version: 0.10.1
   resolution: "@tybys/wasm-util@npm:0.10.1"
@@ -9785,6 +9803,8 @@ __metadata:
     "@tauri-apps/cli": "npm:^2.10.0"
     "@tauri-apps/plugin-os": "npm:~2"
     "@tauri-apps/plugin-shell": "npm:^2.3.5"
+    "@tauri-apps/plugin-store": "npm:^2.4.2"
+    "@tauri-apps/plugin-stronghold": "npm:^2.3.1"
     "@types/node": "npm:^25.2.3"
     "@vite-pwa/nuxt": "npm:^1.1.1"
     "@vueuse/core": "npm:^14.2.1"

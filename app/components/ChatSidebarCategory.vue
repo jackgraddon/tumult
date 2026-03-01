@@ -56,109 +56,109 @@
 
             <!-- Rooms in this category -->
             <draggable v-model="draggableRooms" class="flex flex-col" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
-                    <div v-for="room in draggableRooms" :key="room.roomId" class="flex flex-col">
-                        <!-- Voice Channel (Click to Join) -->
-                        <div 
-                            v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
-                            role="button"
-                            class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                            :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                            @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
-                        >
-                            <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
-                                <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />
-                            </div>
-                            <span class="truncate">{{ room.name }}</span>
-                            
-                            <!-- Voice Active Indicator (Pulse) -->
-                            <div v-if="getVoiceParticipants(room.roomId).length > 0" class="ml-2 flex items-center">
-                                <Icon name="solar:volume-loud-bold" class="h-3 w-3 text-green-500 animate-pulse" />
-                            </div>
+                <div v-for="room in draggableRooms" :key="room.roomId" class="flex flex-col">
+                    <!-- Voice Channel (Click to Join) -->
+                    <div 
+                        v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
+                        role="button"
+                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                        :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                        @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
+                    >
+                        <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
+                            <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />
+                        </div>
+                        <span class="truncate">{{ room.name }}</span>
+                        
+                        <!-- Voice Active Indicator (Pulse) -->
+                        <div v-if="getVoiceParticipants(room.roomId).length > 0" class="ml-2 flex items-center">
+                            <Icon name="solar:volume-loud-bold" class="h-3 w-3 text-green-500 animate-pulse" />
+                        </div>
 
-                            <div class="ml-auto flex items-center gap-1">
-                                <!-- Navigation to Text Chat -->
-                                <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`" @click.stop>
-                                    <UiButton 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                                        title="Open text chat"
-                                    >
-                                        <Icon name="solar:chat-line-linear" class="h-4 w-4" />
-                                    </UiButton>
-                                </NuxtLink>
-
-                                <!-- Leave Button -->
+                        <div class="ml-auto flex items-center gap-1">
+                            <!-- Navigation to Text Chat -->
+                            <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`" @click.stop>
                                 <UiButton 
-                                    v-if="voiceStore.activeRoomId === room.roomId"
-                                    variant="destructive" 
+                                    variant="ghost" 
                                     size="icon" 
-                                    class="h-6 w-6 shrink-0 shadow-sm"
-                                    @click.prevent.stop="voiceStore.leaveVoiceRoom()"
-                                    title="Leave voice channel"
+                                    class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+                                    title="Open text chat"
                                 >
-                                    <Icon name="solar:end-call-bold" class="h-3 w-3" />
+                                    <Icon name="solar:chat-line-linear" class="h-4 w-4" />
                                 </UiButton>
-                                
+                            </NuxtLink>
+
+                            <!-- Leave Button -->
+                            <UiButton 
+                                v-if="voiceStore.activeRoomId === room.roomId"
+                                variant="destructive" 
+                                size="icon" 
+                                class="h-6 w-6 shrink-0 shadow-sm"
+                                @click.prevent.stop="voiceStore.leaveVoiceRoom()"
+                                title="Leave voice channel"
+                            >
+                                <Icon name="solar:end-call-bold" class="h-3 w-3" />
+                            </UiButton>
+                            
+                            <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                {{ room.unreadCount }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Regular Room (Click to Open Chat) -->
+                    <UiButton 
+                        v-else
+                        :disabled="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`)"
+                        :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
+                        class="justify-start px-2 h-9 w-full"
+                        as-child
+                    >
+                        <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">
+                            <div v-if="!room.avatarUrl" class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
+                                <Icon name="solar:hashtag-square-bold-duotone" class="h-5 w-5" />
+                            </div>
+                            <MatrixAvatar
+                                v-else
+                                :mxc-url="room.avatarUrl"
+                                :name="room.name"
+                                class="h-6 w-6 mr-1"
+                                :size="64"
+                            />
+                            <span class="truncate">
+                                {{ room.name.startsWith('#') ? room.name.slice(1) : room.name }}
+                            </span>
+                            
+                            <div class="ml-auto flex items-center gap-1">
                                 <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
                                     {{ room.unreadCount }}
                                 </div>
                             </div>
-                        </div>
+                        </NuxtLink>
+                    </UiButton>
 
-                        <!-- Regular Room (Click to Open Chat) -->
-                        <UiButton 
-                            v-else
-                            :disabled="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`)"
-                            :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
-                            class="justify-start px-2 h-9 w-full"
-                            as-child
-                        >
-                            <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">
-                                <div v-if="!room.avatarUrl" class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
-                                    <Icon name="solar:hashtag-square-bold-duotone" class="h-5 w-5" />
-                                </div>
-                                <MatrixAvatar
-                                    v-else
-                                    :mxc-url="room.avatarUrl"
-                                    :name="room.name"
-                                    class="h-6 w-6 mr-1"
-                                    :size="64"
-                                />
-                                <span class="truncate">
-                                    {{ room.name.startsWith('#') ? room.name.slice(1) : room.name }}
-                                </span>
-                                
-                                <div class="ml-auto flex items-center gap-1">
-                                    <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                        {{ room.unreadCount }}
-                                    </div>
-                                </div>
-                            </NuxtLink>
-                        </UiButton>
-
-                        <!-- Voice Participants List -->
+                    <!-- Voice Participants List -->
+                    <div 
+                        v-if="getVoiceParticipants(room.roomId).length > 0"
+                        class="ml-9 flex flex-col gap-0.5 mt-0.5 mb-2"
+                    >
                         <div 
-                            v-if="getVoiceParticipants(room.roomId).length > 0"
-                            class="ml-9 flex flex-col gap-0.5 mt-0.5 mb-2"
+                            v-for="user in getVoiceParticipants(room.roomId)" 
+                            :key="user.id" 
+                            class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-accent/40 transition-colors cursor-default group/participant"
                         >
-                            <div 
-                                v-for="user in getVoiceParticipants(room.roomId)" 
-                                :key="user.id" 
-                                class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-accent/40 transition-colors cursor-default group/participant"
-                            >
-                                <MatrixAvatar 
-                                    :mxc-url="user.avatarUrl" 
-                                    :name="user.name" 
-                                    class="w-4 h-4 rounded-full shadow-sm" 
-                                    :size="32"
-                                />
-                                <span class="text-[11px] font-medium text-muted-foreground group-hover/participant:text-foreground transition-colors truncate">
-                                    {{ user.name }}
-                                </span>
-                            </div>
+                            <MatrixAvatar 
+                                :mxc-url="user.avatarUrl" 
+                                :name="user.name" 
+                                class="w-4 h-4 rounded-full shadow-sm" 
+                                :size="32"
+                            />
+                            <span class="text-[11px] font-medium text-muted-foreground group-hover/participant:text-foreground transition-colors truncate">
+                                {{ user.name }}
+                            </span>
                         </div>
                     </div>
+                </div>
             </draggable>
         </div>
     </div>

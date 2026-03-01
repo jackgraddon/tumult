@@ -19,6 +19,8 @@
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
     "os:default",
-    "os:allow-hostname"
+    "os:allow-hostname",
+    "store:allow-load",
+    "store:default"
   ]
 }

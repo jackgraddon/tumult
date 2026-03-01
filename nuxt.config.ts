@@ -94,7 +94,7 @@ export default defineNuxtConfig({
   pwa: {
     strategies: 'injectManifest',
     filename: 'sw.js',
-    registerType: 'autoUpdate',
+    register: 'autoUpdate',
     manifest: {
       name: 'Matrix Client',
       short_name: 'Matrix',
@@ -128,6 +128,12 @@ export default defineNuxtConfig({
       navigateFallbackAllowlist: [/^\/$/],
       type: 'module',
     },
+  },
+
+  typescript: {
+    tsConfig: {
+      include: ['./app/declarations.d.ts']
+    }
   },
 
   colorMode: {
