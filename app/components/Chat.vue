@@ -561,10 +561,10 @@ import { toast } from 'vue-sonner';
 import { ref, shallowRef, markRaw, toRaw, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
-import GameInviteCard from '~/components/game/GameInviteCard.vue';
-import GameActionBubble from '~/components/game/GameActionBubble.vue';
-import GameResultCard from '~/components/game/GameResultCard.vue';
-import TicTacToe from '~/components/game/TicTacToe.vue';
+import GameInviteCard from './game/GameInviteCard.vue';
+import GameActionBubble from './game/GameActionBubble.vue';
+import GameResultCard from './game/GameResultCard.vue';
+import TicTacToe from './game/TicTacToe.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
@@ -609,13 +609,31 @@ const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 
 async function handleInviteToGame() {
-  if (!roomId.value || !otherUserId.value) {
-    toast.error('Cannot invite to game in this room');
+  console.log('[Chat] Invite to Tic-Tac-Toe requested', { roomId: roomId.value, otherUserId: otherUserId.value });
+
+  if (!roomId.value) {
+    toast.error('No room selected');
     return;
   }
+
+  // Fallback for non-DM rooms: invite the first other joined member
+  let targetUserId = otherUserId.value;
+  if (!targetUserId && room.value) {
+    const myUserId = store.client?.getUserId();
+    const members = room.value.getJoinedMembers();
+    const otherMember = members.find(m => m.userId !== myUserId);
+    targetUserId = otherMember?.userId;
+    console.log('[Chat] Non-DM room detected, selecting target user:', targetUserId);
+  }
+
+  if (!targetUserId) {
+    toast.error('Cannot find an opponent in this room');
+    return;
+  }
+
   const { inviteToGame } = useMatrixGame(roomId.value as string);
   try {
-    await inviteToGame('tictactoe', otherUserId.value);
+    await inviteToGame('tictactoe', targetUserId);
     toast.success('Game invite sent');
   } catch (err) {
     console.error('Failed to send game invite', err);
