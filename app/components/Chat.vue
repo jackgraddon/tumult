@@ -10,6 +10,12 @@
       class="absolute inset-0 z-50"
     />
 
+    <KeychainWarningDialog
+      v-model="showKeychainWarning"
+      @proceed="handleProceed"
+      @cancel="handleCancel"
+    />
+
     <!-- Room Header -->
     <header v-if="room" class="flex-none p-4 border-b border-border">
       <div class="flex items-center justify-between">
@@ -33,7 +39,7 @@
             v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
             variant="ghost" 
             size="icon-sm" 
-            @click="voiceStore.joinVoiceRoom(toRaw(room) as any)"
+            @click="handleJoinCall(toRaw(room) as any)"
             :disabled="voiceStore.isConnecting"
             title="Start Call"
             class="rounded-full"
@@ -100,7 +106,7 @@
               <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
-              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="voiceStore.joinVoiceRoom(toRaw(room) as any)">
+              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="handleJoinCall(toRaw(room) as any)">
                 Join
               </UiButton>
             </div>
@@ -530,6 +536,8 @@ import MatrixVoiceCall from '~/components/MatrixVoiceCall.vue';
 import RoomHeader from '~/components/RoomHeader.vue';
 import IncomingCallBanner from '~/components/IncomingCallBanner.vue';
 import { useVoiceStore } from '~/stores/voice';
+import KeychainWarningDialog from '~/components/KeychainWarningDialog.vue';
+import { useJoinCall } from '~/composables/useJoinCall';
 
 
 function extractUrls(text: string): string[] {
@@ -561,6 +569,7 @@ const props = defineProps<{
 const route = useRoute();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
+const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 
 // --- Reactive state ---
 

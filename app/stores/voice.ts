@@ -12,10 +12,10 @@ import { toast } from 'vue-sonner';
 // ---------------------------------------------------------------------------
 // Focus type definitions (MSC4143)
 //
-// The spec defines a focus as having a `type` field. The fields beyond that
-// are transport-specific. We only implement `livekit` today, but the
-// architecture is open — adding a new SFU type means adding a case to
-// connectToFocus() without touching the MatrixRTC signalling layer above it.
+// The spec defines a focus as having a `type` field. Fields beyond that are
+// transport-specific. We only implement `livekit` today, but the architecture
+// is open — adding a new SFU type means adding a case to connectToFocus()
+// without touching the MatrixRTC signalling layer above it.
 // ---------------------------------------------------------------------------
 
 interface Focus {
@@ -35,15 +35,14 @@ interface LiveKitFocus extends Focus {
 //
 // When multiple members are in a call, they must all connect to the same
 // focus. The spec says the focus advertised by the *oldest* membership event
-// (lowest createdTs) is authoritative. This prevents split-brain scenarios
-// where two clients independently pick different foci from the same list.
+// (lowest createdTs) is authoritative. This prevents split-brain where two
+// clients independently pick different foci from the same list.
 //
 // If no existing members have a focus (we are first to join), fall back to
-// .well-known discovery and then a hard-coded default.
+// .well-known discovery then a hard-coded default.
 // ---------------------------------------------------------------------------
 
 function selectFociFromMemberships(memberships: any[]): Focus[] {
-    // Sort ascending by creation timestamp — oldest membership first
     const sorted = [...memberships].sort((a, b) => {
         const tsA = a.createdTs?.() ?? Infinity;
         const tsB = b.createdTs?.() ?? Infinity;
@@ -95,11 +94,11 @@ async function discoverFociFromWellKnown(userId: string): Promise<Focus[]> {
 async function buildLivekitWorker(): Promise<Worker> {
     // LiveKit's E2EE worker creates non-extractable WebCrypto keys by default.
     // On macOS/WebKit (including Tauri), non-extractable keys are persisted to
-    // the system Keychain, causing a password prompt on every call.
+    // the system Keychain, triggering a password prompt on every call.
     //
     // Fix: patch importKey to leave HKDF/PBKDF2 alone (WebKit hard-prohibits
     // these from being extractable) and patch deriveKey to force the *output*
-    // AES key extractable so it stays in-memory only, never touching the Keychain.
+    // AES key extractable so it stays in-memory only, bypassing the Keychain.
     const workerUrl = new URL('livekit-client/e2ee-worker', import.meta.url).href;
     const workerCode = await (await fetch(workerUrl)).text();
 
@@ -249,6 +248,38 @@ export const useVoiceStore = defineStore('voice', {
             try {
                 console.log(`[Voice] Joining room ${room.roomId}`);
 
+                // --- Microphone permission -----------------------------------------
+                //
+                // getUserMedia is what triggers the macOS permission dialog.
+                // startAudio() only unlocks the Web Audio *playback* context.
+                //
+                // If denied, degrade to listen-only — the call UI still renders and
+                // the user can hear others. They can grant permission later in
+                // System Settings → Privacy & Security → Microphone.
+                //
+                // If this always denies without a dialog on first launch, the app
+                // bundle is missing com.apple.security.device.audio-input in
+                // entitlements.plist — macOS silently rejects without prompting.
+                let hasMicPermission = false;
+                try {
+                    const permStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    permStream.getTracks().forEach(t => t.stop());
+                    hasMicPermission = true;
+                    console.log('[Voice] Microphone permission granted');
+                } catch (permErr: any) {
+                    if (permErr?.name === 'NotAllowedError') {
+                        console.warn('[Voice] Microphone access denied — joining in listen-only mode');
+                        toast.warning('Microphone access denied', {
+                            description: 'You can listen but cannot speak. To enable your mic, go to System Settings → Privacy & Security → Microphone.',
+                            duration: 8000,
+                        });
+                    } else {
+                        throw permErr; // Device busy, hardware failure — abort
+                    }
+                }
+
+                // --- MatrixRTC signalling (spec layer) ----------------------------
+
                 // Pre-fetch device keys so E2EE key distribution doesn't fail
                 // with "No targets found for sending key".
                 const crypto = matrixStore.client?.getCrypto();
@@ -257,15 +288,14 @@ export const useVoiceStore = defineStore('voice', {
                     if (memberIds.length > 0) await crypto.getUserDeviceInfo(memberIds, true);
                 }
 
-                // --- MatrixRTC signalling (spec layer) ---------------------------
-
                 const rtcSession = matrixStore.client?.matrixRTC.getRoomSession(room);
                 if (!rtcSession) throw new Error('Failed to get MatrixRTC session');
 
                 const userId = matrixStore.client!.getUserId()!;
 
                 // Focus selection — oldest_membership algorithm (MSC4143).
-                // If no existing memberships have a focus we are the first joiner.
+                // Read foci from the oldest existing membership (joining an active call),
+                // then fall back to .well-known (first to join), then a hard default.
                 let foci: Focus[] = selectFociFromMemberships(rtcSession.memberships ?? []);
                 const isFirstToJoin = foci.length === 0;
 
@@ -281,24 +311,37 @@ export const useVoiceStore = defineStore('voice', {
                     }];
                 }
 
-                // When first to join, declare our active focus so other clients can
+                // When first to join, declare the active focus so other clients can
                 // use oldest_membership to find it. When joining an existing call,
-                // pass undefined to let the SDK derive the active focus via
-                // oldest_membership — prevents split-brain.
+                // pass undefined — the SDK derives activeFocus from oldest_membership
+                // internally, preventing split-brain.
                 const activeFocusForSdk: Focus | undefined = isFirstToJoin ? foci[0] : undefined;
 
                 try {
-                    // SDK v41+ signature: joinRTCSession(fociPreferred, activeFocus?, opts?)
-                    // userId/deviceId are derived from the MatrixClient — do not pass them.
-                    rtcSession.joinRTCSession(foci, activeFocusForSdk, {
-                        manageMediaKeys: true,
-                        membershipEventExpiryMs: 120000,
-                        delayedLeaveEventRestartMs: 3000,
-                        delayedLeaveEventDelayMs: 8000,
-                    });
+                    // SDK v41 4-arg signature:
+                    //   joinRTCSession(membershipData, fociPreferred, activeFocus?, opts?)
+                    const membershipData = {
+                        userId: matrixStore.client!.getUserId()!,
+                        deviceId: matrixStore.client!.getDeviceId()!,
+                        memberId: `${matrixStore.client!.getUserId()}:${matrixStore.client!.getDeviceId()}`,
+                    };
+
+                    rtcSession.joinRTCSession(
+                        membershipData,
+                        foci,
+                        activeFocusForSdk,
+                        {
+                            manageMediaKeys: true,
+                            membershipEventExpiryMs: 120000,
+                            delayedLeaveEventRestartMs: 3000,
+                            delayedLeaveEventDelayMs: 8000,
+                        }
+                    );
                     console.log('[Voice] MatrixRTC session joined');
                 } catch (e) {
                     console.error('[Voice] joinRTCSession failed:', e);
+                    // Don't throw — transport can still connect and the session
+                    // will self-heal on the next membership event.
                 }
 
                 // --- Transport layer (LiveKit-specific) ---------------------------
@@ -341,13 +384,17 @@ export const useVoiceStore = defineStore('voice', {
                 this._encryptionKeyHandler = onKeyChanged;
                 (rtcSession as any).on(encKeyEvent, onKeyChanged);
 
+                // Re-emit any keys that were distributed before we subscribed
+                // (covers the case where we join after other members already set keys)
                 if (typeof (rtcSession as any).reemitEncryptionKeys === 'function') {
                     (rtcSession as any).reemitEncryptionKeys();
                 }
 
                 await lkRoom.startAudio();
-                await lkRoom.localParticipant.setMicrophoneEnabled(true);
-                this.isMicEnabled = true;
+                if (hasMicPermission) {
+                    await lkRoom.localParticipant.setMicrophoneEnabled(true);
+                    this.isMicEnabled = true;
+                }
 
                 this.lkRoom = markRaw(lkRoom);
                 this.activeRoomId = room.roomId;
@@ -385,8 +432,8 @@ export const useVoiceStore = defineStore('voice', {
 
             console.log(`[Voice] Leaving room ${roomId}`);
 
-            // 1. Leave MatrixRTC FIRST — state event must be sent while the
-            //    HTTP connection is still alive.
+            // 1. Leave MatrixRTC FIRST — the state event must be sent while
+            //    the HTTP connection is still alive.
             if (room) {
                 try {
                     const rtcSession = matrixStore.client?.matrixRTC.getRoomSession(room);
