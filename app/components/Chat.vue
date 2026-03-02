@@ -245,7 +245,7 @@
                   :game-id="msg.gameId"
                   :room-id="(roomId as string)"
                 />
-                <GameInviteCard v-else :event="msg.rawEvent!" />
+                <GameInviteCard v-else-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
               </div>
 
               <div
@@ -253,7 +253,7 @@
                 class="mt-1 flex flex-col"
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
-                <GameActionBubble :event="msg.rawEvent!" />
+                <GameActionBubble v-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
               </div>
 
               <div
@@ -261,7 +261,7 @@
                 class="mt-1 flex flex-col"
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
-                <GameResultCard :event="msg.rawEvent!" />
+                <GameResultCard v-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
               </div>
 
               <div
@@ -631,7 +631,7 @@ async function handleInviteToGame() {
     return;
   }
 
-  const { inviteToGame } = useMatrixGame(roomId.value as string);
+  const { inviteToGame } = useMatrixGame(roomId.value!);
   try {
     await inviteToGame('tictactoe', targetUserId);
     toast.success('Game invite sent');
@@ -649,7 +649,7 @@ function hasGameState(gameId: string): boolean {
   const events = room.value.getLiveTimeline().getEvents();
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i];
-    if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent().game_id === gameId) {
+    if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent()?.game_id === gameId) {
       return true;
     }
   }
@@ -705,6 +705,10 @@ interface ChatMessage {
   isGameAction?: boolean;
   isGameOver?: boolean;
   rawEvent?: MatrixEvent;
+}
+
+function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
+  return msg.rawEvent;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -800,11 +804,12 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const content = isEncrypted ? event.getClearContent() : event.getContent();
 
   if (!content && !isEncrypted) return null;
+  const contentSafe: any = content || {};
 
   const isMessage = type === EventType.RoomMessage;
   const isSticker = type === 'm.sticker';
   const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
-  const isGameInvite = type === EventType.RoomMessage && content?.msgtype === 'cc.jackg.ruby.game.invite';
+  const isGameInvite = type === EventType.RoomMessage && contentSafe.msgtype === 'cc.jackg.ruby.game.invite';
   const isGameAction = type === 'cc.jackg.ruby.game.action';
   const isGameOver = type === 'cc.jackg.ruby.game.over';
   const isGameState = type === 'cc.jackg.ruby.game.state';
@@ -820,7 +825,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const isContentMessage = isMessage || isEncrypted || isSticker;
   const isGameTimelineEvent = isGameInvite || isGameAction || isGameOver;
 
-  if (isContentMessage && !isRTC && !isGameTimelineEvent && !content?.body) return null;
+  if (isContentMessage && !isRTC && !isGameTimelineEvent && !contentSafe.body) return null;
 
   const senderId = event.getSender() || '';
   const senderMember = room.value?.getMember(senderId);
@@ -834,7 +839,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   if (isRTC) {
     // Only show the event if it's a "join" (membership present)
-    const memberships = content?.memberships || [];
+    const memberships = contentSafe.memberships || [];
     if (memberships.length === 0) return null;
 
     return {
@@ -858,13 +863,13 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       senderName,
       senderInitials: senderName.substring(0, 1),
       avatarUrl,
-      body: content.body || 'Game Invite',
+      body: contentSafe.body || 'Game Invite',
       timestamp: event.getTs(),
       isOwn: senderId === store.client?.getUserId(),
-      type: content.msgtype,
+      type: contentSafe.msgtype || '',
       isGameInvite: true,
-      gameId: content.game_id,
-      gameType: content.game_type,
+      gameId: contentSafe.game_id,
+      gameType: contentSafe.game_type,
       rawEvent: event
     };
   }
@@ -881,7 +886,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       isOwn: senderId === store.client?.getUserId(),
       type: 'cc.jackg.ruby.game.action',
       isGameAction: true,
-      gameId: content.game_id,
+      gameId: contentSafe.game_id,
       rawEvent: event
     };
   }
@@ -898,30 +903,30 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       isOwn: senderId === store.client?.getUserId(),
       type: 'cc.jackg.ruby.game.over',
       isGameOver: true,
-      gameId: content.game_id,
+      gameId: contentSafe.game_id,
       rawEvent: event
     };
   }
 
   // extract filename if available
   // content.filename is common, or content.file?.name (for encrypted)
-  let filename = content.filename;
-  if (!filename && content.file && content.file.name) {
-      filename = content.file.name;
+  let filename = contentSafe.filename;
+  if (!filename && contentSafe.file && contentSafe.file.name) {
+      filename = contentSafe.file.name;
   }
   
   // Determine if caption should be shown
-  let showCaption = !!content.body;
+  let showCaption = !!contentSafe.body;
   
   // If we have a filename, don't show if simple match
-  if (filename && content.body === filename) {
+  if (filename && contentSafe.body === filename) {
     showCaption = false;
   }
   
   // Heuristic: If we don't have a filename (or even if we do), 
   // if the body looks looks like a strict filename (extension, no spaces), hide it.
   // This covers cases where filename metadata is missing but body is "IMG_1234.JPG"
-  const isLikelyFilename = /\.(png|jpe?g|gif|webp)$/i.test(content.body) && !/\s/.test(content.body);
+  const isLikelyFilename = contentSafe.body && /\.(png|jpe?g|gif|webp)$/i.test(contentSafe.body) && !/\s/.test(contentSafe.body);
   if (!filename && isLikelyFilename) {
     showCaption = false;
   }
@@ -931,14 +936,14 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   // Check if reply since we already have content
   let replyTo: ChatMessage['replyTo'] | undefined;
-  const relation = content['m.relates_to']; // Direct content access is more reliable for raw structure
+  const relation = contentSafe['m.relates_to']; // Direct content access is more reliable for raw structure
   
   if (relation && relation['m.in_reply_to']) {
     const replyEventId = relation['m.in_reply_to'].event_id;
     if (replyEventId) {
        const replyEvent = room.value?.findEventById(replyEventId);
        if (replyEvent) {
-         const replyContent = replyEvent.getContent();
+         const replyContent = replyEvent.getContent() || {};
          const replySenderId = replyEvent.getSender() || '';
          const replySender = room.value?.getMember(replySenderId)?.name || replySenderId;
          replyTo = {
@@ -1035,11 +1040,11 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   let isFile = false;
   
   if (!isSticker && (isMessage || isEncrypted)) {
-    if (content.msgtype && fileMsgTypes.includes(content.msgtype as string)) {
+    if (contentSafe.msgtype && fileMsgTypes.includes(contentSafe.msgtype as string)) {
       isFile = true;
-    } else if (content.msgtype !== MsgType.Image && content.msgtype !== MsgType.Text && content.msgtype !== MsgType.Notice && content.msgtype !== MsgType.Emote) {
+    } else if (contentSafe.msgtype !== MsgType.Image && contentSafe.msgtype !== MsgType.Text && contentSafe.msgtype !== MsgType.Notice && contentSafe.msgtype !== MsgType.Emote) {
       // Fallback for custom file types if they have a URL or encrypted file but aren't explicitly text/images
-      if (content.url || content.file) {
+      if (contentSafe.url || contentSafe.file) {
         isFile = true;
       }
     }
@@ -1087,25 +1092,25 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: content.body,
+    body: contentSafe.body || '',
     // Strip the reply fallback from body when formatted HTML is available
-    formattedBody: content.format === 'org.matrix.custom.html' ? content.formatted_body : undefined,
+    formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),
     isOwn: senderId === store.client?.getUserId(),
-    type: isSticker ? 'm.sticker' : (content.msgtype || MsgType.Text),
-    url: content.url,
-    encryptedFile: content.file,
+    type: isSticker ? 'm.sticker' : (contentSafe.msgtype || MsgType.Text),
+    url: contentSafe.url,
+    encryptedFile: contentSafe.file,
     filename,
     showCaption,
-    imageWidth: content.info?.w,
-    imageHeight: content.info?.h,
+    imageWidth: contentSafe.info?.w,
+    imageHeight: contentSafe.info?.h,
     isEdited,
     replyTo,
     reactions: reactions.length > 0 ? reactions : undefined,
     readReceipts: readReceipts.length > 0 ? readReceipts : undefined,
     isFile,
-    msgtype: content.msgtype,
-    mimetype: content.info?.mimetype,
+    msgtype: contentSafe.msgtype,
+    mimetype: contentSafe.info?.mimetype,
   };
 }
 
