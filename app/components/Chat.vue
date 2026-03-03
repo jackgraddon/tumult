@@ -1502,9 +1502,9 @@ async function initRoom() {
     
     // PROACTIVE LOADING: If we have very few messages, try to fetch more history immediately.
     // We check the raw events in the window before rebuilding the UI messages.
-    const events = timelineWindow.value.getEvents();
-    if (events.length < 15 && timelineWindow.value.canPaginate(Direction.Backward)) {
-        console.log(`[Chat] Event count low (${events.length}), proactively fetching history...`);
+    const windowEvents = timelineWindow.value.getEvents();
+    if (windowEvents.length < 15 && timelineWindow.value.canPaginate(Direction.Backward)) {
+        console.log(`[Chat] Event count low (${windowEvents.length}), proactively fetching history...`);
         await timelineWindow.value.paginate(Direction.Backward, 20);
     }
 
@@ -1512,8 +1512,8 @@ async function initRoom() {
     refreshMessagesFromWindow();
 
     // Populate gameStates cache from initial timeline events
-    const events = timelineWindow.value.getEvents();
-    for (const ev of events) {
+    const stateEvents = timelineWindow.value.getEvents();
+    for (const ev of stateEvents) {
       const isEncrypted = ev.getType() === 'm.room.encrypted';
       const content = isEncrypted ? ev.getClearContent() : ev.getContent();
       const type = isEncrypted ? content?.type : ev.getType();
@@ -1533,9 +1533,9 @@ async function initRoom() {
   
   // Mark last message as read on entry
   const timeline = r.getLiveTimeline();
-  const events = timeline.getEvents();
-  if (events.length > 0) {
-    const lastEvent = events[events.length - 1];
+  const liveEvents = timeline.getEvents();
+  if (liveEvents.length > 0) {
+    const lastEvent = liveEvents[liveEvents.length - 1];
     if (lastEvent) {
         sendReadReceipt(lastEvent);
     }
