@@ -628,6 +628,10 @@ export const useMatrixStore = defineStore('matrix', {
       // Ensure homeserverUrl has https:// for internal use
       const fullUrl = homeserverUrl.startsWith('http') ? homeserverUrl : `https://${homeserverUrl}`;
       await setPref('matrix_homeserver_url', fullUrl);
+      // Sync to localStorage for fast access by utility
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('matrix_homeserver_url', fullUrl);
+      }
 
       // Stop any existing client to release DB locks
       if (this.client) {
@@ -717,7 +721,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Fetch the real Matrix ID (MXID)
       const tempClient = sdk.createClient({
-        baseUrl: getHomeserverUrl(),
+        baseUrl: data.homeserverUrl,
         accessToken: accessToken
       });
 
@@ -727,10 +731,15 @@ export const useMatrixStore = defineStore('matrix', {
         userId = whoami.user_id;
       } catch (e) {
         console.error("Failed to fetch MXID:", e);
-        throw new Error("Could not verify user identity.");
+        // Fallback to sub from idTokenClaims if HS whoami fails (some HS are picky about newly minted tokens)
+        if (data.idTokenClaims?.sub) {
+          userId = data.idTokenClaims.sub;
+        } else {
+          throw new Error("Could not verify user identity.");
+        }
       }
 
-      const deviceId = (await tempClient.whoami()).device_id || data.tokenResponse.device_id;
+      const deviceId = data.tokenResponse.device_id || (await tempClient.whoami().catch(() => ({}))).device_id;
 
       // Persist Valid Credentials
       await setSecret('matrix_access_token', accessToken);

@@ -8,9 +8,15 @@ export const getHomeserverUrl = () => {
     const persisted = localStorage.getItem('matrix_homeserver_url');
     if (persisted) return persisted;
   }
-  const config = useRuntimeConfig();
-  const baseUrl = 'https://' + config.public.matrix.baseUrl;
-  return baseUrl;
+  try {
+    const config = useRuntimeConfig();
+    if (config.public?.matrix?.baseUrl) {
+      return 'https://' + config.public.matrix.baseUrl;
+    }
+  } catch (e) {
+    // runtime config might not be available
+  }
+  return 'https://matrix.org'; // Final fallback
 }
 
 // Helper to get dynamic device name for Matrix

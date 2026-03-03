@@ -33,7 +33,7 @@
         </UiAlert>
 
         <div v-if="matrixStore.isLoggingIn" class="flex flex-col items-center gap-4 py-4">
-          <UiSpinner size="lg" />
+          <UiSpinner class="size-8" />
           <p class="text-sm text-muted-foreground">
             Redirecting to secure login...
           </p>
