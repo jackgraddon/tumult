@@ -159,6 +159,8 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+    gameTrigger: 0,
+    gameStates: {} as Record<string, any>,
 
     customStatus: null as string | null,
     isLoggingIn: false,
@@ -975,6 +977,40 @@ export const useMatrixStore = defineStore('matrix', {
         if (type === 'm.space.child' || type === 'm.space.parent') {
           this.updateHierarchy();
         }
+        if (type === 'cc.jackg.ruby.game.state') {
+          this.gameTrigger++;
+        }
+      });
+
+      const handleGameEvent = (event: sdk.MatrixEvent) => {
+        const isEncrypted = event.getType() === 'm.room.encrypted';
+        
+        // If it's encrypted and not yet decrypted, wait for it.
+        if (isEncrypted && !event.getClearContent()) {
+          event.once(sdk.MatrixEventEvent.Decrypted, (ev) => {
+            console.log(`[GameStore] Event decrypted, re-processing...`);
+            handleGameEvent(ev);
+          });
+          return;
+        }
+
+        const content = isEncrypted ? event.getClearContent() : event.getContent();
+        // The type might be in the clear content or the event type itself
+        const type = event.getType() === 'm.room.encrypted' ? content?.type : event.getType();
+
+        if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
+          console.log(`[GameStore] Applying state update for ${content.game_id}`, content);
+          this.gameStates[content.game_id] = { ...content };
+          this.gameTrigger++;
+        } else if (type === 'cc.jackg.ruby.game.action' || type === 'cc.jackg.ruby.game.over') {
+          console.log(`[GameStore] Action/Over event received: ${type}`);
+          this.gameTrigger++;
+        }
+      };
+
+      this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
+        if (toStartOfTimeline) return;
+        handleGameEvent(event);
       });
 
       // Initial trigger

@@ -5,6 +5,9 @@
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
                 Ruby Chat
             </h2>
+            <h3 class="text-md">
+                {{ routeName }}
+            </h3>
         </header>
         <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
@@ -189,6 +192,7 @@ import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
 
+const route = useRoute();
 const router = useRouter();
 
 const settingsPages = computed(() => {
@@ -216,9 +220,28 @@ const settingsPages = computed(() => {
         });
 });
 
-const route = useRoute();
+const routeName = ref();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
+
+// Are we in a space?
+if (route.fullPath.includes('spaces')) {
+    // Extract the space ID from the URL
+    const spaceIdMatch = route.fullPath.match(/spaces\/([^\/]+)/);
+    if (spaceIdMatch && spaceIdMatch[1]) {
+        const spaceId = spaceIdMatch[1];
+
+        try {
+            // Fetch the space details using the space ID
+            const space = await store.client!.getRoom(spaceId);
+
+            // Extract the space name from the space details
+            routeName.value = space?.getDefaultRoomName || spaceId;
+        } catch (error) {
+            console.error('Error fetching space details:', error);
+        }
+    }
+}
 
 // Reactive state for the UI
 interface MappedRoom {

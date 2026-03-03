@@ -6268,6 +6268,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"chess.js@npm:^1.4.0":
+  version: 1.4.0
+  resolution: "chess.js@npm:1.4.0"
+  checksum: 10c0/9f49e298cbaabddceb1d1e27e276b9f58665090faaacec3a802b5475f8359397857b0f355e49160fac214fbff54a639432c8155b63806f8dd34d3afc575f690b
+  languageName: node
+  linkType: hard
+
 "chokidar@npm:^4.0.3":
   version: 4.0.3
   resolution: "chokidar@npm:4.0.3"
@@ -9808,6 +9815,7 @@ __metadata:
     "@types/node": "npm:^25.2.3"
     "@vite-pwa/nuxt": "npm:^1.1.1"
     "@vueuse/core": "npm:^14.2.1"
+    chess.js: "npm:^1.4.0"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
     livekit-client: "npm:^2.17.2"

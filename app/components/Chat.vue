@@ -235,6 +235,41 @@
                   />
               </div>
 
+              <!-- Game Related (Board or Card) -->
+              <div
+                v-else-if="msg.isGameInvite || msg.isGameAction || msg.isGameOver"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                <!-- Render Interactive Board ONLY for the latest event of this game -->
+                <template v-if="msg.gameId && latestGameEventMap[msg.gameId] === msg.eventId && hasGameState(msg.gameId)">
+                   <TicTacToe 
+                     v-if="getGameTypeFromState(msg.gameId) === 'tictactoe'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
+                   <Chess
+                     v-else-if="getGameTypeFromState(msg.gameId) === 'chess'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
+                   <!-- Also show the bubble/card below the board for context? Or just the board? 
+                        User wants board ONLY on latest. Let's show both board and the status bubble if it's an action/gameover for clarity. 
+                   -->
+                   <div class="mt-2 w-full flex flex-col" :class="msg.isOwn ? 'items-end' : 'items-start'">
+                     <GameActionBubble v-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                     <GameResultCard v-if="msg.isGameOver && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                   </div>
+                </template>
+                
+                <!-- Render Static Card for older events -->
+                <template v-else>
+                  <GameInviteCard v-if="msg.isGameInvite && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                  <GameActionBubble v-else-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                  <GameResultCard v-else-if="msg.isGameOver && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                </template>
+              </div>
+
               <div
                 v-else
                 class="flex flex-col"
@@ -487,6 +522,22 @@
                   <Icon name="solar:file-send-linear" />
                   <span>Upload File</span>
                 </UiDropdownMenuItem>
+                <UiDropdownMenuSub>
+                  <UiDropdownMenuSubTrigger class="cursor-pointer">
+                    <Icon name="solar:gamepad-linear" />
+                    <span>Play Game</span>
+                  </UiDropdownMenuSubTrigger>
+                  <UiDropdownMenuPortal>
+                    <UiDropdownMenuSubContent>
+                      <UiDropdownMenuItem @click="handleInviteToGame('tictactoe')" class="cursor-pointer">
+                        <span>Tic-Tac-Toe</span>
+                      </UiDropdownMenuItem>
+                      <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
+                        <span>Chess</span>
+                      </UiDropdownMenuItem>
+                    </UiDropdownMenuSubContent>
+                  </UiDropdownMenuPortal>
+                </UiDropdownMenuSub>
                 <UiDropdownMenuSeparator />
                 <UiDropdownMenuItem disabled>
                   <Icon name="solar:chart-square-linear" />
@@ -523,11 +574,17 @@
 </template>
 
 <script setup lang="ts">
-import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType } from 'matrix-js-sdk';
+import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType,  } from 'matrix-js-sdk';
+import type { IRoomTimelineData } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
 import { ref, shallowRef, markRaw, toRaw, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
+import GameInviteCard from './game/GameInviteCard.vue';
+import GameActionBubble from './game/GameActionBubble.vue';
+import GameResultCard from './game/GameResultCard.vue';
+import TicTacToe from './game/TicTacToe.vue';
+import Chess from './game/Chess.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
@@ -570,6 +627,49 @@ const route = useRoute();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
+
+async function handleInviteToGame(gameType: string = 'tictactoe') {
+  console.log(`[Chat] Invite to ${gameType} requested`, { roomId: roomId.value, otherUserId: otherUserId.value });
+  
+  if (!roomId.value) {
+    toast.error('No room selected');
+    return;
+  }
+
+  // Fallback for non-DM rooms: invite the first other joined member
+  let targetUserId = otherUserId.value;
+  if (!targetUserId && room.value) {
+    const myUserId = store.client?.getUserId();
+    const members = room.value.getJoinedMembers();
+    const otherMember = members.find(m => m.userId !== myUserId);
+    targetUserId = otherMember?.userId;
+    console.log('[Chat] Non-DM room detected, selecting target user:', targetUserId);
+  }
+
+  if (!targetUserId) {
+    toast.error('Cannot find an opponent in this room');
+    return;
+  }
+
+  const { inviteToGame } = useMatrixGame(roomId.value!);
+  try {
+    await inviteToGame(gameType, targetUserId);
+    toast.success('Game invite sent');
+  } catch (err) {
+    console.error('Failed to send game invite', err);
+    toast.error('Failed to send game invite');
+  }
+}
+
+function hasGameState(gameId: string): boolean {
+  store.gameTrigger; // reactivity
+  return !!store.gameStates[gameId];
+}
+
+function getGameTypeFromState(gameId: string): string | undefined {
+  store.gameTrigger; // reactivity
+  return store.gameStates[gameId]?.game_type;
+}
 
 // --- Reactive state ---
 
@@ -614,6 +714,16 @@ interface ChatMessage {
   msgtype?: string;
   mimetype?: string;
   isCallEvent?: boolean;
+  gameId?: string;
+  gameType?: string;
+  isGameInvite?: boolean;
+  isGameAction?: boolean;
+  isGameOver?: boolean;
+  rawEvent?: MatrixEvent;
+}
+
+function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
+  return msg.rawEvent;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -656,7 +766,17 @@ const displayMessages = computed(() => {
     ...msg,
     urls: extractUrls(msg.body),
     isUrlOnly: isUrlOnly(msg.body)
-  })).reverse();
+  } as ChatMessage)).reverse();
+});
+
+const latestGameEventMap = computed(() => {
+  const map: Record<string, string> = {};
+  for (const msg of messages.value) {
+    if (msg.gameId) {
+      map[msg.gameId] = msg.eventId;
+    }
+  }
+  return map;
 });
 
 const roomAvatarUrl = computed(() => {
@@ -704,18 +824,33 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   }
 
   const isEncrypted = type === 'm.room.encrypted';
-  const isMessage = type === EventType.RoomMessage;
-  const isSticker = type === 'm.sticker';
-  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
-  
-  if (!isMessage && !isEncrypted && !isSticker && !isRTC) return null;
 
   // getContent() automatically returns the *edited* content if replaced
   const content = isEncrypted ? event.getClearContent() : event.getContent();
   
-  if (!content) return null;
-  // For RTC events, we don't need a body
-  if (!isRTC && !content.body) return null; // Pending decryption or invalid
+  if (!content && !isEncrypted) return null;
+  const contentSafe: any = content || {};
+
+  const isMessage = type === EventType.RoomMessage;
+  const isSticker = type === 'm.sticker';
+  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
+  const isGameInvite = type === EventType.RoomMessage && contentSafe.msgtype === 'cc.jackg.ruby.game.invite';
+  const isGameAction = type === 'cc.jackg.ruby.game.action';
+  const isGameOver = type === 'cc.jackg.ruby.game.over';
+  const isGameState = type === 'cc.jackg.ruby.game.state';
+
+  // We allow these events through the first filter so they can be processed, 
+  // but we might still return null if we don't want them in the visual timeline.
+  if (!isMessage && !isEncrypted && !isSticker && !isRTC && !isGameInvite && !isGameAction && !isGameOver && !isGameState) return null;
+  
+  // Don't show game state events in the visual timeline (they just update the board)
+  if (isGameState) return null;
+
+  // Events that require a body (text, images, files, etc)
+  const isContentMessage = isMessage || isEncrypted || isSticker;
+  const isGameTimelineEvent = isGameInvite || isGameAction || isGameOver;
+  
+  if (isContentMessage && !isRTC && !isGameTimelineEvent && !contentSafe.body) return null;
 
   const senderId = event.getSender() || '';
   const senderMember = room.value?.getMember(senderId);
@@ -729,7 +864,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   if (isRTC) {
     // Only show the event if it's a "join" (membership present)
-    const memberships = content?.memberships || [];
+    const memberships = contentSafe.memberships || [];
     if (memberships.length === 0) return null;
 
     return {
@@ -746,25 +881,77 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     };
   }
 
+  if (isGameInvite) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: contentSafe.body || 'Game Invite',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: contentSafe.msgtype || '',
+      isGameInvite: true,
+      gameId: contentSafe.game_id,
+      gameType: contentSafe.game_type,
+      rawEvent: event
+    };
+  }
+
+  if (isGameAction) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: 'Game Action',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: 'cc.jackg.ruby.game.action',
+      isGameAction: true,
+      gameId: contentSafe.game_id,
+      rawEvent: event
+    };
+  }
+
+  if (isGameOver) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: 'Game Over',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: 'cc.jackg.ruby.game.over',
+      isGameOver: true,
+      gameId: contentSafe.game_id,
+      rawEvent: event
+    };
+  }
+
   // extract filename if available
   // content.filename is common, or content.file?.name (for encrypted)
-  let filename = content.filename;
-  if (!filename && content.file && content.file.name) {
-      filename = content.file.name;
+  let filename = contentSafe.filename;
+  if (!filename && contentSafe.file && contentSafe.file.name) {
+      filename = contentSafe.file.name;
   }
   
   // Determine if caption should be shown
-  let showCaption = !!content.body;
+  let showCaption = !!contentSafe.body;
   
   // If we have a filename, don't show if simple match
-  if (filename && content.body === filename) {
+  if (filename && contentSafe.body === filename) {
     showCaption = false;
   }
   
   // Heuristic: If we don't have a filename (or even if we do), 
   // if the body looks looks like a strict filename (extension, no spaces), hide it.
   // This covers cases where filename metadata is missing but body is "IMG_1234.JPG"
-  const isLikelyFilename = /\.(png|jpe?g|gif|webp)$/i.test(content.body) && !/\s/.test(content.body);
+  const isLikelyFilename = contentSafe.body && /\.(png|jpe?g|gif|webp)$/i.test(contentSafe.body) && !/\s/.test(contentSafe.body);
   if (!filename && isLikelyFilename) {
     showCaption = false;
   }
@@ -774,14 +961,14 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   // Check if reply since we already have content
   let replyTo: ChatMessage['replyTo'] | undefined;
-  const relation = content['m.relates_to']; // Direct content access is more reliable for raw structure
+  const relation = contentSafe['m.relates_to']; // Direct content access is more reliable for raw structure
   
   if (relation && relation['m.in_reply_to']) {
     const replyEventId = relation['m.in_reply_to'].event_id;
     if (replyEventId) {
        const replyEvent = room.value?.findEventById(replyEventId);
        if (replyEvent) {
-         const replyContent = replyEvent.getContent();
+         const replyContent = replyEvent.getContent() || {};
          const replySenderId = replyEvent.getSender() || '';
          const replySender = room.value?.getMember(replySenderId)?.name || replySenderId;
          replyTo = {
@@ -878,11 +1065,11 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   let isFile = false;
   
   if (!isSticker && (isMessage || isEncrypted)) {
-    if (content.msgtype && fileMsgTypes.includes(content.msgtype as string)) {
+    if (contentSafe.msgtype && fileMsgTypes.includes(contentSafe.msgtype as string)) {
       isFile = true;
-    } else if (content.msgtype !== MsgType.Image && content.msgtype !== MsgType.Text && content.msgtype !== MsgType.Notice && content.msgtype !== MsgType.Emote) {
+    } else if (contentSafe.msgtype !== MsgType.Image && contentSafe.msgtype !== MsgType.Text && contentSafe.msgtype !== MsgType.Notice && contentSafe.msgtype !== MsgType.Emote) {
       // Fallback for custom file types if they have a URL or encrypted file but aren't explicitly text/images
-      if (content.url || content.file) {
+      if (contentSafe.url || contentSafe.file) {
         isFile = true;
       }
     }
@@ -930,25 +1117,25 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: content.body,
+    body: contentSafe.body || '',
     // Strip the reply fallback from body when formatted HTML is available
-    formattedBody: content.format === 'org.matrix.custom.html' ? content.formatted_body : undefined,
+    formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),
     isOwn: senderId === store.client?.getUserId(),
-    type: isSticker ? 'm.sticker' : (content.msgtype || MsgType.Text),
-    url: content.url,
-    encryptedFile: content.file,
+    type: isSticker ? 'm.sticker' : (contentSafe.msgtype || MsgType.Text),
+    url: contentSafe.url,
+    encryptedFile: contentSafe.file,
     filename,
     showCaption,
-    imageWidth: content.info?.w,
-    imageHeight: content.info?.h,
+    imageWidth: contentSafe.info?.w,
+    imageHeight: contentSafe.info?.h,
     isEdited,
     replyTo,
     reactions: reactions.length > 0 ? reactions : undefined,
     readReceipts: readReceipts.length > 0 ? readReceipts : undefined,
     isFile,
-    msgtype: content.msgtype,
-    mimetype: content.info?.mimetype,
+    msgtype: contentSafe.msgtype,
+    mimetype: contentSafe.info?.mimetype,
   };
 }
 
@@ -969,6 +1156,8 @@ function refreshMessagesFromWindow() {
         decryptionListenerIds.add(eventId);
         event.once(MatrixEventEvent.Decrypted, () => {
           refreshMessagesFromWindow();
+          // Force game re-evaluation in case this was a game event
+          store.gameTrigger++;
         });
       }
     }
@@ -1025,7 +1214,9 @@ function forceScrollToBottom() {
 
 function sendReadReceipt(event: MatrixEvent) {
   if (!room.value || !store.client) return;
-        store.client?.sendReadReceipt(event);
+  // Don't send read receipts for local echoes (events without a server-assigned ID)
+  if (event.status !== null) return;
+  store.client?.sendReadReceipt(event);
 }
 
 // --- Pagination (TimelineWindow) ---
@@ -1053,7 +1244,13 @@ async function loadMoreMessages() {
 
 // --- Live message handler ---
 
-function onTimelineEvent(event: MatrixEvent, eventRoom: Room | undefined, toStartOfTimeline: boolean | undefined) {
+function onTimelineEvent(
+  event: MatrixEvent,
+  eventRoom: Room | undefined,
+  toStartOfTimeline: boolean | undefined,
+  _removed: boolean,
+  _data: IRoomTimelineData,
+) {
   if (toStartOfTimeline) return; // Handled by pagination
   if (!eventRoom || eventRoom.roomId !== roomId.value) return;
   if (!timelineWindow.value) return;
@@ -1320,6 +1517,20 @@ async function initRoom() {
 
     // Now that everything is loaded (initial + proactive), update the UI once
     refreshMessagesFromWindow();
+
+    // Populate gameStates cache from initial timeline events
+    const gameStateEvents = timelineWindow.value.getEvents();
+    for (const ev of gameStateEvents) {
+      const isEncrypted = ev.getType() === 'm.room.encrypted';
+      const content = isEncrypted ? ev.getClearContent() : ev.getContent();
+      const type = isEncrypted ? content?.type : ev.getType();
+
+      if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
+        store.gameStates[content.game_id] = content;
+      }
+    }
+    store.gameTrigger++;
+
   } catch (e) {
     console.error("Failed to load timeline window", e);
     toast.error("Failed to load message history");
