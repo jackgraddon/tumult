@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MatrixEvent } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
+import { ref, computed } from 'vue';
 
 const props = defineProps<{
   event: MatrixEvent;
@@ -8,17 +9,27 @@ const props = defineProps<{
 
 const store = useMatrixStore();
 const roomId = props.event.getRoomId()!;
-const { updateGameState, sendGameAction } = useMatrixGame(roomId);
+const { updateGameState, sendGameAction, getGameState } = useMatrixGame(roomId);
 
 const content = computed(() => props.event.getContent());
 const isMyInvite = computed(() => content.value.invited_user === store.client?.getUserId());
 const isOwnInvite = computed(() => props.event.getSender() === store.client?.getUserId());
 
+const isProcessing = ref(false);
+
+const gameState = computed(() => {
+  store.gameTrigger; // React to store updates
+  return getGameState(content.value.game_id);
+});
+
 async function acceptInvite() {
+  if (isProcessing.value || (gameState.value && gameState.value.status !== 'pending')) return;
+
   const gameId = content.value.game_id;
   const gameType = content.value.game_type;
   
   console.log('[GameInvite] Accepting invite', { gameId, gameType });
+  isProcessing.value = true;
 
   let initialBoard: any = null;
   let players: any = {};
@@ -60,6 +71,37 @@ async function acceptInvite() {
   } catch (err) {
     console.error('[GameInvite] Failed to accept invite', err);
     toast.error('Failed to accept game invite');
+  } finally {
+    isProcessing.value = false;
+  }
+}
+
+async function declineInvite() {
+  if (isProcessing.value || (gameState.value && gameState.value.status !== 'pending')) return;
+
+  const gameId = content.value.game_id;
+  console.log('[GameInvite] Declining invite', { gameId });
+  isProcessing.value = true;
+
+  try {
+    await updateGameState(gameId, {
+      game_id: gameId,
+      game_type: content.value.game_type,
+      status: 'declined',
+      declined_at: Date.now()
+    });
+
+    await sendGameAction(gameId, {
+      action: 'decline',
+      player: store.client?.getUserId()
+    });
+
+    console.log('[GameInvite] Invite declined successfully');
+  } catch (err) {
+    console.error('[GameInvite] Failed to decline invite', err);
+    toast.error('Failed to decline game invite');
+  } finally {
+    isProcessing.value = false;
   }
 }
 </script>
@@ -80,16 +122,32 @@ async function acceptInvite() {
       {{ content.body }}
     </p>
 
-    <div v-if="isMyInvite" class="mt-2 flex gap-2">
-      <UiButton size="sm" class="flex-1 rounded-full text-xs font-semibold" @click="acceptInvite">
+    <div v-if="isMyInvite && (!gameState || gameState.status === 'pending')" class="mt-2 flex gap-2">
+      <UiButton
+        size="sm"
+        class="flex-1 rounded-full text-xs font-semibold"
+        @click="acceptInvite"
+        :disabled="isProcessing"
+      >
         Accept
       </UiButton>
-      <UiButton size="sm" variant="outline" class="flex-1 rounded-full text-xs font-semibold">
+      <UiButton
+        size="sm"
+        variant="outline"
+        class="flex-1 rounded-full text-xs font-semibold"
+        @click="declineInvite"
+        :disabled="isProcessing"
+      >
         Decline
       </UiButton>
     </div>
-    <div v-else-if="isOwnInvite" class="mt-2 flex items-center justify-center py-1 bg-primary/5 rounded-full border border-primary/10">
+    <div v-else-if="isOwnInvite && (!gameState || gameState.status === 'pending')" class="mt-2 flex items-center justify-center py-1 bg-primary/5 rounded-full border border-primary/10">
       <span class="text-[10px] font-medium text-primary">Waiting for opponent...</span>
+    </div>
+    <div v-else-if="gameState" class="mt-2 flex items-center justify-center py-1 bg-muted/50 rounded-full border border-border">
+      <span class="text-[10px] font-medium text-muted-foreground italic">
+        {{ gameState.status === 'active' ? 'Invite accepted' : gameState.status === 'declined' ? 'Invite declined' : 'Game ' + gameState.status }}
+      </span>
     </div>
   </div>
 </template>
