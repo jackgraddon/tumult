@@ -1,4 +1,4 @@
-name: Release
+name: Release Development
 on:
   push:
     tags:
@@ -55,7 +55,7 @@ jobs:
             const fs = require('fs');
             const path = 'src-tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            config.version = '${VERSION}';
+            config.version = '0.0.${VERSION}';
             fs.writeFileSync(path, JSON.stringify(config, null, 2));
           "
 
