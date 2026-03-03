@@ -70,7 +70,14 @@ async function handleSquareClick(i: number, j: number) {
       });
 
       if (move) {
-        await sendGameAction(props.gameId, { action: 'move', move: move.san, player: myUserId });
+        await sendGameAction(props.gameId, {
+          action: 'move',
+          move: move.san,
+          piece: move.piece,
+          from: move.from,
+          to: move.to,
+          player: myUserId
+        });
 
         let newStatus = 'active';
         if (chess.isCheckmate()) newStatus = 'won';

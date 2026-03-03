@@ -14,6 +14,22 @@ const actionText = computed(() => {
   if (content.value.action === 'move') {
     if (content.value.move) {
       // Chess move
+      const pieceMap: Record<string, string> = {
+        'p': 'Pawn',
+        'r': 'Rook',
+        'n': 'Knight',
+        'b': 'Bishop',
+        'q': 'Queen',
+        'k': 'King'
+      };
+      const pieceName = pieceMap[content.value.piece] || 'Piece';
+      const to = content.value.to?.toUpperCase() || content.value.move;
+
+      // If we have detailed info, use it: "Knight to E4"
+      if (content.value.piece && content.value.to) {
+        return `${senderName.value} moved ${pieceName} to ${to}`;
+      }
+
       return `${senderName.value} moved ${content.value.move}`;
     }
     if (typeof content.value.position === 'number') {
