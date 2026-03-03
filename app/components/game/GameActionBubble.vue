@@ -39,6 +39,7 @@ const actionText = computed(() => {
     return `${senderName.value} moved`;
   }
   if (content.value.action === 'accept') return `${senderName.value} accepted the game!`;
+  if (content.value.action === 'decline') return `${senderName.value} declined the game.`;
   return `${senderName.value} action: ${content.value.action}`;
 });
 </script>
