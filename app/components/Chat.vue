@@ -662,24 +662,12 @@ async function handleInviteToGame(gameType: string = 'tictactoe') {
 
 function hasGameState(gameId: string): boolean {
   store.gameTrigger; // reactivity
-  if (!room.value) return false;
-
-  // Search timeline for a state event for this gameId
-  const events = room.value.getLiveTimeline().getEvents();
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i];
-    if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent()?.game_id === gameId) {
-      return true;
-    }
-  }
-  return false;
+  return !!store.gameStates[gameId];
 }
 
 function getGameTypeFromState(gameId: string): string | undefined {
-  store.gameTrigger;
-  if (!roomId.value) return undefined;
-  const { getGameState } = useMatrixGame(roomId.value);
-  return getGameState(gameId)?.game_type;
+  store.gameTrigger; // reactivity
+  return store.gameStates[gameId]?.game_type;
 }
 
 // --- Reactive state ---
@@ -1167,6 +1155,8 @@ function refreshMessagesFromWindow() {
         decryptionListenerIds.add(eventId);
         event.once(MatrixEventEvent.Decrypted, () => {
           refreshMessagesFromWindow();
+          // Force game re-evaluation in case this was a game event
+          store.gameTrigger++;
         });
       }
     }
@@ -1520,6 +1510,20 @@ async function initRoom() {
 
     // Now that everything is loaded (initial + proactive), update the UI once
     refreshMessagesFromWindow();
+
+    // Populate gameStates cache from initial timeline events
+    const events = timelineWindow.value.getEvents();
+    for (const ev of events) {
+      const isEncrypted = ev.getType() === 'm.room.encrypted';
+      const content = isEncrypted ? ev.getClearContent() : ev.getContent();
+      const type = isEncrypted ? content?.type : ev.getType();
+
+      if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
+        store.gameStates[content.game_id] = content;
+      }
+    }
+    store.gameTrigger++;
+
   } catch (e) {
     console.error("Failed to load timeline window", e);
     toast.error("Failed to load message history");

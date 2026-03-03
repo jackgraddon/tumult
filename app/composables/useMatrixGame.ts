@@ -36,21 +36,29 @@ export function useMatrixGame(roomId: string) {
     })
   }
 
-  // Read current game state from the timeline (most recent state event for this gameId)
+  // Read current game state (Scan live timeline backwards for the latest state event)
   function getGameState(gameId: string) {
-    if (!matrixClient) return null
+    if (!matrixClient) return store.gameStates[gameId] || null
     const room = matrixClient.getRoom(roomId)
     if (!room) return null
 
-    // Search live timeline backwards for the latest state event
+    // 2. Fallback: Search live timeline backwards for the latest state event
     const events = room.getLiveTimeline().getEvents()
     for (let i = events.length - 1; i >= 0; i--) {
       const ev = events[i]
-      if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent().game_id === gameId) {
-        return ev.getContent()
+      const isEncrypted = ev.getType() === 'm.room.encrypted'
+      const content = isEncrypted ? ev.getClearContent() : ev.getContent()
+      const type = isEncrypted ? content?.type : ev.getType()
+
+      if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
+        // Back-fill the store cache
+        store.gameStates[gameId] = content
+        return content
       }
     }
-    return null
+
+    // 3. Fallback to store cache if scan found nothing (prevents interactivity lock)
+    return store.gameStates[gameId] || null
   }
 
   return { inviteToGame, updateGameState, sendGameAction, getGameState }
