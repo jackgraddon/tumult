@@ -22,7 +22,7 @@ export const getHomeserverUrl = () => {
 // Helper to get dynamic device name for Matrix
 export async function getDeviceDisplayName(): Promise<string> {
   // Check if we are running in Tauri
-  if (!import.meta.client || typeof window === 'undefined' || !window.__TAURI_INTERNALS__) {
+  if (!import.meta.client || typeof window === 'undefined' || !!(window as any).__TAURI_INTERNALS__) {
     return 'Ruby Chat (Web)';
   }
 

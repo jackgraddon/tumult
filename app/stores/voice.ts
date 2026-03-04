@@ -358,22 +358,14 @@ export const useVoiceStore = defineStore('voice', {
                 const encKeyEvent =
                     (MatrixRTCSessionEvent as any).EncryptionKeyChanged ?? 'encryption_key_changed';
 
-                const onKeyChanged = async (
+                const onKeyChanged = (
                     keyBin: Uint8Array,
                     keyIndex: number,
                     _membership: any,
                     participantId: string
                 ) => {
                     try {
-                        // HKDF base key — must be non-extractable (WebKit enforces this)
-                        const cryptoKey = await window.crypto.subtle.importKey(
-                            'raw',
-                            keyBin.buffer as ArrayBuffer,
-                            'HKDF',
-                            false,
-                            ['deriveBits', 'deriveKey']
-                        );
-                        (keyProvider as any).onSetEncryptionKey(cryptoKey, participantId, keyIndex);
+                        (keyProvider as any).onSetEncryptionKey(keyBin, participantId, keyIndex);
                         console.log(`[Voice] E2EE key bridged for ${participantId} (idx ${keyIndex})`);
                     } catch (e) {
                         console.error('[Voice] E2EE key bridge failed:', e);
