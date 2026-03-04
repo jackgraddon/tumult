@@ -1,21 +1,21 @@
 
-export default defineNuxtPlugin((nuxtApp) => {
+import { getSecret, getPref } from "~/composables/useAppStorage";
+
+export default defineNuxtPlugin(async (nuxtApp) => {
     const store = useMatrixStore();
     const route = useRoute();
 
-    nuxtApp.hook('app:mounted', () => {
-        // Prevent auto-login on the callback page to avoid race conditions
-        if (route.path.includes('/auth/callback')) return;
-
-        const accessToken = localStorage.getItem('matrix_access_token');
-        const userId = localStorage.getItem('matrix_user_id');
-        const deviceId = localStorage.getItem('matrix_device_id');
-        const refreshToken = localStorage.getItem('matrix_refresh_token');
+    // Prevent auto-login on the callback page to avoid race conditions
+    if (!route.path.includes('/auth/callback')) {
+        const accessToken = await getSecret('matrix_access_token');
+        const userId = await getPref('matrix_user_id', null);
+        const deviceId = await getPref('matrix_device_id', null);
+        const refreshToken = await getSecret('matrix_refresh_token');
 
         // OIDC metadata needed to rebuild token refresh function
-        const issuer = localStorage.getItem('matrix_oidc_issuer');
-        const clientId = localStorage.getItem('matrix_oidc_client_id');
-        const idTokenClaimsRaw = localStorage.getItem('matrix_oidc_id_token_claims');
+        const issuer = await getPref('matrix_oidc_issuer', null);
+        const clientId = await getPref('matrix_oidc_client_id', null);
+        const idTokenClaimsRaw = await getPref('matrix_oidc_id_token_claims', null);
         const idTokenClaims = idTokenClaimsRaw ? JSON.parse(idTokenClaimsRaw) : undefined;
 
         // Validate data (Check for "undefined" string which caused your earlier crash)
@@ -23,7 +23,7 @@ export default defineNuxtPlugin((nuxtApp) => {
             console.log('Restoring Matrix session...');
 
             // Pass it to the store
-            store.initClient(
+            await store.initClient(
                 accessToken,
                 userId,
                 deviceId || undefined,
@@ -33,7 +33,7 @@ export default defineNuxtPlugin((nuxtApp) => {
                 idTokenClaims,
             );
         }
-    });
+    }
 
     return {
         provide: {

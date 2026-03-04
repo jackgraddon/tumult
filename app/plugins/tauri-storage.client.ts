@@ -29,7 +29,11 @@ export async function getStrongholdClient(): Promise<Client | null> {
         const password = `ruby-chat-vault-${host}`;
 
         const stronghold = await Stronghold.load(vaultPath, password);
-        _strongholdClient = await stronghold.loadClient('matrix-credentials');
+        try {
+            _strongholdClient = await stronghold.loadClient('matrix-credentials');
+        } catch (err) {
+            _strongholdClient = await stronghold.createClient('matrix-credentials');
+        }
         return _strongholdClient;
     } catch (e) {
         console.warn('[TauriStorage] Stronghold unavailable, falling back to localStorage:', e);
