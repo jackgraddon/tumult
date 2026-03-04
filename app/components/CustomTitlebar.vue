@@ -1,11 +1,14 @@
 <template>
   <div
-    class="fixed top-0 left-0 right-0 h-[30px] w-full items-center justify-between select-none transition-colors bg-neutral-200 dark:bg-background"
+    class="fixed top-0 left-0 right-0 h-[30px] w-full flex items-center justify-between select-none transition-colors bg-neutral-200 dark:bg-background z-[9999]"
     data-tauri-drag-region
     @mousedown="startDrag"
   >
+    <!-- Left Side: Spacer for Windows (to center title) -->
+    <div v-if="!isMac" class="w-[135px]" />
+
     <!-- Center: Optional Title -->
-    <div class="flex-1 flex justify-center text-xs text-muted-foreground pointer-events-none" data-tauri-drag-region @mousedown="startDrag">
+    <div class="flex-1 flex justify-center text-[11px] font-medium text-muted-foreground pointer-events-none" data-tauri-drag-region @mousedown="startDrag">
        Matrix Client
     </div>
 
