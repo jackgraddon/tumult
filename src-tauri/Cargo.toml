@@ -30,3 +30,9 @@ tauri-plugin-os = "2"
 tauri-plugin-store = "2"
 tauri-plugin-stronghold = "2"
 argon2 = "0.5"
+matrix-sdk = { version = "0.10.0", features = ["e2e-encryption", "js"] }
+zeroize = { version = "1.8", features = ["derive"] }
+aes = "0.8"
+ctr = "0.9"
+sha2 = "0.10"
+base64 = "0.22"

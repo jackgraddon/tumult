@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 /**
  * Helper to decode Base64 (handling URL-safe variants)
  */
@@ -13,36 +15,22 @@ export function decodeBase64(str: string): Uint8Array {
 }
 
 /**
- * Decrypts a Matrix encrypted file attachment using the Web Crypto API.
+ * Decrypts a Matrix encrypted file attachment using the Rust backend.
  */
 export async function decryptAttachment(data: ArrayBuffer, info: any): Promise<ArrayBuffer> {
     if (!info.key || !info.iv) throw new Error('Missing key or iv');
 
-    // Import Key
-    const key = await window.crypto.subtle.importKey(
-        'jwk',
-        info.key,
-        { name: 'AES-CTR' },
-        false,
-        ['encrypt', 'decrypt']
-    );
+    const decrypted = await invoke<number[]>('decrypt_attachment', {
+        data: Array.from(new Uint8Array(data)),
+        info: {
+            v: info.v,
+            key: info.key,
+            iv: info.iv,
+            hashes: info.hashes
+        }
+    });
 
-    // Decode IV
-    const iv = decodeBase64(info.iv);
-
-    // Decrypt
-    // Spec says: The counter must be initialized with the IV.
-    // The 'length' parameter in WebCrypto AES-CTR is the number of bits in the counter block 
-    // that are used for the actual counter. Matrix uses 64 (standard).
-    return await window.crypto.subtle.decrypt(
-        {
-            name: 'AES-CTR',
-            counter: iv as any, // Cast to any to avoid "SharedArrayBuffer" type mismatch
-            length: 64
-        },
-        key,
-        data
-    );
+    return new Uint8Array(decrypted).buffer;
 }
 
 /**

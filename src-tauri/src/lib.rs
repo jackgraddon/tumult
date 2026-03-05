@@ -1,5 +1,7 @@
 mod game_scanner;
+mod crypto;
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
@@ -18,6 +20,10 @@ pub fn run() {
     });
 
     let scanner_state_for_setup = scanner_state.clone();
+
+    let crypto_state = Arc::new(crypto::CryptoState {
+        calls: Mutex::new(HashMap::new()),
+    });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
@@ -43,10 +49,16 @@ pub fn run() {
     key
 }).build())
         .manage(scanner_state)
+        .manage(crypto_state)
         .invoke_handler(tauri::generate_handler![
             game_scanner::update_watch_list,
             game_scanner::set_scanner_enabled,
-            start_oauth_server
+            start_oauth_server,
+            crypto::initialize_call_encryption,
+            crypto::encrypt_media_frame,
+            crypto::decrypt_media_frame,
+            crypto::encrypt_attachment,
+            crypto::decrypt_attachment
         ])
         .setup(move |app| {
             #[cfg(any(target_os = "windows", target_os = "linux"))]

@@ -32,7 +32,7 @@
     "clsx": "^2.1.1",
     "livekit-client": "^2.17.2",
     "lucide-vue-next": "^0.564.0",
-    "matrix-js-sdk": "^40.2.0-rc.0",
+    "matrix-js-sdk": "41.1.0-rc.0",
     "nuxt": "^4.3.0",
     "pinia": "^3.0.4",
     "reka-ui": "^2.8.2",

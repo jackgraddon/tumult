@@ -1619,12 +1619,14 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       if (isEncrypted) {
-        // Encrypt
+        // Encrypt via Rust backend
         const data = await file.arrayBuffer();
-        const encryptionResult = await this._encryptAttachment(data);
+        const encryptionResult = await invoke<any>('encrypt_attachment', {
+            data: Array.from(new Uint8Array(data))
+        });
 
         // Upload ciphertext
-        const blob = new Blob([encryptionResult.data], { type: 'application/octet-stream' });
+        const blob = new Blob([new Uint8Array(encryptionResult.data)], { type: 'application/octet-stream' });
         const response = await this.client.uploadContent(blob, {
           type: 'application/octet-stream',
         });
@@ -1632,7 +1634,7 @@ export const useMatrixStore = defineStore('matrix', {
         encryptedFile = {
           ...encryptionResult.info,
           url: response.content_uri,
-          mimetype: file.type, // Spec says mimetype should be here too
+          mimetype: file.type,
         };
       } else {
         // Plaintext
@@ -1654,48 +1656,6 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       await this.client.sendEvent(roomId, EventType.RoomMessage, content);
-    },
-
-    async _encryptAttachment(data: ArrayBuffer) {
-      // 1. Generate 32-byte AES-CTR key
-      const keyFn = await window.crypto.subtle.generateKey(
-        { name: 'AES-CTR', length: 256 },
-        true,
-        ['encrypt', 'decrypt']
-      );
-      const exportedKey = await window.crypto.subtle.exportKey('jwk', keyFn);
-
-      // Generate IV (Counter Block)
-      const iv = window.crypto.getRandomValues(new Uint8Array(16));
-      if (iv[8]) iv[8] &= 0x7f;
-
-      // Encrypt
-      const ciphertext = await window.crypto.subtle.encrypt(
-        { name: 'AES-CTR', counter: iv, length: 64 },
-        keyFn,
-        data
-      );
-
-      // SHA-256 hash
-      const hashBuffer = await window.crypto.subtle.digest('SHA-256', ciphertext);
-
-      return {
-        data: ciphertext,
-        info: {
-          v: 'v2',
-          key: {
-            alg: 'A256CTR',
-            k: exportedKey.k!,
-            ext: true,
-            key_ops: ['encrypt', 'decrypt'],
-            kty: 'oct'
-          },
-          iv: sdk.encodeBase64(iv),
-          hashes: {
-            sha256: sdk.encodeUnpaddedBase64(new Uint8Array(hashBuffer))
-          }
-        }
-      };
     },
 
     _getImageDimensions(file: File): Promise<{ w: number, h: number }> {

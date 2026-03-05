@@ -8,14 +8,10 @@ import {
 import type { Room } from 'matrix-js-sdk';
 import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
 import { toast } from 'vue-sonner';
+import { invoke } from '@tauri-apps/api/core';
 
 // ---------------------------------------------------------------------------
 // Focus type definitions (MSC4143)
-//
-// The spec defines a focus as having a `type` field. Fields beyond that are
-// transport-specific. We only implement `livekit` today, but the architecture
-// is open — adding a new SFU type means adding a case to connectToFocus()
-// without touching the MatrixRTC signalling layer above it.
 // ---------------------------------------------------------------------------
 
 interface Focus {
@@ -25,22 +21,10 @@ interface Focus {
 
 interface LiveKitFocus extends Focus {
     type: 'livekit';
-    livekit_service_url: string; // URL of the livekit-jwt service
-    uri?: string;                // wss:// URL of the LiveKit SFU itself
+    livekit_service_url: string;
+    uri?: string;
     livekit_alias?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Focus selection — MSC4143 oldest_membership algorithm
-//
-// When multiple members are in a call, they must all connect to the same
-// focus. The spec says the focus advertised by the *oldest* membership event
-// (lowest createdTs) is authoritative. This prevents split-brain where two
-// clients independently pick different foci from the same list.
-//
-// If no existing members have a focus (we are first to join), fall back to
-// .well-known discovery then a hard-coded default.
-// ---------------------------------------------------------------------------
 
 function selectFociFromMemberships(memberships: any[]): Focus[] {
     const sorted = [...memberships].sort((a, b) => {
@@ -70,8 +54,6 @@ async function discoverFociFromWellKnown(userId: string): Promise<Focus[]> {
         const wellKnown = await res.json();
         const rtcFoci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
 
-        // Return ALL foci in declared order — do not filter by type here.
-        // Unknown types are skipped in the transport dispatch layer.
         if (Array.isArray(rtcFoci) && rtcFoci.length > 0) {
             console.log('[Voice] Discovered foci from .well-known:', rtcFoci);
             return rtcFoci as Focus[];
@@ -84,47 +66,75 @@ async function discoverFociFromWellKnown(userId: string): Promise<Focus[]> {
 }
 
 // ---------------------------------------------------------------------------
-// LiveKit transport
-//
-// Everything in this section is LiveKit-specific. It must not bleed into the
-// MatrixRTC signalling layer above it. The spec does not mandate LiveKit —
-// it is one valid focus type defined in MSC4143.
+// LiveKit transport with Rust E2EE
 // ---------------------------------------------------------------------------
 
-async function buildLivekitWorker(): Promise<Worker> {
-    // LiveKit's E2EE worker creates non-extractable WebCrypto keys by default.
-    // On macOS/WebKit (including Tauri), non-extractable keys are persisted to
-    // the system Keychain, triggering a password prompt on every call.
-    //
-    // Fix: patch importKey to leave HKDF/PBKDF2 alone (WebKit hard-prohibits
-    // these from being extractable) and patch deriveKey to force the *output*
-    // AES key extractable so it stays in-memory only, bypassing the Keychain.
+async function buildLivekitWorkerWithRust(activeRoomId: string): Promise<Worker> {
     const workerUrl = new URL('livekit-client/e2ee-worker', import.meta.url).href;
     const workerCode = await (await fetch(workerUrl)).text();
 
+    // Patch LiveKit worker to call Rust backend for encryption/decryption
     const patchCode = `
-        const _NON_EXTRACTABLE_ALGOS = new Set(['HKDF', 'PBKDF2']);
+        const _activeRoomId = "${activeRoomId}";
 
-        const _algoName = (algo) =>
-            (typeof algo === 'string' ? algo : (algo && algo.name) || '').toUpperCase();
-
+        // Mock WebCrypto to intercept calls
         const _originalImportKey = crypto.subtle.importKey;
-        crypto.subtle.importKey = function(format, keyData, algo, extractable, keyUsages) {
-            const forceExtractable = !_NON_EXTRACTABLE_ALGOS.has(_algoName(algo));
-            return _originalImportKey.call(
-                crypto.subtle, format, keyData, algo,
-                forceExtractable ? true : extractable,
-                keyUsages
-            );
+        crypto.subtle.importKey = async function(format, keyData, algo, extractable, keyUsages) {
+             return _originalImportKey.call(crypto.subtle, format, keyData, algo, true, keyUsages);
         };
 
-        const _originalDeriveKey = crypto.subtle.deriveKey;
-        crypto.subtle.deriveKey = function(algo, baseKey, derivedKeyType, extractable, keyUsages) {
-            // Force the derived AES key extractable — this is the key that
-            // would otherwise be persisted to the macOS Keychain.
-            return _originalDeriveKey.call(
-                crypto.subtle, algo, baseKey, derivedKeyType, true, keyUsages
-            );
+        const _originalEncrypt = crypto.subtle.encrypt;
+        crypto.subtle.encrypt = async function(algo, key, data) {
+            if (algo.name === 'AES-GCM' || algo.name === 'AES-CTR') {
+                try {
+                   const ciphertext = await self.rpcCall('encrypt_media_frame', {
+                       callId: _activeRoomId,
+                       participantId: self.participantId,
+                       plaintext: Array.from(new Uint8Array(data)),
+                       iv: Array.from(new Uint8Array(algo.counter || algo.iv || 16)),
+                       frameType: 'media'
+                   });
+                   return new Uint8Array(ciphertext).buffer;
+                } catch (e) {
+                   console.error('Rust encryption failed', e);
+                }
+            }
+            return _originalEncrypt.call(crypto.subtle, algo, key, data);
+        };
+
+        const _originalDecrypt = crypto.subtle.decrypt;
+        crypto.subtle.decrypt = async function(algo, key, data) {
+             if (algo.name === 'AES-GCM' || algo.name === 'AES-CTR') {
+                try {
+                   const plaintext = await self.rpcCall('decrypt_media_frame', {
+                       callId: _activeRoomId,
+                       participantId: algo.additionalData?.participantId || self.participantId, // Fallback logic depends on LK implementation
+                       ciphertext: Array.from(new Uint8Array(data)),
+                       iv: Array.from(new Uint8Array(algo.counter || algo.iv || 16))
+                   });
+                   return new Uint8Array(plaintext).buffer;
+                } catch (e) {
+                   console.error('Rust decryption failed', e);
+                }
+            }
+            return _originalDecrypt.call(crypto.subtle, algo, key, data);
+        };
+
+        // Simplified RPC mechanism to communicate back to the main thread for Tauri invoke
+        self.rpcCall = function(method, args) {
+            return new Promise((resolve, reject) => {
+                const id = Math.random().toString(36).slice(2);
+                self.postMessage({ type: 'rpc_request', id, method, args });
+
+                const handler = (e) => {
+                    if (e.data.type === 'rpc_response' && e.data.id === id) {
+                        self.removeEventListener('message', handler);
+                        if (e.data.error) reject(e.data.error);
+                        else resolve(e.data.result);
+                    }
+                };
+                self.addEventListener('message', handler);
+            });
         };
     `;
 
@@ -132,6 +142,20 @@ async function buildLivekitWorker(): Promise<Worker> {
         new Blob([patchCode + '\n' + workerCode], { type: 'application/javascript' })
     );
     const worker = new Worker(blobUrl);
+
+    // Handle RPC requests from the worker
+    worker.onmessage = async (e) => {
+        if (e.data.type === 'rpc_request') {
+            const { id, method, args } = e.data;
+            try {
+                const result = await (window as any).__TAURI_INTERNALS__.invoke(method, args);
+                worker.postMessage({ type: 'rpc_response', id, result });
+            } catch (error) {
+                worker.postMessage({ type: 'rpc_response', id, error: String(error) });
+            }
+        }
+    };
+
     URL.revokeObjectURL(blobUrl);
     return worker;
 }
@@ -164,7 +188,7 @@ async function connectLivekitTransport(
         failureTolerance: -1,
     });
 
-    const worker = await buildLivekitWorker();
+    const worker = await buildLivekitWorkerWithRust(room.roomId);
 
     const lkRoom = new LiveKitRoom({
         adaptiveStream: true,
@@ -184,14 +208,6 @@ async function connectLivekitTransport(
 
     return { lkRoom, keyProvider };
 }
-
-// ---------------------------------------------------------------------------
-// Transport dispatch
-//
-// Iterates the focus list in order, skipping types we don't support, and
-// connects to the first one that succeeds. Add new focus type cases here as
-// the spec evolves — the MatrixRTC layer above doesn't need to change.
-// ---------------------------------------------------------------------------
 
 async function connectToFocus(
     foci: Focus[],
@@ -248,18 +264,6 @@ export const useVoiceStore = defineStore('voice', {
             try {
                 console.log(`[Voice] Joining room ${room.roomId}`);
 
-                // --- Microphone permission -----------------------------------------
-                //
-                // getUserMedia is what triggers the macOS permission dialog.
-                // startAudio() only unlocks the Web Audio *playback* context.
-                //
-                // If denied, degrade to listen-only — the call UI still renders and
-                // the user can hear others. They can grant permission later in
-                // System Settings → Privacy & Security → Microphone.
-                //
-                // If this always denies without a dialog on first launch, the app
-                // bundle is missing com.apple.security.device.audio-input in
-                // entitlements.plist — macOS silently rejects without prompting.
                 let hasMicPermission = false;
                 try {
                     const permStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -274,14 +278,10 @@ export const useVoiceStore = defineStore('voice', {
                             duration: 8000,
                         });
                     } else {
-                        throw permErr; // Device busy, hardware failure — abort
+                        throw permErr;
                     }
                 }
 
-                // --- MatrixRTC signalling (spec layer) ----------------------------
-
-                // Pre-fetch device keys so E2EE key distribution doesn't fail
-                // with "No targets found for sending key".
                 const crypto = matrixStore.client?.getCrypto();
                 if (crypto) {
                     const memberIds = room.getJoinedMembers().map(m => m.userId);
@@ -293,9 +293,6 @@ export const useVoiceStore = defineStore('voice', {
 
                 const userId = matrixStore.client!.getUserId()!;
 
-                // Focus selection — oldest_membership algorithm (MSC4143).
-                // Read foci from the oldest existing membership (joining an active call),
-                // then fall back to .well-known (first to join), then a hard default.
                 let foci: Focus[] = selectFociFromMemberships(rtcSession.memberships ?? []);
                 const isFirstToJoin = foci.length === 0;
 
@@ -311,15 +308,9 @@ export const useVoiceStore = defineStore('voice', {
                     }];
                 }
 
-                // When first to join, declare the active focus so other clients can
-                // use oldest_membership to find it. When joining an existing call,
-                // pass undefined — the SDK derives activeFocus from oldest_membership
-                // internally, preventing split-brain.
                 const activeFocusForSdk: Focus | undefined = isFirstToJoin ? foci[0] : undefined;
 
                 try {
-                    // SDK v41 4-arg signature:
-                    //   joinRTCSession(membershipData, fociPreferred, activeFocus?, opts?)
                     const membershipData = {
                         userId: matrixStore.client!.getUserId()!,
                         deviceId: matrixStore.client!.getDeviceId()!,
@@ -340,11 +331,7 @@ export const useVoiceStore = defineStore('voice', {
                     console.log('[Voice] MatrixRTC session joined');
                 } catch (e) {
                     console.error('[Voice] joinRTCSession failed:', e);
-                    // Don't throw — transport can still connect and the session
-                    // will self-heal on the next membership event.
                 }
-
-                // --- Transport layer (LiveKit-specific) ---------------------------
 
                 const { lkRoom, keyProvider } = await connectToFocus(
                     foci,
@@ -352,23 +339,29 @@ export const useVoiceStore = defineStore('voice', {
                     matrixStore.client!
                 );
 
-                // Bridge MatrixRTC E2EE keys into the LiveKit key provider.
-                // MatrixRTC distributes keys via to-device messages (manageMediaKeys: true).
-                // We forward each key to LiveKit as it arrives.
                 const encKeyEvent =
                     (MatrixRTCSessionEvent as any).EncryptionKeyChanged ?? 'encryption_key_changed';
 
-                const onKeyChanged = (
+                const onKeyChanged = async (
                     keyBin: Uint8Array,
                     keyIndex: number,
                     _membership: any,
                     participantId: string
                 ) => {
                     try {
+                        // Pass Megolm keys to Rust backend
+                        await invoke('initialize_call_encryption', {
+                            callId: room.roomId,
+                            participantId,
+                            encryptionContext: JSON.stringify({
+                                key: Array.from(keyBin.slice(0, 32))
+                            })
+                        });
+
                         (keyProvider as any).onSetEncryptionKey(keyBin, participantId, keyIndex);
-                        console.log(`[Voice] E2EE key bridged for ${participantId} (idx ${keyIndex})`);
+                        console.log(`[Voice] E2EE key bridged for ${participantId} (idx ${keyIndex}) via Rust`);
                     } catch (e) {
-                        console.error('[Voice] E2EE key bridge failed:', e);
+                        console.error('[Voice] E2EE key bridge/Rust init failed:', e);
                     }
                 };
 
@@ -376,8 +369,6 @@ export const useVoiceStore = defineStore('voice', {
                 this._encryptionKeyHandler = onKeyChanged;
                 (rtcSession as any).on(encKeyEvent, onKeyChanged);
 
-                // Re-emit any keys that were distributed before we subscribed
-                // (covers the case where we join after other members already set keys)
                 if (typeof (rtcSession as any).reemitEncryptionKeys === 'function') {
                     (rtcSession as any).reemitEncryptionKeys();
                 }
@@ -424,8 +415,6 @@ export const useVoiceStore = defineStore('voice', {
 
             console.log(`[Voice] Leaving room ${roomId}`);
 
-            // 1. Leave MatrixRTC FIRST — the state event must be sent while
-            //    the HTTP connection is still alive.
             if (room) {
                 try {
                     const rtcSession = matrixStore.client?.matrixRTC.getRoomSession(room);
@@ -441,8 +430,6 @@ export const useVoiceStore = defineStore('voice', {
                 }
             }
 
-            // 2. Remove disconnect listener BEFORE disconnecting to prevent
-            //    leaveVoiceRoom being called recursively.
             if (this.lkRoom) {
                 if (this._onDisconnected) {
                     this.lkRoom.off(LKRoomEvent.Disconnected, this._onDisconnected);
@@ -452,7 +439,6 @@ export const useVoiceStore = defineStore('voice', {
                 this.lkRoom = null;
             }
 
-            // 3. Clean up E2EE key listener.
             if (this._rtcSession && this._encryptionKeyHandler) {
                 const encKeyEvent =
                     (MatrixRTCSessionEvent as any).EncryptionKeyChanged ?? 'encryption_key_changed';

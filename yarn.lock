@@ -2294,7 +2294,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@matrix-org/matrix-sdk-crypto-wasm@npm:^17.0.0, @matrix-org/matrix-sdk-crypto-wasm@npm:^17.1.0":
+"@matrix-org/matrix-sdk-crypto-wasm@npm:^17.1.0":
   version: 17.1.0
   resolution: "@matrix-org/matrix-sdk-crypto-wasm@npm:17.1.0"
   checksum: 10c0/6b6503f5228bb55307e8439a552acfa53d62413340bb4cd7bb280da88130ff7359a00b7a80ee59f4e82560196bcfd62b822f830b849cddb69c26677ad3716746
@@ -9820,7 +9820,7 @@ __metadata:
     clsx: "npm:^2.1.1"
     livekit-client: "npm:^2.17.2"
     lucide-vue-next: "npm:^0.564.0"
-    matrix-js-sdk: "npm:^40.2.0-rc.0"
+    matrix-js-sdk: "npm:41.1.0-rc.0"
     nuxt: "npm:^4.3.0"
     pinia: "npm:^3.0.4"
     reka-ui: "npm:^2.8.2"
@@ -9846,12 +9846,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"matrix-js-sdk@npm:^40.2.0-rc.0":
-  version: 40.2.0-rc.0
-  resolution: "matrix-js-sdk@npm:40.2.0-rc.0"
+"matrix-js-sdk@npm:41.1.0-rc.0":
+  version: 41.1.0-rc.0
+  resolution: "matrix-js-sdk@npm:41.1.0-rc.0"
   dependencies:
     "@babel/runtime": "npm:^7.12.5"
-    "@matrix-org/matrix-sdk-crypto-wasm": "npm:^17.0.0"
+    "@matrix-org/matrix-sdk-crypto-wasm": "npm:^17.1.0"
     another-json: "npm:^0.2.0"
     bs58: "npm:^6.0.0"
     content-type: "npm:^1.0.4"
@@ -9864,7 +9864,7 @@ __metadata:
     sdp-transform: "npm:^3.0.0"
     unhomoglyph: "npm:^1.0.6"
     uuid: "npm:13"
-  checksum: 10c0/82311a60bc0fd2c8f5dff5219d05744d45577c2ea3145d17bef71e6ea194f4bb16f4557a5e74839dbc1b17fe95e08f0f510b7fd0da10f82dda8cb55ce28cd5f5
+  checksum: 10c0/c2cdbdf53f851147f28bd6d9cec3b103bfa79e22b86c26c4e27af2125c5611e6b4943fd44fcd338afd087aa1a5a60c75a4588895b56a135aa9e653a338f1bc36
   languageName: node
   linkType: hard
 
