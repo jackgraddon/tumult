@@ -123,7 +123,7 @@ pub fn initialize_call_encryption(
         keys: HashMap::new(),
     });
 
-    call_state.keys.insert(participant_id, context.key);
+    call_state.keys.insert(participant_id, context.key.clone());
     Ok(())
 }
 
