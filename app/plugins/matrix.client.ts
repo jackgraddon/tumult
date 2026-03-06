@@ -15,7 +15,14 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         const issuer = await getPref('matrix_oidc_issuer', null);
         const clientId = await getPref('matrix_oidc_client_id', null);
         const idTokenClaimsRaw = await getPref('matrix_oidc_id_token_claims', null);
-        const idTokenClaims = idTokenClaimsRaw ? JSON.parse(idTokenClaimsRaw) : undefined;
+        let idTokenClaims: any = undefined;
+        if (idTokenClaimsRaw && typeof idTokenClaimsRaw === 'string') {
+            try {
+                idTokenClaims = JSON.parse(idTokenClaimsRaw);
+            } catch {
+                // Invalid JSON, skip parsing
+            }
+        }
 
         // Validate data (Check for "undefined" string which caused your earlier crash)
         if (accessToken && userId && userId !== 'undefined') {

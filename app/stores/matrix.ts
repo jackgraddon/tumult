@@ -136,6 +136,14 @@ export const useMatrixStore = defineStore('matrix', {
     // Verification state
     isCrossSigningReady: false,
     isSecretStorageReady: false,
+    // Recovery key cache for secret storage
+    recoveryKeyCache: null as {
+      keyId: string;
+      key: Uint8Array;
+      createdAt: number;
+    } | null,
+    showRecoveryKeyBackup: false as boolean,
+    generatedRecoveryKey: '' as string,
     activeVerificationRequest: null as VerificationRequest | null,
     verificationInitiatedByMe: false,
     activeSas: null as ShowSasCallbacks | null,
@@ -739,7 +747,11 @@ export const useMatrixStore = defineStore('matrix', {
         }
       }
 
-      const deviceId = data.tokenResponse.device_id || (await tempClient.whoami().catch(() => ({}))).device_id;
+      let deviceId = data.tokenResponse.device_id;
+      if (!deviceId) {
+        const whoamiResult = await tempClient.whoami();
+        deviceId = whoamiResult?.device_id;
+      }
 
       // Persist Valid Credentials
       await setSecret('matrix_access_token', accessToken);
@@ -993,7 +1005,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       const handleGameEvent = (event: sdk.MatrixEvent) => {
         const isEncrypted = event.getType() === 'm.room.encrypted';
-        
+
         // If it's encrypted and not yet decrypted, wait for it.
         if (isEncrypted && !event.getClearContent()) {
           event.once(sdk.MatrixEventEvent.Decrypted, (ev) => {
@@ -1132,7 +1144,7 @@ export const useMatrixStore = defineStore('matrix', {
         // 2. If missing (standard for OIDC), ask the server who we are!
         if (!deviceId) {
           const whoami = await this.client.whoami();
-          deviceId = whoami.device_id ?? null;
+          deviceId = whoami.device_id ?? whoami?.device_id ?? null;
 
           if (!deviceId) {
             console.warn('Cannot update device name: Still no device ID returned from the server.');
