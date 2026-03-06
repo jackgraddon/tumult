@@ -93,7 +93,8 @@
 
         <!-- Main Content -->
         <main class="flex-1 flex-col min-w-0 min-h-0 p-2">
-            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
+            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
+                <SecurityBanner />
                 <NuxtPage class="flex-1 min-h-0" />
             </div>
         </main>
