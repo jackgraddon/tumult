@@ -284,7 +284,7 @@ async function registerMatrixPusher(subscription: PushSubscription) {
         
         await store.client.setPusher({
             app_id: 'cc.jackg',
-            app_display_name: 'Matrix Client',
+            app_display_name: 'Tumult',
             device_display_name: 'Web Client',
             pushkey: subscription.endpoint, 
             kind: 'http',

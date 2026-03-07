@@ -778,7 +778,7 @@ export const useMatrixStore = defineStore('matrix', {
       clientId?: string,
       idTokenClaims?: IdTokenClaims,
     ) {
-      console.log("Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+      console.log("Initializing Tumult...", { userId, deviceId, hasAccessToken: !!accessToken });
 
       // Force restart client
       if (this.client) {
@@ -1252,7 +1252,7 @@ export const useMatrixStore = defineStore('matrix', {
           osType = navigator.platform;
         }
 
-        const deviceName = `Ruby Chat on ${host} (${osType}${osVersion ? ' ' + osVersion : ''})`;
+        const deviceName = `Tumult on ${host} (${osType}${osVersion ? ' ' + osVersion : ''})`;
 
         console.log(`Attempting to rename Matrix Device ${deviceId} to: ${deviceName}`);
 
@@ -1307,15 +1307,15 @@ export const useMatrixStore = defineStore('matrix', {
         // implementation because we want the UI to load while rehydration 
         // might wait for a recovery key.
         console.log("[Dehydration] Starting dehydration/rehydration flow...");
-        
+
         // Note: startDehydration handles rehydrating existing device OR 
         // scheduling new ones.
         crypto.startDehydration({ rehydrate: true }).then(() => {
-            console.log("[Dehydration] Flow completed successfully.");
-            this.isWaitingForRecoveryKey = false;
+          console.log("[Dehydration] Flow completed successfully.");
+          this.isWaitingForRecoveryKey = false;
         }).catch((e) => {
-            console.warn("[Dehydration] Flow skipped or failed:", e);
-            this.isWaitingForRecoveryKey = false;
+          console.warn("[Dehydration] Flow skipped or failed:", e);
+          this.isWaitingForRecoveryKey = false;
         });
 
       } catch (e) {
@@ -1373,7 +1373,7 @@ export const useMatrixStore = defineStore('matrix', {
         // 1. Race condition protection: NEVER replace if server device is < 24h old.
         //    Since server metadata doesn't expose timestamp, we use OUR last_run as a proxy.
         //    If WE didn't create it, we should be cautious.
-        
+
         // 2. Freshness: Rotate every 7 days.
         if (now - lastRun > 7 * 24 * 60 * 60 * 1000) {
           console.log("[Dehydration] Client hasn't rotated in 7 days, forcing fresh overwrite.");
@@ -1984,7 +1984,7 @@ export const useMatrixStore = defineStore('matrix', {
     async logout() {
       console.log("Logging out...");
 
-      // Stop the Matrix Client (Kill Sync & Crypto)
+      // Stop the Tumult (Kill Sync & Crypto)
       if (this.client) {
         this.client.stopClient();
         this.client.removeAllListeners();
@@ -2051,7 +2051,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async joinRoom(roomIdOrAlias: string): Promise<any> {
-      if (!this.client) throw new Error("Matrix client not initialized.");
+      if (!this.client) throw new Error("Tumult not initialized.");
       console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
 
       try {
@@ -2065,7 +2065,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async createDirectRoom(userId: string): Promise<string | undefined> {
-      if (!this.client) throw new Error("Matrix client not initialized.");
+      if (!this.client) throw new Error("Tumult not initialized.");
       console.log(`[MatrixStore] Creating direct room with ${userId}...`);
 
       try {
@@ -2202,7 +2202,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         // Fetch hierarchy with a reasonable limit to discover nested rooms/spaces
         const response = await (this.client as any).getSpaceHierarchy(spaceId, 50);
-        
+
         if (response && response.rooms) {
           console.log(`[MatrixStore] Discovered ${response.rooms.length} rooms in space ${spaceId}`);
           // The SDK usually updates its internal state with discovered rooms, 

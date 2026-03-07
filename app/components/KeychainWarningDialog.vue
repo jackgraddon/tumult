@@ -59,8 +59,8 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-xs font-medium text-foreground leading-snug">
-                      <span class="font-bold">Ruby Chat</span> wants to use your confidential
-                      information stored in <span class="font-bold">"Ruby Chat WebCrypto Master Key"</span> in your keychain.
+                      <span class="font-bold">Tumult</span> wants to use your confidential
+                      information stored in <span class="font-bold">"Tumult WebCrypto Master Key"</span> in your keychain.
                     </p>
                     <p class="text-[11px] text-muted-foreground mt-1.5">
                       To allow this, enter the "login" keychain password.

@@ -23,8 +23,8 @@ const clientMetadata: sdk.OidcRegistrationClientMetadata = {
 };
 
 /**
- * Create a Matrix client instance
- * @returns {sdk.MatrixClient} A Matrix client
+ * Create a Tumult instance
+ * @returns {sdk.MatrixClient} A Tumult
  */
 function createMatrixClient() {
     return sdk.createClient({
@@ -42,7 +42,7 @@ export async function discoverOidcConfig() {
 }
 
 /**
- * Register a Matrix client for server-side operations
+ * Register a Tumult for server-side operations
  * @returns {Promise<string>} The registered client ID
  */
 export async function registerClient() {

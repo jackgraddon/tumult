@@ -2,7 +2,7 @@
   <div class="flex items-center justify-center h-screen">
     <UiCard class="w-full sm:max-w-md">
       <UiCardHeader>
-        <UiCardTitle>Welcome to Matrix Client</UiCardTitle>
+        <UiCardTitle>Welcome to Tumult</UiCardTitle>
         <UiCardDescription>Please login to continue</UiCardDescription>
       </UiCardHeader>
       <UiCardContent>

@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "matrix-client",
+  "productName": "tumult",
   "version": "0.0.3032",
   "identifier": "cc.jackg.matrixclient",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Ruby Chat",
+        "title": "Tumult",
         "useHttpsScheme": true,
         "width": 1200,
         "minWidth": 1000,

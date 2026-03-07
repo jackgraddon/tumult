@@ -9,7 +9,7 @@
 
     <!-- Center: Optional Title -->
     <div class="flex-1 flex justify-center text-[11px] font-medium text-muted-foreground pointer-events-none" data-tauri-drag-region @mousedown="startDrag">
-       Matrix Client
+       Tumult
     </div>
 
     <!-- Right Side: Windows/Linux standard controls (Only visible on non-macOS) -->

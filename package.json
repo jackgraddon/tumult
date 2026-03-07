@@ -1,5 +1,5 @@
 {
-  "name": "matrix-client",
+  "name": "tumult",
   "type": "module",
   "private": true,
   "scripts": {

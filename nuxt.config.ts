@@ -10,7 +10,7 @@ export default defineNuxtConfig({
       htmlAttrs: {
         lang: 'en'
       },
-      title: 'Matrix Client'
+      title: 'Tumult'
     }
   },
 
@@ -96,8 +96,7 @@ export default defineNuxtConfig({
     filename: 'sw.js',
     register: 'autoUpdate',
     manifest: {
-      name: 'Matrix Client',
-      short_name: 'Matrix',
+      name: 'Tumult',
       theme_color: '#ffffff',
       icons: [
         {

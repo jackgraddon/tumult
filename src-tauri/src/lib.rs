@@ -114,7 +114,7 @@ async fn start_oauth_server() -> Result<String, String> {
                                 // 3. ONLY terminate the server if MAS actually sent the OAuth payload
                                 if path.contains("code=") || path.contains("error=") {
                                     // A sleek, dark-mode success screen!
-                                    let html = "<html><body style=\"background: #0f1115; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0;\"><h2>Authentication Successful</h2><p style=\"color: #888;\">You can close this tab and return to Ruby Chat.</p><script>setTimeout(() => window.close(), 2000);</script></body></html>";
+                                    let html = "<html><body style=\"background: #0f1115; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0;\"><h2>Authentication Successful</h2><p style=\"color: #888;\">You can close this tab and return to Tumult.</p><script>setTimeout(() => window.close(), 2000);</script></body></html>";
                                     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}", html.len(), html);
 
                                     let _ = stream.write_all(response.as_bytes());
