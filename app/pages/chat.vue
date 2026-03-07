@@ -94,7 +94,9 @@
         <!-- Main Content -->
         <main class="flex-1 flex-col min-w-0 min-h-0 p-2">
             <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
-                <SecurityBanner />
+                <header class="landmark-banner shrink-0">
+                    <SecurityBanner />
+                </header>
                 <NuxtPage class="flex-1 min-h-0" />
             </div>
         </main>
@@ -234,6 +236,17 @@ onMounted(() => {
   subscribeToPush();
 });
 
+// 3. Clean up listeners when leaving the page to prevent memory leaks
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+  if (store.client) {
+    store.client.removeListener(ClientEvent.Room, updateRooms);
+    store.client.removeListener(RoomEvent.Timeline, handleTimelineEvent);
+    store.client.removeListener(RoomEvent.Name, updateRooms);
+    store.client.removeListener(RoomEvent.Receipt, updateRooms);
+  }
+});
+
 async function subscribeToPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
@@ -293,17 +306,6 @@ watch(
     if (newClient) setupListeners();
   }
 );
-
-// 3. Clean up listeners when leaving the page to prevent memory leaks
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
-  if (store.client) {
-    store.client.removeListener(ClientEvent.Room, updateRooms);
-    store.client.removeListener(RoomEvent.Timeline, handleTimelineEvent);
-    store.client.removeListener(RoomEvent.Name, updateRooms);
-    store.client.removeListener(RoomEvent.Receipt, updateRooms);
-  }
-});
 
 const isLinkActive = (to: string) => {
     if (to === "/chat") return route.path === "/chat";

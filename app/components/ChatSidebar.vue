@@ -1,13 +1,10 @@
 <template>
     <aside class="flex h-full flex-col w-[250px] shrink-0">
-        <header class="h-16 flex flex-col px-4 items-start">
+        <header class="h-16 flex fle items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
-                Ruby Chat
-            </h2>
-            <h3 class="text-md italic opacity-50">
                 {{ routeName }}
-            </h3>
+            </h2>
         </header>
         <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
@@ -269,7 +266,9 @@ const mapRoom = (room: Room): MappedRoom => {
 };
 
 const isEmptyRoom = (room: Room): boolean => {
-  return room.getJoinedMembers().length <= 1;
+  // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
+  // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
+  return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;
 };
 
 const friends = computed(() => {
@@ -331,6 +330,13 @@ const activeSpaceId = computed(() => {
   return Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
 });
 
+// Trigger space hierarchy fetching when a space becomes active
+watch(activeSpaceId, (newSpaceId) => {
+  if (newSpaceId && isLinkActive('/chat/spaces')) {
+    store.fetchSpaceHierarchy(newSpaceId);
+  }
+}, { immediate: true });
+
 const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
@@ -361,9 +367,13 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
         // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room)) {
+        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
+          // Always show voice channels in spaces to avoid hiding active calls
           directRooms.push(room);
         }
+      } else {
+        // If room is not joined or not in memory, we might still want a placeholder
+        // but for now we rely on fetchSpaceHierarchy to eventually discover them
       }
     }
   });

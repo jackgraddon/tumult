@@ -1294,27 +1294,32 @@ export const useMatrixStore = defineStore('matrix', {
       const crypto = this.client.getCrypto();
       if (!crypto) return;
 
-      console.log("[Dehydration] Checking for dehydrated device...");
+      console.log("[Dehydration] Checking for dehydrated device support...");
       try {
-        const dehydratedDevice = await this.client.getDehydratedDevice();
-        if (dehydratedDevice) {
-          console.log("[Dehydration] Found dehydrated device:", dehydratedDevice.deviceId);
-          
-          // CRITICAL: We DO NOT await rehydrate() here because it will hang 
-          // on the getSecretStorageKey callback if the key is not cached.
-          // This allows initClient to proceed and the UI to show the banner.
-          dehydratedDevice.rehydrate().then(() => {
-            console.log("[Dehydration] Successfully rehydrated session keys.");
-            this.isWaitingForRecoveryKey = false;
-          }).catch((e) => {
-            console.error("[Dehydration] Rehydration failed (possibly wrong recovery key)", e);
-            this.isWaitingForRecoveryKey = false; // Reset flag on failure
-          });
-        } else {
-          console.log("[Dehydration] No dehydrated device found on server.");
+        const isSupported = await crypto.isDehydrationSupported();
+        if (!isSupported) {
+          console.log("[Dehydration] Not supported by server or crypto backend.");
+          return;
         }
+
+        // We use startDehydration with rehydrate: true to handle rehydration 
+        // in a modern SDK-compliant way. This call is non-blocking in our 
+        // implementation because we want the UI to load while rehydration 
+        // might wait for a recovery key.
+        console.log("[Dehydration] Starting dehydration/rehydration flow...");
+        
+        // Note: startDehydration handles rehydrating existing device OR 
+        // scheduling new ones.
+        crypto.startDehydration({ rehydrate: true }).then(() => {
+            console.log("[Dehydration] Flow completed successfully.");
+            this.isWaitingForRecoveryKey = false;
+        }).catch((e) => {
+            console.warn("[Dehydration] Flow skipped or failed:", e);
+            this.isWaitingForRecoveryKey = false;
+        });
+
       } catch (e) {
-        console.error("[Dehydration] Failed to check for dehydrated device:", e);
+        console.error("[Dehydration] Failed to initialize dehydration:", e);
       }
     },
 
@@ -1330,13 +1335,8 @@ export const useMatrixStore = defineStore('matrix', {
 
       console.log("[Dehydration] Provisioning new dehydrated device...");
       try {
-        const keyId = await crypto.getDefaultSecretStorageKeyId();
-        if (!keyId) {
-          console.warn("[Dehydration] No default secret storage key found. User may need to set up recovery.");
-          this.needsRecoveryKeySetup = true;
-          return;
-        }
-        await crypto.dehydrateDevice(keyId);
+        // startDehydration handles key creation and periodic rotation
+        await crypto.startDehydration({ createNewKey: false, rehydrate: true });
         console.log("[Dehydration] Successfully provisioned dehydrated device.");
         this.needsRecoveryKeySetup = false;
         await setPref('matrix_crypto_dehydration_last_run', Date.now());
@@ -1357,7 +1357,9 @@ export const useMatrixStore = defineStore('matrix', {
       console.log("[Dehydration] Running maintenance check...");
 
       try {
-        const serverDevice = await this.client.getDehydratedDevice();
+        const isSupported = await crypto.isDehydrationSupported();
+        if (!isSupported) return;
+
         const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
         const now = Date.now();
 
@@ -2191,6 +2193,24 @@ export const useMatrixStore = defineStore('matrix', {
             bindExisting();
           }
         });
+      }
+    },
+
+    async fetchSpaceHierarchy(spaceId: string) {
+      if (!this.client) return;
+      console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
+      try {
+        // Fetch hierarchy with a reasonable limit to discover nested rooms/spaces
+        const response = await (this.client as any).getSpaceHierarchy(spaceId, 50);
+        
+        if (response && response.rooms) {
+          console.log(`[MatrixStore] Discovered ${response.rooms.length} rooms in space ${spaceId}`);
+          // The SDK usually updates its internal state with discovered rooms, 
+          // but we trigger a hierarchy refresh to be sure the UI updates.
+          this.updateHierarchy();
+        }
+      } catch (e) {
+        console.error(`[MatrixStore] Failed to fetch space hierarchy for ${spaceId}:`, e);
       }
     },
 
