@@ -52,12 +52,13 @@ onMounted(async () => {
       event.preventDefault();
 
       try {
-        await Promise.race([
+        const { flushSecrets } = await import('~/composables/useAppStorage');
+        await Promise.all([
           handleClose(),
-          new Promise((resolve) => setTimeout(resolve, 2000)),
+          flushSecrets()
         ]);
       } catch (err) {
-        console.error("Failed to set offline status, closing anyway", err);
+        console.error("Failed to perform cleanup, closing anyway", err);
       } finally {
         // Force the window to close
         await appWindow.destroy();

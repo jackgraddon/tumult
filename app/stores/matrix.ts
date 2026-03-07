@@ -128,6 +128,7 @@ export const useMatrixStore = defineStore('matrix', {
     isAuthenticated: false,
     isSyncing: false,
     isClientReady: false,
+    isRestoringSession: false,
     user: null as {
       userId: string;
       displayName?: string;
@@ -630,7 +631,14 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Ensure homeserverUrl has https:// for internal use
       const fullUrl = homeserverUrl.startsWith('http') ? homeserverUrl : `https://${homeserverUrl}`;
+
+      // We sync this to both the Tauri store AND localStorage.
+      // Why? Because getHomeserverUrl() is a synchronous utility used during
+      // client creation before the asynchronous Tauri store is ready.
       await setPref('matrix_homeserver_url', fullUrl);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('matrix_homeserver_url', fullUrl);
+      }
 
       // Stop any existing client to release DB locks
       if (this.client) {
@@ -775,7 +783,9 @@ export const useMatrixStore = defineStore('matrix', {
       clientId?: string,
       idTokenClaims?: IdTokenClaims,
     ) {
-      console.log("Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+      console.time('[MatrixStore] initClient (total)');
+      console.log("[MatrixStore] Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+      this.isRestoringSession = true;
 
       // Force restart client
       if (this.client) {
@@ -933,14 +943,32 @@ export const useMatrixStore = defineStore('matrix', {
       // pollTimeout: 10000 — long-poll window. Default 30s means the client
       // can sit idle for up to 29s after initial sync before receiving updates.
       // 10s keeps the client responsive without hammering the server.
+      console.time('[MatrixStore] startClient');
       this.loginStatus = 'Starting sync…';
-      await this.client.startClient({
-        lazyLoadMembers: true,
-        initialSyncLimit: 1,
-        pollTimeout: 10000,
-      });
-      this.isAuthenticated = true;
-      this.isSyncing = true;
+      try {
+        await this.client.startClient({
+          lazyLoadMembers: true,
+          initialSyncLimit: 1,
+          pollTimeout: 10000,
+        });
+        console.timeEnd('[MatrixStore] startClient');
+        this.isAuthenticated = true;
+        this.isSyncing = true;
+      } catch (err: any) {
+        console.timeEnd('[MatrixStore] startClient');
+        console.error('[MatrixStore] Failed to start client sync:', err);
+        if (err?.httpStatus === 401) {
+          console.error('[MatrixStore] 401 Unauthorized detected during sync. Session may be expired.');
+          toast.error('Session Expired', {
+            description: 'Your session has expired. Please log in again.',
+          });
+          // Do NOT automatically logout yet to prevent infinite loops,
+          // let the user see the error or the UI fall back to login.
+        }
+        this.isRestoringSession = false;
+        this.loginStatus = '';
+        throw err;
+      }
 
       let _debugRestored = false;
       this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
@@ -953,8 +981,11 @@ export const useMatrixStore = defineStore('matrix', {
           console.debug = _origDebug;
         }
         if (state === sdk.SyncState.Prepared) {
+          console.log('[MatrixStore] Initial sync prepared.');
+          console.timeEnd('[MatrixStore] initClient (total)');
           this.isClientReady = true;
           this.isLoggingIn = false;
+          this.isRestoringSession = false;
           this.loginStatus = '';
           // Refresh presence now that we are ready
           this.refreshPresence();

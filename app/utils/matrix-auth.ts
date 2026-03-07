@@ -6,7 +6,15 @@ import { type, version, hostname } from '@tauri-apps/plugin-os';
 export const getHomeserverUrl = () => {
   if (typeof localStorage !== 'undefined') {
     const persisted = localStorage.getItem('matrix_homeserver_url');
-    if (persisted) return persisted;
+    if (persisted) {
+      // Handle both raw string and JSON-stringified string (from setPref)
+      try {
+        const parsed = JSON.parse(persisted);
+        if (typeof parsed === 'string') return parsed;
+      } catch {
+        return persisted;
+      }
+    }
   }
   try {
     const config = useRuntimeConfig();

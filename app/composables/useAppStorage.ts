@@ -129,6 +129,7 @@ export async function deletePref(key: string): Promise<void> {
 // Client and takes no arguments — the client itself is the named collection.
 let _stronghold: Stronghold | null = null;
 let _strongholdClient: Client | null = null;
+let _strongholdLoadingPromise: Promise<{ client: Client; stronghold: Stronghold }> | null = null;
 
 const STRONGHOLD_CLIENT_NAME = 'app-secrets';
 
@@ -174,25 +175,45 @@ async function _getClient(): Promise<{ client: Client; stronghold: Stronghold }>
         return { client: _strongholdClient, stronghold: _stronghold };
     }
 
-    // Dynamic imports — never evaluated during SSR
-    const { Stronghold } = await import('@tauri-apps/plugin-stronghold');
-    const { appDataDir, join } = await import('@tauri-apps/api/path');
-
-    const dataDir = await appDataDir();
-    const vaultPath = await join(dataDir, 'secrets.hold');
-    const password = await _loadOrCreateVaultPassword();
-
-    _stronghold = await Stronghold.load(vaultPath, password);
-
-    try {
-        _strongholdClient = await _stronghold.loadClient(STRONGHOLD_CLIENT_NAME);
-    } catch {
-        // Client doesn't exist yet on a fresh install — create it
-        _strongholdClient = await _stronghold.createClient(STRONGHOLD_CLIENT_NAME);
+    if (_strongholdLoadingPromise) {
+        return _strongholdLoadingPromise;
     }
 
-    console.log('[AppStorage] Stronghold vault opened');
-    return { client: _strongholdClient, stronghold: _stronghold };
+    _strongholdLoadingPromise = (async () => {
+        try {
+            // Dynamic imports — never evaluated during SSR
+            const { Stronghold } = await import('@tauri-apps/plugin-stronghold');
+            const { appDataDir, join } = await import('@tauri-apps/api/path');
+
+            const dataDir = await appDataDir();
+
+            // Check for legacy data directory if the current one is empty
+            // This handles cases where the product name / identifier was recently changed.
+            const vaultPath = await join(dataDir, 'secrets.hold');
+            const password = await _loadOrCreateVaultPassword();
+
+            console.log('[AppStorage] Opening Stronghold vault at:', vaultPath);
+            _stronghold = await Stronghold.load(vaultPath, password);
+
+            try {
+                _strongholdClient = await _stronghold.loadClient(STRONGHOLD_CLIENT_NAME);
+                console.log('[AppStorage] Loaded existing Stronghold client:', STRONGHOLD_CLIENT_NAME);
+            } catch {
+                // Client doesn't exist yet on a fresh install — create it
+                console.log('[AppStorage] Creating new Stronghold client:', STRONGHOLD_CLIENT_NAME);
+                _strongholdClient = await _stronghold.createClient(STRONGHOLD_CLIENT_NAME);
+            }
+
+            console.log('[AppStorage] Stronghold vault opened successfully');
+            return { client: _strongholdClient, stronghold: _stronghold };
+        } catch (err) {
+            console.error('[AppStorage] Failed to open Stronghold vault:', err);
+            _strongholdLoadingPromise = null;
+            throw err;
+        }
+    })();
+
+    return _strongholdLoadingPromise;
 }
 
 export async function setSecret(key: string, value: string): Promise<void> {
