@@ -139,7 +139,8 @@ export const useMatrixStore = defineStore('matrix', {
     isCrossSigningReady: false,
     isSecretStorageReady: false,
     activeVerificationRequest: null as VerificationRequest | null,
-    verificationInitiatedByMe: false,
+    isVerificationInitiatedByMe: false,
+    isRequestingVerification: false,
     activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
     verificationPhase: null as VerificationPhase | null,
@@ -1481,22 +1482,32 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async requestVerification() {
-      this.verificationModalOpen = true; // Ensure modal opens
+      console.log('[Verification] Initiating outgoing verification request...');
+      this.verificationModalOpen = true;
+      this.isRequestingVerification = true;
 
       const crypto = this.client?.getCrypto();
-      if (!crypto) { console.error('Crypto not available'); return; }
+      if (!crypto) {
+        console.error('Crypto not available');
+        this.isRequestingVerification = false;
+        return;
+      }
 
       const userId = this.client?.getUserId();
       if (userId) {
-        // Force download of own keys to ensure we are synced with server's view of our devices
-        // and that other devices know we exist.
-        await this.client?.downloadKeys([userId], true);
+        try {
+          console.log('[Verification] Downloading own keys...');
+          await this.client?.downloadKeys([userId], true);
+        } catch (e) {
+          console.warn('[Verification] downloadKeys failed, continuing anyway:', e);
+        }
       }
 
       try {
         // Cancel any existing request first to avoid conflicts
         if (this.activeVerificationRequest) {
           try {
+            console.log('[Verification] Cancelling existing request before starting new one');
             await this.activeVerificationRequest.cancel();
           } catch (e) {
             console.warn("Failed to cancel previous verification request:", e);
@@ -1504,20 +1515,25 @@ export const useMatrixStore = defineStore('matrix', {
           this.activeVerificationRequest = null;
         }
 
-        // Set state immediately to show "Waiting..." UI instead of "Incoming Request"
-        this.verificationInitiatedByMe = true;
         this.isVerificationCompleted = false;
         this.activeSas = null;
 
         const request = await crypto.requestOwnUserVerification();
-        this.activeVerificationRequest = request;
+        console.log('[Verification] Request created successfully:', {
+          phase: request.phase,
+          initiatedByMe: request.initiatedByMe,
+          id: (request as any).transactionId
+        });
+
+        this.activeVerificationRequest = markRaw(request);
+        this.isVerificationInitiatedByMe = request.initiatedByMe;
         this.verificationPhase = request.phase;
         this._attachRequestListeners(request);
       } catch (e) {
         console.error('Failed to request verification:', e);
-        // Reset if failed so we don't get stuck in "Waiting..."
-        this.verificationInitiatedByMe = false;
-        this.verificationModalOpen = false;
+        // Don't close modal, let it show the choice state or error
+      } finally {
+        this.isRequestingVerification = false;
       }
     },
 
@@ -1537,18 +1553,28 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
 
       this.client.on(CryptoEvent.VerificationRequestReceived, (request: VerificationRequest) => {
-        // 1. Ignore if we started this request ourselves
-        if (request.initiatedByMe) return;
+        // 1. Ignore if we started this request ourselves (SDK handles this but double check)
+        if (request.initiatedByMe) {
+          console.log('[Verification] Ignoring loopback request:', (request as any).transactionId);
+          return;
+        }
 
-        console.log('Incoming verification from:', request.otherUserId);
+        // 2. If we already have an active request that we initiated, ignore incoming ones
+        // until ours is resolved/cancelled to avoid UI flickering
+        if (this.isVerificationInitiatedByMe && this.activeVerificationRequest && !this.activeVerificationRequest.hasBeenCancelled) {
+          console.log('[Verification] Ignoring incoming request because we have an active outgoing one');
+          return;
+        }
 
-        // 2. Save it to state so your UI can pop open a modal
-        this.activeVerificationRequest = request;
+        console.log('Incoming verification from:', request.otherUserId, (request as any).transactionId);
+
+        // 3. Save it to state so your UI can pop open a modal
+        this.activeVerificationRequest = markRaw(request);
+        this.isVerificationInitiatedByMe = request.initiatedByMe;
         this.verificationPhase = request.phase;
-        this.verificationInitiatedByMe = false;
         this.verificationModalOpen = true;
 
-        // 3. Attach standard request listeners (handles Done/Cancelled)
+        // 4. Attach standard request listeners (handles Done/Cancelled)
         this._attachRequestListeners(request);
       });
 
@@ -1562,9 +1588,10 @@ export const useMatrixStore = defineStore('matrix', {
         try {
           const phase = request.phase;
           this.verificationPhase = phase;
+          this.isVerificationInitiatedByMe = request.initiatedByMe;
           const isTerminal = phase === VerificationPhase.Done || phase === VerificationPhase.Cancelled;
 
-          console.log(`[Verification] Phase: ${phase} (${request.otherUserId})`);
+          console.log(`[Verification] Phase changed: ${phase} (initiatedByMe: ${this.isVerificationInitiatedByMe})`);
 
           let methods: string[] = [];
           try {
@@ -1961,8 +1988,10 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     _resetVerificationState() {
+      console.log('[Verification] Resetting state');
       this.activeVerificationRequest = null;
-      this.verificationInitiatedByMe = false;
+      this.isVerificationInitiatedByMe = false;
+      this.isRequestingVerification = false;
       this.activeSas = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
@@ -1977,6 +2006,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         console.log("Bootstrapping verification and secret storage...");
         this.verificationModalOpen = true;
+        this.isRequestingVerification = true;
 
         // 1. Bootstrap Cross-Signing (find or create keys)
         // We use setupNewCrossSigning: false to attempt rehydrating existing keys
@@ -2003,6 +2033,8 @@ export const useMatrixStore = defineStore('matrix', {
         }
       } catch (e) {
         console.error("Bootstrap failed:", e);
+      } finally {
+        this.isRequestingVerification = false;
       }
     },
 
