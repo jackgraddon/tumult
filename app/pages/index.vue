@@ -6,7 +6,11 @@
         <UiCardDescription>Please login to continue</UiCardDescription>
       </UiCardHeader>
       <UiCardContent>
-        <div v-if="!isAuthenticated">
+        <div v-if="isRestoringSession" class="flex flex-col items-center gap-4 py-4">
+           <UiSpinner class="size-8" />
+           <p class="text-sm text-muted-foreground">Restoring your session...</p>
+        </div>
+        <div v-else-if="!isAuthenticated">
           <UiButton variant="default" as-child>
             <NuxtLink to="/login">
               Login
@@ -29,23 +33,20 @@
 
 <script lang="ts" setup>
 const matrixStore = useMatrixStore();
-const { isAuthenticated } = storeToRefs(matrixStore);
+const { isAuthenticated, isRestoringSession } = storeToRefs(matrixStore);
 const { logout } = matrixStore; // Actions can be destructured directly
 
 // Auto navigate to chat if already logged in
-onMounted(() => {
-  // Check every second to see if user is logged in
-  const interval = setInterval(() => {
-    if (isAuthenticated.value) {
-      navigateTo('/chat');
-      clearInterval(interval);
-    }
-  }, 1000);
+watch(isAuthenticated, (val) => {
+  if (val) {
+    navigateTo('/chat');
+  }
+}, { immediate: true });
 
-  // Cleanup interval on unmount
-  onUnmounted(() => {
-    clearInterval(interval);
-  });
+onMounted(() => {
+  if (isAuthenticated.value) {
+    navigateTo('/chat');
+  }
 });
 </script>
 

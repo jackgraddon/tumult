@@ -10,7 +10,7 @@ export default defineNuxtConfig({
       htmlAttrs: {
         lang: 'en'
       },
-      title: 'Matrix Client'
+      title: 'Tumult'
     }
   },
 
@@ -19,6 +19,10 @@ export default defineNuxtConfig({
     matrix: {
       baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
       clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'https://localho.st:3000',
+      redirectEndpoint: process.env.NUXT_MATRIX_REDIRECT_ENDPOINT || '/api/auth/oidc/callback',
+      clientName: process.env.NUXT_MATRIX_CLIENT_NAME || 'Tumult',
+      clientId: process.env.NUXT_MATRIX_CLIENT_ID || '',
+      contactEmail: process.env.NUXT_MATRIX_CONTACT_EMAIL || 'admin@localho.st',
     },
     public: {
       matrix: {
@@ -94,10 +98,9 @@ export default defineNuxtConfig({
   pwa: {
     strategies: 'injectManifest',
     filename: 'sw.js',
-    register: 'autoUpdate',
+    registerType: 'autoUpdate',
     manifest: {
-      name: 'Matrix Client',
-      short_name: 'Matrix',
+      name: 'Tumult',
       theme_color: '#ffffff',
       icons: [
         {

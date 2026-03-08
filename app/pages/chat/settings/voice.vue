@@ -266,7 +266,7 @@ async function checkBrowserCapabilities() {
 async function checkNetworkConnectivity() {
   if (!matrixStore.client) {
     diagnostics.network.matrix = false;
-    diagnostics.errors.push('Matrix client is not initialized');
+    diagnostics.errors.push('Tumult is not initialized');
   } else {
     try {
       await matrixStore.client.whoami();
@@ -298,7 +298,7 @@ async function checkMatrixRTC() {
   if (!matrixStore.client) {
     diagnostics.matrixRTC.available = false;
     diagnostics.matrixRTC.focus = false;
-    diagnostics.errors.push('Matrix client not available for MatrixRTC check');
+    diagnostics.errors.push('Tumult not available for MatrixRTC check');
     return;
   }
 

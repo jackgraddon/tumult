@@ -1,13 +1,10 @@
 <template>
     <aside class="flex h-full flex-col w-[250px] shrink-0">
-        <header class="h-16 flex items-center px-4 gap-2 justify-between">
+        <header class="h-16 flex fle items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
-                Ruby Chat
+                {{ routeName.length > 0 ? routeName : 'Tumult' }}
             </h2>
-            <h3 class="text-md">
-                {{ routeName }}
-            </h3>
         </header>
         <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
@@ -21,8 +18,17 @@
 
                 <!-- Sidebar DM List -->
                 <template v-if="isLinkActive('/chat/dms')">
-                    <div 
-                        v-for="friend in friends"
+                    <!-- Skeleton Loader for Background Sync -->
+                    <div v-if="!store.isFullySynced && friends.length === 0" class="flex flex-col gap-2">
+                        <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
+                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
+                            <div class="h-4 bg-accent/30 rounded w-24"></div>
+                        </div>
+                    </div>
+                    
+                    <div style="content-visibility: auto; contain-intrinsic-size: 0 400px;">
+                        <div 
+                            v-for="friend in friends"
                         :key="friend.roomId"
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
@@ -54,12 +60,22 @@
                             </div>
                         </div>
                     </div>
+                </div>
                 </template>
 
                 <!-- Sidebar Room List -->
                 <template v-if="isLinkActive('/chat/rooms')">
-                    <div 
-                        v-for="room in rooms"
+                    <!-- Skeleton Loader for Background Sync -->
+                    <div v-if="!store.isFullySynced && rooms.length === 0" class="flex flex-col gap-2">
+                        <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
+                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
+                            <div class="h-4 bg-accent/30 rounded w-32"></div>
+                        </div>
+                    </div>
+                    
+                    <div style="content-visibility: auto; contain-intrinsic-size: 0 400px;">
+                        <div 
+                            v-for="room in rooms"
                         :key="room.roomId"
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
@@ -87,6 +103,7 @@
                             </div>
                         </div>
                     </div>
+                </div>
                 </template>
 
                 <!-- Sidebar Settings Nav -->
@@ -106,6 +123,17 @@
 
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
+                    <!-- Skeleton Loader for Background Sync -->
+                    <div v-if="!store.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
+                        <div v-for="i in 3" :key="i" class="flex flex-col gap-2 px-2">
+                            <div class="h-3 bg-accent/20 rounded w-16 mb-2"></div>
+                            <div v-for="j in 3" :key="j" class="flex items-center gap-2 h-8 w-full rounded-md bg-accent/10">
+                                <div class="h-5 w-5 rounded bg-accent/20 ml-2 shrink-0"></div>
+                                <div class="h-3 bg-accent/20 rounded w-20"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Edit Mode: Compact draggable category pills -->
                     <template v-if="isCategoryEditMode">
                         <div class="flex items-center justify-between px-2 mb-2">
@@ -195,6 +223,12 @@ import { useVoiceStore } from '~/stores/voice';
 const route = useRoute();
 const router = useRouter();
 
+const isLinkActive = (to: string) => {
+    if (to === "/chat") return route.path === "/chat";
+    return route.path.startsWith(to);
+};
+
+
 const settingsPages = computed(() => {
     const seen = new Set<string>();
     return router.getRoutes()
@@ -269,7 +303,9 @@ const mapRoom = (room: Room): MappedRoom => {
 };
 
 const isEmptyRoom = (room: Room): boolean => {
-  return room.getJoinedMembers().length <= 1;
+  // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
+  // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
+  return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;
 };
 
 const friends = computed(() => {
@@ -331,6 +367,13 @@ const activeSpaceId = computed(() => {
   return Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
 });
 
+// Trigger space hierarchy fetching when a space becomes active
+watch(activeSpaceId, (newSpaceId) => {
+  if (newSpaceId && isLinkActive('/chat/spaces')) {
+    store.fetchSpaceHierarchy(newSpaceId);
+  }
+}, { immediate: true });
+
 const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
@@ -361,9 +404,13 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
         // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room)) {
+        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
+          // Always show voice channels in spaces to avoid hiding active calls
           directRooms.push(room);
         }
+      } else {
+        // If room is not joined or not in memory, we might still want a placeholder
+        // but for now we rely on fetchSpaceHierarchy to eventually discover them
       }
     }
   });
@@ -433,10 +480,7 @@ const draggableCategories = computed({
     }
 });
 
-const isLinkActive = (to: string) => {
-    if (to === "/chat") return route.path === "/chat";
-    return route.path.startsWith(to);
-};
+
 
 defineExpose({
     friends,

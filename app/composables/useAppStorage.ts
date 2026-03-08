@@ -1,7 +1,7 @@
 /**
  * useAppStorage.ts
  *
- * Unified storage abstraction for Ruby Chat.
+ * Unified storage abstraction for Tumult.
  *
  * Two tiers:
  *   setPref / getPref / deletePref  — non-sensitive preferences, backed by
@@ -10,51 +10,21 @@
  *                                     localStorage on the web.
  *
  *   setSecret / getSecret / deleteSecret — sensitive credentials (access
- *                                          token, refresh token…), backed by
- *                                          @tauri-apps/plugin-stronghold
- *                                          (AES-GCM-encrypted vault on disk)
- *                                          in Tauri, or sessionStorage on web.
+ *                                          token, refresh token…), encrypted
+ *                                          with AES-256-GCM via Web Crypto API
+ *                                          and stored in a dedicated Tauri Store
+ *                                          file, or sessionStorage on web.
  *
- * ─── WHY NO OS KEYCHAIN ─────────────────────────────────────────────────────
- * The vault password is a random 32-byte salt stored in the preferences store
- * under the key "_vault_salt". This deliberately bypasses the OS keychain so
- * no authentication dialog is ever shown. The salt is not secret — Argon2id
- * (on the Rust side) stretches it into the actual AES encryption key, so the
- * raw salt never appears in the vault itself.
+ * ─── ENCRYPTION DESIGN ────────────────────────────────────────────────────
+ * On first launch a random AES-256-GCM key is generated via Web Crypto and
+ * exported as JWK into the preferences store under "_crypto_key". Each secret
+ * value is encrypted with a unique random 12-byte IV; both the IV and the
+ * ciphertext are stored as base64 in a separate `secrets.json` store file.
  *
- * ─── RUST SETUP REQUIRED ────────────────────────────────────────────────────
- * In src-tauri/src/lib.rs, register Stronghold with an Argon2id hasher:
- *
- *   use argon2::{hash_raw, Config, Variant, Version};
- *
- *   tauri::Builder::default()
- *     .plugin(tauri_plugin_store::Builder::default().build())
- *     .plugin(
- *       tauri_plugin_stronghold::Builder::new(|password| {
- *         let config = Config {
- *           lanes: 2,
- *           mem_cost: 65_536,
- *           time_cost: 3,
- *           variant: Variant::Argon2id,
- *           version: Version::Version13,
- *           ..Default::default()
- *         };
- *         hash_raw(password.as_ref(), b"ruby-stronghold-v1", &config)
- *           .expect("argon2 hash failed")
- *       })
- *       .build(),
- *     )
- *     .run(tauri::generate_context!())
- *     .expect("error while running tauri application");
- *
- * Cargo.toml additions:
- *   tauri-plugin-stronghold = "2"
- *   tauri-plugin-store      = "2"
- *   argon2                  = "0.5"
+ * This provides encryption-at-rest with zero startup delay (no Argon2id).
  */
 
 import type { LazyStore } from '@tauri-apps/plugin-store';
-import type { Stronghold, Client } from '@tauri-apps/plugin-stronghold';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,17 +34,11 @@ function isTauri(): boolean {
 
 // ─── Preferences (non-sensitive) ─────────────────────────────────────────────
 
-// _prefStore is initialised lazily on first use, NOT at module level.
-// Constructing LazyStore at module level causes it to evaluate during Nuxt's
-// SSR pass where @tauri-apps/api/core is unavailable — that import throws and
-// prevents the app from mounting, resulting in a black screen.
 let _prefStore: LazyStore | null = null;
 
 async function getPrefStore(): Promise<LazyStore> {
     if (_prefStore) return _prefStore;
-    // Dynamic import so the module is never evaluated during SSR
     const { LazyStore } = await import('@tauri-apps/plugin-store');
-    // `defaults: {}` is required by StoreOptions — empty object means no defaults
     _prefStore = new LazyStore('preferences.json', { autoSave: false, defaults: {} });
     return _prefStore;
 }
@@ -122,86 +86,126 @@ export async function deletePref(key: string): Promise<void> {
     }
 }
 
-// ─── Secrets (sensitive) ─────────────────────────────────────────────────────
+// ─── Secrets (sensitive, AES-256-GCM encrypted) ─────────────────────────────
 
-// The Stronghold v2 API separates the vault handle (Stronghold) from the
-// named client (Client). save() lives on Stronghold; getStore() lives on
-// Client and takes no arguments — the client itself is the named collection.
-let _stronghold: Stronghold | null = null;
-let _strongholdClient: Client | null = null;
+let _secretStore: LazyStore | null = null;
+let _cryptoKey: CryptoKey | null = null;
+let _cryptoInitPromise: Promise<void> | null = null;
 
-const STRONGHOLD_CLIENT_NAME = 'app-secrets';
+interface EncryptedBlob {
+    iv: string;      // base64-encoded 12-byte IV
+    ct: string;      // base64-encoded ciphertext
+}
 
-/**
- * Returns the vault password: a hex-encoded random salt stored in the plain
- * preferences file under the key "_vault_salt". Written once on first launch,
- * reused on every subsequent open.
- *
- * The salt is not sensitive — Argon2id on the Rust side stretches it into
- * the real AES encryption key. Storing it in the prefs file avoids any OS
- * keychain involvement while still providing per-installation entropy.
- */
-async function _loadOrCreateVaultPassword(): Promise<string> {
-    const store = await getPrefStore();
-    const existing = await store.get<string>('_vault_salt');
-    if (existing && existing.length >= 32) return existing;
+/** Get or create the secrets store (separate file from preferences). */
+async function getSecretStore(): Promise<LazyStore> {
+    if (_secretStore) return _secretStore;
+    const { LazyStore } = await import('@tauri-apps/plugin-store');
+    _secretStore = new LazyStore('secrets.json', { autoSave: false, defaults: {} });
+    return _secretStore;
+}
 
-    // First run — generate and persist a new random salt
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const salt = Array.from(bytes)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+/** Base64 encode/decode helpers using browser APIs. */
+function toBase64(buf: ArrayBuffer): string {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
 
-    await store.set('_vault_salt', salt);
-    await store.save();
-    console.log('[AppStorage] Generated new vault salt (first launch)');
-    return salt;
+function fromBase64(b64: string): Uint8Array {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
 }
 
 /**
- * Opens (or creates) the Stronghold vault and returns the cached handles.
- * Subsequent calls return the existing handles without re-opening.
- *
- * Stronghold v2 API shape:
- *   Stronghold.load(path, password) → Stronghold
- *   stronghold.loadClient(name)     → Client  (throws if not found yet)
- *   stronghold.createClient(name)   → Client  (creates on fresh install)
- *   client.getStore()               → Store   (no arguments)
- *   stronghold.save()               → void    (NOT client.save())
+ * Initialise the AES-256-GCM key. On first launch this generates a new key
+ * and persists it as JWK in the preferences store. On subsequent launches it
+ * imports the stored JWK.
  */
-async function _getClient(): Promise<{ client: Client; stronghold: Stronghold }> {
-    if (_strongholdClient && _stronghold) {
-        return { client: _strongholdClient, stronghold: _stronghold };
+async function _ensureCryptoKey(): Promise<void> {
+    if (_cryptoKey) return;
+
+    if (_cryptoInitPromise) {
+        await _cryptoInitPromise;
+        return;
     }
 
-    // Dynamic imports — never evaluated during SSR
-    const { Stronghold } = await import('@tauri-apps/plugin-stronghold');
-    const { appDataDir, join } = await import('@tauri-apps/api/path');
+    _cryptoInitPromise = (async () => {
+        const store = await getPrefStore();
+        const existingJwk = await store.get<JsonWebKey>('_crypto_key');
 
-    const dataDir = await appDataDir();
-    const vaultPath = await join(dataDir, 'secrets.hold');
-    const password = await _loadOrCreateVaultPassword();
+        if (existingJwk) {
+            _cryptoKey = await crypto.subtle.importKey(
+                'jwk',
+                existingJwk,
+                { name: 'AES-GCM', length: 256 },
+                false,       // not extractable after import
+                ['encrypt', 'decrypt']
+            );
+            console.log('[AppStorage] Crypto key loaded from preferences');
+        } else {
+            // First launch — generate and persist
+            _cryptoKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 },
+                true,        // extractable so we can export as JWK
+                ['encrypt', 'decrypt']
+            );
+            const jwk = await crypto.subtle.exportKey('jwk', _cryptoKey);
+            await store.set('_crypto_key', jwk);
+            await store.save();
 
-    _stronghold = await Stronghold.load(vaultPath, password);
+            // Re-import as non-extractable for runtime use
+            _cryptoKey = await crypto.subtle.importKey(
+                'jwk',
+                jwk,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            console.log('[AppStorage] Generated new crypto key (first launch)');
+        }
+    })();
 
-    try {
-        _strongholdClient = await _stronghold.loadClient(STRONGHOLD_CLIENT_NAME);
-    } catch {
-        // Client doesn't exist yet on a fresh install — create it
-        _strongholdClient = await _stronghold.createClient(STRONGHOLD_CLIENT_NAME);
-    }
-
-    console.log('[AppStorage] Stronghold vault opened');
-    return { client: _strongholdClient, stronghold: _stronghold };
+    await _cryptoInitPromise;
 }
+
+/** Encrypt a plaintext string → EncryptedBlob */
+async function _encrypt(plaintext: string): Promise<EncryptedBlob> {
+    await _ensureCryptoKey();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        _cryptoKey!,
+        encoded
+    );
+    return {
+        iv: toBase64(iv.buffer),
+        ct: toBase64(ciphertext),
+    };
+}
+
+/** Decrypt an EncryptedBlob → plaintext string */
+async function _decrypt(blob: EncryptedBlob): Promise<string> {
+    await _ensureCryptoKey();
+    const iv = fromBase64(blob.iv);
+    const ct = fromBase64(blob.ct);
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv as unknown as BufferSource },
+        _cryptoKey!,
+        ct as unknown as BufferSource
+    );
+    return new TextDecoder().decode(decrypted);
+}
+
+// ─── Public Secret API ───────────────────────────────────────────────────────
 
 export async function setSecret(key: string, value: string): Promise<void> {
     if (isTauri()) {
-        const { client, stronghold } = await _getClient();
-        const store = client.getStore();
-        const encoded = Array.from(new TextEncoder().encode(value));
-        await store.insert(key, encoded);
-        await stronghold.save();
+        const store = await getSecretStore();
+        const encrypted = await _encrypt(value);
+        await store.set(key, encrypted);
+        await store.save();
     } else {
         try { sessionStorage.setItem(`secret:${key}`, value); } catch { /* SSR */ }
     }
@@ -210,11 +214,10 @@ export async function setSecret(key: string, value: string): Promise<void> {
 export async function getSecret(key: string): Promise<string | null> {
     if (isTauri()) {
         try {
-            const { client } = await _getClient();
-            const store = client.getStore();
-            const raw = await store.get(key);
-            if (!raw) return null;
-            return new TextDecoder().decode(new Uint8Array(raw));
+            const store = await getSecretStore();
+            const blob = await store.get<EncryptedBlob>(key);
+            if (!blob || !blob.iv || !blob.ct) return null;
+            return await _decrypt(blob);
         } catch (e) {
             console.warn(`[AppStorage] getSecret("${key}") failed:`, e);
             return null;
@@ -223,32 +226,42 @@ export async function getSecret(key: string): Promise<string | null> {
     try { return sessionStorage.getItem(`secret:${key}`); } catch { return null; }
 }
 
-export async function deleteSecret(key: string): Promise<void> {
+export async function deleteSecrets(keys: string[]): Promise<void> {
     if (isTauri()) {
         try {
-            const { client, stronghold } = await _getClient();
-            const store = client.getStore();
-            await store.remove(key);
-            await stronghold.save();
+            const store = await getSecretStore();
+            for (const key of keys) {
+                await store.delete(key);
+            }
+            await store.save();
         } catch (e) {
-            console.warn(`[AppStorage] deleteSecret("${key}") failed:`, e);
+            console.warn('[AppStorage] deleteSecrets() failed:', e);
         }
     } else {
-        try { sessionStorage.removeItem(`secret:${key}`); } catch { /* SSR */ }
+        try {
+            for (const key of keys) {
+                sessionStorage.removeItem(`secret:${key}`);
+            }
+        } catch { /* SSR */ }
     }
 }
 
+export async function deleteSecret(key: string): Promise<void> {
+    return await deleteSecrets([key]);
+}
+
 /**
- * Flush the vault to disk. Every write already calls stronghold.save()
- * immediately, so this is only needed as a safety net on app teardown
- * (e.g. in a Tauri window-close event handler).
+ * No-op kept for API compatibility. The Tauri Store auto-persists on save(),
+ * which is already called by every write operation above.
  */
 export async function flushSecrets(): Promise<void> {
-    if (_stronghold) {
-        try {
-            await _stronghold.save();
-        } catch (e) {
-            console.warn('[AppStorage] flushSecrets failed:', e);
-        }
-    }
+    // Nothing to do — every setSecret/deleteSecret already calls store.save()
+}
+
+/**
+ * No-op kept for API compatibility. There is no file lock to release with
+ * the Tauri Store backend (unlike Stronghold).
+ */
+export async function unloadSecrets(): Promise<void> {
+    // Nothing to do — Tauri Store has no file locks to release
 }

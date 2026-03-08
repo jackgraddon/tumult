@@ -2,29 +2,34 @@ import * as sdk from 'matrix-js-sdk';
 
 const config = useRuntimeConfig();
 
-const MATRIX_BASE_URL = config.matrix?.baseUrl;
+const matrixConfig = config.matrix;
+
+const MATRIX_BASE_URL = matrixConfig?.baseUrl;
 // Normalize URLs
-const clientUrl = config.matrix?.clientUrl?.replace(/\/+$/, '') || '';
-const redirectEndpoint = config.matrix?.redirectEndpoint?.startsWith('/') ? config.matrix?.redirectEndpoint : `/${config.matrix?.redirectEndpoint}`;
+const clientUrl = matrixConfig?.clientUrl?.replace(/\/+$/, '') || '';
+const redirectEndpointRaw = matrixConfig?.redirectEndpoint || '/api/auth/oidc/callback';
+const redirectEndpoint = redirectEndpointRaw.startsWith('/') ? redirectEndpointRaw : `/${redirectEndpointRaw}`;
+
 export const MATRIX_CLIENT_URL = clientUrl;
 export const REDIRECT_ENDPOINT = redirectEndpoint;
-const MATRIX_CLIENT_NAME = config.matrix?.clientName;
-const MATRIX_CLIENT_ID = config.matrix?.clientId;
-const CONTACT_EMAIL = config.matrix?.contactEmail;
+
+const MATRIX_CLIENT_NAME = matrixConfig?.clientName || 'Tumult';
+const MATRIX_CLIENT_ID = matrixConfig?.clientId;
+const CONTACT_EMAIL = matrixConfig?.contactEmail;
 
 const clientMetadata: sdk.OidcRegistrationClientMetadata = {
     applicationType: "native",
     clientName: MATRIX_CLIENT_NAME,
     clientUri: MATRIX_CLIENT_URL,
-    contacts: [CONTACT_EMAIL],
+    contacts: CONTACT_EMAIL ? [CONTACT_EMAIL] : [],
     policyUri: MATRIX_CLIENT_URL,
     redirectUris: [`${MATRIX_CLIENT_URL}${REDIRECT_ENDPOINT}`],
     tosUri: MATRIX_CLIENT_URL,
 };
 
 /**
- * Create a Matrix client instance
- * @returns {sdk.MatrixClient} A Matrix client
+ * Create a Tumult instance
+ * @returns {sdk.MatrixClient} A Tumult
  */
 function createMatrixClient() {
     return sdk.createClient({
@@ -42,7 +47,7 @@ export async function discoverOidcConfig() {
 }
 
 /**
- * Register a Matrix client for server-side operations
+ * Register a Tumult for server-side operations
  * @returns {Promise<string>} The registered client ID
  */
 export async function registerClient() {

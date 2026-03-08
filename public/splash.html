@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tumult</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --accent: #10b981;
+      --text: #ffffff;
+      --muted: #666666;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Premium pulsing logo animation */
+    .logo-pulse {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, var(--accent), #059669);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .logo-pulse::after {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      right: -10px;
+      bottom: -10px;
+      border: 2px solid var(--accent);
+      border-radius: 24px;
+      opacity: 0;
+      animation: ripple 2s ease-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
+      50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(16, 185, 129, 0.6); }
+    }
+
+    @keyframes ripple {
+      0% { transform: scale(0.9); opacity: 0.5; }
+      100% { transform: scale(1.2); opacity: 0; }
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0;
+      background: linear-gradient(to bottom, #fff, #aaa);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0;
+      animation: fadeIn 1s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Fallback controls */
+    #fallback, #login-section {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 24px;
+      width: 100%;
+      align-items: center; /* Added for consistency with original #fallback */
+      animation: fadeIn 0.5s ease-out; /* Added for consistency with original #fallback */
+    }
+ 
+    #login-section input {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: white;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      text-align: center; /* Added for better UX */
+      max-width: 250px; /* Added to prevent input from being too wide */
+    }
+
+    #login-section input:focus {
+      border-color: #00DC82;
+    }
+ 
+    .btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-danger {
+      color: #ef4444;
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    /* Log Container Styles */
+    #log-viewer {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      max-height: 40vh;
+      background: rgba(10, 10, 10, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      display: none;
+      flex-direction: column;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    #log-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    #log-content {
+      padding: 12px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+
+    .log-entry {
+      margin-bottom: 4px;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    .log-info { color: #aaa; }
+    .log-warn { color: #fbbf24; }
+    .log-error { color: #f87171; }
+    .log-timestamp { color: #555; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-pulse">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1 class="title">Tumult</h1>
+    <div class="status" id="status-text">Connecting to homeserver...</div>
+
+    <div id="login-section">
+      <input type="text" id="hs-input" placeholder="matrix.org" value="matrix.org" spellcheck="false">
+      <button class="btn btn-primary" id="start-login-btn">Login</button>
+    </div>
+
+    <!-- Fallback buttons if stuck -->
+    <div id="fallback">
+      <button class="btn" onclick="retryConnection()">Retry Connection</button>
+      <button class="btn btn-danger" id="logout-btn">Log Out & Reset</button>
+      <button class="btn" onclick="toggleLogs()" id="log-toggle-btn">Show Console</button>
+    </div>
+
+    <div id="log-viewer">
+      <div id="log-header">
+          <span>Main Window Console</span>
+          <button class="btn" onclick="clearLogs()" style="padding: 2px 8px; font-size: 10px;">Clear</button>
+      </div>
+      <div id="log-content"></div>
+    </div>
+  </div>
+
+  <script>
+    // Handle timeout for fallback UI
+    setTimeout(() => {
+      document.getElementById('fallback').style.display = 'flex';
+      document.getElementById('status-text').textContent = 'Taking longer than usual...';
+    }, 15000);
+
+    // Communicate with Tauri for high-level actions
+    async function retryConnection() {
+      // Hide login if showing
+      document.getElementById('login-section').style.display = 'none';
+      if (window.__TAURI__) {
+        try {
+          const { WebviewWindow } = window.__TAURI__.window || {};
+          if (WebviewWindow) {
+            const main = WebviewWindow.getByLabel('main');
+            if (main) {
+               await main.eval('window.location.href = "/"');
+               console.log("Forced main window to reload");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to reload main window:", e);
+        }
+      }
+      window.location.reload();
+    }
+
+    const logoutBtn = document.getElementById('logout-btn');
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        if (window.__TAURI__) {
+          // Fallback: forcefully set wipe flag in case main window is dead
+          localStorage.setItem('HALT_AND_WIPE_DB', 'true');
+          await window.__TAURI__.event.emit('splash-logout');
+          
+          // Try to forcefully navigate main window to root so it can process the wipe
+          try {
+            const { WebviewWindow } = window.__TAURI__.window || {};
+            if (WebviewWindow) {
+              const main = WebviewWindow.getByLabel('main');
+              if (main) await main.eval('window.location.href = "/"');
+            }
+          } catch(e) {}
+        } else {
+          localStorage.setItem('HALT_AND_WIPE_DB', 'true');
+          window.location.href = '/';
+        }
+      } catch (err) {
+        console.error('Failed to emit logout:', err);
+      }
+    });
+
+    const startLoginBtn = document.getElementById('start-login-btn');
+    startLoginBtn.addEventListener('click', async () => {
+      const hs = document.getElementById('hs-input').value.trim() || 'matrix.org';
+      try {
+        if (window.__TAURI__) {
+          await window.__TAURI__.event.emit('splash-start-login', hs);
+          document.getElementById('login-section').style.display = 'none';
+          document.getElementById('status-text').textContent = 'Starting login...';
+        }
+      } catch (err) {
+        console.error('Failed to emit login start:', err);
+      }
+    });
+
+    function toggleLogs() {
+      const viewer = document.getElementById('log-viewer');
+      const btn = document.getElementById('log-toggle-btn');
+      if (viewer.style.display === 'flex') {
+        viewer.style.display = 'none';
+        btn.textContent = 'Show Console';
+      } else {
+        viewer.style.display = 'flex';
+        btn.textContent = 'Hide Console';
+      }
+    }
+
+    function clearLogs() {
+      document.getElementById('log-content').innerHTML = '';
+    }
+
+    function appendLog({ type, message, timestamp }) {
+      const content = document.getElementById('log-content');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      
+      const timeStr = new Date(timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      entry.innerHTML = `<span class="log-timestamp">[${timeStr}]</span>${message}`;
+      content.appendChild(entry);
+      
+      // Auto-scroll
+      content.scrollTop = content.scrollHeight;
+    }
+
+    // Listen for status updates from main window
+    async function setupListeners() {
+      try {
+        if (window.__TAURI__) {
+            const { listen } = window.__TAURI__.event;
+            
+            // Existing status listener
+            await listen('splash-status', (event) => {
+                document.getElementById('status-text').textContent = event.payload;
+            });
+
+            // NEW: Log streaming listener
+            await listen('main-log', (event) => {
+                appendLog(event.payload);
+                // Also forward to the developer console
+                const type = event.payload.type;
+                const msg = `[Main Window] ${event.payload.message}`;
+                if (type === 'error') console.error(msg);
+                else if (type === 'warn') console.warn(msg);
+                else console.log(msg);
+            });
+
+            // NEW: Login requirement listener
+            await listen('splash-needs-login', (event) => {
+                document.getElementById('status-text').textContent = 'Please log in to continue';
+                document.getElementById('login-section').style.display = 'flex';
+                // Hide fallback buttons if they were up
+                document.getElementById('fallback').style.display = 'none';
+            });
+
+            console.log('Splash listeners active');
+        } else {
+            console.warn('Tauri API not found. If in browser, this is expected.');
+        }
+      } catch (err) {
+        console.error('Failed to setup splash listeners:', err);
+      }
+    }
+
+    setupListeners();
+  </script>
+</body>
+</html>

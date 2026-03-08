@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "matrix-client",
+  "productName": "Tumult",
   "version": "0.0.3032",
-  "identifier": "cc.jackg.matrixclient",
+  "identifier": "cc.jackg.tumult",
   "build": {
     "frontendDist": "../.output/public",
     "devUrl": "http://localhost:3000",
@@ -10,10 +10,12 @@
     "beforeBuildCommand": "corepack yarn generate"
   },
   "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
-        "title": "Ruby Chat",
+        "title": "Tumult",
         "useHttpsScheme": true,
         "width": 1200,
         "minWidth": 1000,
@@ -22,7 +24,20 @@
         "resizable": true,
         "decorations": true,
         "hiddenTitle": true,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "title": "Tumult",
+        "url": "/splash.html",
+        "width": 300,
+        "height": 450,
+        "resizable": false,
+        "decorations": false,
+        "center": true,
+        "transparent": true,
+        "alwaysOnTop": false
       }
     ],
     "security": {

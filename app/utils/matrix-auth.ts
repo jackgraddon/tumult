@@ -6,7 +6,15 @@ import { type, version, hostname } from '@tauri-apps/plugin-os';
 export const getHomeserverUrl = () => {
   if (typeof localStorage !== 'undefined') {
     const persisted = localStorage.getItem('matrix_homeserver_url');
-    if (persisted) return persisted;
+    if (persisted) {
+      // Handle both raw string and JSON-stringified string (from setPref)
+      try {
+        const parsed = JSON.parse(persisted);
+        if (typeof parsed === 'string') return parsed;
+      } catch {
+        return persisted;
+      }
+    }
   }
   try {
     const config = useRuntimeConfig();
@@ -23,7 +31,7 @@ export const getHomeserverUrl = () => {
 export async function getDeviceDisplayName(): Promise<string> {
   // Check if we are running in Tauri
   if (!import.meta.client || typeof window === 'undefined' || !!(window as any).__TAURI_INTERNALS__) {
-    return 'Ruby Chat (Web)';
+    return 'Tumult (Web)';
   }
 
   try {
@@ -31,10 +39,10 @@ export async function getDeviceDisplayName(): Promise<string> {
     const osType = type();
     const osVersion = version();
 
-    return `Ruby Chat on ${host} (${osType} ${osVersion})`;
+    return `Tumult on ${host} (${osType} ${osVersion})`;
   } catch (err) {
     console.warn('Could not fetch OS details, falling back to default name', err);
-    return 'Ruby Chat Desktop';
+    return 'Tumult Desktop';
   }
 }
 
@@ -66,7 +74,7 @@ export async function registerClient(authConfig: OidcClientConfig, redirectUri?:
   return await sdk.registerOidcClient(
     authConfig,
     {
-      clientName: "Ruby Chat",
+      clientName: "Tumult",
       clientUri: 'https://jackg.cc',
       logoUri: 'https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwww.clipartmax.com%2Fpng%2Fmiddle%2F238-2382091_keyhole-markup-language-icons-ruby-language-ruby-icon.png&f=1&nofb=1&ipt=bf51112a0814370434c449c7fc111e5ee70469651b590634d709ddf579343bab',
       applicationType: "native",

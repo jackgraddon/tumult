@@ -93,7 +93,10 @@
 
         <!-- Main Content -->
         <main class="flex-1 flex-col min-w-0 min-h-0 p-2">
-            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
+            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
+                <header class="landmark-banner shrink-0">
+                    <SecurityBanner />
+                </header>
                 <NuxtPage class="flex-1 min-h-0" />
             </div>
         </main>
@@ -120,6 +123,12 @@ import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 
 const route = useRoute();
+
+const isLinkActive = (to: string) => {
+    if (to === "/chat") return route.path === "/chat";
+    return route.path.startsWith(to);
+};
+
 
 const store = useMatrixStore();
 useGameActivity(); // Initialize game detection at layout level
@@ -233,6 +242,17 @@ onMounted(() => {
   subscribeToPush();
 });
 
+// 3. Clean up listeners when leaving the page to prevent memory leaks
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+  if (store.client) {
+    store.client.removeListener(ClientEvent.Room, updateRooms);
+    store.client.removeListener(RoomEvent.Timeline, handleTimelineEvent);
+    store.client.removeListener(RoomEvent.Name, updateRooms);
+    store.client.removeListener(RoomEvent.Receipt, updateRooms);
+  }
+});
+
 async function subscribeToPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
@@ -270,7 +290,7 @@ async function registerMatrixPusher(subscription: PushSubscription) {
         
         await store.client.setPusher({
             app_id: 'cc.jackg',
-            app_display_name: 'Matrix Client',
+            app_display_name: 'Tumult',
             device_display_name: 'Web Client',
             pushkey: subscription.endpoint, 
             kind: 'http',
@@ -293,21 +313,7 @@ watch(
   }
 );
 
-// 3. Clean up listeners when leaving the page to prevent memory leaks
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
-  if (store.client) {
-    store.client.removeListener(ClientEvent.Room, updateRooms);
-    store.client.removeListener(RoomEvent.Timeline, handleTimelineEvent);
-    store.client.removeListener(RoomEvent.Name, updateRooms);
-    store.client.removeListener(RoomEvent.Receipt, updateRooms);
-  }
-});
 
-const isLinkActive = (to: string) => {
-    if (to === "/chat") return route.path === "/chat";
-    return route.path.startsWith(to);
-};
 </script>
 
 <style scoped>
