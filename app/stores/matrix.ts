@@ -196,6 +196,8 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationRequested: (state) => state.verificationPhase === VerificationPhase.Requested,
     isVerificationReady: (state) => state.verificationPhase === VerificationPhase.Ready,
     isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
+    isWaitingForRecoveryKey: (state) => state.isAuthenticated && !state.isCrossSigningReady,
+    needsRecoveryKeySetup: (state) => state.isAuthenticated && !state.isSecretStorageReady,
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
@@ -1709,6 +1711,9 @@ export const useMatrixStore = defineStore('matrix', {
           // Request secrets just in case they haven't arrived yet
           this.requestSecretsFromOtherDevices();
 
+          // Ensure we try to restore history if we now have the keys
+          await this.restoreKeysFromBackup();
+
           // Don't await this, let it run in background so UI updates immediately
           this.retryDecryption();
         }
@@ -1868,11 +1873,10 @@ export const useMatrixStore = defineStore('matrix', {
           setupNewSecretStorage: false
         });
 
-        // 3. Try to load historical backup keys if they exist
+        // Update local state and trigger re-decryption
+        await this.checkDeviceVerified();
         await this.restoreKeysFromBackup();
         await this.retryDecryption();
-
-        await this.checkDeviceVerified();
 
         if (this.isCrossSigningReady) {
           this.isVerificationCompleted = true;
