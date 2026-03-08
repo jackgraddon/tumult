@@ -54,7 +54,7 @@ jobs:
             const fs = require('fs');
             const path = 'src-tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            config.version = '0.0.${VERSION}';
+            config.version = '${VERSION}'; 
             fs.writeFileSync(path, JSON.stringify(config, null, 2));
           "
 
