@@ -124,6 +124,12 @@ import { VueDraggable as draggable } from 'vue-draggable-plus';
 
 const route = useRoute();
 
+const isLinkActive = (to: string) => {
+    if (to === "/chat") return route.path === "/chat";
+    return route.path.startsWith(to);
+};
+
+
 const store = useMatrixStore();
 useGameActivity(); // Initialize game detection at layout level
 
@@ -307,10 +313,7 @@ watch(
   }
 );
 
-const isLinkActive = (to: string) => {
-    if (to === "/chat") return route.path === "/chat";
-    return route.path.startsWith(to);
-};
+
 </script>
 
 <style scoped>

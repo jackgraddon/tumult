@@ -80,9 +80,11 @@
       />
     </header>
 
-    <!-- Loading state -->
-    <div v-if="!room" class="flex-1 flex items-center justify-center">
-      <p class="text-muted-foreground">Loading room...</p>
+    <!-- Loading / Hydration state -->
+    <div v-if="!room || (store.isRestoringSession && !store.isFullySynced && displayMessages.length === 0)" class="flex-1 flex flex-col pt-20 items-center justify-start gap-4">
+      <div class="h-16 w-16 rounded-2xl bg-accent/20 animate-pulse"></div>
+      <div class="h-4 w-48 bg-accent/10 rounded animate-pulse"></div>
+      <p class="text-xs text-muted-foreground animate-pulse">Hydrating room timeline...</p>
     </div>
 
     <!-- Timeline -->
@@ -1486,6 +1488,9 @@ async function initRoom() {
   // Found room, clean up temp listener
   store.client.removeListener(ClientEvent.Room, onRoomAdded);
   room.value = r;
+
+  // Hydrate members for lazy loading (non-blocking)
+  r.loadMembersIfNeeded();
 
   // Clear decryption tracking for the new room
   decryptionListenerIds.clear();

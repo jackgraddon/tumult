@@ -5,7 +5,6 @@ use std::net::TcpListener;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
-use argon2::{Argon2, Algorithm, Version, Params};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,25 +22,6 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-.plugin(tauri_plugin_stronghold::Builder::new(|password| {
-    let params = Params::new(
-        65536, // m_cost (memory in KiB)
-        2,     // t_cost (iterations)
-        4,     // p_cost (parallelism)
-        None   // output length (None = default 32 bytes)
-    ).expect("Invalid Argon2 params");
-
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-    let salt = b"ruby_chat_salt_v1";
-    let mut key = vec![0u8; 32];
-
-    argon2
-        .hash_password_into(password.as_ref(), salt, &mut key)
-        .expect("Failed to derive key");
-
-    key
-}).build())
         .manage(scanner_state)
         .invoke_handler(tauri::generate_handler![
             game_scanner::update_watch_list,

@@ -1,75 +1,33 @@
-# Nuxt Minimal Starter
+# Tumult
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A Discord-like Matrix client with voice chat and activity status support. Built with Nuxt 4 and Tauri 2.
 
-## Setup
+## Why?
 
-Make sure to install dependencies:
+With the recent actions taken by Discord and their handling of their community, I've decided to create a Matrix client that is more in line with what I believe a good chat client should be. 
 
-```bash
-# npm
-npm install
+## Development
 
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `https://localhost:3000`:
+Install dependencies:
 
 ```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+corepack yarn install
 ```
 
-## Production
+You can set a custom homeserver as default by setting the `NUXT_PUBLIC_MATRIX_BASE_URL` environment variable. Do not include the `https://` prefix. For example: `NUXT_PUBLIC_MATRIX_BASE_URL=matrix.org`. This will let the app build with that as the default homeserver, but it is still possible to connect to other homeservers through the login screen.
+
+Start the development server on `http://localhost:3000`:
+
+```bash
+# No Tauri application
+corepack yarn dev
+
+# With Tauri application
+corepack yarn tauri dev
+```
 
 Build the application for production:
 
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+corepack yarn tauri build
 ```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

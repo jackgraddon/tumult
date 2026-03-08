@@ -13,14 +13,14 @@ import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomes
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { hostname, type, version } from '@tauri-apps/plugin-os';
-import { MsgType, EventType } from 'matrix-js-sdk';
+import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
 import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
 import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
 import { isVoiceChannel } from '~/utils/room';
 import { useDebounceFn } from '@vueuse/core';
-import { setPref, getPref, deletePref, setSecret, getSecret, deleteSecret } from '~/composables/useAppStorage';
+import { setPref, getPref, deletePref, setSecret, getSecret, deleteSecret, deleteSecrets } from '~/composables/useAppStorage';
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -102,7 +102,7 @@ const authResponseHtml = `
 `;
 
 /**
- * Subclass of OidcTokenRefresher that persists rotated tokens to Stronghold (or localStorage fallback).
+ * Subclass of OidcTokenRefresher that persists rotated tokens to the encrypted store (or sessionStorage fallback).
  */
 class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
   protected override async persistTokens(tokens: { accessToken: string; refreshToken?: string }): Promise<void> {
@@ -128,6 +128,8 @@ export const useMatrixStore = defineStore('matrix', {
     isAuthenticated: false,
     isSyncing: false,
     isClientReady: false,
+    isReady: false, // Phase 2: Signal for splash screen transition
+    isRestoringSession: true,
     user: null as {
       userId: string;
       displayName?: string;
@@ -164,11 +166,10 @@ export const useMatrixStore = defineStore('matrix', {
 
     customStatus: null as string | null,
     isLoggingIn: false,
+    isLoggingOut: false,
     loginStatus: '' as string,
     isRestoringKeys: false,
-    isWaitingForRecoveryKey: false,
-    needsRecoveryKeySetup: false,
-    _lastMaintenanceCheck: 0,
+    isFullySynced: false,
 
     lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
     hierarchyTrigger: 0,
@@ -628,29 +629,44 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async startLogin(homeserverUrl: string) {
+      console.log('[MatrixStore] startLogin called with:', homeserverUrl);
       this.isLoggingIn = true;
       this.loginStatus = 'Preparing…';
 
       // Ensure homeserverUrl has https:// for internal use
       const fullUrl = homeserverUrl.startsWith('http') ? homeserverUrl : `https://${homeserverUrl}`;
+      console.log('[MatrixStore] startLogin: Normalized URL:', fullUrl);
+
+      // We sync this to both the Tauri store AND localStorage.
+      // Why? Because getHomeserverUrl() is a synchronous utility used during 
+      // client creation before the asynchronous Tauri store is ready.
+      console.log('[MatrixStore] startLogin: Setting matrix_homeserver_url...');
       await setPref('matrix_homeserver_url', fullUrl);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('matrix_homeserver_url', fullUrl);
+      }
 
       // Stop any existing client to release DB locks
       if (this.client) {
+        console.log('[MatrixStore] startLogin: Stopping existing client...');
         this.client.stopClient();
         this.client.removeAllListeners();
         this.client = null;
       }
 
-
-
       // CLEANUP: Remove old session data so the plugin doesn't try to auto-login when we land on the callback page.
-      await deleteSecret('matrix_access_token');
+      console.log('[MatrixStore] startLogin: Deleting old session secrets...');
+      await deleteSecrets([
+        'matrix_access_token',
+        'matrix_refresh_token'
+      ]);
       await deletePref('matrix_user_id');
       await deletePref('matrix_device_id');
-      await deleteSecret('matrix_refresh_token');
-      // Clear stale crypto store so a new device ID doesn't conflict
-      await this._clearCryptoStore();
+      
+      console.log('[MatrixStore] startLogin: Clearing persistent stores...');
+      // Clear all persistent stores to prevent cross-contamination
+      await this._clearPersistentStores();
+      console.log('[MatrixStore] startLogin: Persistent stores cleared.');
 
       const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
@@ -693,11 +709,11 @@ export const useMatrixStore = defineStore('matrix', {
             await this.handleCallback(code, state);
             await navigateTo('/chat', { replace: true });
           } else {
-            console.error('[OAuth Loopback] Missing code or state in callback URL:', callbackUrl);
+            console.error('[MatrixStore] Login failed: Missing code or state in callback URL');
             this.cancelLogin('missing_credentials');
           }
         } catch (err: any) {
-          console.error('[OAuth Loopback] Custom server failed or timed out:', err);
+          console.error('[MatrixStore] Login flow failed:', err);
           this.cancelLogin(err?.message || 'callback_failed');
         }
       } else {
@@ -719,9 +735,21 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async handleCallback(code: string, state: string) {
+      console.log('[MatrixStore] handleCallback started', { code: code.substring(0, 10) + '...', state });
       this.loginStatus = 'Exchanging tokens…';
+      
       // Exchange Code for Token
-      const data = await completeLoginFlow(code, state);
+      let data: any;
+      try {
+        data = await completeLoginFlow(code, state);
+        console.log('[MatrixStore] completeLoginFlow success', { 
+            hasTokenResponse: !!data?.tokenResponse,
+            homeserverUrl: data?.homeserverUrl 
+        });
+      } catch (err) {
+        console.error('[MatrixStore] completeLoginFlow failed:', err);
+        throw err;
+      }
 
       const accessToken = data.tokenResponse.access_token;
       const refreshToken = data.tokenResponse.refresh_token;
@@ -733,13 +761,14 @@ export const useMatrixStore = defineStore('matrix', {
         accessToken: accessToken
       });
 
+      console.log('[MatrixStore] Fetching MXID with temp client...');
       let userId: string;
       try {
         const whoami = await tempClient.whoami();
         userId = whoami.user_id;
+        console.log('[MatrixStore] MXID fetched:', userId);
       } catch (e) {
-        console.error("Failed to fetch MXID:", e);
-        // Fallback to sub from idTokenClaims if HS whoami fails (some HS are picky about newly minted tokens)
+        console.warn("[MatrixStore] Failed to fetch MXID via whoami, trying fallback:", e);
         if (data.idTokenClaims?.sub) {
           userId = data.idTokenClaims.sub;
         } else {
@@ -748,8 +777,10 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       const deviceId = data.tokenResponse.device_id || (await tempClient.whoami().catch(() => ({} as { device_id?: string }))).device_id;
+      console.log('[MatrixStore] Device ID found:', deviceId);
 
       // Persist Valid Credentials
+      console.log('[MatrixStore] Persisting credentials to secure store...');
       await setSecret('matrix_access_token', accessToken);
       await setSecret('matrix_refresh_token', refreshToken);
       await setPref('matrix_user_id', userId);
@@ -760,13 +791,15 @@ export const useMatrixStore = defineStore('matrix', {
       const clientId = data.oidcClientSettings.clientId;
       const idTokenClaims = data.idTokenClaims;
 
+      console.log('[MatrixStore] Persisting OIDC metadata...', { issuer, clientId });
       await setPref('matrix_oidc_issuer', issuer);
       await setPref('matrix_oidc_id_token_claims', idTokenClaims);
-      // clientId is already stored as matrix_oidc_client_id from startLogin
 
       // Initialize
+      console.log('[MatrixStore] Calling initClient...');
       this.loginStatus = 'Connecting to Matrix…';
       await this.initClient(accessToken, userId, deviceId, refreshToken, issuer, clientId, idTokenClaims);
+      console.log('[MatrixStore] handleCallback finished');
     },
 
     async initClient(
@@ -778,7 +811,9 @@ export const useMatrixStore = defineStore('matrix', {
       clientId?: string,
       idTokenClaims?: IdTokenClaims,
     ) {
-      console.log("Initializing Tumult...", { userId, deviceId, hasAccessToken: !!accessToken });
+      console.time('[MatrixStore] initClient (total)');
+      console.log("[MatrixStore] Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+      this.isRestoringSession = true;
 
       // Force restart client
       if (this.client) {
@@ -790,29 +825,42 @@ export const useMatrixStore = defineStore('matrix', {
       let tokenRefreshFunction: sdk.TokenRefreshFunction | undefined;
       if (refreshToken && issuer && clientId && idTokenClaims && deviceId) {
         const redirectUri = await getPref('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
-        const refresher = new LocalStorageOidcTokenRefresher(issuer, clientId, redirectUri, deviceId, idTokenClaims);
-
-        tokenRefreshFunction = refresher.doRefreshAccessToken.bind(refresher);
-        console.log('OIDC token refresh function configured.');
+        console.log('[MatrixStore] Creating OIDC token refresher...', { issuer, clientId, redirectUri, deviceId });
+        try {
+          const refresher = new LocalStorageOidcTokenRefresher(issuer, clientId, redirectUri, deviceId, idTokenClaims);
+          tokenRefreshFunction = refresher.doRefreshAccessToken.bind(refresher);
+          console.log('[MatrixStore] OIDC token refresh function configured.');
+        } catch (oidcErr) {
+          console.error('[MatrixStore] CRITICAL: Failed to initialize OIDC refresher:', oidcErr);
+          throw oidcErr;
+        }
       } else if (refreshToken) {
         console.warn('Refresh token present but missing OIDC metadata — token refresh will not work.');
       }
 
-      // Create new client
-      this.client = sdk.createClient({
+      // Initialize room store
+      let roomStorePromise: Promise<void> | null = null;
+      let roomStore: any = new IndexedDBStore({
+        indexedDB: window.indexedDB,
+        dbName: "matrix-js-sdk::matrix-store",
+      });
+
+      // Build client options
+      const clientOpts: any = {
         baseUrl: getHomeserverUrl(),
         accessToken,
         userId,
         deviceId,
         refreshToken,
         tokenRefreshFunction,
+        store: roomStore,
+        cryptoStore: IndexedDBCryptoStore,
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
             const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
             if (!keyId) {
               // This tells the SDK to pause and wait!
-              this.isWaitingForRecoveryKey = true;
               return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                 const firstKeyId = Object.keys(keys)[0];
                 if (!firstKeyId) {
@@ -832,10 +880,24 @@ export const useMatrixStore = defineStore('matrix', {
           },
           cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
             secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
-            this.isWaitingForRecoveryKey = false;
           },
         }
-      });
+      };
+
+      // Create new client FIRST, then startup the store
+      this.client = sdk.createClient(clientOpts);
+
+      try {
+        console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
+        await roomStore.startup();
+        console.log('[MatrixStore] Room store started successfully');
+      } catch (err) {
+        console.error("[MatrixStore] Failed to start IndexedDBStore, falling back to MemoryStore", err);
+        window.indexedDB.deleteDatabase("matrix-js-sdk::matrix-store");
+        // Re-assign a MemoryStore to the client
+        roomStore = new MemoryStore();
+        (this.client as any).store = roomStore;
+      }
 
       // Initialize crypto
       let cryptoReady = false;
@@ -846,8 +908,27 @@ export const useMatrixStore = defineStore('matrix', {
         console.log('Crypto initialized:', cryptoReady);
       } catch (e: any) {
         const msg = e?.message || '';
-        if (msg.includes("account in the store doesn't match")) {
-          console.warn('Crypto store has stale device data — clearing and retrying...');
+        if (msg.includes("account in the store doesn't match") || e.name === 'InvalidCryptoStoreError' || msg.includes('version')) {
+          console.warn('🚨 Crypto store error (stale data or version mismatch) — triggering reset...');
+          
+          if (e.name === 'InvalidCryptoStoreError' || msg.includes('version')) {
+            console.error("🚨 Critical: Database version mismatch detected. Wiping crypto stores and resetting...");
+            // Wipe IndexedDB crypto stores directly
+            const dbs = [
+                'matrix-js-sdk::matrix-store',
+                'matrix-js-sdk::matrix-sdk-crypto',
+                'matrix-js-sdk::matrix-sdk-crypto-meta',
+                'matrix-js-sdk::crypto-store'
+            ];
+            for (const dbName of dbs) {
+              try { window.indexedDB.deleteDatabase(dbName); } catch { /* ignore */ }
+            }
+            this.isAuthenticated = false;
+            this.isRestoringSession = false;
+            await navigateTo('/');
+            return;
+          }
+
           // Stop the current client to release the IndexedDB connection
           if (this.client) {
             this.client.stopClient();
@@ -875,12 +956,13 @@ export const useMatrixStore = defineStore('matrix', {
             deviceId,
             refreshToken,
             tokenRefreshFunction,
+            store: roomStore,
+            cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk::crypto-store"),
             cryptoCallbacks: {
               getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
                 const keyIds = Object.keys(keys);
                 const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
                 if (!keyId) {
-                  this.isWaitingForRecoveryKey = true;
                   return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                     const firstKeyId = Object.keys(keys)[0];
                     if (!firstKeyId) {
@@ -899,7 +981,6 @@ export const useMatrixStore = defineStore('matrix', {
               },
               cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
                 secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
-                this.isWaitingForRecoveryKey = false;
               },
             }
           });
@@ -914,10 +995,6 @@ export const useMatrixStore = defineStore('matrix', {
         } else {
           console.warn("Crypto failed to initialize:", e);
         }
-      }
-
-      if (cryptoReady) {
-        await this.handleStartupDehydration();
       }
 
       // Suppress SDK debug noise during initial sync.
@@ -944,58 +1021,72 @@ export const useMatrixStore = defineStore('matrix', {
       // pollTimeout: 10000 — long-poll window. Default 30s means the client
       // can sit idle for up to 29s after initial sync before receiving updates.
       // 10s keeps the client responsive without hammering the server.
-      this.loginStatus = 'Starting sync…';
-      await this.client.startClient({
-        lazyLoadMembers: true,
-        initialSyncLimit: 1,
-        pollTimeout: 10000,
-      });
-      this.isAuthenticated = true;
-      this.isSyncing = true;
 
+      console.log('[MatrixStore] initClient (total) - Starting non-blocking sync setup...');
       let _debugRestored = false;
+      
+      // 5. Setup a listener to notify the UI when the "Initial Catch-up" is done
+      this.client.once(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
+        if (state === sdk.SyncState.Prepared || state === sdk.SyncState.Syncing) {
+            console.log("⚡ [MatrixStore] Matrix background sync complete (Initial Catch-up).");
+            this.isFullySynced = true;
+            this.isClientReady = true;
+            this.loginStatus = '';
+
+            // Run post-sync tasks in background
+            this.refreshPresence();
+            this.forceRecalculateVoiceMemberships();
+            this.checkSecretStorageSetup();
+            // Note: cryptoReady is a local variable in initClient scope
+            if (cryptoReady) {
+              this.checkDeviceVerified();
+            }
+        }
+      });
+
       this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
+        console.log('[MatrixStore] Sync state changed:', state);
         this.isSyncing = state === sdk.SyncState.Syncing || state === sdk.SyncState.Prepared;
-        // Restore console.debug on first Syncing after Prepared.
-        // The 70+ SDK debug lines fire right after Prepared; restoring here
-        // means they've already settled before real-time debug resumes.
+        
         if (state === sdk.SyncState.Syncing && !_debugRestored) {
           _debugRestored = true;
           console.debug = _origDebug;
         }
+      });
 
-        if (state === sdk.SyncState.Syncing) {
-          // Throttle maintenance to once every hour to avoid excessive getPref calls
-          const now = Date.now();
-          if (now - this._lastMaintenanceCheck > 60 * 60 * 1000) {
-            this._lastMaintenanceCheck = now;
-            getPref('matrix_crypto_dehydration_last_run', 0).then(lastRun => {
-              // Add a random jitter (0-4 hours) to avoid thundering herds 
-              // when multiple devices are online simultaneously.
-              const jitter = Math.floor(Math.random() * 4 * 60 * 60 * 1000);
-              if (now - lastRun > (24 * 60 * 60 * 1000) + jitter) {
-                this.maintenanceDehydration();
-              }
-            });
-          }
+      // START BACKGROUND SYNC (Do NOT await this)
+      console.log('[MatrixStore] Starting client in background...');
+      this.loginStatus = 'Starting background sync…';
+      this.client.startClient({
+        lazyLoadMembers: true,
+        initialSyncLimit: 10,
+        pollTimeout: 10000,
+      }).catch(err => {
+        console.error('[MatrixStore] Failed to start client sync (background):', err);
+        if (err?.httpStatus === 401) {
+          toast.error('Session Expired', {
+            description: 'Your session has expired. Please log in again.',
+          });
         }
+      });
 
-        if (state === sdk.SyncState.Prepared) {
-          this.isClientReady = true;
-          this.isLoggingIn = false;
-          this.loginStatus = '';
-          // Refresh presence now that we are ready
-          this.refreshPresence();
-          this.forceRecalculateVoiceMemberships();
+      // IMMEDIATELY EXIT LOADING STATE
+      // The store is hydrated (IndexedDB) and the client is syncing in background.
+      this.isAuthenticated = true;
+      this.isReady = true; 
+      this.isLoggingIn = false;
+      this.isRestoringSession = false;
+      console.log('[MatrixStore] UI Unlocked. Syncing in background.');
 
-          // Deferred until after sync: these calls hit account_data endpoints
-          // sequentially when run before sync (Rust crypto cache is cold).
-          // After Prepared, all account_data is in-memory — zero HTTP cost.
-          this.checkSecretStorageSetup();
-          if (cryptoReady) {
-            this.checkDeviceVerified();
-          }
+      // Listen for token invalidation from the server (e.g. device deleted)
+      this.client.on(sdk.HttpApiEvent.SessionLoggedOut, (err) => {
+        console.error("🚨 [MatrixStore] Server invalidated session (M_UNKNOWN_TOKEN). Forcing logout run.", err);
+        // Instantly stop the client to prevent infinite request loops
+        if (this.client) {
+            this.client.stopClient();
         }
+        // We use an arrow function so 'this' remains bound to the Pinia store
+        this.logout();
       });
 
       // Listen for MatrixRTC memberships to update sidebar icons/lists.
@@ -1159,6 +1250,17 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async fetchSpaceHierarchy(spaceId: string) {
+      if (!this.client) return;
+      try {
+        console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
+        await (this.client as any).getRoomHierarchy(spaceId);
+        this.hierarchyTrigger++;
+      } catch (e) {
+        console.error(`[MatrixStore] Failed to fetch hierarchy for space ${spaceId}:`, e);
+      }
+    },
+
     updateRootSpacesOrder(newOrder: string[]) {
       this.ui.uiOrder.rootSpaces = newOrder;
       this.saveUIOrder();
@@ -1286,103 +1388,6 @@ export const useMatrixStore = defineStore('matrix', {
         }
       } catch (e) {
         console.error('[SecretStorage] Failed to check setup:', e);
-      }
-    },
-
-    async handleStartupDehydration() {
-      if (!this.client) return;
-      const crypto = this.client.getCrypto();
-      if (!crypto) return;
-
-      console.log("[Dehydration] Checking for dehydrated device support...");
-      try {
-        const isSupported = await crypto.isDehydrationSupported();
-        if (!isSupported) {
-          console.log("[Dehydration] Not supported by server or crypto backend.");
-          return;
-        }
-
-        // We use startDehydration with rehydrate: true to handle rehydration 
-        // in a modern SDK-compliant way. This call is non-blocking in our 
-        // implementation because we want the UI to load while rehydration 
-        // might wait for a recovery key.
-        console.log("[Dehydration] Starting dehydration/rehydration flow...");
-
-        // Note: startDehydration handles rehydrating existing device OR 
-        // scheduling new ones.
-        crypto.startDehydration({ rehydrate: true }).then(() => {
-          console.log("[Dehydration] Flow completed successfully.");
-          this.isWaitingForRecoveryKey = false;
-        }).catch((e) => {
-          console.warn("[Dehydration] Flow skipped or failed:", e);
-          this.isWaitingForRecoveryKey = false;
-        });
-
-      } catch (e) {
-        console.error("[Dehydration] Failed to initialize dehydration:", e);
-      }
-    },
-
-    async provisionDehydratedDevice() {
-      if (!this.client) return;
-      const crypto = this.client.getCrypto();
-      if (!crypto) return;
-
-      if (!this.isCrossSigningReady) {
-        console.log("[Dehydration] Skipping provisioning: Session not verified.");
-        return;
-      }
-
-      console.log("[Dehydration] Provisioning new dehydrated device...");
-      try {
-        // startDehydration handles key creation and periodic rotation
-        await crypto.startDehydration({ createNewKey: false, rehydrate: true });
-        console.log("[Dehydration] Successfully provisioned dehydrated device.");
-        this.needsRecoveryKeySetup = false;
-        await setPref('matrix_crypto_dehydration_last_run', Date.now());
-      } catch (e) {
-        console.error("[Dehydration] Provisioning failed:", e);
-        this.needsRecoveryKeySetup = true;
-      }
-    },
-
-    async maintenanceDehydration() {
-      if (!this.client) return;
-      const crypto = this.client.getCrypto();
-      if (!crypto) return;
-
-      const status = await crypto.getCrossSigningStatus();
-      if (!status.isVerified) return;
-
-      console.log("[Dehydration] Running maintenance check...");
-
-      try {
-        const isSupported = await crypto.isDehydrationSupported();
-        if (!isSupported) return;
-
-        const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
-        const now = Date.now();
-
-        if (!serverDevice) {
-          console.log("[Dehydration] No device on server, creating one.");
-          await this.provisionDehydratedDevice();
-          return;
-        }
-
-        // Logic: 
-        // 1. Race condition protection: NEVER replace if server device is < 24h old.
-        //    Since server metadata doesn't expose timestamp, we use OUR last_run as a proxy.
-        //    If WE didn't create it, we should be cautious.
-
-        // 2. Freshness: Rotate every 7 days.
-        if (now - lastRun > 7 * 24 * 60 * 60 * 1000) {
-          console.log("[Dehydration] Client hasn't rotated in 7 days, forcing fresh overwrite.");
-          await this.provisionDehydratedDevice();
-        } else {
-          console.log("[Dehydration] Dehydrated device is still fresh (< 7 days). Skipping rotation.");
-        }
-      } catch (e) {
-        console.error("[Dehydration] Maintenance failed:", e);
       }
     },
 
@@ -1951,13 +1956,17 @@ export const useMatrixStore = defineStore('matrix', {
       console.log('[SecretGossiping] Requesting secrets from other trusted devices...');
       try {
         // Request cross-signing keys and the megolm backup key for history
-        await Promise.all([
-          (crypto as any).requestSecret('m.cross_signing.master'),
-          (crypto as any).requestSecret('m.cross_signing.self_signing'),
-          (crypto as any).requestSecret('m.cross_signing.user_signing'),
-          (crypto as any).requestSecret('m.megolm_backup.v1')
-        ]);
-        console.log('[SecretGossiping] Successfully requested secrets.');
+        const requests = [];
+        if (typeof (crypto as any).requestSecret === 'function') {
+          requests.push((crypto as any).requestSecret('m.cross_signing.master'));
+          requests.push((crypto as any).requestSecret('m.cross_signing.self_signing'));
+          requests.push((crypto as any).requestSecret('m.cross_signing.user_signing'));
+          requests.push((crypto as any).requestSecret('m.megolm_backup.v1'));
+          await Promise.all(requests);
+          console.log('[SecretGossiping] Successfully requested secrets.');
+        } else {
+          console.log('[SecretGossiping] requestSecret not supported on this crypto implementation (likely Rust Crypto). Skipping manual request.');
+        }
       } catch (err) {
         console.warn('[SecretGossiping] Failed to gossip secrets, user may need manual key entry:', err);
       }
@@ -1969,54 +1978,89 @@ export const useMatrixStore = defineStore('matrix', {
       const rooms = this.client.getRooms(); // Check ALL rooms, not just visible ones
 
       console.log(`Retrying decryption for ${rooms.length} rooms...`);
-      for (const room of rooms) {
+
+      // Use a generator-like approach or setTimeout to avoid blocking the main thread
+      // if there are many rooms/events.
+      const retryRoom = async (index: number) => {
+        if (index >= rooms.length || !this.client) {
+          console.log('[MatrixStore] Finished retrying decryption for all rooms.');
+          return;
+        }
+
+        const room = rooms[index];
+        if (!room) {
+          setTimeout(() => retryRoom(index + 1), 0);
+          return;
+        }
         const events = room.getLiveTimeline().getEvents();
+
         for (const event of events) {
           if (event.isDecryptionFailure()) {
             // Use attemptDecryption which is standard for retrying
-            await event.attemptDecryption(crypto as any, { isRetry: true });
+            await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
           }
         }
-      }
+
+        // Process next room in the next tick
+        setTimeout(() => retryRoom(index + 1), 0);
+      };
+
+      retryRoom(0);
     },
 
     // Reset the session and redirect to login
     async logout() {
+      if (this.isLoggingOut) {
+          console.warn("[MatrixStore] Logout already in progress, skipping duplicate call.");
+          return;
+      }
+      this.isLoggingOut = true;
       console.log("Logging out...");
 
-      // Stop the Tumult (Kill Sync & Crypto)
-      if (this.client) {
-        this.client.stopClient();
-        this.client.removeAllListeners();
+      try {
+        // Stop the Matrix Client (Kill Sync & Crypto)
+        if (this.client) {
+          await this.client.stopClient();
+          // Skip this.client.clearStores() as it can trigger legacy crypto errors in Rust-crypto mode
+          this.client.removeAllListeners();
+        }
+
+        // Clear Pinia State
+        this.client = null;
+        this.user = null;
+        this.isAuthenticated = false;
+        this.isSyncing = false;
+        this.isClientReady = false;
+        this._resetVerificationState();
+
+        // Wipe Tauri Storage, remove critical session data
+        await deleteSecret('matrix_access_token');
+        await deleteSecret('matrix_refresh_token');
+        await deletePref('matrix_user_id');
+        await deletePref('matrix_device_id');
+        
+        // CRITICAL FOR CRYPTO RESYNC:
+        // Also purge from localStorage in case it leaked or was cached there, 
+        // preventing "UISI / Device Not Verified" loops on next login.
+        if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('matrix_device_id');
+        }
+
+        // Remove OIDC data (forces fresh discovery/registration next time)
+        await deletePref('matrix_oidc_config');
+        await deletePref('matrix_oidc_client_id');
+        await deletePref('matrix_oidc_nonce');
+        await deletePref('matrix_oidc_issuer');
+        await deletePref('matrix_oidc_id_token_claims');
+
+        // Clear all local stores
+        await this._clearPersistentStores();
+
+        // Redirect to landing page
+        await navigateTo('/');
+      } finally {
+        this.isLoggingOut = false;
       }
-
-      // Clear Pinia State
-      this.client = null;
-      this.user = null;
-      this.isAuthenticated = false;
-      this.isSyncing = false;
-      this.isClientReady = false;
-      this._resetVerificationState();
-
-      // Wipe Tauri Storage, remove critical session data
-      await deleteSecret('matrix_access_token');
-      await deleteSecret('matrix_refresh_token');
-      await deletePref('matrix_user_id');
-      await deletePref('matrix_device_id');
-      await deletePref('matrix_crypto_dehydration_last_run');
-
-      // Remove OIDC data (forces fresh discovery/registration next time)
-      await deletePref('matrix_oidc_config');
-      await deletePref('matrix_oidc_client_id');
-      await deletePref('matrix_oidc_nonce');
-      await deletePref('matrix_oidc_issuer');
-      await deletePref('matrix_oidc_id_token_claims');
-
-      // Clear crypto store
-      await this._clearCryptoStore();
-
-      // Redirect to landing page
-      await navigateTo('/');
     },
 
     async refreshRoom(roomId: string) {
@@ -2030,15 +2074,31 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async _clearCryptoStore() {
+    async _clearPersistentStores() {
       const deleteDb = (name: string) => new Promise<void>((resolve) => {
         const req = window.indexedDB.deleteDatabase(name);
-        req.onsuccess = () => resolve();
-        req.onerror = () => resolve();
-        req.onblocked = () => { console.warn(`DB delete blocked: ${name}`); resolve(); };
+        req.onsuccess = () => {
+          console.log(`[MatrixStore] Database deleted: ${name}`);
+          resolve();
+        };
+        req.onerror = () => {
+          console.warn(`[MatrixStore] Error deleting database: ${name}`);
+          resolve();
+        };
+        req.onblocked = () => {
+          console.warn(`[MatrixStore] DB delete blocked: ${name}`);
+          resolve();
+        };
       });
-      await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
-      await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
+
+      console.log('[MatrixStore] Clearing all persistent stores...');
+      await Promise.all([
+        deleteDb('matrix-js-sdk::matrix-store'),
+        deleteDb('matrix-js-sdk::matrix-sdk-crypto'),
+        deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta'),
+        deleteDb('matrix-js-sdk::crypto-store')
+      ]).catch(e => console.error('[MatrixStore] Error during DB wiping:', e));
+      console.log('[MatrixStore] Finished clearing persistent stores');
     },
 
     // --- Room Creation ---
@@ -2051,7 +2111,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async joinRoom(roomIdOrAlias: string): Promise<any> {
-      if (!this.client) throw new Error("Tumult not initialized.");
+      if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
 
       try {
@@ -2065,7 +2125,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async createDirectRoom(userId: string): Promise<string | undefined> {
-      if (!this.client) throw new Error("Tumult not initialized.");
+      if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Creating direct room with ${userId}...`);
 
       try {
@@ -2193,24 +2253,6 @@ export const useMatrixStore = defineStore('matrix', {
             bindExisting();
           }
         });
-      }
-    },
-
-    async fetchSpaceHierarchy(spaceId: string) {
-      if (!this.client) return;
-      console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
-      try {
-        // Fetch hierarchy with a reasonable limit to discover nested rooms/spaces
-        const response = await (this.client as any).getSpaceHierarchy(spaceId, 50);
-
-        if (response && response.rooms) {
-          console.log(`[MatrixStore] Discovered ${response.rooms.length} rooms in space ${spaceId}`);
-          // The SDK usually updates its internal state with discovered rooms, 
-          // but we trigger a hierarchy refresh to be sure the UI updates.
-          this.updateHierarchy();
-        }
-      } catch (e) {
-        console.error(`[MatrixStore] Failed to fetch space hierarchy for ${spaceId}:`, e);
       }
     },
 

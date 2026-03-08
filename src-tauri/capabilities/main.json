@@ -3,7 +3,8 @@
   "identifier": "main",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "main",
+    "splashscreen"
   ],
   "permissions": [
     "core:default",
@@ -12,6 +13,7 @@
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-set-background-color",
     "core:window:allow-set-theme",
+    "core:window:allow-show",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "core:window:allow-minimize",
@@ -19,10 +21,10 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
     "os:default",
     "os:allow-hostname",
     "store:allow-load",
-    "store:default",
-    "stronghold:default"
+    "store:default"
   ]
 }

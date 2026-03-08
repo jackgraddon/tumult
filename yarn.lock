@@ -4760,15 +4760,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/plugin-stronghold@npm:^2.3.1":
-  version: 2.3.1
-  resolution: "@tauri-apps/plugin-stronghold@npm:2.3.1"
-  dependencies:
-    "@tauri-apps/api": "npm:^2.8.0"
-  checksum: 10c0/f218990063e362f629f35c5a5cba5790bcaa1046206fb57d24f1f52bb6a98185a848619bedd2a09d810649d3cb10533146ba9c7ede639f656d92eaf58eb97ff6
-  languageName: node
-  linkType: hard
-
 "@tybys/wasm-util@npm:^0.10.0, @tybys/wasm-util@npm:^0.10.1":
   version: 0.10.1
   resolution: "@tybys/wasm-util@npm:0.10.1"
@@ -9791,54 +9782,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"matrix-client@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "matrix-client@workspace:."
-  dependencies:
-    "@matrix-org/matrix-sdk-crypto-wasm": "npm:^17.1.0"
-    "@nuxt/a11y": "npm:^1.0.0-alpha.1"
-    "@nuxt/devtools": "npm:^3.1.1"
-    "@nuxt/eslint": "npm:^1.13.0"
-    "@nuxt/fonts": "npm:^0.13.0"
-    "@nuxt/hints": "npm:^1.0.0-alpha.6"
-    "@nuxt/icon": "npm:^2.2.1"
-    "@nuxt/image": "npm:^2.0.0"
-    "@nuxtjs/color-mode": "npm:^4.0.0"
-    "@nuxtjs/tailwindcss": "npm:7.0.0-beta.1"
-    "@pinia/nuxt": "npm:^0.11.3"
-    "@tauri-apps/api": "npm:^2.10.1"
-    "@tauri-apps/cli": "npm:^2.10.0"
-    "@tauri-apps/plugin-os": "npm:~2"
-    "@tauri-apps/plugin-shell": "npm:^2.3.5"
-    "@tauri-apps/plugin-store": "npm:^2.4.2"
-    "@tauri-apps/plugin-stronghold": "npm:^2.3.1"
-    "@types/node": "npm:^25.2.3"
-    "@vite-pwa/nuxt": "npm:^1.1.1"
-    "@vueuse/core": "npm:^14.2.1"
-    chess.js: "npm:^1.4.0"
-    class-variance-authority: "npm:^0.7.1"
-    clsx: "npm:^2.1.1"
-    livekit-client: "npm:^2.17.2"
-    lucide-vue-next: "npm:^0.564.0"
-    matrix-js-sdk: "npm:^40.2.0-rc.0"
-    nuxt: "npm:^4.3.0"
-    pinia: "npm:^3.0.4"
-    reka-ui: "npm:^2.8.2"
-    shadcn-nuxt: "npm:^2.4.3"
-    tailwind-merge: "npm:^3.4.0"
-    tailwindcss: "npm:^4.1.18"
-    tw-animate-css: "npm:^1.4.0"
-    typescript: "npm:^5.9.3"
-    vite-plugin-top-level-await: "npm:^1.6.0"
-    vite-plugin-wasm: "npm:^3.5.0"
-    vue: "npm:^3.5.27"
-    vue-draggable-plus: "npm:^0.6.1"
-    vue-router: "npm:^4.6.4"
-    vue-sonner: "npm:^2.0.9"
-    vue3-emoji-picker: "npm:^1.1.8"
-  languageName: unknown
-  linkType: soft
-
 "matrix-events-sdk@npm:0.0.1":
   version: 0.0.1
   resolution: "matrix-events-sdk@npm:0.0.1"
@@ -13139,6 +13082,53 @@ __metadata:
   checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62
   languageName: node
   linkType: hard
+
+"tumult@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "tumult@workspace:."
+  dependencies:
+    "@matrix-org/matrix-sdk-crypto-wasm": "npm:^17.1.0"
+    "@nuxt/a11y": "npm:^1.0.0-alpha.1"
+    "@nuxt/devtools": "npm:^3.1.1"
+    "@nuxt/eslint": "npm:^1.13.0"
+    "@nuxt/fonts": "npm:^0.13.0"
+    "@nuxt/hints": "npm:^1.0.0-alpha.6"
+    "@nuxt/icon": "npm:^2.2.1"
+    "@nuxt/image": "npm:^2.0.0"
+    "@nuxtjs/color-mode": "npm:^4.0.0"
+    "@nuxtjs/tailwindcss": "npm:7.0.0-beta.1"
+    "@pinia/nuxt": "npm:^0.11.3"
+    "@tauri-apps/api": "npm:^2.10.1"
+    "@tauri-apps/cli": "npm:^2.10.0"
+    "@tauri-apps/plugin-os": "npm:~2"
+    "@tauri-apps/plugin-shell": "npm:^2.3.5"
+    "@tauri-apps/plugin-store": "npm:^2.4.2"
+    "@types/node": "npm:^25.2.3"
+    "@vite-pwa/nuxt": "npm:^1.1.1"
+    "@vueuse/core": "npm:^14.2.1"
+    chess.js: "npm:^1.4.0"
+    class-variance-authority: "npm:^0.7.1"
+    clsx: "npm:^2.1.1"
+    livekit-client: "npm:^2.17.2"
+    lucide-vue-next: "npm:^0.564.0"
+    matrix-js-sdk: "npm:^40.2.0-rc.0"
+    nuxt: "npm:^4.3.0"
+    pinia: "npm:^3.0.4"
+    reka-ui: "npm:^2.8.2"
+    shadcn-nuxt: "npm:^2.4.3"
+    tailwind-merge: "npm:^3.4.0"
+    tailwindcss: "npm:^4.1.18"
+    tw-animate-css: "npm:^1.4.0"
+    typescript: "npm:^5.9.3"
+    vite-plugin-top-level-await: "npm:^1.6.0"
+    vite-plugin-wasm: "npm:^3.5.0"
+    vue: "npm:^3.5.27"
+    vue-draggable-plus: "npm:^0.6.1"
+    vue-router: "npm:^4.6.4"
+    vue-sonner: "npm:^2.0.9"
+    vue3-emoji-picker: "npm:^1.1.8"
+  languageName: unknown
+  linkType: soft
 
 "tw-animate-css@npm:^1.4.0":
   version: 1.4.0
