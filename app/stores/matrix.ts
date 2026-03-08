@@ -1486,6 +1486,13 @@ export const useMatrixStore = defineStore('matrix', {
       const crypto = this.client?.getCrypto();
       if (!crypto) { console.error('Crypto not available'); return; }
 
+      const userId = this.client?.getUserId();
+      if (userId) {
+        // Force download of own keys to ensure we are synced with server's view of our devices
+        // and that other devices know we exist.
+        await this.client?.downloadKeys([userId], true);
+      }
+
       try {
         // Cancel any existing request first to avoid conflicts
         if (this.activeVerificationRequest) {
@@ -1969,8 +1976,12 @@ export const useMatrixStore = defineStore('matrix', {
 
       try {
         console.log("Bootstrapping verification and secret storage...");
+        this.verificationModalOpen = true;
 
         // 1. Bootstrap Cross-Signing (find or create keys)
+        // We use setupNewCrossSigning: false to attempt rehydrating existing keys
+        // from secret storage rather than blowing them away and creating new ones
+        // which would invalidate other devices.
         await crypto.bootstrapCrossSigning({
           setupNewCrossSigning: false
         });

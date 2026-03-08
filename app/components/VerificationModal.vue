@@ -3,10 +3,33 @@
     <UiDialogContent class="sm:max-w-md">
       <UiDialogHeader>
         <UiDialogTitle>{{ store.secretStoragePrompt ? 'Security Key Required' : 'Device Verification' }}</UiDialogTitle>
-        <UiDialogDescription>
-          {{ store.secretStoragePrompt ? 'Enter your security key or passphrase to access encrypted messages.' : 'Someone is trying to verify this device.' }}
+        <UiDialogDescription v-if="store.secretStoragePrompt">
+          Enter your security key or passphrase to access encrypted messages.
+        </UiDialogDescription>
+        <UiDialogDescription v-else-if="store.activeVerificationRequest">
+          {{ store.verificationInitiatedByMe ? 'Verify this device with another session.' : 'Someone is trying to verify this device.' }}
+        </UiDialogDescription>
+        <UiDialogDescription v-else>
+          Keep your messages secure by verifying this session.
         </UiDialogDescription>
       </UiDialogHeader>
+
+      <!-- Choice / Initial State -->
+      <div v-if="!store.secretStoragePrompt && !store.activeVerificationRequest && !store.isVerificationCompleted" class="flex flex-col gap-4 py-4">
+        <p class="text-sm text-center text-muted-foreground">
+          How would you like to verify this session?
+        </p>
+        <div class="flex flex-col gap-2">
+          <UiButton @click="store.requestVerification()">
+            <Icon name="solar:devices-bold" class="mr-2 size-4" />
+            Verify with another device
+          </UiButton>
+          <UiButton variant="outline" @click="store.bootstrapVerification()">
+            <Icon name="solar:key-bold" class="mr-2 size-4" />
+            Use Security Key / Passphrase
+          </UiButton>
+        </div>
+      </div>
 
       <!-- Secret Storage / Backup Key Input -->
       <div v-if="store.secretStoragePrompt" class="flex flex-col gap-4 py-1">
@@ -33,6 +56,13 @@
           </UiButton>
           <UiButton size="sm" @click="submitKey">
             {{ store.isCrossSigningReady ? 'Restore' : 'Verify' }}
+          </UiButton>
+        </div>
+
+        <div v-if="!store.isCrossSigningReady" class="pt-4 border-t mt-2">
+          <p class="text-[10px] text-muted-foreground text-center mb-2">Alternatively</p>
+          <UiButton variant="ghost" size="sm" class="w-full text-xs" @click="switchToDeviceVerification">
+            Verify with another device instead
           </UiButton>
         </div>
       </div>
@@ -146,6 +176,11 @@ async function submitKey() {
   if (!backupKeyInput.value) return;
   await store.submitSecretStorageKey(backupKeyInput.value);
   backupKeyInput.value = ''; 
+}
+
+function switchToDeviceVerification() {
+  store.cancelSecretStorageKey();
+  store.requestVerification();
 }
 
 function handleClose(open: boolean) {
