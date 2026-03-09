@@ -23,7 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.10.0", features = ["macos-private-api", "devtools"] }
 tauri-plugin-log = "2"
-sysinfo = "0.38"
+interprocess = "1.2.1"
 tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-os = "2"

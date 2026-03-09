@@ -1,31 +1,18 @@
-mod game_scanner;
+mod rpc;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Create the shared scanner state
-    let scanner_state = Arc::new(game_scanner::ScannerState {
-        watch_list: Mutex::new(Vec::new()),
-        current_game: Mutex::new(None),
-        is_enabled: Mutex::new(false),
-        notify: Arc::new(Notify::new()),
-    });
-
-    let scanner_state_for_setup = scanner_state.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(scanner_state)
         .invoke_handler(tauri::generate_handler![
-            game_scanner::update_watch_list,
-            game_scanner::set_scanner_enabled,
+            rpc::stop_rpc_server,
             start_oauth_server
         ])
         .setup(move |app| {
@@ -47,8 +34,8 @@ pub fn run() {
                 )?;
             }
 
-            // Start the background game scanner
-            game_scanner::start(app.handle().clone(), scanner_state_for_setup);
+            // Start the Discord RPC bridge
+            rpc::start_rpc_thread(app.handle().clone());
 
             Ok(())
         })

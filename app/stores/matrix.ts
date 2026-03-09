@@ -160,7 +160,7 @@ export const useMatrixStore = defineStore('matrix', {
     } | null,
     // Activity Status (Game Detection)
     activityStatus: null as string | null,
-    activityDetails: null as { name: string; is_running: boolean } | null,
+    activityName: null as string | null, // Track base name for throttling
     isGameDetectionEnabled: false,
 
     // Dehydration state
@@ -180,7 +180,7 @@ export const useMatrixStore = defineStore('matrix', {
     isIdle: false,
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
-    lastPresenceState: null as { presence: string; status_msg: string } | null,
+    lastPresenceState: null as { presence: string; status_msg: string; activityName: string | null } | null,
     directMessageMap: {} as Record<string, string>,
     matrixRTCBoundSessions: new Set<string>(),
 
@@ -388,103 +388,10 @@ export const useMatrixStore = defineStore('matrix', {
       });
     },
 
-    async initGameDetection() {
-      // Check if Tauri storage has "game_activity_enabled"
-      const stored = await getPref('game_activity_enabled', false);
-      console.log('[MatrixStore] Loading game detection config:', stored);
-      this.isGameDetectionEnabled = stored;
-      // Sync with backend immediately if supported
-      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
-      console.log('[MatrixStore] Syncing with backend. Tauri detected:', tauriCheck);
-      if (tauriCheck) {
-        invoke('set_scanner_enabled', { enabled: this.isGameDetectionEnabled })
-          .then(() => console.log('[MatrixStore] Backend sync success'))
-          .catch((e: any) => console.error('[MatrixStore] Failed to sync scanner state:', e));
-      } else {
-        console.warn('[MatrixStore] Tauri not detected, skipping backend sync');
-      }
-    },
-
-    async setGameDetection(enabled: boolean) {
-      console.log('[MatrixStore] Setting game detection:', enabled);
-      this.isGameDetectionEnabled = enabled;
-      await setPref('game_activity_enabled', enabled);
-
-      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
-      console.log('[MatrixStore] Invoking set_scanner_enabled. Tauri detected:', tauriCheck);
-
-      if (tauriCheck) {
-        try {
-          await invoke('set_scanner_enabled', { enabled });
-          console.log('[MatrixStore] Toggle command sent successfully');
-          if (!enabled) {
-            // Clear status immediately when disabled
-            this.activityStatus = null;
-            this.activityDetails = null;
-            this.setCustomStatus(this.customStatus); // Refresh presence without game
-          }
-        } catch (e) {
-          console.error('[MatrixStore] Failed to toggle scanner:', e);
-        }
-      }
-    },
-
-    async bindGameActivityListener() {
-      if (!(window as any).__TAURI_INTERNALS__) return;
-
-      console.log('[MatrixStore] Binding game activity listener...');
-      try {
-        // Load game list first
-        try {
-          const res = await fetch('https://discord.com/api/v9/applications/detectable');
-          if (res.ok) {
-            const allGames = await res.json();
-            const platform = navigator.platform.toLowerCase();
-            const os = platform.includes('mac') ? 'darwin' : (platform.includes('win') ? 'win32' : 'linux');
-
-            // Include native OS executables + win32 (for Proton/CrossOver/Wine games)
-            const matchOs = [os, ...(os !== 'win32' ? ['win32'] : [])];
-
-            const filtered = allGames
-              .filter((g: any) => g.executables?.some((e: any) => matchOs.includes(e.os)))
-              .map((g: any) => ({
-                id: g.id,
-                name: g.name,
-                executables: g.executables.filter((e: any) => matchOs.includes(e.os)),
-              }));
-
-            // Add fake game for testing
-            filtered.push({
-              id: '99999',
-              name: 'Calculator',
-              executables: [{ os: 'darwin', name: 'Calculator' }]
-            });
-
-            await invoke('update_watch_list', { games: filtered });
-          }
-        } catch (e) {
-          console.error('[MatrixStore] Failed to load/send game list:', e);
-        }
-
-        // Listen for events
-        await listen<{ name: string; is_running: boolean }>('game-activity', (event) => {
-          const { name, is_running } = event.payload;
-          console.log('[MatrixStore] Game Activity Event:', name, is_running);
-
-          if (is_running) {
-            this.activityDetails = { name, is_running };
-            this.refreshPresence();
-          } else {
-            // Game stopped
-            if (this.activityDetails?.name === name) {
-              this.activityDetails = null;
-              this.refreshPresence();
-            }
-          }
-        });
-      } catch (e) {
-        console.error('[MatrixStore] Failed to bind listener:', e);
-      }
+    async updatePresence(status: string, gameName: string | null = null) {
+      this.activityStatus = status;
+      this.activityName = gameName;
+      this.refreshPresence();
     },
 
     setCustomStatus(status: string | null) {
@@ -498,7 +405,7 @@ export const useMatrixStore = defineStore('matrix', {
         try {
           await this.client.setPresence({
             presence: 'offline',
-            status_msg: this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
+            status_msg: this.customStatus || this.activityStatus || ''
           });
         } catch (e) {
           console.error('[MatrixStore] Failed to send offline flare:', e);
@@ -517,19 +424,32 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
+      const status_msg = this.customStatus || this.activityStatus || '';
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
         this.lastPresenceState.presence !== presence ||
         this.lastPresenceState.status_msg !== status_msg;
 
-      const now = Date.now();
-      const throttleMs = 30 * 1000; // 30 seconds
+      // Also check if the base game name has changed
+      const gameChanged = !this.lastPresenceState ||
+        this.lastPresenceState.activityName !== this.activityName;
 
-      // Only skip if no change AND within throttle window
-      if (!stateChanged && (now - this.lastPresenceUpdate < throttleMs)) {
-        return;
+      const now = Date.now();
+      const throttleMs = 60 * 1000; // 60 seconds
+
+      // Throttling logic:
+      // 1. If presence state (online/idle) changed -> ALWAYS UPDATE
+      // 2. If game name changed -> ALWAYS UPDATE
+      // 3. If only status_msg (rich details) changed -> THROTTLE to 60s
+      const presenceChanged = !this.lastPresenceState || this.lastPresenceState.presence !== presence;
+
+      if (!presenceChanged && !gameChanged && !stateChanged) {
+        return; // No change at all
+      }
+
+      if (!presenceChanged && !gameChanged && stateChanged && (now - this.lastPresenceUpdate < throttleMs)) {
+        return; // Only rich details changed, and we are within the throttle window
       }
 
       console.log(`[MatrixStore] Refreshing presence: ${presence} ("${status_msg}")`);
@@ -537,7 +457,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         await this.client.setPresence({ presence: presence as any, status_msg });
         this.lastPresenceUpdate = now;
-        this.lastPresenceState = { presence, status_msg };
+        this.lastPresenceState = { presence, status_msg, activityName: this.activityName };
       } catch (err: any) {
         if (err?.errcode === 'M_LIMIT_EXCEEDED') {
           console.warn('[MatrixStore] Presence update rate limited by server');
@@ -2222,6 +2142,13 @@ export const useMatrixStore = defineStore('matrix', {
 
         // Clear all local stores
         await this._clearPersistentStores();
+
+        // Stop the Discord RPC server
+        try {
+          await invoke('stop_rpc_server');
+        } catch (e) {
+          console.error('[MatrixStore] Failed to stop RPC server on logout:', e);
+        }
 
         // Redirect to landing page
         await navigateTo('/');
