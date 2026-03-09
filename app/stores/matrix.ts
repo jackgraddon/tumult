@@ -2131,12 +2131,10 @@ export const useMatrixStore = defineStore('matrix', {
     async retryDecryption() {
       if (!this.client) return;
       const crypto = this.client.getCrypto();
-      const rooms = this.client.getRooms(); // Check ALL rooms, not just visible ones
+      const rooms = this.client.getRooms();
 
       console.log(`Retrying decryption for ${rooms.length} rooms...`);
 
-      // Use a generator-like approach or setTimeout to avoid blocking the main thread
-      // if there are many rooms/events.
       const retryRoom = async (index: number) => {
         if (index >= rooms.length || !this.client) {
           console.log('[MatrixStore] Finished retrying decryption for all rooms.');
@@ -2148,16 +2146,29 @@ export const useMatrixStore = defineStore('matrix', {
           setTimeout(() => retryRoom(index + 1), 0);
           return;
         }
-        const events = room.getLiveTimeline().getEvents();
 
-        for (const event of events) {
-          if (event.isDecryptionFailure()) {
-            // Use attemptDecryption which is standard for retrying
-            await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+        // Search through all cached timelines for this room
+        const timelineSets = [room.getUnfilteredTimelineSet()];
+        for (const timelineSet of timelineSets) {
+          const timelines = (timelineSet as any).getTimelines?.() || [];
+          for (const timeline of timelines) {
+            const events = timeline.getEvents();
+            for (const event of events) {
+              if (event.isDecryptionFailure()) {
+                await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+              }
+            }
+          }
+
+          // Also check the live timeline events directly as a fallback
+          const liveEvents = timelineSet.getLiveTimeline().getEvents();
+          for (const event of liveEvents) {
+            if (event.isDecryptionFailure()) {
+              await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+            }
           }
         }
 
-        // Process next room in the next tick
         setTimeout(() => retryRoom(index + 1), 0);
       };
 

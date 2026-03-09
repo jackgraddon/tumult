@@ -1163,6 +1163,7 @@ function refreshMessagesFromWindow() {
       if (eventId && !decryptionListenerIds.has(eventId)) {
         decryptionListenerIds.add(eventId);
         event.once(MatrixEventEvent.Decrypted, () => {
+          decryptionListenerIds.delete(eventId!);
           refreshMessagesFromWindow();
           // Force game re-evaluation in case this was a game event
           store.gameTrigger++;
