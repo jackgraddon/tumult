@@ -1,11 +1,11 @@
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
 
 async function build() {
     try {
-        // Get target triple from rustc (via a simple command since we can't easily replicate host detection exactly)
+        // Get target triple from rustc
         const targetTriple = execSync('rustc -vV').toString()
             .split('\n')
             .find(line => line.startsWith('host:'))
@@ -19,12 +19,16 @@ async function build() {
         console.log(`Building arRPC sidecar for ${targetTriple}...`);
 
         const binaryName = `arrpc-${targetTriple}`;
-        const outDir = join(process.cwd(), 'src-tauri');
+        const outDir = join(process.cwd(), 'src-tauri', 'binaries');
         const binaryFile = join(outDir, targetTriple.includes('windows') ? `${binaryName}.exe` : binaryName);
 
         if (existsSync(binaryFile)) {
             console.log(`Sidecar already exists at ${binaryFile}, skipping build.`);
             return;
+        }
+
+        if (!existsSync(outDir)) {
+            mkdirSync(outDir, { recursive: true });
         }
 
         // Determine pkg target
@@ -53,7 +57,16 @@ async function build() {
             stdio: 'inherit'
         });
 
-        console.log(`Done! Sidecar built at ${binaryFile}`);
+        if (platform !== 'win32') {
+            console.log('Setting executable permissions...');
+            chmodSync(binaryFile, 0o755);
+        }
+
+        if (existsSync(binaryFile)) {
+            console.log(`Done! Sidecar built successfully at ${binaryFile}`);
+        } else {
+            throw new Error(`Binary was not created at ${binaryFile}`);
+        }
     } catch (error) {
         console.error('Failed to build arRPC sidecar:', error);
         process.exit(1);
