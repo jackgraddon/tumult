@@ -848,6 +848,15 @@ export const useMatrixStore = defineStore('matrix', {
       // Create new client FIRST, then startup the store
       this.client = sdk.createClient(clientOpts);
 
+      // CRITICAL: Manually update the deviceId on the client object.
+      // In some OIDC/Restoration scenarios, the SDK's internal device ID state can
+      // get out of sync with the provided opts, leading to M_BAD_JSON (400) errors
+      // during key upload because the 'device_id' in 'device_keys' doesn't match
+      // the one tied to the access token.
+      if (deviceId) {
+        (this.client as any).deviceId = deviceId;
+      }
+
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
         await roomStore.startup();
