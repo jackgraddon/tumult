@@ -386,9 +386,21 @@ export const useMatrixStore = defineStore('matrix', {
       this.lastVisitedRooms = await getPref('matrix_last_visited_rooms', {
         dm: null, rooms: null, spaces: {}
       });
+      this.isGameDetectionEnabled = await getPref('game_activity_enabled', false);
+    },
+
+    async setGameDetection(enabled: boolean) {
+      this.isGameDetectionEnabled = enabled;
+      await setPref('game_activity_enabled', enabled);
+      if (!enabled) {
+        this.activityStatus = null;
+        this.activityName = null;
+      }
+      this.refreshPresence();
     },
 
     async updatePresence(status: string, gameName: string | null = null) {
+      if (!this.isGameDetectionEnabled) return;
       this.activityStatus = status;
       this.activityName = gameName;
       this.refreshPresence();
@@ -556,6 +568,9 @@ export const useMatrixStore = defineStore('matrix', {
 
     async startLogin(homeserverUrl: string) {
       console.log('[MatrixStore] startLogin called with:', homeserverUrl);
+
+      // Ensure storage is initialized even for fresh login
+      await this.initStorage();
       this.isLoggingIn = true;
       this.loginStatus = 'Preparing…';
 

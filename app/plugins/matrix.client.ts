@@ -19,6 +19,9 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             localStorage.setItem('matrix_homeserver_url', homeserverUrl);
         }
 
+        // Initialise persistent storage data
+        await store.initStorage();
+
         // OIDC metadata needed to rebuild token refresh function
         const issuer = await getPref('matrix_oidc_issuer', null);
         const clientId = await getPref('matrix_oidc_client_id', null);
