@@ -90,12 +90,126 @@ const props = withDefaults(defineProps<{
 
 const store = useMatrixStore();
 
+// --- 1. CORE STATE ---
 const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
-
-// Presence state
 const presenceStatusMsg = ref<string | null>(null);
 const presenceStatus = ref<string>('offline');
 
+// --- 2. COMPUTED ---
+const displayActivity = computed(() => {
+  // Prefer local store details for self if running
+  if (isSelf.value && store.activityDetails?.is_running) {
+    return store.activityDetails;
+  }
+
+  if (presenceStatusMsg.value) {
+    const msg = presenceStatusMsg.value;
+
+    // 1. Check for known activity prefixes
+    const prefixes = ['Playing ', '🎮 ', '🕹️ ', 'Game: ', 'Now Playing: '];
+    let foundPrefix = null;
+    for (const prefix of prefixes) {
+      if (msg.startsWith(prefix)) {
+        foundPrefix = prefix;
+        break;
+      }
+    }
+
+    if (foundPrefix) {
+      const fullStatus = msg.substring(foundPrefix.length);
+      const namePart = fullStatus.split(':')[0].split('(')[0].split(' - ')[0].trim();
+
+      console.log(`[ActivityStatus] Detected game via prefix (${foundPrefix}): ${namePart}`);
+
+      return {
+          name: namePart,
+          is_running: true
+      };
+    }
+
+    // 2. Check for common apps/games (Heuristic for bridges without prefixes)
+    const commonApps = [
+        'Visual Studio Code', 'VS Code', 'IntelliJ', 'WebStorm', 'Cursor',
+        'Minecraft', 'Roblox', 'League of Legends', 'Valorant', 'Counter-Strike',
+        'Steam', 'Epic Games', 'Battle.net', 'Spotify', 'Apple Music', 'YouTube Music'
+    ];
+    for (const app of commonApps) {
+        if (msg.includes(app)) {
+            return {
+                name: app,
+                is_running: true
+            };
+        }
+    }
+
+    // 3. Fallback: If the message looks like a game (short, title case), treat as activity
+    // but only if it's from a bridge (heuristic: user id starts with @discord_)
+    if (props.userId?.startsWith('@discord_') && msg.length < 50 && /^[A-Z]/.test(msg)) {
+       return {
+           name: msg,
+           is_running: true
+       };
+    }
+  }
+  return null;
+});
+
+const displayCustomStatus = computed(() => {
+  // Prefer local store custom status for self
+  if (isSelf.value && store.customStatus) {
+    return store.customStatus;
+  }
+
+  if (presenceStatusMsg.value) {
+    const msg = presenceStatusMsg.value;
+
+    // If it's currently detected as an activity, don't show as custom status
+    if (displayActivity.value?.is_running) {
+        return null;
+    }
+
+    return msg;
+  }
+  return null;
+});
+
+const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
+
+const effectivePresence = computed(() => {
+    if (isSelf.value) return store.isIdle ? 'unavailable' : 'online';
+    return presenceStatus.value;
+});
+
+const presenceDotColor = computed(() => {
+    if (effectivePresence.value === 'online') return 'bg-emerald-500';
+    if (effectivePresence.value === 'unavailable') return 'bg-yellow-500';
+    return 'bg-gray-400 dark:bg-gray-600';
+});
+
+const displayPresenceText = computed(() => {
+    if (effectivePresence.value === 'online') return 'Online';
+    if (effectivePresence.value === 'unavailable') return 'Idle';
+    return 'Offline';
+});
+
+const iconUrl = computed(() => {
+  const game = displayActivity.value;
+  if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
+
+  const icon = (game as any).iconHash;
+  // If icon is an external URL (sometimes happens with some RPC clients), return it directly
+  if (icon.startsWith('http')) return icon;
+
+  // Otherwise, assume it's a Discord Asset ID
+  // arRPC often provides these IDs which need a specific format
+  if (icon.startsWith('mp:')) {
+    return `https://media.discordapp.net/${icon.replace('mp:', 'external/')}`;
+  }
+
+  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${icon}.png?size=128`;
+});
+
+// --- 3. METHODS ---
 const fetchPresence = () => {
     const targetUserId = props.userId || store.user?.userId;
     if (!targetUserId || !store.client) {
@@ -174,7 +288,7 @@ onMounted(() => {
     if (store.client) {
         store.client.on('User.presence' as any, handlePresenceEvent);
     }
-    
+
     // Poll self presence more frequently to catch bridge updates quickly
     // For others, 5 minutes is fine. For self, let's do 30 seconds.
     pollPresence();
@@ -195,120 +309,6 @@ onUnmounted(() => {
 });
 
 watch([() => props.userId, () => store.user?.userId], fetchPresence);
-
-const displayActivity = computed(() => {
-  // Prefer local store details for self if running
-  if (isSelf.value && store.activityDetails?.is_running) {
-    return store.activityDetails; 
-  }
-  
-  if (presenceStatusMsg.value) {
-    const msg = presenceStatusMsg.value;
-
-    // 1. Check for known activity prefixes
-    const prefixes = ['Playing ', '🎮 ', '🕹️ ', 'Game: ', 'Now Playing: '];
-    let foundPrefix = null;
-    for (const prefix of prefixes) {
-      if (msg.startsWith(prefix)) {
-        foundPrefix = prefix;
-        break;
-      }
-    }
-
-    if (foundPrefix) {
-      const fullStatus = msg.substring(foundPrefix.length);
-      const namePart = fullStatus.split(':')[0].split('(')[0].split(' - ')[0].trim();
-
-      console.log(`[ActivityStatus] Detected game via prefix (${foundPrefix}): ${namePart}`);
-
-      return {
-          name: namePart,
-          is_running: true
-      };
-    }
-
-    // 2. Check for common apps/games (Heuristic for bridges without prefixes)
-    const commonApps = [
-        'Visual Studio Code', 'VS Code', 'IntelliJ', 'WebStorm', 'Cursor',
-        'Minecraft', 'Roblox', 'League of Legends', 'Valorant', 'Counter-Strike',
-        'Steam', 'Epic Games', 'Battle.net', 'Spotify', 'Apple Music', 'YouTube Music'
-    ];
-    for (const app of commonApps) {
-        if (msg.includes(app)) {
-            return {
-                name: app,
-                is_running: true
-            };
-        }
-    }
-
-    // 3. Fallback: If the message looks like a game (short, title case), treat as activity
-    // but only if it's from a bridge (heuristic: user id starts with @discord_)
-    if (props.userId?.startsWith('@discord_') && msg.length < 50 && /^[A-Z]/.test(msg)) {
-       return {
-           name: msg,
-           is_running: true
-       };
-    }
-  }
-  return null;
-});
-
-const displayCustomStatus = computed(() => {
-  // Prefer local store custom status for self
-  if (isSelf.value && store.customStatus) {
-    return store.customStatus;
-  }
-  
-  if (presenceStatusMsg.value) {
-    const msg = presenceStatusMsg.value;
-
-    // If it's currently detected as an activity, don't show as custom status
-    if (displayActivity.value?.is_running) {
-        return null;
-    }
-
-    return msg;
-  }
-  return null;
-});
-
-const effectivePresence = computed(() => {
-    if (isSelf.value) return store.isIdle ? 'unavailable' : 'online';
-    return presenceStatus.value;
-});
-
-const presenceDotColor = computed(() => {
-    if (effectivePresence.value === 'online') return 'bg-emerald-500';
-    if (effectivePresence.value === 'unavailable') return 'bg-yellow-500';
-    return 'bg-gray-400 dark:bg-gray-600';
-});
-
-const displayPresenceText = computed(() => {
-    if (effectivePresence.value === 'online') return 'Online';
-    if (effectivePresence.value === 'unavailable') return 'Idle';
-    return 'Offline';
-});
-
-const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
-
-// --- Compute the Discord CDN Image URL for games ---
-const iconUrl = computed(() => {
-  const game = displayActivity.value;
-  if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
-
-  const icon = (game as any).iconHash;
-  // If icon is an external URL (sometimes happens with some RPC clients), return it directly
-  if (icon.startsWith('http')) return icon;
-
-  // Otherwise, assume it's a Discord Asset ID
-  // arRPC often provides these IDs which need a specific format
-  if (icon.startsWith('mp:')) {
-    return `https://media.discordapp.net/${icon.replace('mp:', 'external/')}`;
-  }
-
-  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${icon}.png?size=128`;
-});
 
 // --- Duration Timer Logic ---
 const elapsedDuration = ref('0:00');
