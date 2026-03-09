@@ -160,6 +160,15 @@ export const useMatrixStore = defineStore('matrix', {
     } | null,
     // Activity Status (Game Detection)
     activityStatus: null as string | null,
+    activityDetails: null as {
+      name: string;
+      is_running: boolean;
+      details?: string;
+      state?: string;
+      applicationId?: string;
+      iconHash?: string;
+      startTimestamp?: number;
+    } | null,
     activityName: null as string | null, // Track base name for throttling
     isGameDetectionEnabled: false,
 
@@ -394,15 +403,17 @@ export const useMatrixStore = defineStore('matrix', {
       await setPref('game_activity_enabled', enabled);
       if (!enabled) {
         this.activityStatus = null;
+        this.activityDetails = null;
         this.activityName = null;
       }
       this.refreshPresence();
     },
 
-    async updatePresence(status: string, gameName: string | null = null) {
+    async updatePresence(status: string, details: any = null) {
       if (!this.isGameDetectionEnabled) return;
       this.activityStatus = status;
-      this.activityName = gameName;
+      this.activityDetails = details;
+      this.activityName = details?.name || null;
       this.refreshPresence();
     },
 
@@ -434,6 +445,15 @@ export const useMatrixStore = defineStore('matrix', {
 
     async refreshPresence() {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
+
+      // Start the Discord RPC server if enabled and not yet running
+      if (this.isGameDetectionEnabled && !!(window as any).__TAURI_INTERNALS__) {
+          try {
+              await invoke('start_rpc_server');
+          } catch (e) {
+              console.error('[MatrixStore] Failed to start RPC server in refreshPresence:', e);
+          }
+      }
 
       const presence = this.isIdle ? 'unavailable' : 'online';
       const status_msg = this.customStatus || this.activityStatus || '';
@@ -754,6 +774,20 @@ export const useMatrixStore = defineStore('matrix', {
     ) {
       console.time('[MatrixStore] initClient (total)');
       console.log("[MatrixStore] Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+
+      let storedDeviceId = await getPref('matrix_device_id', null);
+      // Robustly handle stringified "null"/"undefined" from certain storage drivers
+      if (storedDeviceId === 'null' || storedDeviceId === 'undefined') storedDeviceId = null;
+
+      const effectiveDeviceId = deviceId || storedDeviceId;
+
+      console.log("[MatrixStore] Initializing Matrix Client (Verification Diagnostics):", {
+        providedDeviceId: deviceId,
+        storedDeviceId: storedDeviceId,
+        effectiveDeviceId,
+        isVerifiedInPrefs: !!(await getPref('matrix_crypto_verified', false))
+      });
+
       this.isRestoringSession = true;
 
       // Force restart client
@@ -763,22 +797,25 @@ export const useMatrixStore = defineStore('matrix', {
         this.client = null;
       }
 
-      // 1. Fetch Device ID before client creation if missing.
-      // This ensures we don't end up with an unidentifiable Olm device.
-      if (!deviceId) {
+      // 1. Resolve Device ID. Always prefer the server's truth to prevent 400 M_BAD_JSON errors.
+      // If we don't have a deviceId, we MUST fetch it from the homeserver.
+      let finalDeviceId = effectiveDeviceId || undefined;
+      if (!finalDeviceId) {
         console.log('[MatrixStore] Device ID missing, fetching via whoami before creation...');
         const temp = sdk.createClient({ baseUrl: getHomeserverUrl(), accessToken });
         try {
           const whoami = await temp.whoami();
-          deviceId = whoami.device_id || undefined;
-          if (deviceId) {
-            await setPref('matrix_device_id', deviceId);
-            console.log('[MatrixStore] Fetched device ID:', deviceId);
+          finalDeviceId = whoami.device_id || undefined;
+          if (finalDeviceId) {
+            await setPref('matrix_device_id', finalDeviceId);
+            if (typeof localStorage !== 'undefined') localStorage.setItem('matrix_device_id', finalDeviceId);
+            console.log('[MatrixStore] Fetched device ID:', finalDeviceId);
           }
         } catch (e) {
-          console.warn('[MatrixStore] whoami failed:', e);
+          console.warn('[MatrixStore] whoami failed during device ID resolution:', e);
         }
       }
+      deviceId = finalDeviceId;
 
       // Build tokenRefreshFunction when we have full OIDC context
       let tokenRefreshFunction: sdk.TokenRefreshFunction | undefined;
@@ -1737,21 +1774,22 @@ export const useMatrixStore = defineStore('matrix', {
     async handleStartupDehydration() {
       if (!this.client) return;
       const crypto = this.client.getCrypto();
-      if (!crypto) return;
+      // Use any cast to access startDehydration which exists on RustCrypto but may not be in all CryptoApi definitions
+      const startDehydration = (crypto as any)?.startDehydration;
+      if (typeof startDehydration !== 'function') {
+        console.warn("[Dehydration] startDehydration not available on this crypto backend.");
+        return;
+      }
 
       console.log("[Dehydration] Checking for dehydrated devices...");
       try {
-        // Start dehydration logic with rehydrate: true
-        // This will attempt to rehydrate if a device exists.
-        await crypto.setupDehydration({
+        await startDehydration.call(crypto, {
           rehydrate: true,
           onlyIfKeyCached: false,
         });
-        
-        // After rehydration attempt, check if we need maintenance
         this.maintenanceDehydration();
       } catch (e) {
-        console.warn("[Dehydration] Startup rehydration failed (expected if none exist):", e);
+        console.warn("[Dehydration] Startup rehydration skipped or failed:", e);
       }
     },
 
@@ -1762,11 +1800,12 @@ export const useMatrixStore = defineStore('matrix', {
     async provisionDehydratedDevice() {
       if (!this.client || !this.isCrossSigningReady) return;
       const crypto = this.client.getCrypto();
-      if (!crypto) return;
+      const startDehydration = (crypto as any)?.startDehydration;
+      if (typeof startDehydration !== 'function') return;
 
       console.log("[Dehydration] Provisioning dehydrated device...");
       try {
-        await crypto.setupDehydration({
+        await startDehydration.call(crypto, {
           rehydrate: false,
           onlyIfKeyCached: false,
         });
@@ -1783,23 +1822,21 @@ export const useMatrixStore = defineStore('matrix', {
     async maintenanceDehydration() {
       if (!this.client || !this.isCrossSigningReady) return;
       
-      // Throttle to once every 24 hours + random jitter (0-4 hours)
       const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
       const now = Date.now();
       const jitter = Math.floor(Math.random() * 4 * 60 * 60 * 1000);
       const threshold = 24 * 60 * 60 * 1000 + jitter;
 
-      if (now - lastRun < threshold) {
-        return;
-      }
+      if (now - lastRun < threshold) return;
 
       console.log("[Dehydration] Running maintenance...");
       try {
         const crypto = this.client.getCrypto();
-        if (crypto) {
-          await crypto.setupDehydration({
+        const startDehydration = (crypto as any)?.startDehydration;
+        if (typeof startDehydration === 'function') {
+          await startDehydration.call(crypto, {
             rehydrate: false,
-            onlyIfKeyCached: true, // Only rotate if we already have the keys cached
+            onlyIfKeyCached: true,
           });
           await setPref('matrix_crypto_dehydration_last_run', now);
           console.log("[Dehydration] Maintenance complete.");

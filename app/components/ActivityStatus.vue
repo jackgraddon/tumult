@@ -206,7 +206,18 @@ const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startT
 const iconUrl = computed(() => {
   const game = displayActivity.value;
   if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
-  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${(game as any).iconHash}.png?size=128`;
+
+  const icon = (game as any).iconHash;
+  // If icon is an external URL (sometimes happens with some RPC clients), return it directly
+  if (icon.startsWith('http')) return icon;
+
+  // Otherwise, assume it's a Discord Asset ID
+  // arRPC often provides these IDs which need a specific format
+  if (icon.startsWith('mp:')) {
+    return `https://media.discordapp.net/${icon.replace('mp:', 'external/')}`;
+  }
+
+  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${icon}.png?size=128`;
 });
 
 // --- Duration Timer Logic ---

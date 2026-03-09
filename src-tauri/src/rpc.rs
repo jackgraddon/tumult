@@ -1,10 +1,19 @@
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 
-pub fn start_rpc_thread(app_handle: AppHandle) {
+static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub fn start_rpc_server(app_handle: AppHandle) {
+    if SERVER_RUNNING.load(Ordering::SeqCst) {
+        log::info!("[rpc] RPC server already running");
+        return;
+    }
     SERVER_RUNNING.store(true, Ordering::SeqCst);
+
     std::thread::spawn(move || {
         for i in 0..10 {
             let name = if cfg!(windows) {
@@ -12,6 +21,21 @@ pub fn start_rpc_thread(app_handle: AppHandle) {
             } else {
                 format!("/tmp/discord-ipc-{}", i)
             };
+
+            // On Unix, only remove the socket if it's stale
+            #[cfg(unix)]
+            {
+                use std::os::unix::net::UnixStream;
+                if std::path::Path::new(&name).exists() {
+                    if UnixStream::connect(&name).is_err() {
+                        log::info!("[rpc] Removing stale socket: {}", name);
+                        let _ = std::fs::remove_file(&name);
+                    } else {
+                        log::info!("[rpc] Socket {} is active, trying next", name);
+                        continue;
+                    }
+                }
+            }
 
             match LocalSocketListener::bind(name.clone()) {
                 Ok(listener) => {
@@ -32,6 +56,9 @@ pub fn start_rpc_thread(app_handle: AppHandle) {
                 }
                 Err(e) => {
                     log::warn!("[rpc] Failed to bind to {}: {}", name, e);
+                    if i == 9 {
+                        SERVER_RUNNING.store(false, Ordering::SeqCst);
+                    }
                 }
             }
         }
@@ -51,6 +78,12 @@ fn handle_client(mut stream: LocalSocketStream, app: AppHandle) {
 
         let opcode = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
         let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+
+        // Limit payload size to 64KB to prevent DoS
+        if length > 65536 {
+            log::error!("[rpc] Payload too large ({} bytes), disconnecting client", length);
+            break;
+        }
 
         let mut payload = vec![0u8; length as usize];
         if let Err(e) = stream.read_exact(&mut payload) {
@@ -115,9 +148,6 @@ fn send_payload(stream: &mut LocalSocketStream, opcode: u32, payload: Value) {
 
     let _ = stream.write_all(&buffer);
 }
-
-use std::sync::atomic::{AtomicBool, Ordering};
-static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn stop_rpc_server() {

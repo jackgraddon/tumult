@@ -15,6 +15,8 @@ export const usePresenceStore = defineStore('presence', {
       const matrix = useMatrixStore();
 
       let status = '';
+      let mappedDetails = null;
+
       if (data) {
         // Construct rich status
         // Simple: 🎮 Playing ${data.name}
@@ -23,10 +25,21 @@ export const usePresenceStore = defineStore('presence', {
         const details = data.details ? `: ${data.details}` : '';
         const state = data.state ? ` (${data.state})` : '';
         status = `🎮 ${name}${details}${state}`;
+
+        // Map rich details for the UI
+        mappedDetails = {
+            name: name,
+            is_running: true,
+            details: data.details,
+            state: data.state,
+            applicationId: data.application_id,
+            iconHash: data.assets?.large_image,
+            startTimestamp: data.timestamps?.start
+        };
       }
 
       // Update the main Matrix status (throttled in matrix store)
-      matrix.updatePresence(status, data?.name || null);
+      matrix.updatePresence(status, mappedDetails);
     },
     async clearGame() {
       this.activeGame = null;

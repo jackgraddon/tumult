@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            rpc::start_rpc_server,
             rpc::stop_rpc_server,
             start_oauth_server
         ])
@@ -33,9 +34,6 @@ pub fn run() {
                         .build(),
                 )?;
             }
-
-            // Start the Discord RPC bridge
-            rpc::start_rpc_thread(app.handle().clone());
 
             Ok(())
         })
