@@ -139,7 +139,8 @@ export const useMatrixStore = defineStore('matrix', {
     isCrossSigningReady: false,
     isSecretStorageReady: false,
     activeVerificationRequest: null as VerificationRequest | null,
-    verificationInitiatedByMe: false,
+    isVerificationInitiatedByMe: false,
+    isRequestingVerification: false,
     activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
     verificationPhase: null as VerificationPhase | null,
@@ -161,6 +162,9 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+
+    // Dehydration state
+    isDehydrating: false,
     gameTrigger: 0,
     gameStates: {} as Record<string, any>,
 
@@ -196,6 +200,8 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationRequested: (state) => state.verificationPhase === VerificationPhase.Requested,
     isVerificationReady: (state) => state.verificationPhase === VerificationPhase.Ready,
     isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
+    isWaitingForRecoveryKey: (state) => state.isAuthenticated && !state.isCrossSigningReady,
+    needsRecoveryKeySetup: (state) => state.isAuthenticated && !state.isSecretStorageReady,
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
@@ -819,6 +825,24 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.client) {
         this.client.stopClient();
         this.client.removeAllListeners();
+        this.client = null;
+      }
+
+      // 1. Fetch Device ID before client creation if missing.
+      // This ensures we don't end up with an unidentifiable Olm device.
+      if (!deviceId) {
+        console.log('[MatrixStore] Device ID missing, fetching via whoami before creation...');
+        const temp = sdk.createClient({ baseUrl: getHomeserverUrl(), accessToken });
+        try {
+          const whoami = await temp.whoami();
+          deviceId = whoami.device_id || undefined;
+          if (deviceId) {
+            await setPref('matrix_device_id', deviceId);
+            console.log('[MatrixStore] Fetched device ID:', deviceId);
+          }
+        } catch (e) {
+          console.warn('[MatrixStore] whoami failed:', e);
+        }
       }
 
       // Build tokenRefreshFunction when we have full OIDC context
@@ -854,7 +878,9 @@ export const useMatrixStore = defineStore('matrix', {
         refreshToken,
         tokenRefreshFunction,
         store: roomStore,
-        cryptoStore: IndexedDBCryptoStore,
+        // CRITICAL: We DO NOT pass cryptoStore here.
+        // Rust crypto handles its own storage (matrix-sdk-crypto DB).
+        // Passing IndexedDBCryptoStore here can cause legacy sync errors in recent SDKs.
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
@@ -903,9 +929,10 @@ export const useMatrixStore = defineStore('matrix', {
       let cryptoReady = false;
       this.loginStatus = 'Initialising encryption…';
       try {
+        console.log('[MatrixStore] Calling initRustCrypto...');
         await this.client.initRustCrypto();
         cryptoReady = !!this.client.getCrypto();
-        console.log('Crypto initialized:', cryptoReady);
+        console.log('[MatrixStore] Rust crypto initialized:', cryptoReady);
       } catch (e: any) {
         const msg = e?.message || '';
         if (msg.includes("account in the store doesn't match") || e.name === 'InvalidCryptoStoreError' || msg.includes('version')) {
@@ -948,7 +975,7 @@ export const useMatrixStore = defineStore('matrix', {
           });
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
-          // Recreate the client with a fresh crypto store
+          // Recreate the client
           this.client = sdk.createClient({
             baseUrl: getHomeserverUrl(),
             accessToken,
@@ -957,7 +984,6 @@ export const useMatrixStore = defineStore('matrix', {
             refreshToken,
             tokenRefreshFunction,
             store: roomStore,
-            cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk::crypto-store"),
             cryptoCallbacks: {
               getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
                 const keyIds = Object.keys(keys);
@@ -1040,6 +1066,7 @@ export const useMatrixStore = defineStore('matrix', {
           // Note: cryptoReady is a local variable in initClient scope
           if (cryptoReady) {
             this.checkDeviceVerified();
+            this.handleStartupDehydration();
           }
         }
       });
@@ -1457,15 +1484,35 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async requestVerification() {
-      this.verificationModalOpen = true; // Ensure modal opens
+      console.log('[Verification] Initiating outgoing verification request...');
+      this.verificationModalOpen = true;
+      this.isRequestingVerification = true;
 
       const crypto = this.client?.getCrypto();
-      if (!crypto) { console.error('Crypto not available'); return; }
+      if (!crypto) { 
+        console.error('Crypto not available'); 
+        toast.error('Encryption not ready', {
+          description: 'The secure messaging stack is still initializing. Please wait a moment and try again.'
+        });
+        this.isRequestingVerification = false;
+        return; 
+      }
+
+      const userId = this.client?.getUserId();
+      if (userId) {
+        try {
+          console.log('[Verification] Downloading own keys...');
+          await this.client?.downloadKeysForUsers([userId]);
+        } catch (e) {
+          console.warn('[Verification] downloadKeysForUsers failed, continuing anyway:', e);
+        }
+      }
 
       try {
         // Cancel any existing request first to avoid conflicts
         if (this.activeVerificationRequest) {
           try {
+            console.log('[Verification] Cancelling existing request before starting new one');
             await this.activeVerificationRequest.cancel();
           } catch (e) {
             console.warn("Failed to cancel previous verification request:", e);
@@ -1473,20 +1520,25 @@ export const useMatrixStore = defineStore('matrix', {
           this.activeVerificationRequest = null;
         }
 
-        // Set state immediately to show "Waiting..." UI instead of "Incoming Request"
-        this.verificationInitiatedByMe = true;
         this.isVerificationCompleted = false;
         this.activeSas = null;
 
         const request = await crypto.requestOwnUserVerification();
-        this.activeVerificationRequest = request;
+        console.log('[Verification] Request created successfully:', {
+          phase: request.phase,
+          initiatedByMe: request.initiatedByMe,
+          id: (request as any).transactionId
+        });
+
+        this.activeVerificationRequest = markRaw(request);
+        this.isVerificationInitiatedByMe = request.initiatedByMe;
         this.verificationPhase = request.phase;
         this._attachRequestListeners(request);
       } catch (e) {
         console.error('Failed to request verification:', e);
-        // Reset if failed so we don't get stuck in "Waiting..."
-        this.verificationInitiatedByMe = false;
-        this.verificationModalOpen = false;
+        // Don't close modal, let it show the choice state or error
+      } finally {
+        this.isRequestingVerification = false;
       }
     },
 
@@ -1506,18 +1558,28 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
 
       this.client.on(CryptoEvent.VerificationRequestReceived, (request: VerificationRequest) => {
-        // 1. Ignore if we started this request ourselves
-        if (request.initiatedByMe) return;
+        // 1. Ignore if we started this request ourselves (SDK handles this but double check)
+        if (request.initiatedByMe) {
+          console.log('[Verification] Ignoring loopback request:', (request as any).transactionId);
+          return;
+        }
 
-        console.log('Incoming verification from:', request.otherUserId);
+        // 2. If we already have an active request that we initiated, ignore incoming ones 
+        // until ours is resolved/cancelled to avoid UI flickering
+        if (this.isVerificationInitiatedByMe && this.activeVerificationRequest && !this.activeVerificationRequest.hasBeenCancelled) {
+          console.log('[Verification] Ignoring incoming request because we have an active outgoing one');
+          return;
+        }
 
-        // 2. Save it to state so your UI can pop open a modal
-        this.activeVerificationRequest = request;
+        console.log('Incoming verification from:', request.otherUserId, (request as any).transactionId);
+
+        // 3. Save it to state so your UI can pop open a modal
+        this.activeVerificationRequest = markRaw(request);
+        this.isVerificationInitiatedByMe = request.initiatedByMe;
         this.verificationPhase = request.phase;
-        this.verificationInitiatedByMe = false;
         this.verificationModalOpen = true;
 
-        // 3. Attach standard request listeners (handles Done/Cancelled)
+        // 4. Attach standard request listeners (handles Done/Cancelled)
         this._attachRequestListeners(request);
       });
 
@@ -1531,9 +1593,10 @@ export const useMatrixStore = defineStore('matrix', {
         try {
           const phase = request.phase;
           this.verificationPhase = phase;
+          this.isVerificationInitiatedByMe = request.initiatedByMe;
           const isTerminal = phase === VerificationPhase.Done || phase === VerificationPhase.Cancelled;
 
-          console.log(`[Verification] Phase: ${phase} (${request.otherUserId})`);
+          console.log(`[Verification] Phase changed: ${phase} (initiatedByMe: ${this.isVerificationInitiatedByMe})`);
 
           let methods: string[] = [];
           try {
@@ -1544,7 +1607,7 @@ export const useMatrixStore = defineStore('matrix', {
 
           if (phase === VerificationPhase.Ready) {
             // Initiator auto-starts SAS
-            if (this.verificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0)) {
+            if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas) {
               console.log('[Verification] Auto-starting SAS...');
               try {
                 const verifier = await request.startVerification('m.sas.v1');
@@ -1632,9 +1695,6 @@ export const useMatrixStore = defineStore('matrix', {
       const request = this.activeVerificationRequest;
 
       try {
-        // Always attach request listeners to track state
-        this._attachRequestListeners(request);
-
         if (request.phase === VerificationPhase.Ready) {
           // If already Ready, "Accept" means "Start the exchange"
           console.log('[Verification] Manual Accept: Request is already Ready, starting SAS...');
@@ -1693,6 +1753,9 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const wasReady = this.isCrossSigningReady;
 
+        // Force download our own keys to ensure we see our cross-signing status correctly
+        await this.client?.downloadKeysForUsers([userId]);
+
         // Refresh security status
         this.isCrossSigningReady = await crypto.isCrossSigningReady();
         this.isSecretStorageReady = await crypto.isSecretStorageReady();
@@ -1709,11 +1772,96 @@ export const useMatrixStore = defineStore('matrix', {
           // Request secrets just in case they haven't arrived yet
           this.requestSecretsFromOtherDevices();
 
+          // Ensure we try to restore history if we now have the keys
+          await this.restoreKeysFromBackup();
+
+          // Provision a dehydrated device now that we are verified
+          this.provisionDehydratedDevice();
+
           // Don't await this, let it run in background so UI updates immediately
           this.retryDecryption();
         }
       } catch (e) {
         console.error('Failed to check device verification:', e);
+      }
+    },
+
+    /**
+     * Phase 1: Startup Rehydration
+     * Attempt to rehydrate a device if one exists on the server.
+     */
+    async handleStartupDehydration() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("[Dehydration] Checking for dehydrated devices...");
+      try {
+        // Start dehydration logic with rehydrate: true
+        // This will attempt to rehydrate if a device exists.
+        await crypto.setupDehydration({
+          rehydrate: true,
+          onlyIfKeyCached: false,
+        });
+        
+        // After rehydration attempt, check if we need maintenance
+        this.maintenanceDehydration();
+      } catch (e) {
+        console.warn("[Dehydration] Startup rehydration failed (expected if none exist):", e);
+      }
+    },
+
+    /**
+     * Phase 2: Post-Verification Provisioning
+     * Once verified, ensure a dehydrated device is created so future sessions can rehydrate.
+     */
+    async provisionDehydratedDevice() {
+      if (!this.client || !this.isCrossSigningReady) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("[Dehydration] Provisioning dehydrated device...");
+      try {
+        await crypto.setupDehydration({
+          rehydrate: false,
+          onlyIfKeyCached: false,
+        });
+        console.log("[Dehydration] Dehydrated device provisioned successfully.");
+      } catch (e) {
+        console.error("[Dehydration] Failed to provision dehydrated device:", e);
+      }
+    },
+
+    /**
+     * Phase 3: Throttled Maintenance
+     * Ensure the dehydrated device is rotated/updated periodically.
+     */
+    async maintenanceDehydration() {
+      if (!this.client || !this.isCrossSigningReady) return;
+      
+      // Throttle to once every 24 hours + random jitter (0-4 hours)
+      const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
+      const now = Date.now();
+      const jitter = Math.floor(Math.random() * 4 * 60 * 60 * 1000);
+      const threshold = 24 * 60 * 60 * 1000 + jitter;
+
+      if (now - lastRun < threshold) {
+        return;
+      }
+
+      console.log("[Dehydration] Running maintenance...");
+      try {
+        const crypto = this.client.getCrypto();
+        if (crypto) {
+          await crypto.setupDehydration({
+            rehydrate: false,
+            onlyIfKeyCached: true, // Only rotate if we already have the keys cached
+          });
+          await setPref('matrix_crypto_dehydration_last_run', now);
+          console.log("[Dehydration] Maintenance complete.");
+        }
+      } catch (e) {
+        console.error("[Dehydration] Maintenance failed:", e);
       }
     },
 
@@ -1842,8 +1990,10 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     _resetVerificationState() {
+      console.log('[Verification] Resetting state');
       this.activeVerificationRequest = null;
-      this.verificationInitiatedByMe = false;
+      this.isVerificationInitiatedByMe = false;
+      this.isRequestingVerification = false;
       this.activeSas = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
@@ -1857,8 +2007,13 @@ export const useMatrixStore = defineStore('matrix', {
 
       try {
         console.log("Bootstrapping verification and secret storage...");
+        this.verificationModalOpen = true;
+        this.isRequestingVerification = true;
 
         // 1. Bootstrap Cross-Signing (find or create keys)
+        // We use setupNewCrossSigning: false to attempt rehydrating existing keys
+        // from secret storage rather than blowing them away and creating new ones
+        // which would invalidate other devices.
         await crypto.bootstrapCrossSigning({
           setupNewCrossSigning: false
         });
@@ -1868,11 +2023,10 @@ export const useMatrixStore = defineStore('matrix', {
           setupNewSecretStorage: false
         });
 
-        // 3. Try to load historical backup keys if they exist
+        // Update local state and trigger re-decryption
+        await this.checkDeviceVerified();
         await this.restoreKeysFromBackup();
         await this.retryDecryption();
-
-        await this.checkDeviceVerified();
 
         if (this.isCrossSigningReady) {
           this.isVerificationCompleted = true;
@@ -1881,6 +2035,8 @@ export const useMatrixStore = defineStore('matrix', {
         }
       } catch (e) {
         console.error("Bootstrap failed:", e);
+      } finally {
+        this.isRequestingVerification = false;
       }
     },
 
@@ -1975,12 +2131,10 @@ export const useMatrixStore = defineStore('matrix', {
     async retryDecryption() {
       if (!this.client) return;
       const crypto = this.client.getCrypto();
-      const rooms = this.client.getRooms(); // Check ALL rooms, not just visible ones
+      const rooms = this.client.getRooms();
 
       console.log(`Retrying decryption for ${rooms.length} rooms...`);
 
-      // Use a generator-like approach or setTimeout to avoid blocking the main thread
-      // if there are many rooms/events.
       const retryRoom = async (index: number) => {
         if (index >= rooms.length || !this.client) {
           console.log('[MatrixStore] Finished retrying decryption for all rooms.');
@@ -1992,16 +2146,29 @@ export const useMatrixStore = defineStore('matrix', {
           setTimeout(() => retryRoom(index + 1), 0);
           return;
         }
-        const events = room.getLiveTimeline().getEvents();
 
-        for (const event of events) {
-          if (event.isDecryptionFailure()) {
-            // Use attemptDecryption which is standard for retrying
-            await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+        // Search through all cached timelines for this room
+        const timelineSets = [room.getUnfilteredTimelineSet()];
+        for (const timelineSet of timelineSets) {
+          const timelines = (timelineSet as any).getTimelines?.() || [];
+          for (const timeline of timelines) {
+            const events = timeline.getEvents();
+            for (const event of events) {
+              if (event.isDecryptionFailure()) {
+                await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+              }
+            }
+          }
+          
+          // Also check the live timeline events directly as a fallback
+          const liveEvents = timelineSet.getLiveTimeline().getEvents();
+          for (const event of liveEvents) {
+            if (event.isDecryptionFailure()) {
+              await event.attemptDecryption(this.client.getCrypto() as any, { isRetry: true });
+            }
           }
         }
 
-        // Process next room in the next tick
         setTimeout(() => retryRoom(index + 1), 0);
       };
 

@@ -3,10 +3,44 @@
     <UiDialogContent class="sm:max-w-md">
       <UiDialogHeader>
         <UiDialogTitle>{{ store.secretStoragePrompt ? 'Security Key Required' : 'Device Verification' }}</UiDialogTitle>
-        <UiDialogDescription>
-          {{ store.secretStoragePrompt ? 'Enter your security key or passphrase to access encrypted messages.' : 'Someone is trying to verify this device.' }}
+        <UiDialogDescription v-if="store.secretStoragePrompt">
+          Enter your security key or passphrase to access encrypted messages.
+        </UiDialogDescription>
+        <UiDialogDescription v-else-if="store.activeVerificationRequest">
+          {{ store.isVerificationInitiatedByMe ? 'Verify this device with another session.' : 'Someone is trying to verify this device.' }}
+        </UiDialogDescription>
+        <UiDialogDescription v-else-if="store.isRequestingVerification">
+          Sending verification request...
+        </UiDialogDescription>
+        <UiDialogDescription v-else>
+          Keep your messages secure by verifying this session.
         </UiDialogDescription>
       </UiDialogHeader>
+
+      <!-- Choice / Initial State -->
+      <div v-if="!store.secretStoragePrompt && !store.activeVerificationRequest && !store.isVerificationCompleted" class="flex flex-col gap-4 py-4">
+        <template v-if="store.isRequestingVerification">
+           <div class="flex flex-col items-center gap-4 py-8">
+              <UiSpinner class="h-8 w-8 text-primary" />
+              <p class="text-sm font-medium animate-pulse">Contacting your other devices...</p>
+           </div>
+        </template>
+        <template v-else>
+          <p class="text-sm text-center text-muted-foreground">
+            How would you like to verify this session?
+          </p>
+          <div class="flex flex-col gap-2">
+            <UiButton @click="handleDeviceVerification">
+              <Icon name="solar:devices-bold" class="mr-2 size-4" />
+              Verify with another device
+            </UiButton>
+            <UiButton variant="outline" @click="store.bootstrapVerification()">
+              <Icon name="solar:key-bold" class="mr-2 size-4" />
+              Use Security Key / Passphrase
+            </UiButton>
+          </div>
+        </template>
+      </div>
 
       <!-- Secret Storage / Backup Key Input -->
       <div v-if="store.secretStoragePrompt" class="flex flex-col gap-4 py-1">
@@ -35,10 +69,17 @@
             {{ store.isCrossSigningReady ? 'Restore' : 'Verify' }}
           </UiButton>
         </div>
+
+        <div v-if="!store.isCrossSigningReady" class="pt-4 border-t mt-2">
+          <p class="text-[10px] text-muted-foreground text-center mb-2">Alternatively</p>
+          <UiButton variant="ghost" size="sm" class="w-full text-xs" @click="switchToDeviceVerification">
+            Verify with another device instead
+          </UiButton>
+        </div>
       </div>
 
       <!-- Outgoing Verification (Waiting for acceptance) -->
-      <div v-else-if="store.verificationInitiatedByMe && store.isVerificationRequested" class="flex flex-col gap-4 py-4 text-center">
+      <div v-else-if="store.isVerificationInitiatedByMe && store.isVerificationRequested" class="flex flex-col gap-4 py-4 text-center">
         <p class="text-sm">
           Open Element (or your other client) and accept the verification request.
         </p>
@@ -57,6 +98,7 @@
       </div>
 
       <!-- Outgoing/Incoming Verification (Ready to start) -->
+      <!-- Outgoing/Incoming Verification (Ready to start) -->
       <div v-else-if="store.isVerificationReady && !store.activeSas" class="flex flex-col gap-4 py-4 text-center">
         <p class="text-sm font-semibold text-green-600">
           Verification request has been accepted.
@@ -67,7 +109,7 @@
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <UiSpinner v-if="!store.activeSas" class="h-4 w-4" />
-            <span>{{ store.verificationInitiatedByMe ? 'Negotiating...' : 'Waiting for initiator...' }}</span>
+            <span>{{ store.isVerificationInitiatedByMe ? 'Negotiating...' : 'Waiting for initiator...' }}</span>
           </div>
           <!-- Fallback button if auto-negotiation fails -->
           <UiButton variant="secondary" size="sm" @click="store.acceptVerification()">
@@ -80,7 +122,7 @@
       </div>
 
       <!-- Incoming Verification Request (Initial) -->
-      <div v-else-if="!store.verificationInitiatedByMe && store.isVerificationRequested" class="flex flex-col gap-4 py-4">
+      <div v-else-if="!store.isVerificationInitiatedByMe && store.isVerificationRequested" class="flex flex-col gap-4 py-4">
         <p class="text-sm">
           A device for <strong>{{ store.activeVerificationRequest?.otherUserId }}</strong> 
           wants to verify with you.
@@ -146,6 +188,15 @@ async function submitKey() {
   if (!backupKeyInput.value) return;
   await store.submitSecretStorageKey(backupKeyInput.value);
   backupKeyInput.value = ''; 
+}
+
+async function handleDeviceVerification() {
+  await store.requestVerification();
+}
+
+function switchToDeviceVerification() {
+  store.cancelSecretStorageKey();
+  handleDeviceVerification();
 }
 
 function handleClose(open: boolean) {

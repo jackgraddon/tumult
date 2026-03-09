@@ -89,8 +89,8 @@ const showClose = computed(() => type.value === 'soft-trigger');
 
 function handleAction() {
   if (type.value === 'soft-trigger') {
-    // Open the verification modal which will show the secret storage prompt
-    store.openVerificationModal();
+    // Start verification request directly so other devices get notified
+    store.requestVerification();
   } else {
     // Open bootstrap or a dedicated setup flow
     store.bootstrapVerification();

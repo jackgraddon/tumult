@@ -108,7 +108,6 @@
             </div>
         </Transition>
     </div>
-    <VerificationWarning />
     <VerificationModal />
     <GlobalSearchModal :friends="friends" :rooms="rooms" />
 </template>
