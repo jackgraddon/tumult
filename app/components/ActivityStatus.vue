@@ -7,50 +7,7 @@
         <span class="truncate">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
       </div>
 
-      <div v-else-if="variant === 'large'" class="relative flex flex-col p-3.5 bg-card border border-border rounded-xl shadow-sm w-full max-w-sm">
-        <div class="flex items-center justify-between w-full mb-2">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Playing
-          </span>
-          <button class="text-muted-foreground hover:text-foreground transition-colors">
-            <Icon name="solar:menu-dots-bold" class="w-4 h-4" />
-          </button>
-        </div>
-
-        <div class="flex items-center gap-3.5">
-          <div class="relative w-16 h-16 shrink-0 rounded-2xl bg-muted overflow-hidden flex items-center justify-center shadow-inner border border-border/50">
-            <img 
-              v-if="iconUrl" 
-              :src="iconUrl" 
-              :alt="displayActivity.name"
-              class="w-full h-full object-cover"
-            />
-            <Icon v-else name="solar:gamepad-bold" class="w-8 h-8 text-muted-foreground/30" />
-            
-            <div class="absolute top-1 left-1 w-2.5 h-2.5 bg-emerald-500 border-2 border-card rounded-full shadow-sm"></div>
-          </div>
-
-          <div class="flex flex-col min-w-0 w-full">
-            <h4 class="font-semibold text-[15px] leading-tight text-foreground truncate w-full">
-              {{ displayActivity.name }}
-            </h4>
-            <div v-if="displayActivity.details" class="text-xs text-foreground/90 mt-0.5 truncate">
-              {{ displayActivity.details }}
-            </div>
-            <div v-if="displayActivity.state" class="text-xs text-muted-foreground mt-0.5 truncate">
-              {{ displayActivity.state }}
-            </div>
-            
-            <div v-if="gameStartTimestamp" class="flex items-center gap-1.5 mt-1.5 text-emerald-500 font-medium text-xs">
-              <Icon name="solar:gamepad-bold" class="w-3.5 h-3.5 shrink-0" />
-              <span class="tabular-nums tracking-tight">{{ elapsedDuration }} elapsed</span>
-            </div>
-            <div v-else class="text-xs text-muted-foreground mt-1 truncate">
-              Currently in-game
-            </div>
-          </div>
-        </div>
-      </div>
+      <GameCard v-else-if="variant === 'large'" :user-id="userId" />
     </template>
 
     <!-- Custom Status -->
@@ -160,31 +117,28 @@ onUnmounted(() => {
 
 watch(() => props.userId, fetchPresence);
 
-const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
-
-const displayActivity = computed(() => {
-  // Prefer local store details for self if running
-  if (isSelf.value && store.activityDetails?.is_running) {
-    return store.activityDetails; 
-  }
-  
-  if (presenceStatusMsg.value && presenceStatusMsg.value.startsWith('Playing ')) {
-      return {
-          name: presenceStatusMsg.value.substring(8),
-          is_running: true
-      };
-  }
-  return null;
+const isSelf = computed(() => {
+  const currentUserId = store.client?.getUserId();
+  return !props.userId || (currentUserId && props.userId === currentUserId);
 });
+
+const sanitize = (val: any) => {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+  return s;
+};
+
+const displayActivity = computed(() => store.resolveActivity(props.userId));
 
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self
   if (isSelf.value && store.customStatus) {
-    return store.customStatus;
+    return sanitize(store.customStatus);
   }
   
   if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ')) {
-      return presenceStatusMsg.value;
+      return sanitize(presenceStatusMsg.value);
   }
   return null;
 });

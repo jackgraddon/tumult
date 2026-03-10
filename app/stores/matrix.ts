@@ -161,6 +161,9 @@ export const useMatrixStore = defineStore('matrix', {
     // Activity Status (Game Detection)
     activityStatus: null as string | null,
     activityDetails: null as any | null,
+    remoteActivityDetails: {} as Record<string, any>,
+    appCache: {} as Record<string, { name: string; icon: string | null }>,
+    assetCache: {} as Record<string, Record<string, string>>,
     isGameDetectionEnabled: false,
     rpcSocket: null as WebSocket | null,
 
@@ -274,6 +277,7 @@ export const useMatrixStore = defineStore('matrix', {
     }
     ,
 
+
     hierarchy(state) {
       // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
@@ -376,6 +380,92 @@ export const useMatrixStore = defineStore('matrix', {
   },
 
   actions: {
+    async resolveApplicationInfo(appId: string) {
+      if (this.appCache[appId]) return this.appCache[appId];
+
+      try {
+        const response = await fetch(`https://discord.com/api/v9/applications/${appId}/rpc`);
+        if (response.ok) {
+          const data = await response.json();
+          this.appCache[appId] = {
+            name: data.name,
+            icon: data.icon
+          };
+          return this.appCache[appId];
+        }
+      } catch (e) {
+        console.warn(`[MatrixStore] Failed to resolve Discord app info for ${appId}:`, e);
+      }
+      return null;
+    },
+
+    async resolveApplicationAssets(appId: string) {
+      if (this.assetCache[appId]) return this.assetCache[appId];
+
+      try {
+        const response = await fetch(`https://discord.com/api/v9/oauth2/applications/${appId}/assets`);
+        if (response.ok) {
+          const data = await response.json();
+          const map: Record<string, string> = {};
+          if (Array.isArray(data)) {
+            data.forEach((asset: any) => {
+              map[asset.name] = asset.id;
+            });
+          }
+          this.assetCache[appId] = map;
+          return map;
+        }
+      } catch (e) {
+        console.warn(`[MatrixStore] Failed to resolve Discord assets for ${appId}:`, e);
+      }
+      return {};
+    },
+
+    resolveActivity(userId: string | null): any {
+      const currentUserId = this.client?.getUserId();
+      const targetUserId = userId || currentUserId;
+      if (!targetUserId) return null;
+
+      const isSelf = currentUserId && targetUserId === currentUserId;
+
+      const sanitize = (val: any) => {
+        if (val === null || val === undefined) return null;
+        const s = String(val).trim();
+        if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+        return s;
+      };
+
+      // 1. Local sidecar data (highest priority for self)
+      if (isSelf && this.activityDetails?.is_running) {
+        const act = this.activityDetails;
+        if (sanitize(act.name)) return act;
+      }
+
+      // 2. Synced account data (self other sessions)
+      if (isSelf && this.remoteActivityDetails[targetUserId]?.is_running) {
+        const remote = this.remoteActivityDetails[targetUserId];
+        // 5 minute freshness check
+        if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
+          if (sanitize(remote.name)) return remote;
+        }
+      }
+
+      // 3. Presence fallback (works for everyone)
+      const user = this.client?.getUser(targetUserId);
+      const presenceMsg = user?.presenceStatusMsg;
+      if (presenceMsg && presenceMsg.startsWith('Playing ')) {
+        const name = sanitize(presenceMsg.substring(8));
+        if (name) {
+          return {
+            name,
+            is_running: true
+          };
+        }
+      }
+
+      return null;
+    },
+
     async initStorage() {
       // Load all persisted prefs into Pinia state on startup
       this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
@@ -398,6 +488,13 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.isGameDetectionEnabled) {
         this.startRpcServer();
       }
+    },
+
+    _sanitizeActivityString(val: any): string | null {
+      if (val === null || val === undefined) return null;
+      const s = String(val).trim();
+      if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+      return s;
     },
 
     async setGameDetection(enabled: boolean) {
@@ -468,31 +565,69 @@ export const useMatrixStore = defineStore('matrix', {
 
       const port = 13337; // use custom port to avoid conflicts
       console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
-      const socket = new WebSocket(`ws://localhost:${port}`);
+      const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 
       socket.onopen = () => {
         console.log('[MatrixStore] Connected to arRPC bridge');
       };
 
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
           console.log('[MatrixStore] arRPC message:', data);
 
           if (data.activity) {
+            let name = this._sanitizeActivityString(data.activity.name);
+            const details = this._sanitizeActivityString(data.activity.details);
+            const appId = data.activity.application_id;
+            let appIcon = null;
+
+            let largeImage = data.activity.assets?.large_image;
+            let smallImage = data.activity.assets?.small_image;
+
+            // Always try to resolve from appId for authoritative name and assets
+            if (appId) {
+              const [appInfo, assets] = await Promise.all([
+                this.resolveApplicationInfo(appId),
+                this.resolveApplicationAssets(appId)
+              ]);
+
+              if (appInfo) {
+                name = appInfo.name || name;
+                appIcon = appInfo.icon;
+              }
+
+              // Map asset names to IDs if they are not already IDs
+              if (largeImage && assets[largeImage]) largeImage = assets[largeImage];
+              if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
+            }
+
             // Enhanced activity details from arRPC
             this.activityDetails = {
-              name: data.activity.name,
-              details: data.activity.details,
-              state: data.activity.state,
-              applicationId: data.activity.application_id,
-              iconHash: data.activity.assets?.large_image,
+              name: name || details || 'a game',
+              details: details,
+              state: this._sanitizeActivityString(data.activity.state),
+              applicationId: appId,
+              iconHash: largeImage || appIcon,
+              smallIconHash: smallImage,
               startTimestamp: data.activity.timestamps?.start,
-              is_running: true
+              is_running: true,
+              last_updated: Date.now()
             };
           } else {
             this.activityDetails = null;
           }
+
+          // Update local remoteActivityDetails immediately to prevent stale fallbacks
+          const userId = this.client?.getUserId();
+          if (userId) {
+            if (this.activityDetails) {
+              this.remoteActivityDetails[userId] = { ...this.activityDetails };
+            } else {
+              delete this.remoteActivityDetails[userId];
+            }
+          }
+
           this.refreshPresence();
         } catch (e) {
           console.error('[MatrixStore] Failed to parse arRPC message:', e);
@@ -522,10 +657,19 @@ export const useMatrixStore = defineStore('matrix', {
     async goOffline() {
       if (this.client && this.isAuthenticated) {
         console.log('[MatrixStore] Sending offline flare...');
+        
+        let status_msg = this.customStatus;
+        if (!status_msg && this.activityDetails?.is_running) {
+          const gameName = this._sanitizeActivityString(this.activityDetails.name);
+          if (gameName) {
+            status_msg = `Playing ${gameName}`;
+          }
+        }
+
         try {
           await this.client.setPresence({
             presence: 'offline',
-            status_msg: this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
+            status_msg: status_msg || ''
           });
         } catch (e) {
           console.error('[MatrixStore] Failed to send offline flare:', e);
@@ -544,7 +688,16 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
+      
+      let status_msg = this.customStatus;
+      if (!status_msg && this.activityDetails?.is_running) {
+        const gameName = this._sanitizeActivityString(this.activityDetails.name);
+        if (gameName) {
+           status_msg = `Playing ${gameName}`;
+        }
+      }
+      
+      if (!status_msg) status_msg = '';
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
@@ -565,6 +718,11 @@ export const useMatrixStore = defineStore('matrix', {
         await this.client.setPresence({ presence: presence as any, status_msg });
         this.lastPresenceUpdate = now;
         this.lastPresenceState = { presence, status_msg };
+
+        // Also sync rich activity to account data for other sessions of the SAME user
+        if (stateChanged) {
+          this.saveActivityToAccountData();
+        }
       } catch (err: any) {
         if (err?.errcode === 'M_LIMIT_EXCEEDED') {
           console.warn('[MatrixStore] Presence update rate limited by server');
@@ -1203,6 +1361,7 @@ export const useMatrixStore = defineStore('matrix', {
         }
         if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
         if (event.getType() === 'cc.jackg.ruby.ui_order') this.loadUIOrderFromAccountData();
+        if (event.getType() === 'cc.jackg.tumult.activity_details') this.loadRichActivityFromAccountData();
       });
       // Listen for parent/child changes
       this.client.on(sdk.RoomStateEvent.Events, (event) => {
@@ -1258,6 +1417,7 @@ export const useMatrixStore = defineStore('matrix', {
       // Initial trigger
       this.updatePinnedSpaces();
       this.loadUIOrderFromAccountData();
+      this.loadRichActivityFromAccountData();
       this.updateDirectMessageMap();
       this.updateHierarchy();
     },
@@ -1289,6 +1449,42 @@ export const useMatrixStore = defineStore('matrix', {
           };
           await setPref('matrix_ui_order', this.ui.uiOrder);
         }
+      }
+    },
+
+    async loadRichActivityFromAccountData() {
+      if (!this.client) return;
+      const userId = this.client.getUserId();
+      if (!userId) return;
+
+      const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
+      if (event) {
+        const content = event.getContent();
+        if (content && typeof content === 'object' && Object.keys(content).length > 0) {
+          // Only update if it's more recent than what we have locally (if anything)
+          const remoteUpdated = content.last_updated || 0;
+          const localUpdated = this.activityDetails?.last_updated || 0;
+
+          // If we are currently running a game locally, we don't overwrite it with remote data
+          // unless the remote data is also "running" and newer.
+          if (!this.activityDetails?.is_running || remoteUpdated > localUpdated) {
+             this.remoteActivityDetails[userId] = content;
+          }
+        } else {
+          delete this.remoteActivityDetails[userId];
+        }
+      } else {
+        delete this.remoteActivityDetails[userId];
+      }
+    },
+
+    async saveActivityToAccountData() {
+      if (!this.client) return;
+      try {
+        // Only sync OUR activityDetails (the ones from the sidecar)
+        await (this.client as any).setAccountData('cc.jackg.tumult.activity_details', this.activityDetails || {});
+      } catch (e) {
+        console.error('Failed to save rich activity to account data:', e);
       }
     },
 

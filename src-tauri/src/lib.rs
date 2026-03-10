@@ -75,7 +75,7 @@ async fn start_rpc_server(
 
     sidecar = sidecar.env("ARRPC_USER_ID", user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
-    sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "1337");
+    sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
 
     if let Some(avatar_hash) = avatar {
         sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);

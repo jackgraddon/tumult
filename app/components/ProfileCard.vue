@@ -6,10 +6,16 @@
         size="full"
       />
     </div>
-    <div>
+    <div class="text-sm text-muted-foreground mb-4">
       Example description
     </div>
-    <div>
+
+    <!-- Game Activity -->
+    <div class="mb-4">
+      <GameCard :userId="userid" />
+    </div>
+
+    <div class="flex items-center gap-2 mt-auto">
       <UiButton
         @click="sendMessage"
       >Message</UiButton>
