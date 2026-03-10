@@ -275,6 +275,51 @@ export const useMatrixStore = defineStore('matrix', {
     }
     ,
 
+    resolveActivity: (state) => (userId: string | null): any => {
+      const currentUserId = state.client?.getUserId();
+      const targetUserId = userId || currentUserId;
+      if (!targetUserId) return null;
+
+      const isSelf = currentUserId && targetUserId === currentUserId;
+
+      const sanitize = (val: any) => {
+        if (val === null || val === undefined) return null;
+        const s = String(val).trim();
+        if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+        return s;
+      };
+
+      // 1. Local sidecar data (highest priority for self)
+      if (isSelf && state.activityDetails?.is_running) {
+        const act = state.activityDetails;
+        if (sanitize(act.name)) return act;
+      }
+
+      // 2. Synced account data (self other sessions)
+      if (isSelf && state.remoteActivityDetails[targetUserId]?.is_running) {
+        const remote = state.remoteActivityDetails[targetUserId];
+        // 5 minute freshness check
+        if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
+          if (sanitize(remote.name)) return remote;
+        }
+      }
+
+      // 3. Presence fallback (works for everyone)
+      const user = state.client?.getUser(targetUserId);
+      const presenceMsg = user?.presenceStatusMsg;
+      if (presenceMsg && presenceMsg.startsWith('Playing ')) {
+        const name = sanitize(presenceMsg.substring(8));
+        if (name) {
+          return {
+            name,
+            is_running: true
+          };
+        }
+      }
+
+      return null;
+    },
+
     hierarchy(state) {
       // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
