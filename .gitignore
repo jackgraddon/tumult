@@ -6,6 +6,7 @@
 .cache
 .dev
 dist
+src-tauri/binaries
 
 # Node Dependencies
 node_modules
