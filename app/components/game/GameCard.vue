@@ -85,6 +85,8 @@ const displayActivity = computed(() => store.resolveActivity(props.userId));
 
 const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
 
+const isSnowflake = (id: string) => /^\d{17,20}$/.test(id);
+
 const iconUrl = computed(() => {
   const game = displayActivity.value;
   if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
@@ -102,15 +104,27 @@ const iconUrl = computed(() => {
      return `https://i.scdn.co/image/${icon.replace('spotify:', '')}`;
   }
 
-  // Handle various Discord asset types (App icons, etc.)
-  // If it's a numeric-like ID or specific hash, use the app-icons or assets endpoint
+  // If the icon is a Snowflake ID (numeric), it's a rich presence asset
+  if (isSnowflake(icon)) {
+    return `https://cdn.discordapp.com/app-assets/${appId}/${icon}.png?size=256`;
+  }
+
+  // Otherwise, assume it's an application icon hash (hex)
   return `https://cdn.discordapp.com/app-icons/${appId}/${icon}.png?size=256`;
 });
 
 const smallIconUrl = computed(() => {
   const game = displayActivity.value;
   if (!game || !(game as any).applicationId || !(game as any).smallIconHash) return null;
-  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${(game as any).smallIconHash}.png?size=64`;
+
+  const icon = (game as any).smallIconHash;
+  const appId = (game as any).applicationId;
+
+  if (isSnowflake(icon)) {
+    return `https://cdn.discordapp.com/app-assets/${appId}/${icon}.png?size=128`;
+  }
+
+  return `https://cdn.discordapp.com/app-icons/${appId}/${icon}.png?size=128`;
 });
 
 // --- Timer Logic ---

@@ -163,6 +163,7 @@ export const useMatrixStore = defineStore('matrix', {
     activityDetails: null as any | null,
     remoteActivityDetails: {} as Record<string, any>,
     appCache: {} as Record<string, { name: string; icon: string | null }>,
+    assetCache: {} as Record<string, Record<string, string>>,
     isGameDetectionEnabled: false,
     rpcSocket: null as WebSocket | null,
 
@@ -398,6 +399,28 @@ export const useMatrixStore = defineStore('matrix', {
       return null;
     },
 
+    async resolveApplicationAssets(appId: string) {
+      if (this.assetCache[appId]) return this.assetCache[appId];
+
+      try {
+        const response = await fetch(`https://discord.com/api/v9/oauth2/applications/${appId}/assets`);
+        if (response.ok) {
+          const data = await response.json();
+          const map: Record<string, string> = {};
+          if (Array.isArray(data)) {
+            data.forEach((asset: any) => {
+              map[asset.name] = asset.id;
+            });
+          }
+          this.assetCache[appId] = map;
+          return map;
+        }
+      } catch (e) {
+        console.warn(`[MatrixStore] Failed to resolve Discord assets for ${appId}:`, e);
+      }
+      return {};
+    },
+
     resolveActivity(userId: string | null): any {
       const currentUserId = this.client?.getUserId();
       const targetUserId = userId || currentUserId;
@@ -559,13 +582,24 @@ export const useMatrixStore = defineStore('matrix', {
             const appId = data.activity.application_id;
             let appIcon = null;
 
-            // Always try to resolve from appId for authoritative name
+            let largeImage = data.activity.assets?.large_image;
+            let smallImage = data.activity.assets?.small_image;
+
+            // Always try to resolve from appId for authoritative name and assets
             if (appId) {
-              const appInfo = await this.resolveApplicationInfo(appId);
+              const [appInfo, assets] = await Promise.all([
+                this.resolveApplicationInfo(appId),
+                this.resolveApplicationAssets(appId)
+              ]);
+
               if (appInfo) {
                 name = appInfo.name || name;
                 appIcon = appInfo.icon;
               }
+
+              // Map asset names to IDs if they are not already IDs
+              if (largeImage && assets[largeImage]) largeImage = assets[largeImage];
+              if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
             }
 
             // Enhanced activity details from arRPC
@@ -574,8 +608,8 @@ export const useMatrixStore = defineStore('matrix', {
               details: details,
               state: this._sanitizeActivityString(data.activity.state),
               applicationId: appId,
-              iconHash: data.activity.assets?.large_image || appIcon,
-              smallIconHash: data.activity.assets?.small_image,
+              iconHash: largeImage || appIcon,
+              smallIconHash: smallImage,
               startTimestamp: data.activity.timestamps?.start,
               is_running: true,
               last_updated: Date.now()
