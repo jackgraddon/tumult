@@ -89,14 +89,22 @@ const iconUrl = computed(() => {
   const game = displayActivity.value;
   if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
 
-  // Resolve Discord Asset ID if needed
   const icon = (game as any).iconHash;
+  const appId = (game as any).applicationId;
+
+  // External assets from RPC
   if (icon.startsWith('mp:external/')) {
-     // External asset resolution (arRPC sometimes provides these)
      return `https://media.discordapp.net/${icon.replace('mp:', '')}`;
   }
 
-  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${icon}.png?size=256`;
+  // Custom application assets (often used for RPC icons)
+  if (icon.startsWith('spotify:')) {
+     return `https://i.scdn.co/image/${icon.replace('spotify:', '')}`;
+  }
+
+  // Handle various Discord asset types (App icons, etc.)
+  // If it's a numeric-like ID or specific hash, use the app-icons or assets endpoint
+  return `https://cdn.discordapp.com/app-icons/${appId}/${icon}.png?size=256`;
 });
 
 const smallIconUrl = computed(() => {

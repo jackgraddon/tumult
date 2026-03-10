@@ -557,12 +557,14 @@ export const useMatrixStore = defineStore('matrix', {
             let name = this._sanitizeActivityString(data.activity.name);
             const details = this._sanitizeActivityString(data.activity.details);
             const appId = data.activity.application_id;
+            let appIcon = null;
 
-            // If name is missing or generic, try to resolve from appId
-            if (appId && (!name || name === details)) {
+            // Always try to resolve from appId for authoritative name
+            if (appId) {
               const appInfo = await this.resolveApplicationInfo(appId);
               if (appInfo) {
-                name = appInfo.name;
+                name = appInfo.name || name;
+                appIcon = appInfo.icon;
               }
             }
 
@@ -572,7 +574,7 @@ export const useMatrixStore = defineStore('matrix', {
               details: details,
               state: this._sanitizeActivityString(data.activity.state),
               applicationId: appId,
-              iconHash: data.activity.assets?.large_image,
+              iconHash: data.activity.assets?.large_image || appIcon,
               smallIconHash: data.activity.assets?.small_image,
               startTimestamp: data.activity.timestamps?.start,
               is_running: true,
