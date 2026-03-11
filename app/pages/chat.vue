@@ -4,13 +4,17 @@
         <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
             <!-- Home Button -->
             <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
                 :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                 :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
                 as-child
             >
                 <NuxtLink to="/chat" aria-label="Home">
                     <Icon name="solar:home-angle-bold" class="h-6 w-6" />
+                    <!-- Invite Badge -->
+                    <div v-if="store.totalInviteCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+                        {{ store.totalInviteCount }}
+                    </div>
                 </NuxtLink>
             </UiButton>
 

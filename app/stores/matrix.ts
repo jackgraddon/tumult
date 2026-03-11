@@ -208,6 +208,14 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
     isWaitingForRecoveryKey: (state) => state.isAuthenticated && !state.isCrossSigningReady,
     needsRecoveryKeySetup: (state) => state.isAuthenticated && !state.isSecretStorageReady,
+    invites: (state) => {
+      if (!state.client) return [];
+      return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite');
+    },
+    totalInviteCount: (state) => {
+      if (!state.client) return 0;
+      return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
+    },
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
@@ -1434,7 +1442,14 @@ export const useMatrixStore = defineStore('matrix', {
     setupHierarchyListeners() {
       if (!this.client) return;
 
-      this.client.on(sdk.ClientEvent.Room, () => { if (this.isClientReady) this.updateHierarchy(); });
+      this.client.on(sdk.ClientEvent.Room, (room) => { 
+        if (this.isClientReady) {
+          this.updateHierarchy(); 
+          if (room.getMyMembership() === 'invite') {
+            this.showInviteNotification(room);
+          }
+        }
+      });
       this.client.on(sdk.ClientEvent.AccountData, (event) => {
         if (event.getType() === sdk.EventType.Direct) {
           this.updateHierarchy();
@@ -1620,6 +1635,21 @@ export const useMatrixStore = defineStore('matrix', {
 
     updateHierarchy() {
       this.hierarchyTrigger++;
+    },
+
+    showInviteNotification(room: sdk.Room) {
+      const inviterId = room.getInviter();
+      const inviterName = room.getMember(inviterId!)?.name || inviterId;
+      const myUserId = this.client?.getUserId();
+      const isDirect = room.getMember(myUserId!)?.events.member?.getContent().is_direct;
+
+      const title = isDirect ? 'New DM Invite' : 'New Room Invite';
+      const body = `${inviterName} invited you to ${room.name}`;
+
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(title, { body });
+      }
+      toast.info(title, { description: body });
     },
 
     // Action to get avatar and name
@@ -2652,6 +2682,58 @@ export const useMatrixStore = defineStore('matrix', {
       this.pinnedSpaces = newPinned;
       await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
       await setPref('matrix_pinned_spaces', newPinned);
+    },
+
+    async acceptInvite(roomId: string) {
+      if (!this.client) return;
+      try {
+        const room = this.client.getRoom(roomId);
+        const myUserId = this.client.getUserId();
+        const myMember = room?.getMember(myUserId!);
+        const isDirect = myMember?.events.member?.getContent().is_direct;
+
+        await this.client.joinRoom(roomId);
+
+        if (isDirect) {
+          await this.markRoomAsDirect(roomId);
+        }
+
+        toast.success('Joined room');
+      } catch (err: any) {
+        console.error('Failed to accept invite:', err);
+        toast.error('Failed to join room', { description: err.message });
+      }
+    },
+
+    async declineInvite(roomId: string) {
+      if (!this.client) return;
+      try {
+        await this.client.leave(roomId);
+        toast.success('Invite declined');
+      } catch (err: any) {
+        console.error('Failed to decline invite:', err);
+        toast.error('Failed to decline invite', { description: err.message });
+      }
+    },
+
+    async markRoomAsDirect(roomId: string) {
+      if (!this.client) return;
+      const room = this.client.getRoom(roomId);
+      if (!room) return;
+
+      const myUserId = this.client.getUserId();
+      const otherMember = room.getMembers().find(m => m.userId !== myUserId);
+      if (!otherMember) return;
+
+      const dmEvent = this.client.getAccountData(sdk.EventType.Direct);
+      const content = dmEvent ? JSON.parse(JSON.stringify(dmEvent.getContent())) : {};
+
+      const userRooms = content[otherMember.userId] || [];
+      if (!userRooms.includes(roomId)) {
+        userRooms.push(roomId);
+        content[otherMember.userId] = userRooms;
+        await (this.client as any).setAccountData(sdk.EventType.Direct, content);
+      }
     },
 
     setupMatrixRTCListeners() {
