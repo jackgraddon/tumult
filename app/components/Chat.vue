@@ -1376,8 +1376,11 @@ interface StagedFile {
 const stagedFiles = ref<StagedFile[]>([]);
 
 function removeStagedFile(index: number) {
+  const staged = stagedFiles.value[index];
+  if (!staged) return;
+
   // Free up browser memory
-  URL.revokeObjectURL(stagedFiles.value[index].previewUrl);
+  URL.revokeObjectURL(staged.previewUrl);
   stagedFiles.value.splice(index, 1);
 }
 
@@ -1411,11 +1414,13 @@ async function handleFileSelect(event: Event) {
   
   for (let i = 0; i < input.files.length; i++) {
     const file = input.files[i];
-    stagedFiles.value.push({
-      file,
-      // For non-images, you might want to show a generic icon, but URL.createObjectURL still works safely
-      previewUrl: URL.createObjectURL(file) 
-    });
+    if (file) {
+      stagedFiles.value.push({
+        file,
+        // For non-images, you might want to show a generic icon, but URL.createObjectURL still works safely
+        previewUrl: URL.createObjectURL(file)
+      });
+    }
   }
 
   input.value = ''; // Reset input
@@ -1496,10 +1501,13 @@ async function sendMessage() {
   editingMessage.value = null;
   isSending.value = true;
 
+  const currentRoomId = roomId.value as string;
+  if (!currentRoomId) return;
+
   try {
     // 1. Upload and send any staged files first
     for (const staged of filesToSend) {
-      await store.uploadFile(roomId.value!, staged.file);
+      await store.uploadFile(currentRoomId, staged.file);
       URL.revokeObjectURL(staged.previewUrl); // Clean up memory
     }
 
@@ -1512,7 +1520,7 @@ async function sendMessage() {
           'm.new_content': { body: text, msgtype: MsgType.Text },
           'm.relates_to': { rel_type: 'm.replace', event_id: currentEdit.eventId }
         } as any;
-        await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+        await store.client.sendEvent(currentRoomId, EventType.RoomMessage, content);
         
       } else if (currentReply) {
          const content = {
@@ -1520,9 +1528,9 @@ async function sendMessage() {
              msgtype: MsgType.Text,
              'm.relates_to': { 'm.in_reply_to': { event_id: currentReply.eventId } }
          } as any;
-         await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+         await store.client.sendEvent(currentRoomId, EventType.RoomMessage, content);
       } else {
-        await store.client.sendEvent(roomId.value!, EventType.RoomMessage, {
+        await store.client.sendEvent(currentRoomId, EventType.RoomMessage, {
           body: text,
           msgtype: MsgType.Text,
         });
