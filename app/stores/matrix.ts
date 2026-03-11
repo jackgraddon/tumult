@@ -475,12 +475,32 @@ export const useMatrixStore = defineStore('matrix', {
       const user = this.client?.getUser(targetUserId);
       const presenceMsg = user?.presenceStatusMsg;
       if (presenceMsg && presenceMsg.startsWith('Playing ')) {
-        const name = sanitize(presenceMsg.substring(8));
+        // Check for Tumult-encoded metadata (separated by Zero Width Space)
+        const parts = presenceMsg.substring(8).split('\u200B');
+        const name = sanitize(parts[0]);
+
         if (name) {
-          return {
+          const activity: any = {
             name,
             is_running: true
           };
+
+          // If metadata is present, decode it
+          if (parts.length > 1) {
+            try {
+              const meta = JSON.parse(parts[1]);
+              activity.applicationId = meta.a;
+              activity.iconHash = meta.i;
+              activity.smallIconHash = meta.s;
+              activity.startTimestamp = meta.t;
+              activity.details = sanitize(meta.d);
+              activity.state = sanitize(meta.st);
+            } catch (e) {
+              // Not valid metadata, just continue with basic name
+            }
+          }
+
+          return activity;
         }
       }
 
@@ -793,7 +813,24 @@ export const useMatrixStore = defineStore('matrix', {
       if (!status_msg && this.activityDetails?.is_running) {
         const gameName = this._sanitizeActivityString(this.activityDetails.name);
         if (gameName) {
-           status_msg = `Playing ${gameName}`;
+           // Encode rich activity metadata into the presence message
+           // Using short keys to stay under common status length limits (often 255 chars)
+           const meta = {
+             a: this.activityDetails.applicationId,
+             i: this.activityDetails.iconHash,
+             s: this.activityDetails.smallIconHash,
+             t: this.activityDetails.startTimestamp,
+             d: this.activityDetails.details,
+             st: this.activityDetails.state
+           };
+
+           // Filter out nulls to keep the JSON string small
+           const cleanMeta: any = {};
+           for (const [k, v] of Object.entries(meta)) {
+             if (v !== null && v !== undefined) cleanMeta[k] = v;
+           }
+
+           status_msg = `Playing ${gameName}\u200B${JSON.stringify(cleanMeta)}`;
         }
       }
       

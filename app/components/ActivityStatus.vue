@@ -175,13 +175,19 @@ let timerInterval: number | null = null;
 
 const updateDuration = () => {
   const game = displayActivity.value;
-  if (!game || !(game as any).startTimestamp) {
+  let start = (game as any)?.startTimestamp;
+  if (!game || !start) {
     elapsedDuration.value = '';
     return;
   }
+
+  // Handle Unix seconds vs milliseconds
+  if (start < 10000000000) {
+    start *= 1000;
+  }
   
   const now = Date.now();
-  const diffInSeconds = Math.max(0, Math.floor((now - (game as any).startTimestamp) / 1000));
+  const diffInSeconds = Math.max(0, Math.floor((now - start) / 1000));
   
   const hours = Math.floor(diffInSeconds / 3600);
   const minutes = Math.floor((diffInSeconds % 3600) / 60);
