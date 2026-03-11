@@ -351,6 +351,16 @@ export const useMatrixStore = defineStore('matrix', {
         }
       });
 
+      // Also identify DMs by checking the is_direct flag in memberships (robust fallback)
+      const myUserId = state.client.getUserId();
+      normalRooms.forEach(room => {
+        if (dmRoomIds.has(room.roomId)) return;
+        const myMember = room.getMember(myUserId!);
+        if (myMember?.events.member?.getContent().is_direct) {
+          dmRoomIds.add(room.roomId);
+        }
+      });
+
       // --- THE FINAL CATEGORIES ---
 
       // Servers: Spaces that have NO parents AND HAVE at least one child
@@ -2639,8 +2649,23 @@ export const useMatrixStore = defineStore('matrix', {
           preset: sdk.Preset.TrustedPrivateChat,
         });
 
-        console.log(`[MatrixStore] Created room ${result.room_id}`);
-        return result.room_id;
+        const roomId = result.room_id;
+        console.log(`[MatrixStore] Created room ${roomId}`);
+
+        // Manually update m.direct account data to ensure it's categorized as a DM immediately
+        const dmEvent = this.client.getAccountData(sdk.EventType.Direct);
+        const content = dmEvent ? JSON.parse(JSON.stringify(dmEvent.getContent())) : {};
+
+        const userRooms = content[userId] || [];
+        if (!userRooms.includes(roomId)) {
+          userRooms.push(roomId);
+          content[userId] = userRooms;
+          await (this.client as any).setAccountData(sdk.EventType.Direct, content);
+          console.log(`[MatrixStore] Updated m.direct for ${userId} with room ${roomId}`);
+        }
+
+        this.updateHierarchy();
+        return roomId;
       } catch (err: any) {
         console.error("[MatrixStore] Failed to create direct room:", err);
         throw new Error(err.message || "Failed to create room.");
@@ -2698,6 +2723,7 @@ export const useMatrixStore = defineStore('matrix', {
           await this.markRoomAsDirect(roomId);
         }
 
+        this.updateHierarchy();
         toast.success('Joined room');
       } catch (err: any) {
         console.error('Failed to accept invite:', err);
@@ -2733,6 +2759,7 @@ export const useMatrixStore = defineStore('matrix', {
         userRooms.push(roomId);
         content[otherMember.userId] = userRooms;
         await (this.client as any).setAccountData(sdk.EventType.Direct, content);
+        this.updateHierarchy();
       }
     },
 
