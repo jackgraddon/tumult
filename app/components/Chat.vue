@@ -73,12 +73,45 @@
 
       <!-- Incoming Call Banner -->
       <IncomingCallBanner 
-        v-if="room" 
+        v-if="room && isJoined" 
         :room-id="roomId as string" 
         :room-name="room?.name || 'Unknown Room'" 
         class="mt-4 mx-4"
       />
     </header>
+
+    <!-- Invite Prompt -->
+    <div v-if="room && isInvited" class="flex-1 flex flex-col items-center justify-center p-8 text-center bg-muted/20">
+      <div class="max-w-md w-full space-y-8 animate-in fade-in zoom-in duration-300">
+        <div class="flex flex-col items-center gap-4">
+          <MatrixAvatar 
+            :mxc-url="roomAvatarUrl" 
+            :name="room?.name" 
+            class="h-24 w-24 border-4 border-background shadow-xl"
+            :size="128"
+          />
+          <div class="space-y-2">
+            <h2 class="text-2xl font-bold tracking-tight">{{ room?.name }}</h2>
+            <p v-if="inviterName" class="text-muted-foreground">
+              <span class="font-semibold text-foreground">{{ inviterName }}</span> invited you to join this {{ isDm ? 'direct chat' : 'room' }}.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <UiButton size="lg" class="w-full font-bold h-12 text-base" @click="store.acceptInvite(roomId as string)">
+            Accept Invite
+          </UiButton>
+          <UiButton variant="outline" size="lg" class="w-full font-semibold h-12 text-base" @click="store.declineInvite(roomId as string)">
+            Decline
+          </UiButton>
+        </div>
+
+        <div v-if="roomTopic" class="p-4 rounded-xl bg-background/50 border border-border text-sm text-muted-foreground italic leading-relaxed">
+          &ldquo;{{ roomTopic }}&rdquo;
+        </div>
+      </div>
+    </div>
 
     <!-- Loading / Hydration state -->
     <div v-if="!room || (store.isRestoringSession && !store.isFullySynced && displayMessages.length === 0)" class="flex-1 flex flex-col pt-20 items-center justify-start gap-4">
@@ -88,7 +121,7 @@
     </div>
 
     <!-- Timeline -->
-    <div v-else class="flex-1 flex overflow-y-scroll flex-col relative">
+    <div v-else-if="isJoined" class="flex-1 flex overflow-y-scroll flex-col relative">
       <div 
         ref="timelineContainer" 
         class="flex-1 overflow-y-auto p-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1 overflow-hidden"
@@ -480,7 +513,7 @@
     </div>
 
     <!-- Message Composer -->
-    <footer v-if="room" class="flex-none p-4 border-t shrink-0">
+    <footer v-if="room && isJoined" class="flex-none p-4 border-t shrink-0">
       <div v-if="stagedFiles.length > 0" class="px-4 pb-3 flex gap-3 overflow-x-auto items-end">
         <div 
           v-for="(staged, index) in stagedFiles" 
@@ -835,6 +868,16 @@ const otherUserId = computed(() => {
   const myUserId = store.client.getUserId();
   const members = room.value.getMembers(); // Include invites/left members
   return members.find(m => m.userId !== myUserId)?.userId;
+});
+
+const isJoined = computed(() => room.value?.getMyMembership() === 'join');
+const isInvited = computed(() => room.value?.getMyMembership() === 'invite');
+
+const inviterName = computed(() => {
+  if (!room.value || !isInvited.value) return null;
+  const inviterId = room.value.getInviter();
+  if (!inviterId) return null;
+  return room.value.getMember(inviterId)?.name || inviterId;
 });
 
 const canSend = computed(() => {
@@ -1550,6 +1593,14 @@ async function initRoom() {
   // Found room, clean up temp listener
   store.client.removeListener(ClientEvent.Room, onRoomAdded);
   room.value = r;
+
+  // If invited, we don't need to load history or members
+  if (r.getMyMembership() === 'invite') {
+    room.value = r;
+    messages.value = [];
+    isLoadingHistory.value = false;
+    return;
+  }
 
   // Hydrate members for lazy loading (non-blocking)
   r.loadMembersIfNeeded();

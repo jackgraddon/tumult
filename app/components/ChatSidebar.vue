@@ -10,10 +10,35 @@
             <div class="flex flex-col gap-2 flex-1">
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
-                    <UiButton variant="default" @click="store.openGlobalSearchModal()">
+                    <UiButton variant="default" @click="store.openGlobalSearchModal()" class="w-full">
                         <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
                         Find or start a chat
                     </UiButton>
+
+                    <!-- Invitations Section -->
+                    <div v-if="store.invites.length > 0" class="mt-4 flex flex-col gap-2">
+                        <div class="px-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Invitations ({{ store.invites.length }})</span>
+                        </div>
+                        <div 
+                            v-for="invite in store.invites" 
+                            :key="invite.roomId"
+                            role="button"
+                            class="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors group"
+                            @click="navigateToInvite(invite)"
+                        >
+                            <MatrixAvatar
+                                :mxc-url="invite.getMxcAvatarUrl()"
+                                :name="invite.name"
+                                class="h-8 w-8 shrink-0 border shadow-sm"
+                                :size="64"
+                            />
+                            <div class="flex flex-col min-w-0">
+                                <span class="text-sm font-semibold truncate">{{ invite.name }}</span>
+                                <span class="text-[10px] text-muted-foreground truncate">Invited by {{ invite.getMember(invite.getInviter()!)?.name || invite.getInviter() }}</span>
+                            </div>
+                        </div>
+                    </div>
                 </template>
 
                 <!-- Sidebar DM List -->
@@ -378,6 +403,14 @@ watch(activeSpaceId, (newSpaceId) => {
 const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
+
+const navigateToInvite = (room: Room) => {
+  const myUserId = store.client?.getUserId();
+  const myMember = room.getMember(myUserId!);
+  const isDirect = myMember?.events.member?.getContent().is_direct;
+  const path = isDirect ? `/chat/dms/${room.roomId}` : `/chat/rooms/${room.roomId}`;
+  navigateTo(path);
+};
 
 const toggleCategory = (categoryId: string) => {
   store.toggleUICategory(categoryId);
