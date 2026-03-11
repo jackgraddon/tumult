@@ -26,6 +26,9 @@
 </template>
 
 <script lang="ts" setup>
+definePageMeta({
+  icon: 'solar:settings-bold',
+})
 
 const store = useMatrixStore();
 const gameActivity = useGameActivity();

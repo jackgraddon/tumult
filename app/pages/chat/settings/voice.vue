@@ -165,6 +165,10 @@
 </template>
 
 <script lang="ts" setup>
+definePageMeta({
+  icon: 'solar:phone-bold',
+})
+
 import { ref, reactive } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 
@@ -298,23 +302,30 @@ async function checkMatrixRTC() {
   if (!matrixStore.client) {
     diagnostics.matrixRTC.available = false;
     diagnostics.matrixRTC.focus = false;
-    diagnostics.errors.push('Tumult not available for MatrixRTC check');
     return;
   }
 
   diagnostics.matrixRTC.available = !!(matrixStore.client.matrixRTC);
-  if (!diagnostics.matrixRTC.available) {
-    diagnostics.matrixRTC.focus = false;
-    diagnostics.errors.push('MatrixRTC is not available on this client');
-    return;
-  }
 
   try {
-    const wellKnown = await matrixStore.client.getClientWellKnown();
+    // 1. Try the SDK first
+    let wellKnown = await matrixStore.client.getClientWellKnown();
+    
+    // 2. If SDK says undefined, force a fresh fetch to verify the Worker
+    if (!wellKnown) {
+      const response = await fetch(`${matrixStore.client.getHomeserverUrl()}/.well-known/matrix/client`);
+      if (response.ok) {
+        wellKnown = await response.json();
+      }
+    }
+
+    console.log("Resolved Well-Known:", wellKnown);
+
     const rtcFoci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
     diagnostics.matrixRTC.focus = Array.isArray(rtcFoci) && rtcFoci.length > 0;
+    
     if (!diagnostics.matrixRTC.focus) {
-      diagnostics.errors.push('No MatrixRTC foci in .well-known — falling back to default matrix.org focus');
+      diagnostics.errors.push('No MatrixRTC foci found in well-known');
     }
   } catch (error) {
     diagnostics.matrixRTC.focus = false;

@@ -138,6 +138,10 @@
 </template>
 
 <script lang="ts" setup>
+definePageMeta({
+  icon: 'solar:user-bold',
+})
+
 import { toast } from 'vue-sonner';
 
 const store = useMatrixStore();

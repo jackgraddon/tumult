@@ -81,7 +81,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivity(props.userId));
+const displayActivity = computed(() => store.resolveActivity(props.userId ?? null));
 
 const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
 

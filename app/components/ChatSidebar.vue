@@ -116,7 +116,7 @@
                         :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
                         @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
                     >
-                        <Icon name="solar:settings-bold" class="h-4 w-4 mr-2 text-muted-foreground" />
+                        <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
                         <span class="truncate">{{ page.label }}</span>
                     </div>
                 </template>
@@ -245,6 +245,7 @@ const settingsPages = computed(() => {
             return {
                 path: r.path,
                 label: isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1),
+                icon: (r.meta.icon as string) || 'solar:settings-linear', // Added a safe fallback
             };
         })
         .sort((a, b) => {

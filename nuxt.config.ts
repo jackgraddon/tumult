@@ -53,6 +53,9 @@ export default defineNuxtConfig({
     },
     optimizeDeps: {
       exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
+      entries: [
+        './app/**/*.{vue,ts,tsx}'
+      ]
     },
     esbuild: {
       supported: {
