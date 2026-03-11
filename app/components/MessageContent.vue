@@ -13,6 +13,7 @@
 </template>
 
 <script setup lang="ts">
+import DOMPurify from 'dompurify';
 
 const props = defineProps<{
   body: string;
@@ -109,7 +110,17 @@ const processedHtml = computed(() => {
     }
   });
 
-  const result = body.innerHTML;
+  const result = DOMPurify.sanitize(body.innerHTML, {
+    ALLOWED_TAGS: [
+      'blockquote', 'pre', 'code', 'p', 'ul', 'ol', 'li', 'a',
+      'h1', 'h2', 'h3', 'h4', 'br', 'img', 'span', 'del',
+      's', 'strike', 'u', 'i', 'em', 'b', 'strong', 'mx-reply'
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'class', 'target',
+      'rel', 'data-mxc', 'data-mx-emoticon'
+    ],
+  });
   console.log('[MessageContent] Processed HTML:', result);
   return result;
 });

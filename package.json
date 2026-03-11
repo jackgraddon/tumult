@@ -30,6 +30,7 @@
     "chess.js": "^1.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.3.3",
     "livekit-client": "^2.17.2",
     "lucide-vue-next": "^0.564.0",
     "matrix-js-sdk": "^40.2.0-rc.0",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@nuxtjs/tailwindcss": "7.0.0-beta.1",
     "@tauri-apps/cli": "^2.10.0",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^25.2.3",
     "@vite-pwa/nuxt": "^1.1.1",
     "tailwindcss": "^4.1.18",
