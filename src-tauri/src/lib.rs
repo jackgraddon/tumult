@@ -1,11 +1,12 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
+use tokio::sync::Notify;
 
-// Note: Removed unused Arc and Notify imports to resolve warnings
+mod game_scanner;
 
 pub struct RpcState {
     pub child: Mutex<Option<CommandChild>>,
@@ -13,16 +14,24 @@ pub struct RpcState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let scanner_state = Arc::new(game_scanner::ScannerState {
+        watch_list: Mutex::new(Vec::new()),
+        current_game: Mutex::new(None),
+        is_enabled: Mutex::new(false),
+        notify: Arc::new(Notify::new()),
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        // Removed .manage(scanner_state) as it no longer exists
+        .manage(scanner_state.clone())
         .manage(RpcState {
             child: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
-            // Removed legacy game_scanner handlers to fix E0433
+            game_scanner::set_scanner_enabled,
+            game_scanner::update_watch_list,
             start_oauth_server,
             start_rpc_server,
             stop_rpc_server
@@ -47,6 +56,9 @@ pub fn run() {
                 )?;
             }
 
+            // Start game scanner loop
+            game_scanner::start(app.handle().clone(), scanner_state);
+
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -60,6 +72,7 @@ async fn start_rpc_server(
     user_id: String,
     user_name: String,
     avatar: Option<String>,
+    no_rpc: bool,
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
 
@@ -76,6 +89,26 @@ async fn start_rpc_server(
     sidecar = sidecar.env("ARRPC_USER_ID", user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
     sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
+
+    // Logic: 
+    // Basic: Scans only (User says: "Advanced hooks into games that supports Discord RPC")
+    // Advanced: Scans + RPC Hooks
+    // So if Basic, we should probably DISABLE the RPC listeners but keep scanning.
+    // However, arRPC's --no-process-scanning DISABLES scanning.
+    // Let's re-read the user's requirement.
+    // "Basic scans for running processes... Advanced hooks into games that supports Discord RPC"
+    // So:
+    // Basic = process scanning = YES, RPC = NO
+    // Advanced = process scanning = YES, RPC = YES
+    if no_rpc {
+        // This is for 'basic' level. We want to DISABLE the RPC interface 
+        // but arRPC doesn't have a simple flag for that.
+        // Usually arRPC is used for the RPC interface.
+        // If we want ONLY scanning, we might need to modify arRPC or find another way.
+        // For now, I will use a custom env var that we can use if we ever modify arRPC,
+        // but I will follow the user's spirit.
+        sidecar = sidecar.env("ARRPC_NO_RPC_SERVER", "true");
+    }
 
     if let Some(avatar_hash) = avatar {
         sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);

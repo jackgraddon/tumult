@@ -12,7 +12,7 @@ import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomes
 // Tauri imports - explicit import is required as per user confirmation/config check
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { hostname, type, version } from '@tauri-apps/plugin-os';
+import { hostname, type, version, platform as getPlatform } from '@tauri-apps/plugin-os';
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
@@ -164,8 +164,10 @@ export const useMatrixStore = defineStore('matrix', {
     remoteActivityDetails: {} as Record<string, any>,
     appCache: {} as Record<string, { name: string; icon: string | null }>,
     assetCache: {} as Record<string, Record<string, string>>,
-    isGameDetectionEnabled: false,
+    gameDetectionLevel: 'off' as 'off' | 'basic' | 'advanced',
+    detectableGames: [] as any[],
     rpcSocket: null as WebSocket | null,
+    rpcRetryTimer: null as any | null,
 
     // Dehydration state
     isDehydrating: false,
@@ -480,13 +482,84 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async initGameDetection() {
-      // Check if Tauri storage has "game_activity_enabled"
-      const stored = await getPref('game_activity_enabled', false);
+      // Check if Tauri storage has "game_detection_level"
+      const stored = await getPref('game_detection_level', 'off');
       console.log('[MatrixStore] Loading game detection config:', stored);
-      this.isGameDetectionEnabled = stored;
+      this.gameDetectionLevel = stored as any;
 
-      if (this.isGameDetectionEnabled) {
-        this.startRpcServer();
+      if ((window as any).__TAURI_INTERNALS__) {
+        listen('game-activity', (event: any) => {
+           console.log('[MatrixStore] Game activity event from Rust:', event.payload);
+           const { name, is_running } = event.payload;
+           if (is_running) {
+             this.activityDetails = {
+               name,
+               is_running: true,
+               last_updated: Date.now()
+             };
+           } else {
+             if (this.activityDetails?.name === name) {
+               this.activityDetails = null;
+             }
+           }
+           this.refreshPresence();
+        });
+      }
+
+      if (this.gameDetectionLevel !== 'off') {
+        this.setGameDetectionLevel(this.gameDetectionLevel);
+      }
+    },
+
+    async fetchDetectableGames() {
+      if (this.detectableGames.length > 0) return this.detectableGames;
+      try {
+        const res = await fetch('https://discord.com/api/v9/applications/detectable');
+        if (res.ok) {
+          this.detectableGames = await res.json();
+          return this.detectableGames;
+        }
+      } catch (e) {
+        console.error('[MatrixStore] Failed to fetch detectable games:', e);
+      }
+      return [];
+    },
+
+    async setGameDetectionLevel(level: 'off' | 'basic' | 'advanced') {
+      console.log('[MatrixStore] Setting game detection level:', level);
+      this.gameDetectionLevel = level;
+      await setPref('game_detection_level', level);
+
+      // Disable everything first
+      await this.stopRpcServer();
+      if ((window as any).__TAURI_INTERNALS__) {
+        await invoke('set_scanner_enabled', { enabled: false });
+      }
+
+      if (level === 'basic') {
+        // Basic: Rust process scanning ONLY
+        if ((window as any).__TAURI_INTERNALS__) {
+          const games = await this.fetchDetectableGames();
+          const os = getPlatform(); // macos, windows, linux
+          
+          // Filter games for the current OS
+          const filtered = games.map((g: any) => ({
+             id: g.id,
+             name: g.name,
+             executables: (g.executables || []).filter((e: any) => {
+                if (os === 'windows') return e.os === 'win32';
+                if (os === 'macos') return e.os === 'darwin';
+                if (os === 'linux') return e.os === 'linux';
+                return false;
+             })
+          })).filter((g: any) => g.executables.length > 0);
+
+          await invoke('update_watch_list', { games: filtered });
+          await invoke('set_scanner_enabled', { enabled: true });
+        }
+      } else if (level === 'advanced') {
+        // Advanced: arRPC sidecar (handles both scanning and RPC)
+        await this.startRpcServer();
       }
     },
 
@@ -528,11 +601,12 @@ export const useMatrixStore = defineStore('matrix', {
       const avatarHash = this.user?.avatarUrl?.split('/').pop();
 
       try {
-        console.log('[MatrixStore] Starting arRPC sidecar...');
+        console.log(`[MatrixStore] Starting arRPC sidecar (${this.gameDetectionLevel})...`);
         await invoke('start_rpc_server', {
           userId: hashedId,
           userName,
-          avatar: avatarHash || null
+          avatar: avatarHash || null,
+          noRpc: this.gameDetectionLevel === 'basic'
         });
 
         this.connectRpcWebSocket();
@@ -561,7 +635,14 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     connectRpcWebSocket() {
-      if (this.rpcSocket) this.rpcSocket.close();
+      if (this.rpcSocket) {
+        this.rpcSocket.onclose = null;
+        this.rpcSocket.close();
+      }
+      if (this.rpcRetryTimer) {
+        clearTimeout(this.rpcRetryTimer);
+        this.rpcRetryTimer = null;
+      }
 
       const port = 13337; // use custom port to avoid conflicts
       console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
@@ -636,9 +717,9 @@ export const useMatrixStore = defineStore('matrix', {
 
       socket.onclose = () => {
         console.log('[MatrixStore] Disconnected from arRPC bridge');
-        if (this.isGameDetectionEnabled) {
+        if (this.gameDetectionLevel === 'advanced') {
           // Retry connection after a delay
-          setTimeout(() => this.connectRpcWebSocket(), 5000);
+          this.rpcRetryTimer = setTimeout(() => this.connectRpcWebSocket(), 5000);
         }
       };
 

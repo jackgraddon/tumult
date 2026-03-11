@@ -9,11 +9,12 @@ export function useGameActivity() {
     }
 
     function toggle() {
-        store.setGameDetection(!store.isGameDetectionEnabled);
+        store.setGameDetectionLevel(store.gameDetectionLevel === 'off' ? 'basic' : 'off');
     }
 
     return {
-        isEnabled: computed(() => store.isGameDetectionEnabled),
+        isEnabled: computed(() => store.gameDetectionLevel !== 'off'),
+        gameDetectionLevel: computed(() => store.gameDetectionLevel),
         isSupported: computed(() => isSupported.value),
         currentActivity: computed(() => store.activityDetails?.name || null),
         toggle
