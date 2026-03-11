@@ -125,10 +125,13 @@ async fn start_rpc_server(
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
-                    println!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                    log::info!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
                 }
                 CommandEvent::Stderr(line) => {
-                    eprintln!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                    log::error!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::warn!("[rpc-sidecar] Process terminated: {:?}", payload);
                 }
                 _ => {}
             }

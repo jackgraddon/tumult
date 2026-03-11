@@ -490,10 +490,10 @@ export const useMatrixStore = defineStore('matrix', {
       if ((window as any).__TAURI_INTERNALS__) {
         listen('game-activity', (event: any) => {
            console.log('[MatrixStore] Game activity event from Rust:', event.payload);
-           const { name, is_running } = event.payload;
+           const { name, exe, is_running } = event.payload;
            if (is_running) {
              this.activityDetails = {
-               name,
+               name: name + (exe ? ` (via ${exe})` : ''),
                is_running: true,
                last_updated: Date.now()
              };
@@ -2103,7 +2103,8 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         // Start dehydration logic with rehydrate: true
         // This will attempt to rehydrate if a device exists.
-        await crypto.setupDehydration({
+        // Use any to bypass outdated type definitions and ensure correct 'this' context.
+        await (crypto as any).startDehydration.call(crypto, {
           rehydrate: true,
           onlyIfKeyCached: false,
         });
@@ -2126,7 +2127,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       console.log("[Dehydration] Provisioning dehydrated device...");
       try {
-        await crypto.setupDehydration({
+        await (crypto as any).startDehydration.call(crypto, {
           rehydrate: false,
           onlyIfKeyCached: false,
         });
@@ -2157,7 +2158,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const crypto = this.client.getCrypto();
         if (crypto) {
-          await crypto.setupDehydration({
+          await (crypto as any).startDehydration.call(crypto, {
             rehydrate: false,
             onlyIfKeyCached: true, // Only rotate if we already have the keys cached
           });

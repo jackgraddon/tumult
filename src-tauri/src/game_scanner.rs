@@ -26,6 +26,7 @@ pub struct DetectableGame {
 #[derive(Clone, Debug, Serialize)]
 pub struct GameActivity {
     pub name: String,
+    pub exe: String,
     pub is_running: bool,
 }
 
@@ -89,12 +90,15 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             // Check each game in the watch list
             for game in &watch_list {
                 for exe in &game.executables {
-                    let exe_name = OsStr::new(&exe.name);
-                    let found = sys.processes_by_name(exe_name).next().is_some();
+                    // Normalize executable name: handle paths by taking only the filename
+                    let exe_path = std::path::Path::new(&exe.name);
+                    let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
+
+                    let found = sys.processes_by_name(exe_filename).next().is_some();
 
                     if found {
                         detected_name = Some(game.name.clone());
-                        detected_exe = Some(exe.name.clone());
+                        detected_exe = Some(exe_filename.to_string_lossy().to_string());
                         break;
                     }
                 }
@@ -108,11 +112,12 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 (None, Some(name)) => {
                     // Game just started
                     let exe_str = detected_exe.as_deref().unwrap_or("unknown");
-                    log::info!("[game_scanner] Detected: {} (exe: {})", name, exe_str);
+                    log::info!("[game_scanner] Detected: {} by {}", name, exe_str);
                     let _ = app.emit(
                         "game-activity",
                         GameActivity {
                             name: name.clone(),
+                            exe: exe_str.to_string(),
                             is_running: true,
                         },
                     );
@@ -124,6 +129,7 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                         "game-activity",
                         GameActivity {
                             name: prev.clone(),
+                            exe: "".to_string(),
                             is_running: false,
                         },
                     );
@@ -131,11 +137,12 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 (Some(prev), Some(name)) if prev != name => {
                     // Switched games
                     let exe_str = detected_exe.as_deref().unwrap_or("unknown");
-                    log::info!("[game_scanner] Switched: {} -> {} (exe: {})", prev, name, exe_str);
+                    log::info!("[game_scanner] Switched: {} -> {} by {}", prev, name, exe_str);
                     let _ = app.emit(
                         "game-activity",
                         GameActivity {
                             name: name.clone(),
+                            exe: exe_str.to_string(),
                             is_running: true,
                         },
                     );
