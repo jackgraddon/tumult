@@ -13,14 +13,23 @@ if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
 console.log('--- Building arRPC Sidecar ---');
 
 // 1. Determine target info
-let rustTriple = '';
-try {
-  rustTriple = execSync('rustc -Vv').toString().split('\n').find(l => l.startsWith('host:')).split(' ')[1].trim();
-} catch (e) {
-  process.exit(1);
+// Priority: TAURI_ENV_TARGET_TRIPLE (set by Tauri) > host triple from rustc
+let rustTriple = process.env.TAURI_ENV_TARGET_TRIPLE;
+
+if (!rustTriple) {
+  try {
+    rustTriple = execSync('rustc -Vv').toString().split('\n').find(l => l.startsWith('host:')).split(' ')[1].trim();
+    console.log(`Note: TAURI_ENV_TARGET_TRIPLE not set, falling back to host triple: ${rustTriple}`);
+  } catch (e) {
+    console.error('Failed to determine target triple via rustc');
+    process.exit(1);
+  }
 }
 
-const binaryName = `arrpc-${rustTriple}${process.platform === 'win32' ? '.exe' : ''}`;
+console.log(`Building for target triple: ${rustTriple}`);
+
+const isWindows = rustTriple.includes('windows');
+const binaryName = `arrpc-${rustTriple}${isWindows ? '.exe' : ''}`;
 const outputPath = path.join(binariesDir, binaryName);
 
 // 2. Bundle with esbuild
@@ -62,9 +71,17 @@ fs.writeFileSync(path.join(distDir, 'package.json'), JSON.stringify({ name: "arr
 
 // 5. Wrap with pkg
 console.log('Step 3: Wrapping into binary...');
-const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-const pkgTarget = process.platform === 'win32' ? `node18-win-${arch}` :
-  process.platform === 'darwin' ? `node18-macos-${arch}` : `node18-linux-${arch}`;
+
+// Map Rust triple to pkg target
+let pkgPlatform = 'linux';
+if (rustTriple.includes('windows')) pkgPlatform = 'win';
+else if (rustTriple.includes('apple') || rustTriple.includes('darwin')) pkgPlatform = 'macos';
+
+let pkgArch = 'x64';
+if (rustTriple.startsWith('aarch64') || rustTriple.includes('arm64')) pkgArch = 'arm64';
+
+const pkgTarget = `node18-${pkgPlatform}-${pkgArch}`;
+console.log(`Using pkg target: ${pkgTarget}`);
 
 execSync(`npx pkg . --targets ${pkgTarget} --output ${outputPath} --public`, {
   cwd: distDir,
