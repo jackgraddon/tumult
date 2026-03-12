@@ -186,7 +186,7 @@
                                 <Icon name="solar:check-circle-bold" class="h-4 w-4 text-green-500" />
                             </UiButton>
                         </div>
-                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" class="flex flex-col gap-1" chosen-class="drag-chosen">
+                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" :fallback-on-body="true" class="flex flex-col gap-1" chosen-class="drag-chosen">
                             <div 
                                 v-for="category in draggableCategories" 
                                 :key="category.id"

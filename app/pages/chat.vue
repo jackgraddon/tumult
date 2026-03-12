@@ -53,7 +53,7 @@
             <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
             <!-- Server List -->
-            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
+            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :fallback-on-body="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
                 <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
                     <UiContextMenuTrigger>
                         <UiButton 
@@ -351,7 +351,7 @@ watch(
 
 <style>
 .drag-chosen {
-  transform: scale(1.05) !important;
+  scale: 1.05;
   z-index: 50;
   transition: none !important;
   filter: drop-shadow(0 0 8px rgba(128, 128, 255, 0.4));

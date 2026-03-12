@@ -41,7 +41,7 @@
         
         <div v-show="!isCollapsed" class="flex flex-col gap-1">
             <!-- Nested Categories -->
-            <draggable v-model="draggableChildren" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
+            <draggable v-model="draggableChildren" :animation="200" ghost-class="opacity-30" :force-fallback="true" :fallback-on-body="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
                     <ChatSidebarCategory 
                         v-for="childCategory in draggableChildren"
                         :key="childCategory.id"
@@ -55,7 +55,7 @@
             </draggable>
 
             <!-- Rooms in this category -->
-            <draggable v-model="draggableRooms" class="flex flex-col" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
+            <draggable v-model="draggableRooms" class="flex flex-col" :animation="200" ghost-class="opacity-30" :force-fallback="true" :fallback-on-body="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
                 <div v-for="room in draggableRooms" :key="room.roomId" class="flex flex-col">
                     <!-- Voice Channel (Click to Join) -->
                     <div 
