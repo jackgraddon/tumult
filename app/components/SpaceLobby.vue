@@ -4,6 +4,16 @@
     <div class="relative h-48 shrink-0 bg-gradient-to-br from-primary/20 via-background to-secondary/20 border-b overflow-hidden">
         <div class="absolute inset-0 bg-grid-white/[0.05] [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]" />
         <div class="relative h-full max-w-5xl mx-auto px-8 flex items-end pb-6 gap-6">
+            <UiButton
+                variant="ghost"
+                size="icon-sm"
+                class="md:hidden shrink-0 absolute top-4 left-4 z-10"
+                @click="store.toggleSidebar(true)"
+                v-if="!store.ui.sidebarOpen"
+            >
+                <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
+            </UiButton>
+
             <MatrixAvatar 
                 :mxc-url="space.getMxcAvatarUrl()" 
                 :name="space.name" 

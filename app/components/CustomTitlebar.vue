@@ -1,5 +1,6 @@
 <template>
   <div
+    v-if="isTauri"
     class="fixed top-0 left-0 right-0 h-[30px] w-full flex items-center justify-between select-none transition-colors bg-neutral-200 dark:bg-background z-[9999]"
     data-tauri-drag-region
   >
@@ -29,11 +30,10 @@
 </template>
 
 <script setup lang="ts">
-const isTauri = ref(false);
+const isTauri = ref(import.meta.client && !!(window as any).__TAURI_INTERNALS__);
 const isMac = ref(true); // Default to true to prevent visual pop on macos
 
 onMounted(async () => {
-  isTauri.value = !!(window as any).__TAURI_INTERNALS__;
   if (isTauri.value) {
     try {
       const { type } = await import('@tauri-apps/plugin-os');

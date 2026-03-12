@@ -1,6 +1,15 @@
 <template>
   <div class="container p-4 py-6 space-y-8">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <UiButton
+        variant="ghost"
+        size="icon-sm"
+        class="md:hidden shrink-0"
+        @click="store.toggleSidebar(true)"
+        v-if="!store.ui.sidebarOpen"
+      >
+        <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
+      </UiButton>
       <h1 class="text-3xl font-bold tracking-tight">Home</h1>
     </div>
 
@@ -13,6 +22,7 @@
           :key="room.roomId"
           :to="`/chat/dms/${room.roomId}`"
           class="block group"
+          @click="store.toggleSidebar(false)"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
             <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -47,6 +57,7 @@
           :key="room.roomId"
           :to="`/chat/rooms/${room.roomId}`"
           class="block group"
+          @click="store.toggleSidebar(false)"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
              <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -79,11 +90,11 @@
 </template>
 
 <script setup lang="ts">
+const store = useMatrixStore();
+
 import * as sdk from 'matrix-js-sdk';
 import MatrixAvatar from '~/components/MatrixAvatar.vue'; 
 import { Card as UiCard, CardHeader as UiCardHeader, CardTitle as UiCardTitle, CardDescription as UiCardDescription } from '~/components/ui/card';
-
-const store = useMatrixStore();
 
 // Use explicit casts or relaxed types to handle potential version mismatches in types
 const recentDms = ref<any[]>([]);

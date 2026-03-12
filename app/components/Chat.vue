@@ -18,7 +18,17 @@
 
     <!-- Room Header -->
     <header v-if="room" class="flex-none p-4 border-b border-border">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-2">
+        <UiButton
+          variant="ghost"
+          size="icon-sm"
+          class="md:hidden shrink-0"
+          @click="store.toggleSidebar(true)"
+          v-if="!store.ui.sidebarOpen"
+        >
+          <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
+        </UiButton>
+
         <RoomHeader 
           v-if="!isDm"
           :name="room?.name || 'Unknown Room'"

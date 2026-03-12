@@ -46,6 +46,7 @@ export interface UIState {
     categories: Record<string, string[]>; // Order of categories per spaceId
     rooms: Record<string, string[]>; // Order of rooms per categoryId
   };
+  sidebarOpen: boolean;
 }
 
 // Enhanced HTML for OAuth Loopback Response
@@ -202,6 +203,7 @@ export const useMatrixStore = defineStore('matrix', {
       showEmptyRooms: false,
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
+      sidebarOpen: false,
     } as UIState,
   }),
 
@@ -939,6 +941,14 @@ export const useMatrixStore = defineStore('matrix', {
     async toggleShowEmptyRooms() {
       this.ui.showEmptyRooms = !this.ui.showEmptyRooms;
       await setPref('matrix_show_empty_rooms', this.ui.showEmptyRooms);
+    },
+
+    toggleSidebar(open?: boolean) {
+      if (typeof open === 'boolean') {
+        this.ui.sidebarOpen = open;
+      } else {
+        this.ui.sidebarOpen = !this.ui.sidebarOpen;
+      }
     },
 
     cancelLogin(errorReason?: string | null) {

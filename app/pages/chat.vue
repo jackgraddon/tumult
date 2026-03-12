@@ -1,118 +1,139 @@
 <template>
-    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background">
-        <!-- Servers Sidebar (Guild Bar) -->
-        <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
-            <!-- Home Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
-                :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
-                as-child
-            >
-                <NuxtLink to="/chat" aria-label="Home">
-                    <Icon name="solar:home-angle-bold" class="h-6 w-6" />
-                    <!-- Invite Badge -->
-                    <div v-if="store.totalInviteCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
-                        {{ store.totalInviteCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background relative overflow-hidden">
+        <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
+        <div
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10"
+            :class="[
+                store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-20%] md:translate-x-0',
+                'fixed top-0 left-0 md:relative'
+            ]"
+        >
+            <!-- Servers Sidebar (Guild Bar) -->
+            <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+                <!-- Home Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group"
+                    :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink to="/chat" aria-label="Home">
+                        <Icon name="solar:home-angle-bold" class="h-6 w-6" />
+                        <!-- Invite Badge -->
+                        <div v-if="store.totalInviteCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+                            {{ store.totalInviteCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <!-- DMs Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
-                :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
-                as-child
-            >
-                <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
-                    <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
-                    <!-- Unread Badge -->
-                    <div v-if="store.totalDmUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
-                        {{ store.totalDmUnreadCount > 99 ? '99+' : store.totalDmUnreadCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+                <!-- DMs Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
+                    :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
+                        <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
+                        <!-- Unread Badge -->
+                        <div v-if="store.totalDmUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                            {{ store.totalDmUnreadCount > 99 ? '99+' : store.totalDmUnreadCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <!-- Rooms Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
-                :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
-                as-child
-            >
-                <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
-                    <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
-                    <!-- Unread Badge -->
-                    <div v-if="store.totalOrphanRoomUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
-                        {{ store.totalOrphanRoomUnreadCount > 99 ? '99+' : store.totalOrphanRoomUnreadCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+                <!-- Rooms Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
+                    :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
+                        <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
+                        <!-- Unread Badge -->
+                        <div v-if="store.totalOrphanRoomUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                            {{ store.totalOrphanRoomUnreadCount > 99 ? '99+' : store.totalOrphanRoomUnreadCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
+                <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
-            <!-- Server List -->
-            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
-                <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
-                    <UiContextMenuTrigger>
-                        <UiButton 
-                            variant="ghost" 
-                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
-                            :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                            as-child
-                        >
-                            <NuxtLink 
-                                :to="store.lastVisitedRooms.spaces[server.roomId] 
-                                    ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
-                                    : `/chat/spaces/${server.roomId}`" 
-                                :aria-label="server.name"
+                <!-- Server List -->
+                <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
+                    <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
+                        <UiContextMenuTrigger>
+                            <UiButton
+                                variant="ghost"
+                                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
+                                :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                                as-child
                             >
-                                <MatrixAvatar 
-                                    :mxc-url="server.getMxcAvatarUrl()" 
-                                    :name="server.name" 
-                                    class="h-full w-full border-0 transition-all" 
-                                    :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
-                                    :size="64"
-                                />
-                                <!-- Space Unread Badge -->
-                                <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
-                                    <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
-                                        {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
-                                    </div>
-                                </template>
-                            </NuxtLink>
-                        </UiButton>
-                    </UiContextMenuTrigger>
-                    <UiContextMenuContent>
-                        <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                            <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
-                            Unpin from Sidebar
-                        </UiContextMenuItem>
-                        <UiContextMenuItem v-else disabled>
-                            <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
-                            Root Space
-                        </UiContextMenuItem>
-                    </UiContextMenuContent>
-                </UiContextMenu>
-            </draggable>
+                                <NuxtLink
+                                    :to="store.lastVisitedRooms.spaces[server.roomId]
+                                        ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}`
+                                        : `/chat/spaces/${server.roomId}`"
+                                    :aria-label="server.name"
+                                >
+                                    <MatrixAvatar
+                                        :mxc-url="server.getMxcAvatarUrl()"
+                                        :name="server.name"
+                                        class="h-full w-full border-0 transition-all"
+                                        :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
+                                        :size="64"
+                                    />
+                                    <!-- Space Unread Badge -->
+                                    <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
+                                        <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
+                                            {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
+                                        </div>
+                                    </template>
+                                </NuxtLink>
+                            </UiButton>
+                        </UiContextMenuTrigger>
+                        <UiContextMenuContent>
+                            <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
+                                <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
+                                Unpin from Sidebar
+                            </UiContextMenuItem>
+                            <UiContextMenuItem v-else disabled>
+                                <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
+                                Root Space
+                            </UiContextMenuItem>
+                        </UiContextMenuContent>
+                    </UiContextMenu>
+                </draggable>
 
-            <!-- Add Server / Explorer -->
-            <UiButton 
-                variant="secondary"
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
-                @click="store.openGlobalSearchModal()"
-            >
-                <Icon name="solar:add-circle-linear" class="h-6 w-6" />
-            </UiButton>
-        </aside>
+                <!-- Add Server / Explorer -->
+                <UiButton
+                    variant="secondary"
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800"
+                    @click="store.openGlobalSearchModal()"
+                >
+                    <Icon name="solar:add-circle-linear" class="h-6 w-6" />
+                </UiButton>
+            </aside>
 
-        <!-- Sidebar -->
-        <ChatSidebar ref="sidebarRef"/>
+            <!-- Sidebar -->
+            <ChatSidebar ref="sidebarRef"/>
+        </div>
 
         <!-- Main Content -->
-        <main class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0">
-            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
+        <main
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
+            :class="[
+                store.ui.sidebarOpen ? 'translate-x-[280px] md:translate-x-0' : 'translate-x-0'
+            ]"
+        >
+            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden relative">
+                <!-- Mobile Overlay to close sidebar -->
+                <div
+                    v-if="store.ui.sidebarOpen"
+                    class="md:hidden absolute inset-0 z-50 bg-black/20"
+                    @click="store.toggleSidebar(false)"
+                ></div>
+
                 <header class="landmark-banner shrink-0">
                     <SecurityBanner />
                 </header>
