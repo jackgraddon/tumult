@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <h2 class="text-2xl font-semibold tracking-tight">Diagnostics</h2>
 
     <div class="flex items-center justify-between">
