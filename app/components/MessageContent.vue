@@ -7,13 +7,22 @@
       formattedBody ? 'formatted-html' : 'whitespace-pre-wrap'
     ]"
     style="overflow-wrap: anywhere"
-    v-html="processedHtml"
     @click="handleClick"
+    v-html="processedHtml"
   />
 </template>
 
 <script setup lang="ts">
 import DOMPurify from 'dompurify';
+
+// Security Enhancement: Add rel="noopener noreferrer" to all links.
+// Registered globally once to avoid redundant hook registration during re-renders.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
 
 const props = defineProps<{
   body: string;
@@ -42,10 +51,16 @@ function linkify(text: string): string {
 
 // Prepare HTML content
 const processedHtml = computed(() => {
+  let rawHtml = '';
+
   // Plain text: escape HTML entities (whitespace-pre-wrap handles newlines)
   if (!props.formattedBody) {
     const escaped = escapeHtml(props.body);
-    return linkify(escaped);
+    rawHtml = linkify(escaped);
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: ['a', 'br', 'span', 'b', 'strong', 'i', 'em', 'u', 'del', 's', 'strike'],
+      ALLOWED_ATTR: ['href', 'class', 'target', 'rel']
+    });
   }
 
   // HTML formatted body: parse and clean up
@@ -117,7 +132,7 @@ const processedHtml = computed(() => {
       's', 'strike', 'u', 'i', 'em', 'b', 'strong', 'mx-reply'
     ],
     ALLOWED_ATTR: [
-      'href', 'src', 'alt', 'title', 'class', 'target',
+      'href', 'src', 'alt', 'title', 'class',
       'rel', 'data-mxc', 'data-mx-emoticon'
     ],
   });
@@ -178,12 +193,22 @@ watch(() => props.formattedBody, async () => {
 });
 
 function handleClick(e: MouseEvent) {
-  const target = e.target as HTMLElement;
-  if (target.tagName === 'A') {
-    e.preventDefault();
-    const href = target.getAttribute('href');
+  const link = (e.target as HTMLElement).closest('a');
+  if (link) {
+    const href = link.getAttribute('href');
     if (href) {
-      import('@tauri-apps/plugin-shell').then(({ open }) => open(href));
+      // Security: Only allow safe protocols to be opened via the system shell.
+      // This prevents exploitation of dangerous custom protocol handlers.
+      const isSafeProtocol = /^(https?|mailto):/i.test(href);
+      if (isSafeProtocol) {
+        e.preventDefault();
+        import('@tauri-apps/plugin-shell').then(({ open }) => open(href));
+      } else {
+        // For unsafe or unknown protocols, we let the browser handle it 
+        // (which in Tauri/Webview usually means doing nothing or showing a warning)
+        console.warn('[MessageContent] Blocked attempt to open potentially unsafe protocol:', href);
+        e.preventDefault();
+      }
     }
   }
 }
