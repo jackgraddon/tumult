@@ -172,6 +172,8 @@ export const useMatrixStore = defineStore('matrix', {
     // Dehydration state
     isDehydrating: false,
     gameTrigger: 0,
+    unreadTrigger: 0,
+    unreadCountType: sdk.NotificationCountType.Total as sdk.NotificationCountType,
     gameStates: {} as Record<string, any>,
 
     customStatus: null as string | null,
@@ -215,6 +217,52 @@ export const useMatrixStore = defineStore('matrix', {
     totalInviteCount: (state) => {
       if (!state.client) return 0;
       return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
+    },
+    totalDmUnreadCount: (state) => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+      const { directMessages } = state.hierarchy;
+      return directMessages.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    },
+    totalOrphanRoomUnreadCount: (state) => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+      const { orphanRooms } = state.hierarchy;
+      return orphanRooms.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    },
+    getSpaceUnreadCount: (state) => (spaceId: string): number => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+
+      const roomIds = new Set<string>();
+      const queue = [spaceId];
+      const visited = new Set<string>();
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+
+        const room = state.client.getRoom(currentId);
+        if (!room) continue;
+
+        if (room.isSpaceRoom()) {
+          const children = room.currentState.getStateEvents('m.space.child');
+          children.forEach(ev => {
+            const childId = ev.getStateKey();
+            if (childId) queue.push(childId);
+          });
+        } else {
+          roomIds.add(currentId);
+        }
+      }
+
+      let total = 0;
+      roomIds.forEach(id => {
+        const room = state.client?.getRoom(id);
+        total += room?.getUnreadNotificationCount(state.unreadCountType) || 0;
+      });
+      return total;
     },
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
@@ -1397,6 +1445,19 @@ export const useMatrixStore = defineStore('matrix', {
       const debouncedHierarchyTrigger = useDebounceFn(() => {
         this.hierarchyTrigger++;
       }, 150);
+
+      const debouncedUnreadTrigger = useDebounceFn(() => {
+        this.unreadTrigger++;
+      }, 200);
+
+      this.client.on(sdk.RoomEvent.Receipt, () => {
+        debouncedUnreadTrigger();
+      });
+
+      this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
+        if (toStartOfTimeline) return;
+        debouncedUnreadTrigger();
+      });
 
       this.client.on(sdk.ClientEvent.Event, (event) => {
         const type = event.getType();

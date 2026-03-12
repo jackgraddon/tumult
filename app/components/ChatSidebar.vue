@@ -324,7 +324,7 @@ const mapRoom = (room: Room): MappedRoom => {
     lastMessage: lastEvent ? lastEvent.getContent().body : 'No messages',
     lastActive: lastEvent?.getTs() ?? room.getLastActiveTimestamp() ?? 0,
     avatarUrl: room.getMxcAvatarUrl(),
-    unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0,
+    unreadCount: room.getUnreadNotificationCount(store.unreadCountType) ?? 0,
   };
 };
 
@@ -336,8 +336,9 @@ const isEmptyRoom = (room: Room): boolean => {
 
 const friends = computed(() => {
   if (!store.client) return [];
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   const { directMessages } = store.hierarchy;
   const directEvent = store.client.getAccountData(EventType.Direct);
@@ -377,8 +378,9 @@ const friends = computed(() => {
 
 const rooms = computed(() => {
   if (!store.client) return [];
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   const { orphanRooms } = store.hierarchy;
   // Filter out empty rooms unless the setting is enabled
@@ -465,8 +467,9 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
 const spaceCategories = computed(() => {
   // Access hierarchy for reactivity trigger
   store.hierarchy;
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   if (!store.client || !activeSpaceId.value) return [];
   

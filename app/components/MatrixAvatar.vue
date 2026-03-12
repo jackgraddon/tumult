@@ -1,5 +1,5 @@
 <template>
-  <UiAvatar :class="cn('h-10 w-10 border', props.class)">
+  <UiAvatar :class="cn('h-10 w-10 border overflow-hidden', props.class)">
     <UiAvatarImage
       v-if="imageUrl"
       :src="imageUrl"

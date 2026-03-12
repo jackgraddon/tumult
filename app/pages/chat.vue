@@ -20,25 +20,33 @@
 
             <!-- DMs Button -->
             <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                 :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                 :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
                 as-child
             >
                 <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
                     <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
+                    <!-- Unread Badge -->
+                    <div v-if="store.totalDmUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                        {{ store.totalDmUnreadCount > 99 ? '99+' : store.totalDmUnreadCount }}
+                    </div>
                 </NuxtLink>
             </UiButton>
 
             <!-- Rooms Button -->
             <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                 :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                 :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
                 as-child
             >
                 <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
                     <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
+                    <!-- Unread Badge -->
+                    <div v-if="store.totalOrphanRoomUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                        {{ store.totalOrphanRoomUnreadCount > 99 ? '99+' : store.totalOrphanRoomUnreadCount }}
+                    </div>
                 </NuxtLink>
             </UiButton>
 
@@ -50,7 +58,7 @@
                     <UiContextMenuTrigger>
                         <UiButton 
                             variant="ghost" 
-                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0"
+                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                             :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
                             as-child
                         >
@@ -63,9 +71,14 @@
                                 <MatrixAvatar 
                                     :mxc-url="server.getMxcAvatarUrl()" 
                                     :name="server.name" 
-                                    class="h-full w-full border-0 rounded-none group-hover:rounded-none" 
+                                    class="h-full w-full border-0 transition-all"
+                                    :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
                                     :size="64"
                                 />
+                                <!-- Space Unread Badge -->
+                                <div v-if="store.getSpaceUnreadCount(server.roomId) > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
+                                    {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
+                                </div>
                             </NuxtLink>
                         </UiButton>
                     </UiContextMenuTrigger>
