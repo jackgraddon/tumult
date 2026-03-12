@@ -40,6 +40,28 @@ const actionText = computed(() => {
   }
   if (content.value.action === 'accept') return `${senderName.value} accepted the game!`;
   if (content.value.action === 'decline') return `${senderName.value} declined the game.`;
+
+  // CrossConnect Actions
+  if (content.value.action === 'play') {
+    const words = content.value.words;
+    const score = content.value.score;
+    const wordText = words && words.length > 0 ? ` '${words.join(', ')}'` : '';
+    return `${senderName.value} played${wordText} for ${score} points`;
+  }
+  if (content.value.action === 'swap') {
+    return `${senderName.value} swapped ${content.value.count || 'some'} tiles`;
+  }
+  if (content.value.action === 'pass') {
+    return `${senderName.value} passed their turn`;
+  }
+  if (content.value.action === 'challenge') {
+    return `${senderName.value} challenged the last move!`;
+  }
+  if (content.value.action === 'resolve_challenge') {
+    const result = content.value.result === 'accepted' ? 'accepted' : 'rejected';
+    return `${senderName.value} resolved the challenge: move was ${result}`;
+  }
+
   return `${senderName.value} action: ${content.value.action}`;
 });
 </script>

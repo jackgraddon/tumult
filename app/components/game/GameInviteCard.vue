@@ -2,6 +2,7 @@
 import type { MatrixEvent } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
 import { ref, computed } from 'vue';
+import { createInitialBag } from '~/utils/scrabble';
 
 const props = defineProps<{
   event: MatrixEvent;
@@ -34,6 +35,7 @@ async function acceptInvite() {
   let initialBoard: any = null;
   let players: any = {};
   let currentTurn: string | undefined;
+  let additionalState: any = {};
 
   if (gameType === 'tictactoe') {
     initialBoard = Array(9).fill(null);
@@ -49,6 +51,25 @@ async function acceptInvite() {
       black: store.client?.getUserId()!
     };
     currentTurn = players.white;
+  } else if (gameType === 'crossconnect') {
+    const bag = createInitialBag();
+    const p1 = props.event.getSender()!;
+    const p2 = store.client?.getUserId()!;
+    
+    players = { [p1]: 'p1', [p2]: 'p2' };
+    
+    const racks: Record<string, string[]> = {};
+    racks[p1] = bag.splice(-7);
+    racks[p2] = bag.splice(-7);
+    
+    initialBoard = Array(15).fill(null).map(() => Array(15).fill(null));
+    currentTurn = p1;
+    
+    additionalState = {
+      bag,
+      racks,
+      scores: { [p1]: 0, [p2]: 0 }
+    };
   }
 
   try {
@@ -59,7 +80,8 @@ async function acceptInvite() {
       players: players,
       board: initialBoard,
       current_turn: currentTurn,
-      started_at: Date.now()
+      started_at: Date.now(),
+      ...additionalState
     });
 
     await sendGameAction(gameId, {

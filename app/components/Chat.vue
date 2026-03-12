@@ -283,6 +283,11 @@
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
+                   <CrossConnect
+                     v-else-if="getGameTypeFromState(msg.gameId) === 'crossconnect'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
                    <Chess
                      v-else-if="getGameTypeFromState(msg.gameId) === 'chess'"
                      :game-id="msg.gameId"
@@ -594,6 +599,9 @@
                       <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
                         <span>Chess</span>
                       </UiDropdownMenuItem>
+                      <UiDropdownMenuItem @click="handleInviteToGame('crossconnect')" class="cursor-pointer">
+                        <span>Slanguage Tiles</span>
+                      </UiDropdownMenuItem>
                     </UiDropdownMenuSubContent>
                   </UiDropdownMenuPortal>
                 </UiDropdownMenuSub>
@@ -645,6 +653,7 @@ import GameActionBubble from './game/GameActionBubble.vue';
 import GameResultCard from './game/GameResultCard.vue';
 import TicTacToe from './game/TicTacToe.vue';
 import Chess from './game/Chess.vue';
+import CrossConnect from './game/CrossConnect.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
