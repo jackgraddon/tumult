@@ -28,7 +28,7 @@
 <script lang="ts" setup>
 definePageMeta({
   icon: 'solar:settings-bold',
-  category: 'general',
+  category: 'app',
   title: 'General',
   place: 1
 })

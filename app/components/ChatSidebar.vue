@@ -133,12 +133,12 @@
 
                 <!-- Sidebar Settings Nav -->
                 <template v-if="isLinkActive('/chat/settings')">
-                    <div v-for="(group, category) in settingsGroups" :key="category" class="flex flex-col gap-1 mb-4">
+                    <div v-for="group in settingsGroups" :key="group.id" class="flex flex-col gap-1 mb-4">
                         <div class="px-2 mb-1">
-                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ category }}</span>
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ group.name }}</span>
                         </div>
                         <div
-                            v-for="page in group"
+                            v-for="page in group.pages"
                             :key="page.path"
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
@@ -275,6 +275,13 @@ const isLinkActive = (to: string) => {
 
 
 const settingsGroups = computed(() => {
+    const categoryNames: Record<string, string> = {
+        user: 'User Settings',
+        app: 'App Settings',
+        advanced: 'Advanced Settings'
+    };
+    const categoryOrder = ['user', 'app', 'advanced'];
+
     const seen = new Set<string>();
     const pages = router.getRoutes()
         .filter(r => r.path === '/chat/settings' || /^\/chat\/settings\/[^/]+$/.test(r.path))
@@ -291,23 +298,24 @@ const settingsGroups = computed(() => {
                 path: r.path,
                 label: (r.meta.title as string) || (isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1)),
                 icon: (r.meta.icon as string) || 'solar:settings-linear',
-                category: (r.meta.category as string) || 'general',
+                category: (r.meta.category as string) || 'app',
                 place: (r.meta.place as number) || 99
             };
         });
 
-    const groups: Record<string, typeof pages> = {};
+    const groupsMap: Record<string, typeof pages> = {};
     pages.forEach(p => {
-        if (!groups[p.category]) groups[p.category] = [];
-        groups[p.category].push(p);
+        if (!groupsMap[p.category]) groupsMap[p.category] = [];
+        groupsMap[p.category].push(p);
     });
 
-    // Sort within groups by 'place'
-    Object.keys(groups).forEach(cat => {
-        groups[cat].sort((a, b) => a.place - b.place);
-    });
-
-    return groups;
+    return categoryOrder
+        .filter(cat => groupsMap[cat])
+        .map(cat => ({
+            id: cat,
+            name: categoryNames[cat] || cat,
+            pages: groupsMap[cat].sort((a, b) => a.place - b.place)
+        }));
 });
 
 const store = useMatrixStore();
