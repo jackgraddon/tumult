@@ -185,6 +185,7 @@ export const useMatrixStore = defineStore('matrix', {
 
     lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
     hierarchyTrigger: 0,
+    spaceHierarchies: {} as Record<string, any[]>,
     isIdle: false,
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
@@ -1669,7 +1670,8 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
       try {
         console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
-        await (this.client as any).getRoomHierarchy(spaceId);
+        const result = await (this.client as any).getRoomHierarchy(spaceId);
+        this.spaceHierarchies[spaceId] = result.rooms;
         this.hierarchyTrigger++;
       } catch (e) {
         console.error(`[MatrixStore] Failed to fetch hierarchy for space ${spaceId}:`, e);

@@ -350,11 +350,14 @@ watch(
 </style>
 
 <style>
-/* Global: SortableJS chosen class (applied after delay on all draggables) */
 .drag-chosen {
-  transform: scale(1.05);
+  transform: scale(1.05) !important;
   z-index: 50;
-  transition: transform 0.15s ease;
+  transition: none !important;
   filter: drop-shadow(0 0 8px rgba(128, 128, 255, 0.4));
+}
+
+.opacity-30 {
+  transition: none !important;
 }
 </style>

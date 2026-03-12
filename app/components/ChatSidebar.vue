@@ -1,10 +1,14 @@
 <template>
     <aside class="flex h-full flex-col w-[250px] shrink-0">
-        <header class="h-16 flex fle items-center px-4 justify-between">
+        <header class="h-16 flex items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
                 {{ routeName.length > 0 ? routeName : 'Tumult' }}
             </h2>
+            <UiButton variant="ghost" size="icon"> 
+                <!-- TODO: Space Settings -->
+                <Icon name="solar:settings-minimalistic-bold-duotone"/>
+            </UiButton>
         </header>
         <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
@@ -155,10 +159,9 @@
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
                     <!-- Return to Lobby Button -->
                     <UiButton 
-                        variant="secondary" 
+                        :variant="isLobby ? 'default' : 'secondary'" 
                         @click="navigateTo(`/chat/spaces/${activeSpaceId}`)" 
                         class="w-full mb-2 justify-start gap-2"
-                        :class="{ 'bg-secondary ring-1 ring-primary/20': isLobby }"
                     >
                         <Icon name="solar:home-2-bold" class="h-4 w-4" />
                         Space Lobby

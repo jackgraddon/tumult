@@ -77,6 +77,46 @@
                     </div>
                 </div>
             </section>
+
+            <section class="border rounded-2xl overflow-hidden bg-card/30">
+                <button 
+                    @click="isHierarchyCollapsed = !isHierarchyCollapsed"
+                    class="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/50 transition-colors"
+                >
+                    <div class="flex items-center gap-3">
+                        <div class="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                            <Icon name="solar:globus-bold" class="w-6 h-6" />
+                        </div>
+                        <div class="text-left">
+                            <h3 class="text-lg font-bold leading-none">Browse All Rooms</h3>
+                            <p class="text-xs text-muted-foreground mt-1">Explore all joinable rooms in this space</p>
+                        </div>
+                    </div>
+                    <Icon 
+                        :name="isHierarchyCollapsed ? 'solar:alt-arrow-down-linear' : 'solar:alt-arrow-up-linear'" 
+                        class="w-5 h-5 text-muted-foreground"
+                    />
+                </button>
+                
+                <div v-if="!isHierarchyCollapsed" class="px-6 pb-6 pt-2 border-t bg-background/50">
+                    <div v-if="hierarchyRooms.length > 0" class="space-y-1">
+                        <SpaceHierarchyTree 
+                            :all-rooms="hierarchyRooms" 
+                            :room-data="rootRoom"
+                            :depth="0"
+                            :space-id="spaceId"
+                        />
+                    </div>
+                    <div v-else class="py-12 text-center">
+                        <Icon name="solar:magnifer-linear" class="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                        <p class="text-muted-foreground">No rooms found in this space.</p>
+                        <UiButton variant="outline" size="sm" class="mt-4" @click="store.fetchSpaceHierarchy(spaceId)">
+                            <Icon name="solar:restart-linear" class="mr-2 h-4 w-4" />
+                            Retry Loading
+                        </UiButton>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <!-- Sidebar (Members/Mods) -->
@@ -131,6 +171,8 @@ const props = defineProps<{
 
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
+
+const isHierarchyCollapsed = ref(true);
 
 const space = computed(() => store.client?.getRoom(props.spaceId));
 const isJoined = computed(() => space.value?.getMyMembership() === 'join');
@@ -202,6 +244,14 @@ const featuredChatRooms = computed(() => {
 
 const featuredVoiceRooms = computed(() => {
     return allRoomsInHierarchy.value.filter(r => isVoiceChannel(r)).slice(0, 6);
+});
+
+const hierarchyRooms = computed(() => {
+    return store.spaceHierarchies[props.spaceId] || [];
+});
+
+const rootRoom = computed(() => {
+    return hierarchyRooms.value.find(r => r.room_id === props.spaceId);
 });
 
 watch(() => props.spaceId, (id) => {
