@@ -2,7 +2,7 @@
 import type { MatrixEvent } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
 import { ref, computed } from 'vue';
-import { createInitialBag } from '~/utils/scrabble';
+import { createInitialBag } from '~/utils/slangtiles';
 
 const props = defineProps<{
   event: MatrixEvent;
@@ -51,7 +51,7 @@ async function acceptInvite() {
       black: store.client?.getUserId()!
     };
     currentTurn = players.white;
-  } else if (gameType === 'crossconnect') {
+  } else if (gameType === 'slangtiles') {
     const bag = createInitialBag();
     const p1 = props.event.getSender()!;
     const p2 = store.client?.getUserId()!;

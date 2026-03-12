@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SCRABBLE_TILES, BOARD_MULTIPLIERS, MultiplierType, validatePlacement, calculateScore, shuffle } from '~/utils/scrabble';
+import { SLANG_TILES, BOARD_MULTIPLIERS, MultiplierType, validatePlacement, calculateScore, shuffle } from '~/utils/slangtiles';
 import { toast } from 'vue-sonner';
 
 const props = defineProps<{
@@ -180,7 +180,7 @@ async function playMove() {
   if (newBag.length === 0 && newRacks[myUserId!].length === 0) {
     newStatus = 'won';
     const opponentRack = newRacks[opponentId!];
-    const opponentPenalty = opponentRack.reduce((sum: number, l: string) => sum + (SCRABBLE_TILES[l]?.value || 0), 0);
+    const opponentPenalty = opponentRack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
     newScores[myUserId!] += opponentPenalty;
     newScores[opponentId!] -= opponentPenalty;
   }
@@ -368,7 +368,7 @@ const opponentScore = computed(() => {
     <div class="w-full flex items-center justify-between px-2">
       <div class="text-sm font-semibold flex items-center gap-2">
         <Icon name="solar:gamepad-bold" class="h-5 w-5 text-primary" />
-        CrossConnect
+        Slanguage Tiles
       </div>
       <div class="flex items-center gap-3 text-xs font-medium">
         <div class="flex flex-col items-end">
@@ -413,7 +413,7 @@ const opponentScore = computed(() => {
             >
               <span class="text-[10px] sm:text-sm uppercase">{{ getTileAt(r-1, c-1).isBlank ? getTileAt(r-1, c-1).assigned : getTileAt(r-1, c-1).letter }}</span>
               <span v-if="!getTileAt(r-1, c-1).isBlank" class="absolute bottom-0 right-0.5 text-[5px] sm:text-[7px] leading-none mb-0.5">
-                {{ SCRABBLE_TILES[getTileAt(r-1, c-1).letter]?.value }}
+                {{ SLANG_TILES[getTileAt(r-1, c-1).letter]?.value }}
               </span>
             </div>
           </div>
@@ -511,7 +511,7 @@ const opponentScore = computed(() => {
         >
           <span class="text-base sm:text-lg uppercase">{{ item.letter === ' ' ? '' : item.letter }}</span>
           <span v-if="item.letter !== ' '" class="absolute bottom-1 right-1 text-[8px] sm:text-[10px] leading-none">
-            {{ SCRABBLE_TILES[item.letter]?.value }}
+          {{ SLANG_TILES[item.letter]?.value }}
           </span>
         </div>
       </template>
@@ -551,7 +551,7 @@ const opponentScore = computed(() => {
       <UiDialogContent class="max-w-[95vw] sm:max-w-[700px] max-h-[95vh] flex flex-col items-center p-4">
          <div class="text-lg font-bold mb-4 flex items-center gap-2">
            <Icon name="solar:gamepad-bold" class="h-6 w-6 text-primary" />
-           CrossConnect - Large View
+           Slanguage Tiles - Large View
          </div>
 
          <!-- Large Board -->
@@ -580,7 +580,7 @@ const opponentScore = computed(() => {
               >
                 <span class="text-sm sm:text-xl uppercase">{{ getTileAt(r-1, c-1).isBlank ? getTileAt(r-1, c-1).assigned : getTileAt(r-1, c-1).letter }}</span>
                 <span v-if="!getTileAt(r-1, c-1).isBlank" class="absolute bottom-0 right-0.5 text-[6px] sm:text-[10px] leading-none mb-0.5">
-                  {{ SCRABBLE_TILES[getTileAt(r-1, c-1).letter]?.value }}
+                  {{ SLANG_TILES[getTileAt(r-1, c-1).letter]?.value }}
                 </span>
               </div>
             </div>

@@ -1,4 +1,4 @@
-export const SCRABBLE_TILES: Record<string, { count: number; value: number }> = {
+export const SLANG_TILES: Record<string, { count: number; value: number }> = {
   A: { count: 9, value: 1 },
   B: { count: 2, value: 3 },
   C: { count: 2, value: 3 },
@@ -47,7 +47,7 @@ DL.forEach(([r, c]) => (BOARD_MULTIPLIERS[r][c] = 'DL'));
 
 export function createInitialBag(): string[] {
   const bag: string[] = [];
-  for (const [letter, info] of Object.entries(SCRABBLE_TILES)) {
+  for (const [letter, info] of Object.entries(SLANG_TILES)) {
     for (let i = 0; i < info.count; i++) {
       bag.push(letter);
     }
@@ -173,7 +173,7 @@ export function calculateScore(
       const displayLetter = tile.isBlank ? (tile.assigned || '?') : letter;
       word += displayLetter;
 
-      let val = SCRABBLE_TILES[letter]?.value || 0;
+      let val = SLANG_TILES[letter]?.value || 0;
 
       // Only apply multipliers if it was a JUST placed tile
       const isNew = placed.find(p => p.r === currR && p.c === currC);

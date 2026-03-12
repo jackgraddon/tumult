@@ -41,7 +41,7 @@ const actionText = computed(() => {
   if (content.value.action === 'accept') return `${senderName.value} accepted the game!`;
   if (content.value.action === 'decline') return `${senderName.value} declined the game.`;
 
-  // CrossConnect Actions
+  // Slanguage Tiles Actions
   if (content.value.action === 'play') {
     const words = content.value.words;
     const score = content.value.score;
