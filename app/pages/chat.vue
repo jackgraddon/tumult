@@ -16,7 +16,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group"
                     :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
-                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink to="/chat" aria-label="Home">
@@ -33,7 +33,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                     :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
-                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
@@ -50,7 +50,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                     :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
-                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
@@ -72,7 +72,7 @@
                                 variant="ghost"
                                 class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                                 :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                                @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+                                @click="() => { store.ui.memberListVisible = false; }"
                                 as-child
                             >
                                 <NuxtLink
