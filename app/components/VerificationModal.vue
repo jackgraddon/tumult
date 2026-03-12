@@ -98,11 +98,23 @@
       </div>
 
       <!-- Outgoing/Incoming Verification (Ready to start) -->
-      <!-- Outgoing/Incoming Verification (Ready to start) -->
       <div v-else-if="store.isVerificationReady && !store.activeSas" class="flex flex-col gap-4 py-4 text-center">
         <p class="text-sm font-semibold text-green-600">
           Verification request has been accepted.
         </p>
+
+        <!-- QR Code Display -->
+        <div v-if="qrCodeUrl" class="flex flex-col items-center gap-4 py-4">
+          <div class="bg-white p-4 rounded-xl shadow-inner">
+            <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" />
+          </div>
+          <p class="text-xs text-muted-foreground max-w-[200px]">
+            Scan this code with your other device to verify instantly.
+          </p>
+          <div class="w-full h-px bg-border my-2" />
+          <p class="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">or</p>
+        </div>
+
         <p class="text-xs text-muted-foreground">
           Waiting for the SAS (emoji) exchange to begin...
         </p>
@@ -113,7 +125,7 @@
           </div>
           <!-- Fallback button if auto-negotiation fails -->
           <UiButton variant="secondary" size="sm" @click="store.acceptVerification()">
-             Try Starting Manually
+             Use Emoji Verification
           </UiButton>
           <UiButton variant="destructive" size="sm" @click="store.cancelVerification()">
             Cancel
@@ -180,9 +192,31 @@
 
 <script setup lang="ts">
 import { useMatrixStore } from '~/stores/matrix';
+import QRCode from 'qrcode';
 
 const store = useMatrixStore();
 const backupKeyInput = ref('');
+const qrCodeUrl = ref<string | null>(null);
+
+watch(() => store.qrCodeData, async (data) => {
+  if (data) {
+    try {
+      qrCodeUrl.value = await QRCode.toDataURL(data, {
+        margin: 0,
+        scale: 10,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      });
+    } catch (err) {
+      console.error('Failed to generate QR code:', err);
+      qrCodeUrl.value = null;
+    }
+  } else {
+    qrCodeUrl.value = null;
+  }
+}, { immediate: true });
 
 async function submitKey() {
   if (!backupKeyInput.value) return;

@@ -145,6 +145,7 @@ export const useMatrixStore = defineStore('matrix', {
     activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
     verificationPhase: null as VerificationPhase | null,
+    qrCodeData: null as string | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
     // Secret Storage / Backup Code Verification
@@ -2021,6 +2022,14 @@ export const useMatrixStore = defineStore('matrix', {
           }
 
           if (phase === VerificationPhase.Ready) {
+            // Check for QR code data
+            const qrData = (request as any).qrCodeData;
+            if (qrData) {
+              this.qrCodeData = qrData.getEncodedData();
+            } else {
+              this.qrCodeData = null;
+            }
+
             // Initiator auto-starts SAS
             if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas) {
               console.log('[Verification] Auto-starting SAS...');
@@ -2411,6 +2420,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.isVerificationInitiatedByMe = false;
       this.isRequestingVerification = false;
       this.activeSas = null;
+      this.qrCodeData = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
       this.verificationModalOpen = false;

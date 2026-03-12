@@ -143,8 +143,12 @@
         
         <!-- Member List Panel -->
         <Transition name="slide-pane">
-            <div v-if="store.ui.memberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
-                <RoomMemberList :room="(currentRoom as any)" class="h-full" />
+            <div
+                v-if="store.ui.memberListVisible && currentRoom"
+                class="mb-2 mr-2 overflow-hidden shrink-0 fixed inset-0 z-[100] md:relative md:inset-auto"
+            >
+                <div class="md:hidden absolute inset-0 bg-black/40" @click="store.toggleMemberList()"></div>
+                <RoomMemberList :room="(currentRoom as any)" class="h-full relative z-10 w-full md:w-auto" />
             </div>
         </Transition>
     </div>
