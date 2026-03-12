@@ -158,22 +158,50 @@ const onlineMembers = computed(() => {
     });
 });
 
-const children = computed(() => {
+const allRoomsInHierarchy = computed(() => {
+    // Access hierarchyTrigger for reactivity when hierarchy changes
+    store.hierarchyTrigger;
+
     if (!space.value || !store.client) return [];
-    const childEvents = space.value.currentState.getStateEvents('m.space.child');
-    return childEvents
-        .map(event => store.client!.getRoom(event.getStateKey() as string))
-        .filter((r): r is Room => !!r);
+
+    const rooms: Room[] = [];
+    const visited = new Set<string>();
+
+    const discover = (currentSpaceId: string) => {
+        if (visited.has(currentSpaceId)) return;
+        visited.add(currentSpaceId);
+
+        const currentSpace = store.client!.getRoom(currentSpaceId);
+        if (!currentSpace) return;
+
+        const childEvents = currentSpace.currentState.getStateEvents('m.space.child');
+        childEvents.forEach(event => {
+            const roomId = event.getStateKey() as string;
+            const room = store.client!.getRoom(roomId);
+            if (!room) return;
+
+            if (room.isSpaceRoom()) {
+                discover(roomId);
+            } else {
+                rooms.push(room);
+            }
+        });
+    };
+
+    discover(props.spaceId);
+
+    // Deduplicate rooms that might be in multiple sub-spaces
+    return Array.from(new Map(rooms.map(r => [r.roomId, r])).values());
 });
 
 const featuredChatRooms = computed(() => {
-    const rooms = children.value.filter(r => !r.isSpaceRoom() && !isVoiceChannel(r));
-    // Sort by member count and pick top 6 (or random 6 from top 10)
+    const rooms = allRoomsInHierarchy.value.filter(r => !isVoiceChannel(r));
+    // Sort by member count and pick top 6
     return rooms.sort((a, b) => b.getJoinedMemberCount() - a.getJoinedMemberCount()).slice(0, 6);
 });
 
 const featuredVoiceRooms = computed(() => {
-    return children.value.filter(r => !r.isSpaceRoom() && isVoiceChannel(r)).slice(0, 6);
+    return allRoomsInHierarchy.value.filter(r => isVoiceChannel(r)).slice(0, 6);
 });
 
 watch(() => props.spaceId, (id) => {

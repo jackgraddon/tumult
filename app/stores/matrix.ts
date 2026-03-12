@@ -1686,7 +1686,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     showInviteNotification(room: sdk.Room) {
-      const inviterId = room.getInviter();
+      const inviterId = room.getDMInviter();
       const inviterName = room.getMember(inviterId!)?.name || inviterId;
       const myUserId = this.client?.getUserId();
       const isDirect = room.getMember(myUserId!)?.events.member?.getContent().is_direct;
