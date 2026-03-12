@@ -7,8 +7,8 @@
       formattedBody ? 'formatted-html' : 'whitespace-pre-wrap'
     ]"
     style="overflow-wrap: anywhere"
-    v-html="processedHtml"
     @click="handleClick"
+    v-html="processedHtml"
   />
 </template>
 
@@ -51,10 +51,16 @@ function linkify(text: string): string {
 
 // Prepare HTML content
 const processedHtml = computed(() => {
+  let rawHtml = '';
+
   // Plain text: escape HTML entities (whitespace-pre-wrap handles newlines)
   if (!props.formattedBody) {
     const escaped = escapeHtml(props.body);
-    return linkify(escaped);
+    rawHtml = linkify(escaped);
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: ['a', 'br', 'span', 'b', 'strong', 'i', 'em', 'u', 'del', 's', 'strike'],
+      ALLOWED_ATTR: ['href', 'class', 'target', 'rel']
+    });
   }
 
   // HTML formatted body: parse and clean up

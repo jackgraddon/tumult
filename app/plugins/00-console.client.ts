@@ -5,7 +5,7 @@ export default defineNuxtPlugin({
       // Only run in the browser/Tauri context
       if (!import.meta.client) return;
   
-      const isTauri = !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
       
       if (isTauri) {
         try {
@@ -22,23 +22,28 @@ export default defineNuxtPlugin({
           };
   
           // Helper to stream logs to the splash window
-          const streamLog = (type: string, args: any[]) => {
+          const streamLog = (type: string, args: unknown[]) => {
             try {
-              const message = args.map(a => {
+              let message = args.map(a => {
                 if (a instanceof Error) {
                   return `${a.name}: ${a.message}\n${a.stack || ''}`;
                 }
-                if (typeof a === 'object') {
+                if (typeof a === 'object' && a !== null) {
                   try {
                     return JSON.stringify(a, null, 2);
-                  } catch (e) {
+                  } catch {
                     return '[Unserializable Object]';
                   }
                 }
                 return String(a);
               }).join(' ');
+
+              // Security Enhancement: Redact sensitive tokens from logs
+              message = message.replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, 'Bearer [REDACTED]');
+              message = message.replace(/access_token['"]?\s*[:=]\s*['"]?([^'"}]+)['"]?/gi, 'access_token: "[REDACTED]"');
+
               emit('main-log', { type, message, timestamp: new Date().toISOString() });
-            } catch (e) {
+            } catch {
                // Silently fail if emit is not ready, we don't want an infinite loop
             }
           };
