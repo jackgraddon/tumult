@@ -1,11 +1,21 @@
 <template>
-    <aside class="flex h-full flex-col w-[250px] shrink-0">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0">
         <header class="h-16 flex items-center px-4 justify-between">
-            <h2 class="text-lg font-semibold flex items-center gap-2">
-                <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
-                {{ routeName.length > 0 ? routeName : 'Tumult' }}
-            </h2>
-            <UiButton variant="ghost" size="icon"> 
+            <div class="flex items-center gap-2 overflow-hidden">
+                <UiButton
+                    variant="ghost"
+                    size="icon"
+                    class="md:hidden shrink-0"
+                    @click="store.toggleSidebar(false)"
+                >
+                    <Icon name="solar:close-circle-linear" class="h-6 w-6" />
+                </UiButton>
+                <h2 class="text-lg font-semibold flex items-center gap-2 truncate">
+                    <Icon name="solar:chat-round-dots-bold" class="h-5 w-5 shrink-0" />
+                    {{ routeName.length > 0 ? routeName : 'Tumult' }}
+                </h2>
+            </div>
+            <UiButton variant="ghost" size="icon" class="shrink-0">
                 <!-- TODO: Space Settings -->
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
@@ -28,7 +38,7 @@
                             v-for="invite in store.invites" 
                             :key="invite.roomId"
                             role="button"
-                            class="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors group"
+                            class="flex items-center gap-2 px-2 py-2.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors group"
                             @click="navigateToInvite(invite)"
                         >
                             <MatrixAvatar
@@ -60,7 +70,7 @@
                             v-for="friend in friends"
                         :key="friend.roomId"
                         role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                        class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
                         :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                         @click="() => {
                             if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
@@ -115,7 +125,7 @@
                             v-for="room in rooms"
                         :key="room.roomId"
                         role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                        class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
                         :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                         @click="() => {
                             if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
@@ -161,7 +171,7 @@
                             v-for="page in group.pages"
                             :key="page.path"
                             role="button"
-                            class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
                             :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
                             @click="() => {
                                 navigateTo(page.path);
@@ -210,7 +220,7 @@
                             <div 
                                 v-for="category in draggableCategories" 
                                 :key="category.id"
-                                class="flex items-center gap-2 px-2 py-2 rounded-md bg-secondary/50 hover:bg-secondary cursor-grab active:cursor-grabbing transition-colors"
+                                class="flex items-center gap-2 px-2 py-2.5 rounded-md bg-secondary/50 hover:bg-secondary cursor-grab active:cursor-grabbing transition-colors"
                             >
                                 <Icon name="solar:hamburger-menu-linear" class="h-4 w-4 text-muted-foreground shrink-0" />
                                 <MatrixAvatar
@@ -270,7 +280,7 @@
 
             <!-- Profile & Settings Row -->
             <div class="flex items-center justify-between gap-2 w-full p-2">
-                <UserProfile :user="store.user" class="min-w-0 flex-1" />
+                <UserProfile :user="store.user" class="min-w-0 flex-1" size="full" />
                 <UiButton variant="ghost" size="icon-sm" class="shrink-0" @click="navigateTo('/chat/settings')">
                     <Icon name="solar:settings-linear" class="h-5 w-5" />
                 </UiButton>

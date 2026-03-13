@@ -4,10 +4,10 @@
       <div class="relative">
         <MatrixAvatar 
           class="border"
-          :class="props.size === 'full' ? 'h-20 w-20' : props.size === 'regular' ? 'h-10 w-10' : 'h-8 w-8'"
+          :class="props.size === 'full' ? 'h-12 w-12' : props.size === 'regular' ? 'h-10 w-10' : 'h-8 w-8'"
           :mxc-url="displayAvatarUrl" 
           :name="displayName" 
-          :size="props.size === 'full' ? 120 : props.size === 'regular' ? 48 : 36"
+          :size="props.size === 'full' ? 96 : props.size === 'regular' ? 48 : 36"
         />
         <div v-if="displayUserId.startsWith('@discord_')" class="absolute bottom-[-5px] right-[-5px] rounded-full w-[20px] h-[20px] flex items-center justify-center" style="background-color: #5865F2;">
           <Icon name="simple-icons:discord" style="width: 12px; height: 12px;" class="text-white"/>

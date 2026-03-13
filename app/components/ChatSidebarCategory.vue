@@ -111,7 +111,7 @@
                         v-else
                         @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
                         :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
-                        class="justify-start px-2 h-9 w-full"
+                        class="justify-start px-2 h-10 w-full"
                         as-child
                     >
                         <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">

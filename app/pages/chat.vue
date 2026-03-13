@@ -121,7 +121,7 @@
             </aside>
 
             <!-- Sidebar -->
-            <ChatSidebar ref="sidebarRef"/>
+            <ChatSidebar ref="sidebarRef" class="min-w-0 flex-1"/>
         </div>
 
         <!-- Main Content -->
