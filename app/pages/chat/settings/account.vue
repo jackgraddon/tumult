@@ -244,7 +244,7 @@ async function manageDevices() {
       const oidcConfig = JSON.parse(oidcConfigStr);
       if (oidcConfig.issuer) {
         const accountUrl = new URL('/account', oidcConfig.issuer).toString();
-        const isTauri = !!(window as any).__TAURI_INTERNALS__;
+        const { $isTauri: isTauri } = useNuxtApp();
         if (isTauri) {
           const { open } = await import('@tauri-apps/plugin-shell');
           await open(accountUrl);

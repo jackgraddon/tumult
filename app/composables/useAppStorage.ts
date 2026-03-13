@@ -28,9 +28,7 @@ import type { LazyStore } from '@tauri-apps/plugin-store';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function isTauri(): boolean {
-    return import.meta.client && !!(window as any).__TAURI_INTERNALS__;
-}
+const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
 
 // ─── Preferences (non-sensitive) ─────────────────────────────────────────────
 
@@ -44,7 +42,7 @@ async function getPrefStore(): Promise<LazyStore> {
 }
 
 export async function setPref<T>(key: string, value: T): Promise<void> {
-    if (isTauri()) {
+    if (isTauri) {
         const store = await getPrefStore();
         await store.set(key, value);
         await store.save();
@@ -58,7 +56,7 @@ export async function setPref<T>(key: string, value: T): Promise<void> {
 }
 
 export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
-    if (isTauri()) {
+    if (isTauri) {
         const store = await getPrefStore();
         const stored = await store.get<T>(key);
         return stored ?? defaultValue;
@@ -73,7 +71,7 @@ export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
 }
 
 export async function deletePref(key: string): Promise<void> {
-    if (isTauri()) {
+    if (isTauri) {
         const store = await getPrefStore();
         await store.delete(key);
         await store.save();
@@ -131,8 +129,16 @@ async function _ensureCryptoKey(): Promise<void> {
     }
 
     _cryptoInitPromise = (async () => {
-        const store = await getPrefStore();
-        const existingJwk = await store.get<JsonWebKey>('_crypto_key');
+        let existingJwk: JsonWebKey | null = null;
+        if (isTauri) {
+            const store = await getPrefStore();
+            existingJwk = await store.get<JsonWebKey>('_crypto_key');
+        } else {
+            try {
+                const raw = localStorage.getItem('_crypto_key');
+                if (raw) existingJwk = JSON.parse(raw);
+            } catch { /* ignore */ }
+        }
 
         if (existingJwk) {
             _cryptoKey = await crypto.subtle.importKey(
@@ -151,8 +157,16 @@ async function _ensureCryptoKey(): Promise<void> {
                 ['encrypt', 'decrypt']
             );
             const jwk = await crypto.subtle.exportKey('jwk', _cryptoKey);
-            await store.set('_crypto_key', jwk);
-            await store.save();
+
+            if (isTauri) {
+                const store = await getPrefStore();
+                await store.set('_crypto_key', jwk);
+                await store.save();
+            } else {
+                try {
+                    localStorage.setItem('_crypto_key', JSON.stringify(jwk));
+                } catch { /* ignore */ }
+            }
 
             // Re-import as non-extractable for runtime use
             _cryptoKey = await crypto.subtle.importKey(
@@ -201,18 +215,21 @@ async function _decrypt(blob: EncryptedBlob): Promise<string> {
 // ─── Public Secret API ───────────────────────────────────────────────────────
 
 export async function setSecret(key: string, value: string): Promise<void> {
-    if (isTauri()) {
+    if (isTauri) {
         const store = await getSecretStore();
         const encrypted = await _encrypt(value);
         await store.set(key, encrypted);
         await store.save();
     } else {
-        try { sessionStorage.setItem(`secret:${key}`, value); } catch { /* SSR */ }
+        try {
+            const encrypted = await _encrypt(value);
+            localStorage.setItem(`secret:${key}`, JSON.stringify(encrypted));
+        } catch { /* SSR */ }
     }
 }
 
 export async function getSecret(key: string): Promise<string | null> {
-    if (isTauri()) {
+    if (isTauri) {
         try {
             const store = await getSecretStore();
             const blob = await store.get<EncryptedBlob>(key);
@@ -223,11 +240,16 @@ export async function getSecret(key: string): Promise<string | null> {
             return null;
         }
     }
-    try { return sessionStorage.getItem(`secret:${key}`); } catch { return null; }
+    try {
+        const raw = localStorage.getItem(`secret:${key}`);
+        if (!raw) return null;
+        const blob = JSON.parse(raw) as EncryptedBlob;
+        return await _decrypt(blob);
+    } catch { return null; }
 }
 
 export async function deleteSecrets(keys: string[]): Promise<void> {
-    if (isTauri()) {
+    if (isTauri) {
         try {
             const store = await getSecretStore();
             for (const key of keys) {
@@ -240,7 +262,7 @@ export async function deleteSecrets(keys: string[]): Promise<void> {
     } else {
         try {
             for (const key of keys) {
-                sessionStorage.removeItem(`secret:${key}`);
+                localStorage.removeItem(`secret:${key}`);
             }
         } catch { /* SSR */ }
     }

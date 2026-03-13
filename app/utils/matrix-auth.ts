@@ -1,6 +1,5 @@
 import * as sdk from "matrix-js-sdk";
 import type { OidcClientConfig, ValidatedAuthMetadata } from "matrix-js-sdk";
-import { type, version, hostname } from '@tauri-apps/plugin-os';
 
 // Helper to get config safely (prevents top-level crash)
 export const getHomeserverUrl = () => {
@@ -30,11 +29,13 @@ export const getHomeserverUrl = () => {
 // Helper to get dynamic device name for Matrix
 export async function getDeviceDisplayName(): Promise<string> {
   // Check if we are running in Tauri
-  if (!import.meta.client || typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) {
+  const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+  if (!isTauri) {
     return 'Tumult (Web)';
   }
 
   try {
+    const { hostname, type, version } = await import('@tauri-apps/plugin-os');
     const host = await hostname();
     const osType = type();
     const osVersion = version();

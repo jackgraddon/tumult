@@ -3,10 +3,8 @@ export function useGameActivity() {
     const store = useMatrixStore();
 
     // Check for Tauri support
-    const isSupported = ref(false);
-    if (import.meta.client) {
-        isSupported.value = !!(window as any).__TAURI_INTERNALS__;
-    }
+    const { $isTauri: isTauri } = useNuxtApp();
+    const isSupported = ref(isTauri);
 
     function toggle() {
         store.setGameDetectionLevel(store.gameDetectionLevel === 'off' ? 'basic' : 'off');

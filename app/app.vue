@@ -3,7 +3,7 @@
     <ColorModeToggle />
   </div> -->
   <GlobalContextMenu>
-    <CustomTitlebar />
+    <CustomTitlebar v-if="isTauri" />
     <div 
       class="h-screen w-screen transition-colors overflow-hidden"
       :class="{ 'pt-[30px]': isTauri }"
@@ -28,14 +28,14 @@
 <script setup lang="ts">
 import { Toaster } from '@/components/ui/sonner';
 
+const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
-const isTauri = ref(import.meta.client && !!(window as any).__TAURI_INTERNALS__);
 
 onMounted(async () => {
-  console.log("[App] onMounted started. isTauri:", isTauri.value);
+  console.log("[App] onMounted started. isTauri:", isTauri);
   const store = useMatrixStore();
 
-  if (isTauri.value) {
+  if (isTauri) {
     const { emit, listen } = await import('@tauri-apps/api/event');
     
     // Console streaming is now handled by the 00-console.client.ts plugin for earlier capture.

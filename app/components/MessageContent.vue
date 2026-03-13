@@ -202,7 +202,12 @@ function handleClick(e: MouseEvent) {
       const isSafeProtocol = /^(https?|mailto):/i.test(href);
       if (isSafeProtocol) {
         e.preventDefault();
-        import('@tauri-apps/plugin-shell').then(({ open }) => open(href));
+        const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+        if (isTauri) {
+          import('@tauri-apps/plugin-shell').then(({ open }) => open(href));
+        } else {
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }
       } else {
         // For unsafe or unknown protocols, we let the browser handle it 
         // (which in Tauri/Webview usually means doing nothing or showing a warning)

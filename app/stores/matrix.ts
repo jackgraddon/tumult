@@ -9,10 +9,6 @@ import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/ke
 import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
-// Tauri imports - explicit import is required as per user confirmation/config check
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { hostname, type, version, platform as getPlatform } from '@tauri-apps/plugin-os';
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
@@ -555,7 +551,9 @@ export const useMatrixStore = defineStore('matrix', {
       console.log('[MatrixStore] Loading game detection config:', stored);
       this.gameDetectionLevel = stored as any;
 
-      if ((window as any).__TAURI_INTERNALS__) {
+      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      if (isTauri) {
+        const { listen } = await import('@tauri-apps/api/event');
         listen('game-activity', (event: any) => {
            console.log('[MatrixStore] Game activity event from Rust:', event.payload);
            const { name, exe, is_running } = event.payload;
@@ -598,17 +596,22 @@ export const useMatrixStore = defineStore('matrix', {
       this.gameDetectionLevel = level;
       await setPref('game_detection_level', level);
 
+      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+
       // Disable everything first
       await this.stopRpcServer();
-      if ((window as any).__TAURI_INTERNALS__) {
+      if (isTauri) {
+        const { invoke } = await import('@tauri-apps/api/core');
         await invoke('set_scanner_enabled', { enabled: false });
       }
 
       if (level === 'basic') {
         // Basic: Rust process scanning ONLY
-        if ((window as any).__TAURI_INTERNALS__) {
+        if (isTauri) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const { platform } = await import('@tauri-apps/plugin-os');
           const games = await this.fetchDetectableGames();
-          const os = getPlatform(); // macos, windows, linux
+          const os = platform(); // macos, windows, linux
           
           // Filter games for the current OS
           const filtered = games.map((g: any) => ({
@@ -661,7 +664,8 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async startRpcServer() {
-      if (!(window as any).__TAURI_INTERNALS__) return;
+      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      if (!isTauri) return;
 
       const userId = this.client?.getUserId() || 'unknown';
       const hashedId = await this._hashUserId(userId);
@@ -669,6 +673,7 @@ export const useMatrixStore = defineStore('matrix', {
       const avatarHash = this.user?.avatarUrl?.split('/').pop();
 
       try {
+        const { invoke } = await import('@tauri-apps/api/core');
         console.log(`[MatrixStore] Starting arRPC sidecar (${this.gameDetectionLevel})...`);
         await invoke('start_rpc_server', {
           userId: hashedId,
@@ -684,9 +689,11 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async stopRpcServer() {
-      if (!(window as any).__TAURI_INTERNALS__) return;
+      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      if (!isTauri) return;
 
       try {
+        const { invoke } = await import('@tauri-apps/api/core');
         console.log('[MatrixStore] Stopping arRPC sidecar...');
         await invoke('stop_rpc_server');
 
@@ -1022,11 +1029,12 @@ export const useMatrixStore = defineStore('matrix', {
       await this._clearPersistentStores();
       console.log('[MatrixStore] startLogin: Persistent stores cleared.');
 
-      const isTauri = !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
 
       if (isTauri) {
         // --- Custom Loopback OAuth Flow (Desktop) ---
         // Start the custom Rust server
+        const { invoke } = await import('@tauri-apps/api/core');
         const oauthPromise = invoke<string>('start_oauth_server');
 
         const redirectUri = "http://localhost:1420";
@@ -1789,8 +1797,10 @@ export const useMatrixStore = defineStore('matrix', {
         let osType = 'Unknown OS';
         let osVersion = '';
 
-        if (!!(window as any).__TAURI_INTERNALS__) {
+        const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+        if (isTauri) {
           try {
+            const { hostname, type, version } = await import('@tauri-apps/plugin-os');
             host = await hostname() || 'Unknown Host';
             osType = type();
             osVersion = version();

@@ -30,11 +30,11 @@
 </template>
 
 <script setup lang="ts">
-const isTauri = ref(import.meta.client && !!(window as any).__TAURI_INTERNALS__);
+const { $isTauri: isTauri } = useNuxtApp();
 const isMac = ref(true); // Default to true to prevent visual pop on macos
 
 onMounted(async () => {
-  if (isTauri.value) {
+  if (isTauri) {
     try {
       const { type } = await import('@tauri-apps/plugin-os');
       const osType = await type();
@@ -51,25 +51,25 @@ onMounted(async () => {
 });
 
 const closeWindow = async () => {
-  if (!isTauri.value) return;
+  if (!isTauri) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   await getCurrentWindow().close();
 };
 
 const minimizeWindow = async () => {
-  if (!isTauri.value) return;
+  if (!isTauri) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   await getCurrentWindow().minimize();
 };
 
 const maximizeWindow = async () => {
-  if (!isTauri.value) return;
+  if (!isTauri) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   await getCurrentWindow().toggleMaximize();
 };
 
 const startDrag = async (e: MouseEvent) => {
-  if (!isTauri.value) return;
+  if (!isTauri) return;
   if (e.target instanceof HTMLElement && e.target.closest('button')) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   await getCurrentWindow().startDragging();
