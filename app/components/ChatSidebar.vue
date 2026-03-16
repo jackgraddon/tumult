@@ -66,48 +66,48 @@
                     </div>
                     
                     <div style="content-visibility: auto; contain-intrinsic-size: 0 400px;">
-                        <div 
-                            v-for="friend in friends"
-                        :key="friend.roomId"
-                        role="button"
-                        class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                        :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="() => {
-                            if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
-                                voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!);
-                            } else {
-                                navigateTo(`/chat/dms/${friend.roomId}`);
-                            }
-                            store.toggleSidebar(false);
-                            store.ui.memberListVisible = false;
-                        }"
-                    >
-                        <MatrixAvatar
-                            :mxc-url="friend.avatarUrl"
-                            :name="friend.name"
-                            class="h-6 w-6 mr-1"
-                            :size="64"
-                        />
-                        <span class="truncate">{{ friend.name }}</span>
-                        
-                        <div class="ml-auto flex items-center gap-1">
-                            <!-- If it's a voice DM, add a button to open text chat -->
-                            <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(friend.roomId))" :to="`/chat/dms/${friend.roomId}`" @click.stop>
-                                <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
-                                    <Icon name="solar:chat-line-linear" class="h-4 w-4" />
-                                </UiButton>
-                            </NuxtLink>
+                        <RoomContextMenu v-for="friend in friends" :key="friend.roomId" :room-id="friend.roomId">
+                            <div
+                                role="button"
+                                class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                                :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                                @click="() => {
+                                    if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
+                                        voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!);
+                                    } else {
+                                        navigateTo(`/chat/dms/${friend.roomId}`);
+                                    }
+                                    store.toggleSidebar(false);
+                                    store.ui.memberListVisible = false;
+                                }"
+                            >
+                                <MatrixAvatar
+                                    :mxc-url="friend.avatarUrl"
+                                    :name="friend.name"
+                                    class="h-6 w-6 mr-1"
+                                    :size="64"
+                                />
+                                <span class="truncate">{{ friend.name }}</span>
 
-                            <div v-if="friend.dmUserId?.startsWith('@discord_')" class="rounded-full w-[20px] h-[20px] flex items-center justify-center shrink-0" style="background-color: #5865F2;">
-                                <Icon name="simple-icons:discord" class="text-white" style="width: 12px; height: 12px;"/>
-                            </div>
+                                <div class="ml-auto flex items-center gap-1">
+                                    <!-- If it's a voice DM, add a button to open text chat -->
+                                    <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(friend.roomId))" :to="`/chat/dms/${friend.roomId}`" @click.stop>
+                                        <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
+                                            <Icon name="solar:chat-line-linear" class="h-4 w-4" />
+                                        </UiButton>
+                                    </NuxtLink>
 
-                            <div v-if="friend.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                {{ friend.unreadCount }}
+                                    <div v-if="friend.dmUserId?.startsWith('@discord_')" class="rounded-full w-[20px] h-[20px] flex items-center justify-center shrink-0" style="background-color: #5865F2;">
+                                        <Icon name="simple-icons:discord" class="text-white" style="width: 12px; height: 12px;"/>
+                                    </div>
+
+                                    <div v-if="friend.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                        {{ friend.unreadCount }}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </RoomContextMenu>
                     </div>
-                </div>
                 </template>
 
                 <!-- Sidebar Room List -->
@@ -121,44 +121,44 @@
                     </div>
                     
                     <div style="content-visibility: auto; contain-intrinsic-size: 0 400px;">
-                        <div 
-                            v-for="room in rooms"
-                        :key="room.roomId"
-                        role="button"
-                        class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                        :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="() => {
-                            if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
-                                voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!);
-                            } else {
-                                navigateTo(`/chat/rooms/${room.roomId}`);
-                            }
-                            store.toggleSidebar(false);
-                            store.ui.memberListVisible = false;
-                        }"
-                    >
-                        <MatrixAvatar
-                            :mxc-url="room.avatarUrl"
-                            :name="room.name"
-                            class="h-6 w-6 mr-1"
-                            :size="64"
-                        />
-                        <span class="truncate">{{ room.name }}</span>
+                        <RoomContextMenu v-for="room in rooms" :key="room.roomId" :room-id="room.roomId">
+                            <div
+                                role="button"
+                                class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                                :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                                @click="() => {
+                                    if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
+                                        voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!);
+                                    } else {
+                                        navigateTo(`/chat/rooms/${room.roomId}`);
+                                    }
+                                    store.toggleSidebar(false);
+                                    store.ui.memberListVisible = false;
+                                }"
+                            >
+                                <MatrixAvatar
+                                    :mxc-url="room.avatarUrl"
+                                    :name="room.name"
+                                    class="h-6 w-6 mr-1"
+                                    :size="64"
+                                />
+                                <span class="truncate">{{ room.name }}</span>
 
-                        <div class="ml-auto flex items-center gap-1">
-                            <!-- If it's a voice room, add a button to open text chat -->
-                            <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(room.roomId))" :to="`/chat/rooms/${room.roomId}`" @click.stop>
-                                <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
-                                    <Icon name="solar:chat-line-linear" class="h-4 w-4" />
-                                </UiButton>
-                            </NuxtLink>
+                                <div class="ml-auto flex items-center gap-1">
+                                    <!-- If it's a voice room, add a button to open text chat -->
+                                    <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(room.roomId))" :to="`/chat/rooms/${room.roomId}`" @click.stop>
+                                        <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
+                                            <Icon name="solar:chat-line-linear" class="h-4 w-4" />
+                                        </UiButton>
+                                    </NuxtLink>
 
-                            <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                {{ room.unreadCount }}
+                                    <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                        {{ room.unreadCount }}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </RoomContextMenu>
                     </div>
-                </div>
                 </template>
 
                 <!-- Sidebar Settings Nav -->

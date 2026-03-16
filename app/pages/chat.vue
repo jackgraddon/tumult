@@ -66,48 +66,36 @@
 
                 <!-- Server List -->
                 <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
-                    <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
-                        <UiContextMenuTrigger>
-                            <UiButton 
-                                variant="ghost" 
-                                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
-                                :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                                @click="() => { store.ui.memberListVisible = false; }"
-                                as-child
+                    <RoomContextMenu v-for="server in draggableRootSpaces" :key="server.roomId" :room-id="server.roomId">
+                        <UiButton
+                            variant="ghost"
+                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
+                            :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                            @click="() => { store.ui.memberListVisible = false; }"
+                            as-child
+                        >
+                            <NuxtLink
+                                :to="store.lastVisitedRooms.spaces[server.roomId]
+                                    ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}`
+                                    : `/chat/spaces/${server.roomId}`"
+                                :aria-label="server.name"
                             >
-                                <NuxtLink 
-                                    :to="store.lastVisitedRooms.spaces[server.roomId] 
-                                        ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
-                                        : `/chat/spaces/${server.roomId}`" 
-                                    :aria-label="server.name"
-                                >
-                                    <MatrixAvatar 
-                                        :mxc-url="server.getMxcAvatarUrl()" 
-                                        :name="server.name" 
-                                        class="h-full w-full border-0 transition-all" 
-                                        :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
-                                        :size="64"
-                                    />
-                                    <!-- Space Unread Badge -->
-                                    <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
-                                        <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
-                                            {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
-                                        </div>
-                                    </template>
-                                </NuxtLink>
-                            </UiButton>
-                        </UiContextMenuTrigger>
-                        <UiContextMenuContent>
-                            <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                                <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
-                                Unpin from Sidebar
-                            </UiContextMenuItem>
-                            <UiContextMenuItem v-else disabled>
-                                <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
-                                Root Space
-                            </UiContextMenuItem>
-                        </UiContextMenuContent>
-                    </UiContextMenu>
+                                <MatrixAvatar
+                                    :mxc-url="server.getMxcAvatarUrl()"
+                                    :name="server.name"
+                                    class="h-full w-full border-0 transition-all"
+                                    :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
+                                    :size="64"
+                                />
+                                <!-- Space Unread Badge -->
+                                <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
+                                    <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
+                                        {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
+                                    </div>
+                                </template>
+                            </NuxtLink>
+                        </UiButton>
+                    </RoomContextMenu>
                 </draggable>
 
                 <!-- Add Server / Explorer -->

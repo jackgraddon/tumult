@@ -14,14 +14,22 @@
                 <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
             </UiButton>
 
-            <MatrixAvatar 
-                :mxc-url="space.getMxcAvatarUrl()" 
-                :name="space.name" 
-                class="h-24 w-24 rounded-2xl border-4 border-background shadow-2xl"
-                :size="128"
-            />
-            <div class="flex-1 mb-2">
-                <h1 class="text-3xl font-bold tracking-tight">{{ space.name }}</h1>
+            <RoomContextMenu :room-id="space.roomId">
+                <div class="cursor-pointer group/avatar">
+                    <MatrixAvatar
+                        :mxc-url="space.getMxcAvatarUrl()"
+                        :name="space.name"
+                        class="h-24 w-24 rounded-2xl border-4 border-background shadow-2xl group-hover/avatar:ring-2 group-hover/avatar:ring-primary/50 transition-all"
+                        :size="128"
+                    />
+                </div>
+            </RoomContextMenu>
+            <div class="flex-1 mb-2 min-w-0">
+                <RoomContextMenu :room-id="space.roomId">
+                    <div class="cursor-pointer group/title">
+                        <h1 class="text-3xl font-bold tracking-tight truncate group-hover/title:text-primary transition-colors">{{ space.name }}</h1>
+                    </div>
+                </RoomContextMenu>
                 <p v-if="topic" class="text-muted-foreground mt-1 max-w-2xl line-clamp-2">{{ topic }}</p>
             </div>
             <div class="flex gap-2 mb-2 shrink-0">

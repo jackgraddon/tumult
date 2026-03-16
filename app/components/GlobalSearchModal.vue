@@ -1,22 +1,23 @@
 <template>
-  <UiCommandDialog :open="store.globalSearchModalOpen" @update:open="(val) => { if(!val) store.closeGlobalSearchModal() }" :filter-function="customFilter">
-    <UiCommandInput v-model="searchQuery" placeholder="Type a name, Matrix ID, or room alias..." />
+  <UiCommandDialog :open="store.globalSearchModalOpen" @update:open="(val) => { if(!val) { store.closeGlobalSearchModal(); store.setInviteRoomId(null); } }" :filter-function="customFilter">
+    <UiCommandInput v-model="searchQuery" :placeholder="store.inviteRoomId ? 'Type a Matrix ID to invite...' : 'Type a name, Matrix ID, or room alias...'" />
     <UiCommandList>
       <UiCommandEmpty>No results found.</UiCommandEmpty>
 
-      <UiCommandGroup heading="People" v-if="friends.length > 0">
+      <UiCommandGroup :heading="store.inviteRoomId ? `Invite to ${inviteRoomName}` : 'People'" v-if="friends.length > 0">
         <UiCommandItem 
           v-for="friend in friends" 
           :key="friend.roomId" 
           :value="friend.name" 
-          @select="() => navigateToRoom(friend.roomId)"
+          @select="() => store.inviteRoomId ? inviteToRoom(friend.dmUserId!) : navigateToRoom(friend.roomId)"
         >
           <MatrixAvatar :mxc-url="friend.avatarUrl" :name="friend.name" class="h-6 w-6 mr-2" />
           {{ friend.name }}
+          <span v-if="store.inviteRoomId" class="ml-auto text-xs text-muted-foreground">Invite</span>
         </UiCommandItem>
       </UiCommandGroup>
 
-      <UiCommandGroup heading="Rooms" v-if="rooms.length > 0">
+      <UiCommandGroup heading="Rooms" v-if="rooms.length > 0 && !store.inviteRoomId">
         <UiCommandItem 
           v-for="room in rooms" 
           :key="room.roomId" 
@@ -28,34 +29,47 @@
         </UiCommandItem>
       </UiCommandGroup>
 
-      <UiCommandSeparator v-if="friends.length > 0 || rooms.length > 0" />
+      <UiCommandSeparator v-if="(friends.length > 0 || rooms.length > 0) && !store.inviteRoomId" />
       
       <UiCommandGroup heading="Actions">
         <UiCommandItem 
-          value="action_create" 
-          @select="(e) => { e.preventDefault(); createChatFromQuery(); }"
+          v-if="store.inviteRoomId"
+          value="action_invite"
+          @select="(e) => { e.preventDefault(); inviteToRoom(parsedQuery); }"
           :class="{ 'text-destructive animate-shake': createError }"
         >
            <Icon name="solar:user-plus-bold" class="mr-2 h-4 w-4" v-if="!createError" />
            <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
-           <span>{{ createError ? createError : `Start Chat with ${parsedQuery}` }}</span>
+           <span>{{ createError ? createError : `Invite ${parsedQuery}` }}</span>
         </UiCommandItem>
-        <UiCommandItem 
-          value="action_create_room" 
-          @select="(e) => { e.preventDefault(); store.openCreateRoomModal(); }"
-        >
-           <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
-           <span>Create Room</span>
-        </UiCommandItem>
-        <UiCommandItem 
-          value="action_join" 
-          @select="(e) => { e.preventDefault(); joinRoomFromQuery(); }"
-          :class="{ 'text-destructive animate-shake': joinError }"
-        >
-           <Icon name="solar:link-round-angle-bold" class="mr-2 h-4 w-4" v-if="!joinError" />
-           <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
-           <span>{{ joinError ? joinError : `Join ${parsedQuery}` }}</span>
-        </UiCommandItem>
+
+        <template v-else>
+          <UiCommandItem
+            value="action_create"
+            @select="(e) => { e.preventDefault(); createChatFromQuery(); }"
+            :class="{ 'text-destructive animate-shake': createError }"
+          >
+             <Icon name="solar:user-plus-bold" class="mr-2 h-4 w-4" v-if="!createError" />
+             <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
+             <span>{{ createError ? createError : `Start Chat with ${parsedQuery}` }}</span>
+          </UiCommandItem>
+          <UiCommandItem
+            value="action_create_room"
+            @select="(e) => { e.preventDefault(); store.openCreateRoomModal(); }"
+          >
+             <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
+             <span>Create Room</span>
+          </UiCommandItem>
+          <UiCommandItem
+            value="action_join"
+            @select="(e) => { e.preventDefault(); joinRoomFromQuery(); }"
+            :class="{ 'text-destructive animate-shake': joinError }"
+          >
+             <Icon name="solar:link-round-angle-bold" class="mr-2 h-4 w-4" v-if="!joinError" />
+             <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
+             <span>{{ joinError ? joinError : `Join ${parsedQuery}` }}</span>
+          </UiCommandItem>
+        </template>
       </UiCommandGroup>
     </UiCommandList>
   </UiCommandDialog>
@@ -77,7 +91,7 @@ const joinError = ref('');
 
 const customFilter = (val: string, search: string) => {
   // Bypass filtering for action items based on exact programmatic values 
-  if (val === 'action_create' || val === 'action_create_room' || val === 'action_join') {
+  if (val === 'action_create' || val === 'action_create_room' || val === 'action_join' || val === 'action_invite') {
     return true;
   }
   // Default case-insensitive search for rooms/people
@@ -113,6 +127,11 @@ const isValidRoomIdOrAlias = (query: string) => {
     return (parsed.startsWith('#') || parsed.startsWith('!'));
 };
 
+const inviteRoomName = computed(() => {
+    if (!store.inviteRoomId || !store.client) return '';
+    return store.client.getRoom(store.inviteRoomId)?.name || 'Room';
+});
+
 const navigateToRoom = (roomId: string) => {
     store.closeGlobalSearchModal();
     searchQuery.value = '';
@@ -122,6 +141,25 @@ const navigateToRoom = (roomId: string) => {
       navigateTo(`/chat/dms/${roomId}`);
     } else {
       navigateTo(`/chat/rooms/${roomId}`);
+    }
+};
+
+const inviteToRoom = async (userId: string) => {
+    if (!isValidMatrixId(userId) || isSubmitting.value || !store.inviteRoomId) return;
+    isSubmitting.value = true;
+    createError.value = '';
+    try {
+        await store.client?.invite(store.inviteRoomId, userId);
+        import('vue-sonner').then(({ toast }) => toast.success(`Invited ${userId}`));
+        store.closeGlobalSearchModal();
+        store.setInviteRoomId(null);
+        searchQuery.value = '';
+    } catch (e: any) {
+        console.error("Failed to invite user:", e);
+        createError.value = e.message || "Failed to invite user.";
+        setTimeout(() => createError.value = '', 3000);
+    } finally {
+        isSubmitting.value = false;
     }
 };
 

@@ -30,21 +30,25 @@
         </UiButton>
 
         <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
-          <RoomHeader 
-            v-if="!isDm"
-            :name="room?.name || 'Unknown Room'"
-            :topic="roomTopic"
-            class="w-full"
-          />
-          <UserProfile 
-            v-else
-            :avatar-url="roomAvatarUrl"
-            :name="room?.name"
-            :user-id="otherUserId"
-            :topic="roomTopic"
-            name-classes="text-lg font-semibold"
-            class="w-full"
-          />
+          <RoomContextMenu :room-id="(roomId as string)">
+            <div class="cursor-pointer group/header">
+              <RoomHeader
+                v-if="!isDm"
+                :name="room?.name || 'Unknown Room'"
+                :topic="roomTopic"
+                class="w-full"
+              />
+              <UserProfile
+                v-else
+                :avatar-url="roomAvatarUrl"
+                :name="room?.name"
+                :user-id="otherUserId"
+                :topic="roomTopic"
+                name-classes="text-lg font-semibold"
+                class="w-full"
+              />
+            </div>
+          </RoomContextMenu>
         </div>
         <div class="flex items-center gap-2 pr-2">
           <UiButton 

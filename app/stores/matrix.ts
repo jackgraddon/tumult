@@ -219,6 +219,8 @@ export const useMatrixStore = defineStore('matrix', {
     unreadTrigger: 0,
     unreadCountType: sdk.NotificationCountType.Total as sdk.NotificationCountType,
     gameStates: {} as Record<string, any>,
+    manualUnread: {} as Record<string, boolean>,
+    inviteRoomId: null as string | null,
 
     customStatus: null as string | null,
     isLoggingIn: false,
@@ -268,13 +270,21 @@ export const useMatrixStore = defineStore('matrix', {
       this.unreadTrigger; // trigger reactivity
       if (!this.client) return 0;
       const { directMessages } = (this as any).hierarchy;
-      return directMessages.reduce((sum: number, room: any) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
+      return directMessages.reduce((sum: number, room: any) => {
+        const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
+        const manual = (this as any).manualUnread[room.roomId] ? 1 : 0;
+        return sum + Math.max(count, manual);
+      }, 0);
     },
     totalOrphanRoomUnreadCount(): number {
       this.unreadTrigger; // trigger reactivity
       if (!this.client) return 0;
       const { orphanRooms } = (this as any).hierarchy;
-      return orphanRooms.reduce((sum: number, room: any) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
+      return orphanRooms.reduce((sum: number, room: any) => {
+        const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
+        const manual = (this as any).manualUnread[room.roomId] ? 1 : 0;
+        return sum + Math.max(count, manual);
+      }, 0);
     },
     getSpaceUnreadCount: (state) => (spaceId: string): number => {
       state.unreadTrigger; // trigger reactivity
@@ -310,7 +320,9 @@ export const useMatrixStore = defineStore('matrix', {
       roomIds.forEach(id => {
         const room = state.client?.getRoom(id);
         if (room && (room.getMyMembership() === 'join' || room.getMyMembership() === 'invite')) {
-          total += room.getUnreadNotificationCount(state.unreadCountType) || 0;
+          const count = room.getUnreadNotificationCount(state.unreadCountType) || 0;
+          const manual = state.manualUnread[id] ? 1 : 0;
+          total += Math.max(count, manual);
         }
       });
       return total;
@@ -3122,6 +3134,82 @@ export const useMatrixStore = defineStore('matrix', {
         console.error('Failed to leave room:', err);
         toast.error('Failed to leave room', { description: err.message });
       }
+    },
+
+    async setRoomTag(roomId: string, tag: string, value: any) {
+      if (!this.client) return;
+      try {
+        if (value === null) {
+          await this.client.deleteTag(roomId, tag);
+        } else {
+          await this.client.setTag(roomId, tag, value);
+        }
+        this.hierarchyTrigger++;
+      } catch (err: any) {
+        console.error(`Failed to set tag ${tag} for room ${roomId}:`, err);
+        toast.error('Failed to update room tag');
+      }
+    },
+
+    async markAsRead(roomId: string) {
+      if (!this.client) return;
+      const room = this.client.getRoom(roomId);
+      if (!room) return;
+
+      const lastEvent = room.timeline[room.timeline.length - 1];
+      if (lastEvent) {
+        try {
+          await this.client.sendReadReceipt(lastEvent);
+          delete this.manualUnread[roomId];
+          this.unreadTrigger++;
+        } catch (err) {
+          console.error('Failed to send read receipt:', err);
+        }
+      }
+    },
+
+    markAsUnread(roomId: string) {
+      this.manualUnread[roomId] = true;
+      this.unreadTrigger++;
+    },
+
+    async markSpaceAsRead(spaceId: string) {
+      if (!this.client) return;
+
+      const queue = [spaceId];
+      const visited = new Set<string>();
+      const joinedRooms: string[] = [];
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+
+        const room = this.client.getRoom(currentId);
+        if (!room) continue;
+
+        if (room.isSpaceRoom()) {
+          const children = room.currentState.getStateEvents('m.space.child');
+          children.forEach(ev => {
+            const childId = ev.getStateKey();
+            if (childId) queue.push(childId);
+          });
+          if (room.getMyMembership() === 'join') {
+            joinedRooms.push(currentId);
+          }
+        } else if (room.getMyMembership() === 'join') {
+          joinedRooms.push(currentId);
+        }
+      }
+
+      for (const roomId of joinedRooms) {
+        await this.markAsRead(roomId);
+      }
+      toast.success('Marked space as read');
+    },
+
+    setInviteRoomId(roomId: string | null) {
+      this.inviteRoomId = roomId;
     },
 
     async markRoomAsDirect(roomId: string) {

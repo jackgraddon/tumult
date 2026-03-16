@@ -1,61 +1,66 @@
 <template>
     <div class="flex flex-col gap-1" :style="{ paddingLeft: depth > 0 ? '16px' : '0' }">
         <div v-if="(depth > 0 && isSpace) || (!isSpace)" class="flex items-center gap-2 py-1">
-            <button 
-                v-if="isSpace"
-                @click="isCollapsed = !isCollapsed"
-                class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group flex-1 min-w-0 mt-2"
-            >
-                <MatrixAvatar
-                    :mxc-url="roomData.avatar_url"
-                    :name="roomData.name || roomData.room_id"
-                    class="h-4 w-4 rounded-sm border-none shrink-0"
-                    :size="32"
-                />
-                <Icon 
-                    :name="isCollapsed ? 'solar:alt-arrow-right-bold' : 'solar:alt-arrow-down-bold'" 
-                    class="h-3 w-3 shrink-0"
-                />
-                <span class="truncate">{{ roomData.name || roomData.room_id }}</span>
-            </button>
-            <div v-else class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-accent/50 transition-all">
-                <MatrixAvatar
-                    :mxc-url="roomData.avatar_url"
-                    :name="roomData.name || roomData.room_id"
-                    class="h-10 w-10 shrink-0 rounded-lg"
-                    :size="64"
-                />
-                <div class="flex-1 min-w-0">
-                    <div class="font-semibold truncate group-hover/room:text-primary transition-colors text-sm">
-                        {{ roomData.name || roomData.room_id }}
+            <RoomContextMenu v-if="isSpace" :room-id="roomData.room_id" class="flex-1 min-w-0">
+                <button
+                    @click="isCollapsed = !isCollapsed"
+                    class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
+                >
+                    <MatrixAvatar
+                        :mxc-url="roomData.avatar_url"
+                        :name="roomData.name || roomData.room_id"
+                        class="h-4 w-4 rounded-sm border-none shrink-0"
+                        :size="32"
+                    />
+                    <Icon
+                        :name="isCollapsed ? 'solar:alt-arrow-right-bold' : 'solar:alt-arrow-down-bold'"
+                        class="h-3 w-3 shrink-0"
+                    />
+                    <span class="truncate text-left">{{ roomData.name || roomData.room_id }}</span>
+                </button>
+            </RoomContextMenu>
+            <div v-else class="flex-1 min-w-0">
+              <RoomContextMenu :room-id="roomData.room_id">
+                <div class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-accent/50 transition-all cursor-pointer">
+                    <MatrixAvatar
+                        :mxc-url="roomData.avatar_url"
+                        :name="roomData.name || roomData.room_id"
+                        class="h-10 w-10 shrink-0 rounded-lg"
+                        :size="64"
+                    />
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold truncate group-hover/room:text-primary transition-colors text-sm">
+                            {{ roomData.name || roomData.room_id }}
+                        </div>
+                        <div class="text-[10px] text-muted-foreground truncate flex items-center gap-1.5">
+                            <span class="flex items-center gap-1">
+                                <Icon name="solar:users-group-rounded-linear" class="w-3 h-3" />
+                                {{ roomData.num_joined_members || 0 }}
+                            </span>
+                            <span v-if="roomData.topic" class="h-1 w-1 rounded-full bg-muted-foreground/30" />
+                            <span v-if="roomData.topic" class="opacity-70 truncate">{{ roomData.topic }}</span>
+                        </div>
                     </div>
-                    <div class="text-[10px] text-muted-foreground truncate flex items-center gap-1.5">
-                        <span class="flex items-center gap-1">
-                            <Icon name="solar:users-group-rounded-linear" class="w-3 h-3" />
-                            {{ roomData.num_joined_members || 0 }}
-                        </span>
-                        <span v-if="roomData.topic" class="h-1 w-1 rounded-full bg-muted-foreground/30" />
-                        <span v-if="roomData.topic" class="opacity-70 truncate">{{ roomData.topic }}</span>
+
+                    <div class="flex items-center gap-2 shrink-0">
+                        <template v-if="membership === 'join'">
+                            <UiButton size="sm" variant="secondary" @click.stop="navigateToRoom" class="rounded-lg h-8 px-3">
+                                Open
+                            </UiButton>
+                        </template>
+                        <template v-else-if="membership === 'invite'">
+                            <UiButton size="sm" variant="default" @click.stop="store.acceptInvite(roomData.room_id)" class="rounded-lg h-8 px-3">
+                                Accept
+                            </UiButton>
+                        </template>
+                        <template v-else>
+                            <UiButton size="sm" variant="outline" :disabled="isJoining" @click.stop="joinRoom" class="rounded-lg h-8 px-3 hover:bg-primary hover:text-primary-foreground transition-colors">
+                                {{ isJoining ? 'Joining...' : 'Join' }}
+                            </UiButton>
+                        </template>
                     </div>
                 </div>
-                
-                <div class="flex items-center gap-2 shrink-0">
-                    <template v-if="membership === 'join'">
-                        <UiButton size="sm" variant="secondary" @click="navigateToRoom" class="rounded-lg h-8 px-3">
-                            Open
-                        </UiButton>
-                    </template>
-                    <template v-else-if="membership === 'invite'">
-                        <UiButton size="sm" variant="default" @click="store.acceptInvite(roomData.room_id)" class="rounded-lg h-8 px-3">
-                            Accept
-                        </UiButton>
-                    </template>
-                    <template v-else>
-                        <UiButton size="sm" variant="outline" :disabled="isJoining" @click="joinRoom" class="rounded-lg h-8 px-3 hover:bg-primary hover:text-primary-foreground transition-colors">
-                            {{ isJoining ? 'Joining...' : 'Join' }}
-                        </UiButton>
-                    </template>
-                </div>
+              </RoomContextMenu>
             </div>
         </div>
 
