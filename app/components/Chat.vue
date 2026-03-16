@@ -30,25 +30,26 @@
         </UiButton>
 
         <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
-          <RoomContextMenu :room-id="(roomId as string)">
-            <div class="cursor-pointer group/header">
-              <RoomHeader
-                v-if="!isDm"
-                :name="room?.name || 'Unknown Room'"
-                :topic="roomTopic"
-                class="w-full"
-              />
-              <UserProfile
-                v-else
-                :avatar-url="roomAvatarUrl"
-                :name="room?.name"
-                :user-id="otherUserId"
-                :topic="roomTopic"
-                name-classes="text-lg font-semibold"
-                class="w-full"
-              />
-            </div>
-          </RoomContextMenu>
+          <div
+            class="cursor-pointer group/header"
+            @contextmenu="store.openRoomContextMenu(roomId as string)"
+          >
+            <RoomHeader
+              v-if="!isDm"
+              :name="room?.name || 'Unknown Room'"
+              :topic="roomTopic"
+              class="w-full"
+            />
+            <UserProfile
+              v-else
+              :avatar-url="roomAvatarUrl"
+              :name="room?.name"
+              :user-id="otherUserId"
+              :topic="roomTopic"
+              name-classes="text-lg font-semibold"
+              class="w-full"
+            />
+          </div>
         </div>
         <div class="flex items-center gap-2 pr-2">
           <UiButton 
@@ -206,9 +207,10 @@
           </div>
 
           <!-- Message content -->
-          <div @contextmenu.stop class="contents">
-          <UiContextMenu>
-            <UiContextMenuTrigger as-child>
+          <div
+            class="contents"
+            @contextmenu="store.openMessageContextMenu(msg)"
+          >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
               <span
@@ -379,69 +381,7 @@
                   </UiTooltipProvider>
               </div>
             </div>
-          </UiContextMenuTrigger>
-          <UiContextMenuContent class="w-64">
-            <UiContextMenuItem @click="handleReply(msg)">
-              Reply
-            </UiContextMenuItem>
-
-            <!-- Reaction Row (Custom div to avoid ContextMenu closing on mouse move) -->
-            <div 
-              class="relative flex items-center px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm transition-colors cursor-default select-none group/react"
-              @mousedown.stop
-              @mouseup.stop
-              @click.stop
-            >
-              <UiPopover v-model:open="showReactionPickerMap[msg.eventId]" :modal="false">
-                <UiPopoverTrigger as-child>
-                  <div class="flex items-center w-full gap-2 cursor-pointer">
-                    <span class="text-sm">React</span>
-                    <div class="flex items-center gap-1 ml-auto">
-                      <button 
-                        @click.stop="handleReaction(msg, '👍')" 
-                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
-                      >👍</button>
-                      <button 
-                        @click.stop="handleReaction(msg, '❤️')" 
-                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
-                      >❤️</button>
-                      <button 
-                        @click.stop="handleReaction(msg, '😂')" 
-                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
-                      >😂</button>
-                      <div class="w-px h-3.5 bg-border mx-0.5" />
-                      <div 
-                        class="hover:bg-accent rounded p-1 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center w-6 h-6"
-                      >
-                        <Icon name="solar:add-circle-linear" class="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                </UiPopoverTrigger>
-                <UiPopoverContent side="top" :side-offset="0" align="center" class="w-auto p-0 border-none shadow-2xl z-[100] bg-transparent">
-                  <EmojiPicker theme="auto" @select="(e) => onEmojiSelect(e, msg)" />
-                </UiPopoverContent>
-              </UiPopover>
-            </div>
-
-            <UiContextMenuItem @click="copyToClipboard(msg.body)">
-              Copy Text
-            </UiContextMenuItem>
-            
-            <UiContextMenuItem @click="handleViewSource(msg.eventId)">
-              View Source
-            </UiContextMenuItem>
-
-            <UiContextMenuSeparator v-if="msg.isOwn" />
-            <UiContextMenuItem v-if="msg.isOwn" @click="handleEdit(msg)">
-              Edit
-            </UiContextMenuItem>
-            <UiContextMenuItem v-if="msg.isOwn" @click="redactEvent(msg.eventId)" class="text-red-500 focus:text-red-500">
-              Delete
-            </UiContextMenuItem>
-          </UiContextMenuContent>
-        </UiContextMenu>
-        </div>
+          </div>
 
         <!-- Read Receipts -->
         <div v-if="msg.readReceipts && msg.readReceipts.length > 0" 
@@ -806,6 +746,7 @@ interface ChatMessage {
   isGameAction?: boolean;
   isGameOver?: boolean;
   rawEvent?: MatrixEvent;
+  roomId?: string;
 }
 
 function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
@@ -1216,6 +1157,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   return {
     eventId: event.getId() || '',
+    roomId: event.getRoomId(),
     senderId,
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
@@ -1709,11 +1651,16 @@ function onRoomAdded(room: Room) {
     }
 }
 
+const handleViewSourceEvent = ((e: CustomEvent) => {
+  handleViewSource(e.detail);
+}) as any;
+
 onMounted(() => {
   if (store.client && roomId.value) {
     initRoom(); // Assuming initializeRoom is a typo and it should be initRoom
     setupListener();
   }
+  window.addEventListener('view-message-source', handleViewSourceEvent);
 });
 
 // Watch for room changes to track last opened
@@ -1774,6 +1721,7 @@ onUnmounted(() => {
   teardownListener();
   store.client?.removeListener(ClientEvent.Room, onRoomAdded);
   if (observer) observer.disconnect();
+  window.removeEventListener('view-message-source', handleViewSourceEvent);
 });
 
 // --- Context Menu Actions ---

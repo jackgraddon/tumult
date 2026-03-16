@@ -15,6 +15,7 @@ const forwardedProps = useForwardProps(props)
   <ContextMenuTrigger
     data-slot="context-menu-trigger"
     v-bind="{ ...forwardedProps, ...$attrs }"
+    class="contents"
   >
     <slot />
   </ContextMenuTrigger>

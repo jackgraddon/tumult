@@ -1,9 +1,10 @@
 <template>
     <div class="flex flex-col gap-1" :style="{ paddingLeft: depth > 0 ? '16px' : '0' }">
         <div v-if="(depth > 0 && isSpace) || (!isSpace)" class="flex items-center gap-2 py-1">
-            <RoomContextMenu v-if="isSpace" :room-id="roomData.room_id" class="flex-1 min-w-0">
+            <div v-if="isSpace" class="flex-1 min-w-0">
                 <button
                     @click="isCollapsed = !isCollapsed"
+                    @contextmenu="store.openRoomContextMenu(roomData.room_id)"
                     class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
                 >
                     <MatrixAvatar
@@ -18,10 +19,12 @@
                     />
                     <span class="truncate text-left">{{ roomData.name || roomData.room_id }}</span>
                 </button>
-            </RoomContextMenu>
+            </div>
             <div v-else class="flex-1 min-w-0">
-              <RoomContextMenu :room-id="roomData.room_id">
-                <div class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-accent/50 transition-all cursor-pointer">
+                <div
+                    class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-accent/50 transition-all cursor-pointer"
+                    @contextmenu="store.openRoomContextMenu(roomData.room_id)"
+                >
                     <MatrixAvatar
                         :mxc-url="roomData.avatar_url"
                         :name="roomData.name || roomData.room_id"
@@ -60,7 +63,6 @@
                         </template>
                     </div>
                 </div>
-              </RoomContextMenu>
             </div>
         </div>
 

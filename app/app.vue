@@ -21,6 +21,7 @@
       <NuxtPage />
       <Toaster />
       <VerificationModal />
+      <GlobalConfirmationDialog />
     </div>
   </GlobalContextMenu>
 </template>
