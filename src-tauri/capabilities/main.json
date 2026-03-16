@@ -3,8 +3,7 @@
   "identifier": "main",
   "description": "enables the default permissions",
   "windows": [
-    "main",
-    "splashscreen"
+    "main"
   ],
   "permissions": [
     "core:default",
@@ -36,6 +35,7 @@
     "os:default",
     "os:allow-hostname",
     "store:allow-load",
-    "store:default"
+    "store:default",
+    "notification:default"
   ]
 }

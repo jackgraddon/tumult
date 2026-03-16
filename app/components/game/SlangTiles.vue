@@ -185,12 +185,51 @@ async function playMove() {
   const opponentId = Object.keys(players.value).find(id => id !== myUserId);
 
   let newStatus = 'active';
-  if (newBag.length === 0 && newRacks[myUserId!].length === 0) {
-    newStatus = 'won';
-    const opponentRack = newRacks[opponentId!];
-    const opponentPenalty = opponentRack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
-    newScores[myUserId!] += opponentPenalty;
-    newScores[opponentId!] -= opponentPenalty;
+  let turnsSinceEmpty = state.value.turns_since_empty || 0;
+  if (bag.value.length === 0) {
+    turnsSinceEmpty++;
+  }
+
+  const finishedTiles = newRacks[myUserId!].length === 0;
+  const maxTurnsReached = turnsSinceEmpty >= 2;
+
+  let finalWinnerId: string | undefined = undefined;
+
+  if (finishedTiles || maxTurnsReached) {
+    const finalScores = { ...newScores };
+    const playerIds = Object.keys(players.value);
+    
+    // Scrabble Scoring: Subtract remaining tiles from each player
+    const penalties: Record<string, number> = {};
+    playerIds.forEach(pid => {
+      const rack = newRacks[pid] || [];
+      const penalty = rack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
+      penalties[pid] = penalty;
+      finalScores[pid] -= penalty;
+    });
+
+    // If someone finished, they get the sum of all penalties
+    if (finishedTiles) {
+      const totalPenalties = Object.values(penalties).reduce((a, b) => a + b, 0);
+      finalScores[myUserId!] += totalPenalties;
+    }
+
+    playerIds.forEach(pid => {
+      newScores[pid] = finalScores[pid];
+    });
+
+    const s0 = finalScores[playerIds[0]];
+    const s1 = finalScores[playerIds[1]];
+
+    if (s0 > s1) {
+      newStatus = 'won';
+      finalWinnerId = playerIds[0];
+    } else if (s1 > s0) {
+      newStatus = 'won';
+      finalWinnerId = playerIds[1];
+    } else {
+      newStatus = 'draw';
+    }
   }
 
   const moveData = {
@@ -201,6 +240,7 @@ async function playMove() {
     scores: newScores,
     current_turn: opponentId,
     status: newStatus,
+    turns_since_empty: turnsSinceEmpty,
     last_move: {
       type: 'play',
       player: myUserId,
@@ -220,12 +260,12 @@ async function playMove() {
     words: formedWords.map(w => w.word)
   });
 
-  // If game is won, send game over event
-  if (newStatus === 'won') {
+  // If game is over, send game over event
+  if (newStatus === 'won' || newStatus === 'draw') {
     await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
       game_id: props.gameId,
-      status: 'won',
-      winner: myUserId,
+      status: newStatus,
+      winner: finalWinnerId,
       game_type: 'slangtiles',
       scores: newScores
     });
@@ -238,13 +278,64 @@ async function passTurn() {
   if (!isMyTurn.value) return;
   const opponentId = Object.keys(players.value).find(id => id !== myUserId);
   
+  let newStatus = 'active';
+  let turnsSinceEmpty = state.value.turns_since_empty || 0;
+  if (bag.value.length === 0) {
+    turnsSinceEmpty++;
+  }
+
+  const maxTurnsReached = turnsSinceEmpty >= 2;
+  const newScores = { ...scores.value };
+  let finalWinnerId: string | undefined = undefined;
+
+  if (maxTurnsReached) {
+    const finalScores = { ...newScores };
+    const playerIds = Object.keys(players.value);
+    
+    playerIds.forEach(pid => {
+      const rack = racks.value[pid] || [];
+      const penalty = rack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
+      finalScores[pid] -= penalty;
+    });
+
+    playerIds.forEach(pid => {
+      newScores[pid] = finalScores[pid];
+    });
+
+    const s0 = finalScores[playerIds[0]];
+    const s1 = finalScores[playerIds[1]];
+
+    if (s0 > s1) {
+      newStatus = 'won';
+      finalWinnerId = playerIds[0];
+    } else if (s1 > s0) {
+      newStatus = 'won';
+      finalWinnerId = playerIds[1];
+    } else {
+      newStatus = 'draw';
+    }
+  }
+
   await updateGameState(props.gameId, {
     ...state.value,
     current_turn: opponentId,
+    status: newStatus,
+    scores: newScores,
+    turns_since_empty: turnsSinceEmpty,
     last_move: { type: 'pass', player: myUserId, timestamp: Date.now() }
   });
 
   await sendGameAction(props.gameId, { action: 'pass', player: myUserId });
+
+  if (newStatus === 'won' || newStatus === 'draw') {
+    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
+      game_id: props.gameId,
+      status: newStatus,
+      winner: finalWinnerId,
+      game_type: 'slangtiles',
+      scores: newScores
+    });
+  }
 }
 
 async function swapTiles() {
@@ -463,7 +554,12 @@ const opponentScore = computed(() => {
 
     <!-- Bag & Rack Info -->
     <div v-if="status !== 'challenged'" class="w-full flex items-center justify-between px-1 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-      <span>Tiles in bag: {{ bag.length }}</span>
+      <span :class="bag.length === 0 ? 'text-orange-500' : ''">
+        Tiles in bag: {{ bag.length }}
+        <template v-if="bag.length === 0 && state.turns_since_empty">
+          ({{ Math.max(0, 2 - state.turns_since_empty) }} turns left)
+        </template>
+      </span>
       <span v-if="status === 'active'">{{ isMyTurn ? 'Your Turn' : "Opponent's Turn" }}</span>
       <span v-else class="text-primary">{{ status }}</span>
     </div>
@@ -575,7 +671,7 @@ const opponentScore = computed(() => {
           size="sm" 
           variant="outline" 
           @click="showSwapModal = true" 
-          :disabled="placedTiles.length > 0" 
+          :disabled="placedTiles.length > 0 || bag.length < 7" 
           class="flex-1 min-w-[80px]"
         >
           Swap
