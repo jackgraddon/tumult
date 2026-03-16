@@ -300,6 +300,11 @@
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
+                   <SlangTiles
+                     v-else-if="getGameTypeFromState(msg.gameId) === 'slangtiles'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
                    <!-- Also show the bubble/card below the board for context? Or just the board? 
                         User wants board ONLY on latest. Let's show both board and the status bubble if it's an action/gameover for clarity. 
                    -->
@@ -660,6 +665,7 @@ import GameActionBubble from './game/GameActionBubble.vue';
 import GameResultCard from './game/GameResultCard.vue';
 import TicTacToe from './game/TicTacToe.vue';
 import Chess from './game/Chess.vue';
+import SlangTiles from './game/SlangTiles.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';

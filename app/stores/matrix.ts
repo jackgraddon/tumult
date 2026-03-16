@@ -12,6 +12,7 @@ import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore } from 'matrix-js-sdk';
+import { VerificationMethod } from 'matrix-js-sdk/lib/types';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
 import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
@@ -120,6 +121,43 @@ function generateNonce(): string {
 
 // Outside your Pinia store, create a memory cache
 const secretStorageKeys = new Map<string, Uint8Array<ArrayBuffer>>();
+
+// Helper to persist keys to localStorage (encoded as Base64)
+function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
+  if (typeof window === 'undefined') return;
+  try {
+    const base64 = btoa(String.fromCharCode(...privateKey));
+    localStorage.setItem(`matrix_ssss_key_${keyId}`, base64);
+    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage`);
+  } catch (err) {
+    console.warn('[SecretStorage] Failed to persist key:', err);
+  }
+}
+
+// Helper to load persisted keys from localStorage
+function loadPersistedSecretStorageKeys() {
+  if (typeof window === 'undefined') return;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('matrix_ssss_key_')) {
+        const keyId = key.replace('matrix_ssss_key_', '');
+        const base64 = localStorage.getItem(key);
+        if (base64) {
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let j = 0; j < binaryString.length; j++) {
+            bytes[j] = binaryString.charCodeAt(j);
+          }
+          secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
+          console.log(`[SecretStorage] Loaded persisted key ${keyId}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[SecretStorage] Failed to load persisted keys:', err);
+  }
+}
 
 export const useMatrixStore = defineStore('matrix', {
   state: () => ({
@@ -1234,6 +1272,9 @@ export const useMatrixStore = defineStore('matrix', {
         dbName: "matrix-js-sdk::matrix-store",
       });
 
+      // Load persisted SSSS keys before starting
+      loadPersistedSecretStorageKeys();
+
       // 1.1 Request persistent storage (iOS/PWA optimization)
       if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
         navigator.storage.persist().then(persisted => {
@@ -1252,6 +1293,12 @@ export const useMatrixStore = defineStore('matrix', {
         refreshToken,
         tokenRefreshFunction,
         store: roomStore,
+        verificationMethods: [
+          VerificationMethod.Sas, 
+          VerificationMethod.ShowQrCode, 
+          VerificationMethod.ScanQrCode, 
+          VerificationMethod.Reciprocate
+        ],
         // CRITICAL: We DO NOT pass cryptoStore here.
         // Rust crypto handles its own storage (matrix-sdk-crypto DB).
         // Passing IndexedDBCryptoStore here can cause legacy sync errors in recent SDKs.
@@ -1295,6 +1342,7 @@ export const useMatrixStore = defineStore('matrix', {
           },
           cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
             secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
+            persistSecretStorageKey(keyId, privateKey);
           },
         }
       };
@@ -1322,6 +1370,26 @@ export const useMatrixStore = defineStore('matrix', {
         await this.client.initRustCrypto();
         cryptoReady = !!this.client.getCrypto();
         console.log('[MatrixStore] Rust crypto initialized:', cryptoReady);
+
+        // Auto-restore if we have the keys locally and crypto is not fully ready
+        if (cryptoReady) {
+          const crypto = this.client.getCrypto();
+          const isReady = await crypto?.isCrossSigningReady();
+          console.log('[MatrixStore] Crypto cross-signing ready:', isReady);
+          
+          if (isReady === false) {
+            console.log('[MatrixStore] Cross-signing not ready, checking for local SSSS keys...');
+            const hasSsssKey = await this.client.secretStorage.hasKey();
+            if (hasSsssKey) {
+              console.log('[MatrixStore] SSSS key found locally, triggering auto-restore...');
+              this.loadSessionBackupPrivateKeyFromSecretStorage().catch(e => {
+                console.error('[MatrixStore] Failed to auto-restore session from local secret storage:', e);
+              });
+            } else {
+              console.log('[MatrixStore] No local SSSS key found, UI will prompt if needed.');
+            }
+          }
+        }
       } catch (e: any) {
         const msg = e?.message || '';
         if (msg.includes("account in the store doesn't match") || e.name === 'InvalidCryptoStoreError' || msg.includes('version')) {
@@ -2152,15 +2220,21 @@ export const useMatrixStore = defineStore('matrix', {
               this.qrCodeData = null;
             }
 
-            // Initiator auto-starts SAS
-            if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas) {
-              console.log('[Verification] Auto-starting SAS...');
+            // Initiator auto-starts SAS only if QR is not an option
+            const canShowQr = (request as any).qrCodeData || request.otherPartySupportsMethod(VerificationMethod.ScanQrCode);
+            const canScanQr = request.otherPartySupportsMethod(VerificationMethod.ShowQrCode);
+            const qrPossible = canShowQr || canScanQr;
+
+            if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas && !qrPossible) {
+              console.log('[Verification] Auto-starting SAS (no QR support detected)...');
               try {
                 const verifier = await request.startVerification('m.sas.v1');
                 this._setupVerifierListeners(verifier);
               } catch (e) {
                 console.error('[Verification] Proactive start failed:', e);
               }
+            } else if (qrPossible) {
+              console.log('[Verification] QR support detected, waiting for user or reciprocal scan.');
             }
           } else if (phase === VerificationPhase.Started) {
             const verifier = request.verifier;

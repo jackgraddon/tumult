@@ -269,6 +269,7 @@ import { useMediaQuery } from '@vueuse/core';
 import { toast } from 'vue-sonner';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
+import { VerificationPhase } from 'matrix-js-sdk/lib/crypto-api/verification';
 
 const store = useMatrixStore();
 const backupKeyInput = ref('');
@@ -288,12 +289,29 @@ onMounted(async () => {
   isCameraSupported.value = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 });
 
-// Auto-start scanner on mobile if we are in the ready phase
+// Auto-stop scanner on mobile if we are in the ready phase
 watch([() => store.isVerificationReady, isMobile], ([ready, mobile]) => {
   if (ready && mobile && isCameraSupported.value && !isScanning.value && !store.activeSas) {
     startScanning();
   }
 }, { immediate: true });
+
+// Stop scanning if SAS starts or verification ends
+watch(() => store.activeSas, (sas) => {
+  if (sas && isScanning.value) {
+    console.log('[VerificationModal] SAS started, stopping camera.');
+    stopScanning();
+  }
+});
+
+watch(() => store.verificationPhase, (phase) => {
+  if (phase === VerificationPhase.Cancelled || phase === VerificationPhase.Done) {
+    if (isScanning.value) {
+      console.log('[VerificationModal] Verification ended, stopping camera.');
+      stopScanning();
+    }
+  }
+});
 
 watch(() => store.qrCodeData, async (data) => {
   if (data) {
