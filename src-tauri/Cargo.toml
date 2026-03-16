@@ -28,3 +28,4 @@ tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
+tauri-plugin-notification = "2.3.3"

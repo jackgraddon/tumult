@@ -4733,6 +4733,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tauri-apps/plugin-notification@npm:^2.3.3":
+  version: 2.3.3
+  resolution: "@tauri-apps/plugin-notification@npm:2.3.3"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.8.0"
+  checksum: 10c0/a0af7a159a2e71ef080d356789fa219f8df98eff3b9adf7b8a37367b1de6a8a51eb8bc1aa91d42217a41f8fad4931a17251d86f66ab904b738416c3f272fa6df
+  languageName: node
+  linkType: hard
+
 "@tauri-apps/plugin-os@npm:~2":
   version: 2.3.2
   resolution: "@tauri-apps/plugin-os@npm:2.3.2"
@@ -13263,6 +13272,7 @@ __metadata:
     "@pinia/nuxt": "npm:^0.11.3"
     "@tauri-apps/api": "npm:^2.10.1"
     "@tauri-apps/cli": "npm:^2.10.0"
+    "@tauri-apps/plugin-notification": "npm:^2.3.3"
     "@tauri-apps/plugin-os": "npm:~2"
     "@tauri-apps/plugin-shell": "npm:^2.3.5"
     "@tauri-apps/plugin-store": "npm:^2.4.2"

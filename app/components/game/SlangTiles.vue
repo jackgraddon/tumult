@@ -554,7 +554,7 @@ const opponentScore = computed(() => {
       <div v-if="placedTiles.length > 0" class="flex flex-col gap-1 px-1 mb-1">
         <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           <span>Formed Words</span>
-          <button @click="clearPlaced" class="text-primary hover:underline">Clear all</button>
+          <button @click="clearPlaced" class="text-primary hover:underline">Recall tiles</button>
         </div>
         <div class="flex flex-wrap gap-1">
           <span 
@@ -649,7 +649,24 @@ const opponentScore = computed(() => {
           </template>
         </div>
 
-        <div class="mt-4 text-sm text-muted-foreground text-center">
+        <!-- Rack in Zoom View -->
+        <div v-if="status === 'active'" class="mt-6 flex flex-wrap justify-center gap-2 min-h-[40px] w-full max-w-[600px]">
+          <template v-for="item in rackWithIndices" :key="item.index">
+            <div
+              v-if="!item.isPlaced"
+              @click="handleRackClick(item.index)"
+              class="h-12 w-10 sm:h-14 sm:w-12 rounded-md bg-[#f5deb3] text-stone-900 flex items-center justify-center font-bold shadow-md transition-transform cursor-pointer relative"
+              :class="selectedRackIndex === item.index ? '-translate-y-2 ring-4 ring-primary' : 'hover:-translate-y-1'"
+            >
+              <span class="text-lg sm:text-xl uppercase">{{ item.letter === ' ' ? '' : item.letter }}</span>
+              <span v-if="item.letter !== ' '" class="absolute bottom-1 right-1 text-[10px] leading-none">
+              {{ SLANG_TILES[item.letter]?.value }}
+              </span>
+            </div>
+          </template>
+        </div>
+
+        <div class="mt-4 text-xs sm:text-sm text-muted-foreground text-center">
           Click squares to place or remove tiles. Close to use actions like Play or Swap.
         </div>
       </UiDialogContent>

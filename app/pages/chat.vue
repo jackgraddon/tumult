@@ -176,6 +176,7 @@ definePageMeta({
 import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
+import { notify } from '~/utils/notify';
 
 const route = useRoute();
 
@@ -247,6 +248,11 @@ const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStart
   updateRooms();
 
   if (toStartOfTimeline || !room || !store.client) return;
+
+  // Prevent history spam by only notifying when the client is fully synced
+  const syncState = store.client.getSyncState();
+  if (syncState !== 'PREPARED' && syncState !== 'SYNCING') return;
+
   // Only notify for actual messages
   if (event.getType() !== EventType.RoomMessage && event.getType() !== 'm.room.encrypted') return;
   
@@ -260,11 +266,8 @@ const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStart
       const content = event.getContent();
       const body = content.msgtype === 'm.image' ? 'Sent an image' : (content.body || 'New message');
       
-      const n = new Notification(room.name || 'New Message', {
-          body: body,
-          icon: room.getMxcAvatarUrl() || undefined, // simplified, real app might need mxc conversion
-      });
-      console.log('Notification sent', n);
+      notify(room.name || 'New Message', body, room.getMxcAvatarUrl() || undefined);
+      console.log('Notification sent', { title: room.name, body });
   }
 };
 
