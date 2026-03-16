@@ -66,7 +66,31 @@ export default defineNuxtConfig({
       supported: {
         'top-level-await': true
       },
-    }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // Group Matrix-related heavy lifting
+            if (id.includes('matrix-js-sdk') || id.includes('matrix-sdk-crypto')) {
+              return 'matrix-chunk';
+            }
+            // Group LiveKit and audio/video tools
+            if (id.includes('livekit-client') || id.includes('video-')) {
+              return 'livekit-chunk';
+            }
+            // Standard vendor chunk for other node_modules
+            if (id.includes('node_modules')) {
+              return 'vendor';
+            }
+          },
+        },
+      },
+    },
+  },
+
+  experimental: {
+    payloadExtraction: true
   },
 
   nitro: {
