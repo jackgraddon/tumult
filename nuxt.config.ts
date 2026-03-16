@@ -70,29 +70,18 @@ export default defineNuxtConfig({
     build: {
       rollupOptions: {
         output: {
+          // Use a function that provides more stability
           manualChunks(id) {
-            // Group Matrix-related heavy lifting
-            if (id.includes('matrix-js-sdk') || id.includes('matrix-sdk-crypto')) {
-              return 'matrix-chunk';
-            }
-            // Group LiveKit and audio/video tools
-            if (id.includes('livekit-client') || id.includes('video-')) {
-              return 'livekit-chunk';
-            }
-            // Standard vendor chunk for other node_modules
             if (id.includes('node_modules')) {
-              return 'vendor';
+              // This splits dependencies into chunks based on their package name
+              // e.g., node_modules/matrix-js-sdk/... becomes 'matrix-js-sdk' chunk
+              return id?.toString().split('node_modules/')[1]?.split('/')[0]?.toString();
             }
           },
         },
       },
     },
   },
-
-  experimental: {
-    payloadExtraction: true
-  },
-
   nitro: {
     experimental: {
       wasm: true,
