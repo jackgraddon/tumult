@@ -228,29 +228,38 @@
 
       <!-- SAS (Emoji) Verification -->
       <div v-else-if="store.activeSas" class="flex flex-col gap-6 py-4">
-        <p class="text-sm text-center">
-          Compare these emojis with the other device. Do they match perfectly?
-        </p>
-        
-        <div class="grid grid-cols-4 gap-4 justify-items-center">
-          <div 
-            v-for="(emojiObj, index) in store.activeSas.sas.emoji" 
-            :key="index"
-            class="flex flex-col items-center gap-1"
-          >
-            <span class="text-4xl">{{ emojiObj[0] }}</span>
-            <span class="text-[10px] text-muted-foreground font-bold uppercase">{{ emojiObj[1] }}</span>
+        <template v-if="store.isSasConfirming">
+          <div class="flex flex-col items-center gap-4 py-12">
+            <UiSpinner class="h-8 w-8 text-primary" />
+            <p class="text-sm font-medium animate-pulse">Confirming match...</p>
+            <p class="text-xs text-muted-foreground">Waiting for the other device to acknowledge.</p>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <p class="text-sm text-center">
+            Compare these emojis with the other device. Do they match perfectly?
+          </p>
 
-        <div class="flex gap-3 justify-end mt-4">
-          <UiButton variant="destructive" size="sm" @click="store.confirmSasMatch(false)">
-            They Don't Match
-          </UiButton>
-          <UiButton size="sm" @click="store.confirmSasMatch(true)">
-            They Match
-          </UiButton>
-        </div>
+          <div class="grid grid-cols-4 gap-4 justify-items-center">
+            <div
+              v-for="(emojiObj, index) in store.activeSas.sas.emoji"
+              :key="index"
+              class="flex flex-col items-center gap-1"
+            >
+              <span class="text-4xl">{{ emojiObj[0] }}</span>
+              <span class="text-[10px] text-muted-foreground font-bold uppercase">{{ emojiObj[1] }}</span>
+            </div>
+          </div>
+
+          <div class="flex gap-3 justify-end mt-4">
+            <UiButton variant="destructive" size="sm" @click="store.confirmSasMatch(false)">
+              They Don't Match
+            </UiButton>
+            <UiButton size="sm" @click="store.confirmSasMatch(true)">
+              They Match
+            </UiButton>
+          </div>
+        </template>
       </div>
       
     </UiDialogContent>
@@ -414,7 +423,7 @@ function switchToDeviceVerification() {
 
 function handleClose(open: boolean) {
   if (!open) {
-    if (store.activeVerificationRequest && !store.isVerificationCompleted) {
+    if (store.activeVerificationRequest && !store.isVerificationCompleted && !store.isSasConfirming) {
       store.cancelVerification();
     }
     stopScanning();

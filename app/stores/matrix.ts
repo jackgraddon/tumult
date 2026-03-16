@@ -178,6 +178,7 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationInitiatedByMe: false,
     isRequestingVerification: false,
     activeSas: null as ShowSasCallbacks | null,
+    isSasConfirming: false,
     isVerificationCompleted: false,
     isRestoringHistory: false,
     verificationPhase: null as VerificationPhase | null,
@@ -2433,13 +2434,14 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.activeSas) return;
       try {
         if (match) {
+          this.isSasConfirming = true;
           await this.activeSas.confirm();
         } else {
           await this.activeSas.mismatch();
           this.activeVerificationRequest?.cancel();
         }
-        // Hide emojis while waiting for Done phase
-        this.activeSas = null;
+        // We no longer clear activeSas here immediately.
+        // It will be cleared in _resetVerificationState when Done/Cancelled.
       } catch (e) {
         console.error('Failed to confirm SAS:', e);
         toast.error('Verification failed');
@@ -2712,6 +2714,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.isVerificationInitiatedByMe = false;
       this.isRequestingVerification = false;
       this.activeSas = null;
+      this.isSasConfirming = false;
       this.qrCodeData = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
