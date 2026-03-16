@@ -156,23 +156,17 @@
             <div v-if="qrCodeUrl" class="bg-white p-4 rounded-xl shadow-inner mb-2">
               <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" />
             </div>
-            <p v-if="qrCodeUrl" class="text-xs text-muted-foreground max-w-[200px] mb-2">
-              Scan this code with your other device to verify instantly.
-            </p>
             
-            <div v-if="qrCodeUrl" class="w-full flex items-center gap-4 my-2">
-              <div class="h-px flex-1 bg-border" />
-              <span class="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">or</span>
-              <div class="h-px flex-1 bg-border" />
-            </div>
-
-            <UiButton v-if="isCameraSupported" variant="outline" size="sm" class="w-full" @click="startScanning">
+            <UiButton 
+              v-if="isCameraSupported && store.qrCodeData" 
+              variant="outline" 
+              size="sm" 
+              class="w-full" 
+              @click="startScanning"
+            >
               <Icon name="solar:camera-bold" class="mr-2 size-4" />
               Scan their QR code
             </UiButton>
-            <p v-else-if="!isMobile" class="text-[10px] text-muted-foreground italic">
-              Camera scanning is not available on this browser/device.
-            </p>
           </template>
 
           <template v-else>
@@ -291,7 +285,7 @@ onMounted(async () => {
 
 // Auto-stop scanner on mobile if we are in the ready phase
 watch([() => store.isVerificationReady, isMobile], ([ready, mobile]) => {
-  if (ready && mobile && isCameraSupported.value && !isScanning.value && !store.activeSas) {
+  if (ready && mobile && isCameraSupported.value && !isScanning.value && !store.activeSas && store.qrCodeData) {
     startScanning();
   }
 }, { immediate: true });
@@ -335,6 +329,12 @@ watch(() => store.qrCodeData, async (data) => {
 
 async function startScanning() {
   if (!isCameraSupported.value) return;
+
+  if (store.activeSas) {
+    console.log('[VerificationModal] SAS already active, skipping camera.');
+    return;
+  }
+
   try {
     stream = await navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: 'environment' } 
