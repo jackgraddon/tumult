@@ -67,20 +67,7 @@ export default defineNuxtConfig({
         'top-level-await': true
       },
     },
-    build: {
-      rollupOptions: {
-        output: {
-          // Use a function that provides more stability
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              // This splits dependencies into chunks based on their package name
-              // e.g., node_modules/matrix-js-sdk/... becomes 'matrix-js-sdk' chunk
-              return id?.toString().split('node_modules/')[1]?.split('/')[0]?.toString();
-            }
-          },
-        },
-      },
-    },
+    build: {},
   },
   nitro: {
     experimental: {
@@ -140,9 +127,11 @@ export default defineNuxtConfig({
     },
     workbox: {
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      maximumFileSizeToCacheInBytes: 5000000,
     },
     injectManifest: {
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      maximumFileSizeToCacheInBytes: 5000000,
     },
     client: {
       installPrompt: true,
