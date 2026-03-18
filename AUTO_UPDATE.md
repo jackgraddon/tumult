@@ -45,7 +45,10 @@ Copy the **Public Key** from the terminal and add it to your `src-tauri/tauri.co
 
 For the GitHub Action to sign your releases automatically, you must add the following secrets to your GitHub repository (**Settings > Secrets and variables > Actions > New repository secret**):
 
-1. `TAURI_SIGNING_PRIVATE_KEY`: The contents of your `~/.tauri/tumult.key` file.
+1. `TAURI_SIGNING_PRIVATE_KEY`: The **Base64-encoded** contents of your `~/.tauri/tumult.key` file. This ensures that the required header line (`untrusted comment: ...`) is preserved. Use this command to get the correct value:
+   ```bash
+   cat ~/.tauri/tumult.key | base64
+   ```
 2. `TAURI_SIGNING_PASSWORD`: The password you chose when generating the key.
 
 ### 4. Trigger a Release
