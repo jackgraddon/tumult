@@ -4,7 +4,7 @@ import { isPermissionGranted, requestPermission, sendNotification as tauriNotify
  * Unified notification helper that handles Native OS notifications (via Tauri)
  * and falls back to standard Web Notifications API for browsers/PWAs.
  */
-export async function notify(title: string, body: string, iconUrl?: string) {
+export async function notify(title: string, body: string, iconUrl?: string, roomId?: string) {
   try {
     // 1. Check if running in Tauri
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
@@ -24,16 +24,25 @@ export async function notify(title: string, body: string, iconUrl?: string) {
     // 2. Fallback to Web API (PWA/Web)
     if (typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted') {
-        new Notification(title, { 
+        const options: NotificationOptions = {
           body,
-          icon: iconUrl || '/pwa-192x192.png'
-        });
+          icon: iconUrl || '/pwa-192x192.png',
+          tag: roomId || 'general',
+          renotify: true
+        };
+
+        // On some platforms, deep linking data can be attached
+        (options as any).data = { url: roomId ? `/chat/rooms/${roomId}` : '/chat' };
+
+        new Notification(title, options);
       } else if (Notification.permission !== 'denied') {
          const permission = await Notification.requestPermission();
          if (permission === 'granted') {
             new Notification(title, { 
               body,
-              icon: iconUrl || '/pwa-192x192.png'
+              icon: iconUrl || '/pwa-192x192.png',
+              tag: roomId || 'general',
+              renotify: true
             });
          }
       }

@@ -258,10 +258,19 @@ const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStart
   
   if (actions.notify) {
       const content = event.getContent();
-      const body = content.msgtype === 'm.image' ? 'Sent an image' : (content.body || 'New message');
+      const sender = room.getMember(event.getSender())?.name || event.getSender();
+
+      let bodyText = 'New message';
+      if (content.msgtype === 'm.image') bodyText = 'Sent an image';
+      else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
+      else if (content.msgtype === 'm.file') bodyText = `Sent a file: ${content.body}`;
+      else if (content.body) bodyText = content.body;
+
+      const title = room.name || 'New Message';
+      const notificationBody = room.name ? `${sender}: ${bodyText}` : bodyText;
       
-      notify(room.name || 'New Message', body, room.getMxcAvatarUrl() || undefined);
-      console.log('Notification sent', { title: room.name, body });
+      notify(title, notificationBody, room.getMxcAvatarUrl() || undefined, room.roomId);
+      console.log('Notification sent', { title, body: notificationBody });
   }
 };
 
