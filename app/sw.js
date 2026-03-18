@@ -12,6 +12,35 @@ sw.addEventListener('activate', (event) => {
     event.waitUntil(sw.clients.claim());
 });
 
+// Helper to extract a readable summary of the message
+function getMessageSummary(content) {
+    if (!content) return 'New message';
+
+    // Handle encrypted messages (Matrix doesn't send content for these usually in push)
+    if (content.msgtype === undefined && content.algorithm) {
+        return 'Encrypted message';
+    }
+
+    switch (content.msgtype) {
+        case 'm.text':
+        case 'm.notice':
+        case 'm.emote':
+            return content.body;
+        case 'm.image':
+            return 'Sent an image';
+        case 'm.video':
+            return 'Sent a video';
+        case 'm.audio':
+            return 'Sent an audio file';
+        case 'm.file':
+            return `Sent a file: ${content.body}`;
+        case 'm.location':
+            return 'Shared a location';
+        default:
+            return content.body || 'New message';
+    }
+}
+
 // Handle incoming push notifications
 sw.addEventListener('push', (event) => {
     console.log('[Service Worker] Push Received.');
@@ -27,21 +56,18 @@ sw.addEventListener('push', (event) => {
     }
 
     // Matrix Sygnal-derived format from our relay
-    // {
-    //   "event_id": "$...",
-    //   "room_id": "!...",
-    //   "counts": { "unread": 1, ... },
-    //   "sender_display_name": "...",
-    //   "room_name": "...",
-    //   "content": { "msgtype": "m.text", "body": "...", "sender": "@..." },
-    //   ...
-    // }
+    const sender = data.sender_display_name || 'Someone';
+    const roomName = data.room_name;
+    const bodyText = getMessageSummary(data.content);
 
-    const title = data.room_name || data.sender_display_name || 'New Message';
-    const bodyText = data.content ? data.content.body : (data.body || 'You have a new message');
+    // Formatting:
+    // If it's a room: "Room Name: Sender: Message"
+    // If it's a DM: "Sender: Message"
+    const title = roomName || sender;
+    const notificationBody = roomName ? `${sender}: ${bodyText}` : bodyText;
 
     const options = {
-        body: data.room_name ? `${data.sender_display_name}: ${bodyText}` : bodyText,
+        body: notificationBody,
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
         data: {
@@ -49,8 +75,8 @@ sw.addEventListener('push', (event) => {
             eventId: data.event_id,
             url: data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'
         },
-        tag: data.room_id || 'general-notification', // Group notifications by room
-        renotify: true // Ensure it pops up even if the tag is the same
+        tag: data.room_id || 'general-notification',
+        renotify: true
     };
 
     if (data.counts && data.counts.unread !== undefined && navigator.setAppBadge) {
@@ -77,7 +103,6 @@ sw.addEventListener('notificationclick', (event) => {
             // Check if there is already a window/tab open with the target URL
             for (let i = 0; i < windowClients.length; i++) {
                 const client = windowClients[i];
-                // Handle base URLs correctly by checking if it contains the path
                 if (client.url.includes(urlToOpen) && 'focus' in client) {
                     return client.focus();
                 }
@@ -86,7 +111,6 @@ sw.addEventListener('notificationclick', (event) => {
             for (let i = 0; i < windowClients.length; i++) {
                 const client = windowClients[i];
                 if (client.url.includes('/chat') && 'focus' in client) {
-                    // We might need to navigate this window to the specific room
                     if ('navigate' in client) {
                         return client.navigate(urlToOpen).then(c => c.focus());
                     }
