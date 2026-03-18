@@ -13,6 +13,7 @@ node_modules
 install-state.gz
 
 # Yarn Berry
+yarn.lock
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
