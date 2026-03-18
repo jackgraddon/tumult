@@ -238,8 +238,14 @@ const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStart
   if (toStartOfTimeline || !room || !store.client) return;
 
   // Prevent history spam by only notifying when the client is fully synced
+  // and we are NOT in the middle of a large initial sync.
   const syncState = store.client.getSyncState();
-  if (syncState !== 'PREPARED' && syncState !== 'SYNCING') return;
+  if (syncState !== 'SYNCING') return;
+
+  // Crucial: Matrix SDK will emit "Timeline" events for old messages during the initial sync.
+  // We check if the event's timestamp is within the last 5 seconds to ensure it's "live".
+  const age = Date.now() - event.getTs();
+  if (age > 5000) return;
 
   // Only notify for actual messages
   if (event.getType() !== EventType.RoomMessage && event.getType() !== 'm.room.encrypted') return;
@@ -290,9 +296,6 @@ onMounted(() => {
   if (Notification.permission === 'default') {
       Notification.requestPermission();
   }
-  
-  // Register PWA Service Worker
-  subscribeToPush();
 });
 
 // 3. Clean up listeners when leaving the page to prevent memory leaks
@@ -305,58 +308,6 @@ onUnmounted(() => {
     store.client.removeListener(RoomEvent.Receipt, updateRooms);
   }
 });
-
-async function subscribeToPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  
-  try {
-      const registration = await navigator.serviceWorker.ready;
-      
-      // Check if already subscribed
-      let subscription = await registration.pushManager.getSubscription();
-      
-      if (!subscription) {
-          // VAPID Public Key from Sygnal
-          const publicKey = 'BErt1bY4D7W9yvRy73AC5ojIJUxEZuDS92FBi6HJjqKCv20gKI16bWi-BDkXYj7YETl9kvGoJrZsjmxpnoegs8M'; 
-          
-          subscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: publicKey
-          });
-      }
-      
-      if (subscription && store.client) {
-          await registerMatrixPusher(subscription);
-      }
-      
-  } catch (err) {
-      console.error('PWA: Failed to subscribe to push', err);
-  }
-}
-
-async function registerMatrixPusher(subscription: PushSubscription) {
-    if (!store.client) return;
-    
-    try {
-        const pushKey = subscription.getKey ? btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('p256dh')!))) : '';
-        const pushAuth = subscription.getKey ? btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('auth')!))) : '';
-        
-        await store.client.setPusher({
-            app_id: 'cc.jackg',
-            app_display_name: 'Tumult',
-            device_display_name: 'Web Client',
-            pushkey: subscription.endpoint, 
-            kind: 'http',
-            lang: 'en',
-            data: {
-                url: 'http://sygnal:5000/_matrix/push/v1/notify',
-            },
-        });
-        console.log('PWA: Matrix Pusher registered');
-    } catch (e) {
-        console.error('PWA: Failed to register pusher', e);
-    }
-}
 
 // 2. If client initializes LATER (e.g. page refresh), watch for it
 watch(
