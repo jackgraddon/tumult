@@ -4600,6 +4600,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tauri-apps/plugin-updater@npm:^2.3.0":
+  version: 2.10.0
+  resolution: "@tauri-apps/plugin-updater@npm:2.10.0"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.10.1"
+  checksum: 10c0/aae5b5f7ac1450c0e9ad586f05154aac647e1a465370741b3084ebf57da8e03c8333ba5c55167e9711532931ac37ee7760a7e142723c2f446997c1f60c1dc36b
+  languageName: node
+  linkType: hard
+
 "@tybys/wasm-util@npm:^0.10.0, @tybys/wasm-util@npm:^0.10.1":
   version: 0.10.1
   resolution: "@tybys/wasm-util@npm:0.10.1"
@@ -12851,6 +12860,7 @@ __metadata:
     "@tauri-apps/plugin-os": "npm:~2"
     "@tauri-apps/plugin-shell": "npm:^2.3.5"
     "@tauri-apps/plugin-store": "npm:^2.4.2"
+    "@tauri-apps/plugin-updater": "npm:^2.3.0"
     "@types/dompurify": "npm:^3.2.0"
     "@types/node": "npm:^25.2.3"
     "@types/qrcode": "npm:^1.5.6"

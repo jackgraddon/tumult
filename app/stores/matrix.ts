@@ -201,6 +201,12 @@ export const useMatrixStore = defineStore('matrix', {
     qrCodeData: null as string | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
+    createRoomModalOpen: false,
+    createSpaceModalOpen: false,
+    roomSettingsModalOpen: false,
+    spaceSettingsModalOpen: false,
+    activeSettingsRoomId: null as string | null,
+    activeSettingsSpaceId: null as string | null,
     // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
       promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
@@ -3278,13 +3284,218 @@ export const useMatrixStore = defineStore('matrix', {
       console.log('[MatrixStore] Finished clearing persistent stores');
     },
 
-    // --- Room Creation ---
+    // --- Room & Space Management ---
     openGlobalSearchModal() {
       this.globalSearchModalOpen = true;
     },
 
     closeGlobalSearchModal() {
       this.globalSearchModalOpen = false;
+    },
+
+    openCreateRoomModal() {
+      this.createRoomModalOpen = true;
+      this.globalSearchModalOpen = false;
+    },
+
+    closeCreateRoomModal() {
+      this.createRoomModalOpen = false;
+    },
+
+    openCreateSpaceModal() {
+      this.createSpaceModalOpen = true;
+      this.globalSearchModalOpen = false;
+    },
+
+    closeCreateSpaceModal() {
+      this.createSpaceModalOpen = false;
+    },
+
+    openRoomSettingsModal(roomId: string) {
+      this.activeSettingsRoomId = roomId;
+      this.roomSettingsModalOpen = true;
+    },
+
+    closeRoomSettingsModal() {
+      this.roomSettingsModalOpen = false;
+      this.activeSettingsRoomId = null;
+    },
+
+    openSpaceSettingsModal(spaceId: string) {
+      this.activeSettingsSpaceId = spaceId;
+      this.spaceSettingsModalOpen = true;
+    },
+
+    closeSpaceSettingsModal() {
+      this.spaceSettingsModalOpen = false;
+      this.activeSettingsSpaceId = null;
+    },
+
+    async createRoom(opts: {
+      name: string;
+      topic?: string;
+      isPublic?: boolean;
+      enableEncryption?: boolean;
+      roomAliasName?: string;
+      spaceId?: string;
+    }): Promise<string | undefined> {
+      if (!this.client) throw new Error("Matrix client not initialized.");
+      console.log(`[MatrixStore] Creating room: ${opts.name}...`);
+
+      try {
+        const createOpts: any = {
+          name: opts.name,
+          topic: opts.topic,
+          visibility: opts.isPublic ? sdk.Visibility.Public : sdk.Visibility.Private,
+          preset: opts.isPublic ? sdk.Preset.PublicChat : sdk.Preset.PrivateChat,
+          initial_state: []
+        };
+
+        if (opts.enableEncryption) {
+          createOpts.initial_state.push({
+            type: "m.room.encryption",
+            state_key: "",
+            content: { algorithm: "m.megolm.v1.aes-sha2" }
+          });
+        }
+
+        if (opts.roomAliasName) {
+          createOpts.room_alias_name = opts.roomAliasName;
+        }
+
+        const result = await this.client.createRoom(createOpts);
+        const roomId = result.room_id;
+
+        // If a spaceId is provided, add the room to the space
+        if (opts.spaceId) {
+          await this.addRoomToSpace(opts.spaceId, roomId);
+        }
+
+        console.log(`[MatrixStore] Created room ${roomId}`);
+        return roomId;
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to create room:", err);
+        throw new Error(err.message || "Failed to create room.");
+      }
+    },
+
+    async createSpace(opts: {
+      name: string;
+      topic?: string;
+      isPublic?: boolean;
+      roomAliasName?: string;
+    }): Promise<string | undefined> {
+      if (!this.client) throw new Error("Matrix client not initialized.");
+      console.log(`[MatrixStore] Creating space: ${opts.name}...`);
+
+      try {
+        const createOpts: any = {
+          name: opts.name,
+          topic: opts.topic,
+          visibility: opts.isPublic ? sdk.Visibility.Public : sdk.Visibility.Private,
+          preset: opts.isPublic ? sdk.Preset.PublicChat : sdk.Preset.PrivateChat,
+          creation_content: {
+            type: "m.space"
+          }
+        };
+
+        if (opts.roomAliasName) {
+          createOpts.room_alias_name = opts.roomAliasName;
+        }
+
+        const result = await this.client.createRoom(createOpts);
+        console.log(`[MatrixStore] Created space ${result.room_id}`);
+        return result.room_id;
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to create space:", err);
+        throw new Error(err.message || "Failed to create space.");
+      }
+    },
+
+    async addRoomToSpace(spaceId: string, roomId: string) {
+      if (!this.client) return;
+      try {
+        // Add child to space
+        await this.client.sendStateEvent(spaceId, "m.space.child", {
+          via: [this.client.getDomain()!],
+          suggested: false
+        }, roomId);
+
+        // Add parent to room
+        await this.client.sendStateEvent(roomId, "m.space.parent", {
+          via: [this.client.getDomain()!],
+          canonical: true
+        }, spaceId);
+
+        console.log(`[MatrixStore] Added room ${roomId} to space ${spaceId}`);
+      } catch (err) {
+        console.error(`[MatrixStore] Failed to add room ${roomId} to space ${spaceId}:`, err);
+        throw err;
+      }
+    },
+
+    async updateRoomMetadata(roomId: string, metadata: { name?: string; topic?: string; avatarFile?: File }) {
+      if (!this.client) return;
+      try {
+        if (metadata.name) {
+          await this.client.setRoomName(roomId, metadata.name);
+        }
+        if (metadata.topic) {
+          await this.client.setRoomTopic(roomId, metadata.topic);
+        }
+        if (metadata.avatarFile) {
+          const response = await this.client.uploadContent(metadata.avatarFile);
+          await this.client.sendStateEvent(roomId, "m.room.avatar", { url: response.content_uri }, "");
+        }
+        toast.success("Settings updated successfully");
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to update room metadata:", err);
+        toast.error("Failed to update settings", { description: err.message });
+      }
+    },
+
+    async kickUser(roomId: string, userId: string, reason?: string) {
+      if (!this.client) return;
+      try {
+        await this.client.kick(roomId, userId, reason);
+        toast.success(`Kicked user ${userId}`);
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to kick user:", err);
+        toast.error("Failed to kick user", { description: err.message });
+      }
+    },
+
+    async banUser(roomId: string, userId: string, reason?: string) {
+      if (!this.client) return;
+      try {
+        await this.client.ban(roomId, userId, reason);
+        toast.success(`Banned user ${userId}`);
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to ban user:", err);
+        toast.error("Failed to ban user", { description: err.message });
+      }
+    },
+
+    async setRoomJoinRule(roomId: string, joinRule: string) {
+      if (!this.client) return;
+      try {
+        await this.client.sendStateEvent(roomId, "m.room.join_rules", { join_rule: joinRule }, "");
+        toast.success("Join rules updated");
+      } catch (err: any) {
+        console.error("Failed to set join rules:", err);
+        toast.error("Failed to update join rules", { description: err.message });
+      }
+    },
+
+    async setRoomDirectoryVisibility(roomId: string, visibility: sdk.Visibility) {
+      if (!this.client) return;
+      try {
+        await this.client.setRoomDirectoryVisibility(roomId, visibility);
+        toast.success("Room visibility updated");
+      } catch (err: any) {
+        console.error("Failed to set room visibility:", err);
+        toast.error("Failed to update visibility", { description: err.message });
+      }
     },
 
     async joinRoom(roomIdOrAlias: string): Promise<any> {

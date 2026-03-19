@@ -17,6 +17,10 @@
               <Icon :name="isFavorite ? 'solar:star-fall-bold-duotone' : 'solar:star-bold-duotone'" class="mr-2 h-4 w-4" />
               {{ isFavorite ? 'Remove from Favorites' : 'Favorite' }}
             </UiContextMenuItem>
+            <UiContextMenuItem @click="() => roomId && store.openRoomSettingsModal(roomId)" class="cursor-pointer">
+              <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
+              Settings
+            </UiContextMenuItem>
             <UiContextMenuItem @click="openInvite" class="cursor-pointer">
               <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
               Invite
@@ -37,6 +41,10 @@
             <UiContextMenuItem @click="markSpaceAsRead" class="cursor-pointer">
               <Icon name="solar:letter-opened-bold-duotone" class="mr-2 h-4 w-4" />
               Mark Space as Read
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="() => roomId && store.openSpaceSettingsModal(roomId)" class="cursor-pointer">
+              <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
+              Settings
             </UiContextMenuItem>
             <UiContextMenuItem @click="openInvite" class="cursor-pointer">
               <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />

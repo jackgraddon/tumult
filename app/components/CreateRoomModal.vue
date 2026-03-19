@@ -58,7 +58,48 @@
         </div>
         
         <div class="pt-2">
-           <button class="text-sm text-sky-500 font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer">Show advanced</button>
+           <button
+            class="text-sm text-sky-500 font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer"
+            @click="showAdvanced = !showAdvanced"
+           >
+            {{ showAdvanced ? 'Hide advanced' : 'Show advanced' }}
+           </button>
+        </div>
+
+        <div v-if="showAdvanced" class="grid gap-4 pt-2 border-t mt-2 animate-in fade-in slide-in-from-top-2">
+          <div class="grid gap-2">
+            <UiLabel for="alias">Room Alias (optional)</UiLabel>
+            <div class="flex items-center gap-2">
+              <span class="text-muted-foreground">#</span>
+              <UiInput id="alias" v-model="roomAlias" placeholder="my-awesome-room" />
+              <span class="text-muted-foreground">:{{ homeserverDomain }}</span>
+            </div>
+            <p class="text-[11px] text-muted-foreground">
+              A permanent link for your room.
+            </p>
+          </div>
+
+          <div v-if="availableSpaces.length > 0" class="grid gap-2">
+            <UiLabel>Add to Space</UiLabel>
+            <UiDropdownMenu>
+              <UiDropdownMenuTrigger as-child>
+                <UiButton variant="outline" class="w-full justify-start">
+                  <Icon name="solar:globus-bold" class="mr-2 h-4 w-4" />
+                  {{ selectedSpace ? selectedSpace.name : 'No Space' }}
+                  <Icon name="solar:alt-arrow-down-bold" class="ml-auto h-4 w-4 opacity-50" />
+                </UiButton>
+              </UiDropdownMenuTrigger>
+              <UiDropdownMenuContent class="w-[375px]">
+                <UiDropdownMenuItem @select="selectedSpace = null">
+                   None
+                </UiDropdownMenuItem>
+                <UiDropdownMenuItem v-for="space in availableSpaces" :key="space.roomId" @select="selectedSpace = space">
+                  <MatrixAvatar :mxc-url="space.getMxcAvatarUrl()" :name="space.name" class="h-4 w-4 mr-2" />
+                  {{ space.name }}
+                </UiDropdownMenuItem>
+              </UiDropdownMenuContent>
+            </UiDropdownMenu>
+          </div>
         </div>
       </div>
       
@@ -74,15 +115,53 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { toast } from 'vue-sonner';
 
 const store = useMatrixStore();
+const route = useRoute();
 const name = ref('');
 const topic = ref('');
 const isPublic = ref(false);
 const enableEncryption = ref(true);
 const isSubmitting = ref(false);
+const showAdvanced = ref(false);
+const roomAlias = ref('');
+const selectedSpace = ref<any>(null);
+
+const homeserverDomain = computed(() => store.client?.getDomain() || 'matrix.org');
+
+const availableSpaces = computed(() => {
+  if (!store.client) return [];
+  return store.client.getVisibleRooms().filter(r => r.isSpaceRoom() && r.getMyMembership() === 'join');
+});
+
+// Auto-select space from route if applicable
+watch(() => store.createRoomModalOpen, (open) => {
+  if (open) {
+    const spaceId = route.params.id;
+    if (spaceId && !Array.isArray(spaceId)) {
+      const space = store.client?.getRoom(spaceId);
+      if (space && space.isSpaceRoom()) {
+        selectedSpace.value = space;
+      }
+    } else if (Array.isArray(spaceId) && spaceId.length > 0) {
+      const space = store.client?.getRoom(spaceId[0]);
+      if (space && space.isSpaceRoom()) {
+        selectedSpace.value = space;
+      }
+    }
+  } else {
+    // Reset on close
+    name.value = '';
+    topic.value = '';
+    isPublic.value = false;
+    enableEncryption.value = true;
+    showAdvanced.value = false;
+    roomAlias.value = '';
+    selectedSpace.value = null;
+  }
+}, { immediate: true });
 
 const handleCreate = async () => {
   if (!name.value.trim() || isSubmitting.value) return;
@@ -93,20 +172,23 @@ const handleCreate = async () => {
       name: name.value.trim(),
       topic: topic.value.trim() || undefined,
       isPublic: isPublic.value,
-      enableEncryption: enableEncryption.value
+      enableEncryption: enableEncryption.value,
+      roomAliasName: roomAlias.value.trim() || undefined,
+      spaceId: selectedSpace.value?.roomId
     });
     
     if (roomId) {
       store.closeCreateRoomModal();
       store.closeGlobalSearchModal();
-      // Reset form
-      name.value = '';
-      topic.value = '';
-      isPublic.value = false;
-      enableEncryption.value = true;
       
       toast.success('Room created successfully');
-      await navigateTo(`/chat/rooms/${roomId}`);
+
+      // Navigate to the room. If it's in a space, navigate to the space path
+      if (selectedSpace.value) {
+        await navigateTo(`/chat/spaces/${selectedSpace.value.roomId}/${roomId}`);
+      } else {
+        await navigateTo(`/chat/rooms/${roomId}`);
+      }
     }
   } catch (err: any) {
     console.error('Failed to create room:', err);

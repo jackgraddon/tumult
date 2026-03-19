@@ -35,6 +35,10 @@
                 <p v-if="topic" class="text-muted-foreground mt-1 max-w-2xl line-clamp-2">{{ topic }}</p>
             </div>
             <div class="flex gap-2 mb-2 shrink-0">
+                <UiButton v-if="canManage" variant="secondary" size="sm" @click="showAddExistingModal = true">
+                    <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
+                    Add Room
+                </UiButton>
                 <UiButton variant="secondary" size="sm" @click="store.openGlobalSearchModal">
                     <Icon name="solar:magnifer-linear" class="mr-2 h-4 w-4" />
                     Search
@@ -175,11 +179,43 @@
             </section>
         </div>
     </div>
+
+    <!-- Add Existing Room Modal -->
+    <UiDialog v-model:open="showAddExistingModal">
+      <UiDialogContent class="sm:max-w-[500px]">
+        <UiDialogHeader>
+          <UiDialogTitle>Add Existing Room to Space</UiDialogTitle>
+          <UiDialogDescription>
+            Choose a room to add to {{ space.name }}.
+          </UiDialogDescription>
+        </UiDialogHeader>
+        <div class="py-4 space-y-4">
+          <UiInput v-model="roomSearch" placeholder="Search your rooms..." />
+          <div class="border rounded-md max-h-[300px] overflow-y-auto divide-y">
+            <div
+              v-for="room in joinableRooms"
+              :key="room.roomId"
+              class="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+              @click="addExistingRoom(room.roomId)"
+            >
+              <MatrixAvatar :mxc-url="room.getMxcAvatarUrl()" :name="room.name" class="h-8 w-8" />
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium truncate">{{ room.name }}</div>
+              </div>
+              <Icon name="solar:add-circle-bold" class="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div v-if="joinableRooms.length === 0" class="p-8 text-center text-muted-foreground italic text-sm">
+              No matching rooms found.
+            </div>
+          </div>
+        </div>
+      </UiDialogContent>
+    </UiDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
 import { isVoiceChannel } from '~/utils/room';
@@ -273,6 +309,40 @@ const hierarchyRooms = computed(() => {
 const rootRoom = computed(() => {
     return hierarchyRooms.value.find(r => r.room_id === props.spaceId);
 });
+
+const showAddExistingModal = ref(false);
+const roomSearch = ref('');
+
+const canManage = computed(() => {
+  if (!space.value || !store.client) return false;
+  const me = space.value.getMember(store.client.getUserId()!);
+  return (me?.powerLevel || 0) >= 50;
+});
+
+const joinableRooms = computed(() => {
+  if (!store.client) return [];
+  const search = roomSearch.value.toLowerCase();
+  const existingChildIds = new Set(
+    space.value?.currentState.getStateEvents('m.space.child').map(ev => ev.getStateKey())
+  );
+
+  return store.client.getVisibleRooms().filter(r => {
+    if (r.isSpaceRoom() || r.getMyMembership() !== 'join') return false;
+    if (existingChildIds.has(r.roomId)) return false;
+    return r.name?.toLowerCase().includes(search);
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+});
+
+const addExistingRoom = async (roomId: string) => {
+  try {
+    await store.addRoomToSpace(props.spaceId, roomId);
+    showAddExistingModal.value = false;
+    roomSearch.value = '';
+    import('vue-sonner').then(({ toast }) => toast.success('Room added to space'));
+  } catch (err: any) {
+    import('vue-sonner').then(({ toast }) => toast.error('Failed to add room', { description: err.message }));
+  }
+};
 
 watch(() => props.spaceId, (id) => {
     if (id) {

@@ -22,6 +22,10 @@
       <Toaster />
       <VerificationModal />
       <GlobalConfirmationDialog />
+      <CreateRoomModal />
+      <CreateSpaceModal />
+      <RoomSettingsModal />
+      <SpaceSettingsModal />
 
       <!-- Failover Notice -->
       <div 

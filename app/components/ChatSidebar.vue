@@ -15,8 +15,14 @@
                     {{ routeName.length > 0 ? routeName : 'Tumult' }}
                 </h2>
             </div>
-            <UiButton variant="ghost" size="icon" class="shrink-0"> 
-                <!-- TODO: Space Settings -->
+            <UiButton
+                v-if="activeSpaceId"
+                variant="ghost"
+                size="icon"
+                class="shrink-0"
+                @click="store.openSpaceSettingsModal(activeSpaceId)"
+                title="Space Settings"
+            >
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
         </header>

@@ -98,11 +98,12 @@
                     </UiButton>
                 </draggable>
 
-                <!-- Add Server / Explorer -->
+                <!-- Add Space / Explorer -->
                 <UiButton 
                     variant="secondary"
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
-                    @click="store.openGlobalSearchModal()"
+                    @click="store.openCreateSpaceModal()"
+                    title="Create a space"
                 >
                     <Icon name="solar:add-circle-linear" class="h-6 w-6" />
                 </UiButton>
