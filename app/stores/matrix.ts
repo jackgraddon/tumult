@@ -179,6 +179,10 @@ export const useMatrixStore = defineStore('matrix', {
     isClientReady: false,
     isReady: false, // Phase 2: Signal for splash screen transition
     isRestoringSession: true,
+    isCryptoDegraded: false,
+    cryptoStatusMessage: null as string | null,
+    lastSyncError: null as any | null,
+    isSasTimeout: false,
     user: null as {
       userId: string;
       displayName?: string;
@@ -1642,6 +1646,7 @@ export const useMatrixStore = defineStore('matrix', {
           if (cryptoReady) {
             this.checkDeviceVerified();
             this.handleStartupDehydration();
+            this.performCryptoSanityCheck();
           }
         }
       });
@@ -1689,6 +1694,27 @@ export const useMatrixStore = defineStore('matrix', {
         }
         // We use an arrow function so 'this' remains bound to the Pinia store
         this.logout();
+      });
+
+      // Global Error Interceptor for Crypto Failures (OTK 400s, etc.)
+      this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState, prevState: sdk.SyncState | null, data?: any) => {
+        if (state === sdk.SyncState.Error) {
+          const error = data?.error;
+          this.lastSyncError = error;
+          const msg = error?.message || "";
+          const code = error?.errcode || error?.httpStatus;
+
+          if (code === 400 && msg.includes("One time key") && msg.includes("already exists")) {
+            console.error("🚨 [MatrixStore] Fatal Crypto Store Desync (OTK Conflict) detected!");
+            this.isCryptoDegraded = true;
+            this.cryptoStatusMessage = "Encryption store desync. Security repair may be required.";
+            
+            toast.error("Security Sync Error", {
+              description: "A cryptographic desync was detected. Some messages may not be decryptable.",
+              duration: 10000,
+            });
+          }
+        }
       });
 
       // Listen for MatrixRTC memberships to update sidebar icons/lists.
@@ -2436,13 +2462,35 @@ export const useMatrixStore = defineStore('matrix', {
       if (this._isVerifierSetup(verifier)) return;
 
       console.log('[Verification] Setting up listeners for verifier:', verifier.userId);
+      this.isSasTimeout = false;
+
+      // Timeout Guard: If SAS doesn't progress within 15 seconds, flag it.
+      const sasTimeout = setTimeout(() => {
+        if (!this.activeSas && !this.isVerificationCompleted) {
+          console.warn('[Verification] SAS Exchange timed out before emoji display.');
+          this.isSasTimeout = true;
+        }
+      }, 15000);
 
       const onShowSas = (sas: ShowSasCallbacks) => {
+        clearTimeout(sasTimeout);
+        this.isSasTimeout = false;
+
+        // Defensive Guard: Validate negotiation before showing UI
+        const method = (verifier as any).getChosenSasMethod?.() || 'm.sas.v1'; 
+        if (method !== 'm.sas.v1') {
+          console.warn(`[Verification] Negotiation failed: unexpected method ${method}`);
+          this.isCryptoDegraded = true;
+          this.cryptoStatusMessage = "Security negotiation failed. Methods mismatch.";
+          return;
+        }
+
         console.log('[Verification] SAS data received, showing emojis.');
         this.activeSas = sas;
       };
 
       const onCancel = () => {
+        clearTimeout(sasTimeout);
         console.warn('[Verification] Verifier cancelled by remote.');
         cleanup();
         this._resetVerificationState();
@@ -2460,12 +2508,14 @@ export const useMatrixStore = defineStore('matrix', {
       // Kick off the verification exchange
       console.log('[Verification] Kicking off verifier.verify()...');
       verifier.verify().then(() => {
+        clearTimeout(sasTimeout);
         cleanup();
       }).catch((e) => {
+        clearTimeout(sasTimeout);
         console.error('[Verification] verifier.verify() failed:', e);
         cleanup();
         // Only reset if it's a real error, not just a cancellation we handled
-        if (!verifier.hasBeenCancelled) {
+        if (!(verifier as any).hasBeenCancelled) {
           this._resetVerificationState();
         }
       });
@@ -3085,7 +3135,116 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async performCryptoSanityCheck() {
+      if (!this.client) return;
+      
+      try {
+        const crypto = this.client.getCrypto();
+        if (!crypto) return;
+
+        // Query the server for the current device's OTK count
+        // Note: Using the internal API as a sanity check.
+        const res = await (this.client as any).getInternalHttpApi().authedRequest(
+          sdk.Method.Post, 
+          "/_matrix/client/v3/keys/upload", 
+          {}, 
+          {}
+        );
+
+        const otkCounts = res.one_time_key_counts || {};
+        const signedCurveCount = otkCounts['signed_curve25519'] || 0;
+
+        console.log(`[CryptoSanity] Server OTK Count: ${signedCurveCount}`);
+
+        // If the server has 0 OTKs, it's a strong sign of a desync or exhausted keys.
+        if (signedCurveCount === 0) {
+           console.error("🚨 [CryptoSanity] FATAL: Server reports 0 One-Time Keys for this device!");
+           this.isCryptoDegraded = true;
+           this.cryptoStatusMessage = "Encryption keys exhausted. Security repair required.";
+           
+           toast.error("Encryption Warning", {
+             description: "Your security keys are out of sync. Click to repair.",
+             duration: 15000,
+             action: {
+               label: "Repair",
+               onClick: () => { this.openVerificationModal(); }
+             }
+           });
+        }
+      } catch (e) {
+        console.warn("[CryptoSanity] Check failed (non-fatal):", e);
+      }
+    },
+
+    async repairCrypto() {
+      if (!this.client) return;
+      const userId = this.client.getUserId();
+      console.warn(`🚨 [MatrixStore] Starting manual crypto repair for ${userId}...`);
+      this.loginStatus = 'Repairing encryption…';
+      
+      try {
+        // 1. Stop the current client
+        this.client.stopClient();
+        this.client.removeAllListeners();
+
+        // 2. Target specific crypto stores for deletion while keeping room store if possible
+        const deleteDb = (name: string) => new Promise<void>((resolve) => {
+          const req = window.indexedDB.deleteDatabase(name);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+          req.onblocked = () => { console.warn(`IndexedDB delete blocked: ${name}`); resolve(); };
+        });
+
+        // Wipe both legacy and modern (Rust) crypto databases
+        const dbsToWipe = [
+          'matrix-js-sdk::matrix-sdk-crypto',
+          'matrix-js-sdk::matrix-sdk-crypto-meta',
+          'matrix-js-sdk::crypto-store'
+        ];
+
+        if (userId) {
+          dbsToWipe.push(`matrix-sdk-crypto-${userId}`);
+          dbsToWipe.push(`matrix-sdk-crypto-meta-${userId}`);
+        }
+
+        await Promise.all(dbsToWipe.map(name => deleteDb(name)));
+
+        // 3. Clear local device ID so we get a fresh one if the desync was device-bound
+        await deletePref('matrix_device_id');
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('matrix_device_id');
+        }
+
+        // 4. Re-initialize
+        const accessToken = await getSecret('matrix_access_token');
+        const userId = await getPref('matrix_user_id');
+        if (accessToken && userId) {
+           // This will effectively restart everything
+           window.location.reload(); 
+        } else {
+           this.logout();
+        }
+      } catch (e) {
+        console.error("[MatrixStore] Crypto repair failed:", e);
+        toast.error("Repair Failed", {
+          description: "Please try logging out and back in.",
+        });
+      }
+    },
+
+    async resetSecurity() {
+      this.openConfirmationDialog({
+        title: "Reset All Security?",
+        description: "This will log you out and clear all local encryption keys. You will need your Recovery Key or another device to access your history after logging back in.",
+        confirmLabel: "Reset & Logout",
+        onConfirm: () => {
+          this.logout();
+        }
+      });
+    },
+
     async _clearPersistentStores() {
+      const userId = this.client?.getUserId();
       const deleteDb = (name: string) => new Promise<void>((resolve) => {
         const req = window.indexedDB.deleteDatabase(name);
         req.onsuccess = () => {
@@ -3103,12 +3262,19 @@ export const useMatrixStore = defineStore('matrix', {
       });
 
       console.log('[MatrixStore] Clearing all persistent stores...');
-      await Promise.all([
-        deleteDb('matrix-js-sdk::matrix-store'),
-        deleteDb('matrix-js-sdk::matrix-sdk-crypto'),
-        deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta'),
-        deleteDb('matrix-js-sdk::crypto-store')
-      ]).catch(e => console.error('[MatrixStore] Error during DB wiping:', e));
+      const dbsToWipe = [
+        'matrix-js-sdk::matrix-store',
+        'matrix-js-sdk::matrix-sdk-crypto',
+        'matrix-js-sdk::matrix-sdk-crypto-meta',
+        'matrix-js-sdk::crypto-store'
+      ];
+
+      if (userId) {
+        dbsToWipe.push(`matrix-sdk-crypto-${userId}`);
+        dbsToWipe.push(`matrix-sdk-crypto-meta-${userId}`);
+      }
+
+      await Promise.all(dbsToWipe.map(name => deleteDb(name))).catch(e => console.error('[MatrixStore] Error during DB wiping:', e));
       console.log('[MatrixStore] Finished clearing persistent stores');
     },
 

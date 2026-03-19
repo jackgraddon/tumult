@@ -46,41 +46,48 @@ const isVisible = computed(() => {
   if (isDismissed.value) return false;
   // Show as long as we are authenticated, even if sync hasn't fully "Prepared" 
   // This ensures users see the rehydration "Soft Trigger" immediately.
-  return store.isAuthenticated && (store.isWaitingForRecoveryKey || store.needsRecoveryKeySetup);
+  return store.isAuthenticated && (store.isCryptoDegraded || store.isWaitingForRecoveryKey || store.needsRecoveryKeySetup);
 });
 
 const type = computed(() => {
+  if (store.isCryptoDegraded) return 'degraded';
   if (store.isWaitingForRecoveryKey) return 'soft-trigger';
   if (store.needsRecoveryKeySetup) return 'security-warning';
   return null;
 });
 
 const bannerStyles = computed(() => {
+  if (type.value === 'degraded') return 'bg-destructive/10 border-destructive/20 text-destructive dark:bg-destructive/20 dark:border-destructive/30 dark:text-red-300';
   if (type.value === 'soft-trigger') return 'bg-blue-50 border-blue-100 text-blue-900 dark:bg-blue-950/30 dark:border-blue-900/50 dark:text-blue-200';
   return 'bg-amber-50 border-amber-100 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-200';
 });
 
 const iconBgStyles = computed(() => {
+  if (type.value === 'degraded') return 'bg-destructive/20 dark:bg-destructive/40';
   if (type.value === 'soft-trigger') return 'bg-blue-100 dark:bg-blue-900';
   return 'bg-amber-100 dark:bg-amber-900';
 });
 
 const iconName = computed(() => {
+  if (type.value === 'degraded') return 'solar:shield-warning-bold';
   if (type.value === 'soft-trigger') return 'solar:shield-keyhole-bold';
   return 'solar:shield-warning-bold';
 });
 
 const title = computed(() => {
+  if (type.value === 'degraded') return 'Encryption Desync';
   if (type.value === 'soft-trigger') return 'Verify session';
   return 'Secure your account';
 });
 
 const description = computed(() => {
+  if (type.value === 'degraded') return store.cryptoStatusMessage || 'Encryption keys are out of sync.';
   if (type.value === 'soft-trigger') return 'Verify session to see older messages.';
   return 'Set up a recovery key to ensure you never lose access to your messages.';
 });
 
 const actionLabel = computed(() => {
+  if (type.value === 'degraded') return 'Repair';
   if (type.value === 'soft-trigger') return 'Verify Now';
   return 'Set Up Now';
 });
@@ -88,7 +95,9 @@ const actionLabel = computed(() => {
 const showClose = computed(() => type.value === 'soft-trigger');
 
 function handleAction() {
-  if (type.value === 'soft-trigger') {
+  if (type.value === 'degraded') {
+    store.openVerificationModal();
+  } else if (type.value === 'soft-trigger') {
     // Start verification request directly so other devices get notified
     store.requestVerification();
   } else {

@@ -22,13 +22,40 @@
         <UiDialogDescription v-else-if="store.isRequestingVerification">
           Sending verification request...
         </UiDialogDescription>
+        <UiDialogDescription v-else-if="store.isCryptoDegraded">
+          {{ store.cryptoStatusMessage || 'Your encryption state is out of sync.' }}
+        </UiDialogDescription>
         <UiDialogDescription v-else>
           Choose how you would like to secure your messages.
         </UiDialogDescription>
       </UiDialogHeader>
 
+      <!-- Degraded State / Repair UI -->
+      <div v-if="store.isCryptoDegraded && !store.isRestoringHistory" class="flex flex-col gap-4 py-6 text-center">
+        <div class="bg-destructive/10 p-6 rounded-xl border border-destructive/20 mb-2">
+           <div class="bg-destructive/20 size-12 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Icon name="solar:shield-warning-bold" class="size-6 text-destructive" />
+           </div>
+           <h4 class="text-base font-bold text-destructive">Encryption Desync Detected</h4>
+           <p class="text-sm text-muted-foreground mt-2 leading-relaxed">
+              We've detected a problem with your device's security keys. This often happens when multiple sessions conflict.
+           </p>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <UiButton class="w-full" @click="store.repairCrypto()">
+            <Icon name="solar:restart-bold" class="mr-2 size-4" />
+            Repair Encryption (Reloads App)
+          </UiButton>
+          <UiButton variant="outline" class="w-full" @click="store.resetSecurity()">
+            <Icon name="solar:trash-bin-trash-bold" class="mr-2 size-4" />
+            Reset & Logout
+          </UiButton>
+        </div>
+      </div>
+
       <!-- Choice / Initial State -->
-      <div v-if="!store.secretStoragePrompt && !store.activeVerificationRequest && !store.isVerificationCompleted" class="flex flex-col gap-4 py-4">
+      <div v-if="!store.isCryptoDegraded && !store.secretStoragePrompt && !store.activeVerificationRequest && !store.isVerificationCompleted" class="flex flex-col gap-4 py-4">
         <template v-if="store.isRequestingVerification">
            <div class="flex flex-col items-center gap-4 py-8">
               <UiSpinner class="h-8 w-8 text-primary" />
@@ -146,7 +173,17 @@
 
       <!-- Outgoing/Incoming Verification (Ready to start) -->
       <div v-else-if="store.isVerificationReady && !store.activeSas" class="flex flex-col gap-4 py-4 text-center">
-        <p class="text-sm font-semibold text-green-600">
+        <div v-if="store.isSasTimeout" class="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-2">
+           <h4 class="text-sm font-bold text-destructive flex items-center justify-center gap-2">
+              <Icon name="solar:danger-bold" class="size-4" />
+              Connection Unstable
+           </h4>
+           <p class="text-xs text-muted-foreground mt-1">
+              The security exchange is taking longer than expected. Please ensure both devices are online.
+           </p>
+        </div>
+
+        <p class="text-sm font-semibold text-green-600" v-else>
           Verification request has been accepted.
         </p>
         
