@@ -20,15 +20,15 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Enable Corepack
+        run: corepack enable
+        shell: bash
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 25
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-        shell: bash
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
