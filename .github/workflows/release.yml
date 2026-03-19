@@ -57,24 +57,21 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RAW_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          # Reconstruct the Minisign key file format safely in the runner's temp directory
           echo "untrusted comment: minisign private key: tumult" > "$RUNNER_TEMP/tauri.key"
-          echo "$RAW_KEY" >> "$RUNNER_TEMP/tauri.key"
-          
-          # Point Tauri to the physical file instead of the raw env string
+
+          echo "$RAW_SIGNING_KEY" | tr -d '[:space:]' >> "$RUNNER_TEMP/tauri.key"
+
           export TAURI_SIGNING_PRIVATE_KEY="$RUNNER_TEMP/tauri.key"
-          
-          # Run the build
+
           corepack yarn tauri build --verbose
 
       - name: Generate and Merge Update Metadata
         shell: bash
         run: |
           VERSION="${{ github.ref_name }}"
-          # Normalize version by removing 'v' prefix for filename matching
           RAW_VERSION=$(echo $VERSION | sed 's/^v//')
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
