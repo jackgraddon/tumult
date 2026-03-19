@@ -20,6 +20,12 @@ Make sure to install dependencies:
 corepack yarn
 ```
 
+And sync git submodules:
+
+```bash
+git submodule update --init
+```
+
 Start the development server on `http://localhost:3000`:
 
 ```bash
