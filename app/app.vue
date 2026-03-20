@@ -4,11 +4,9 @@
   </div> -->
   <GlobalContextMenu>
     <CustomTitlebar v-if="isTauri" />
-    <component :is="'style'" v-if="store.ui.customCss">
-      {{ store.ui.customCss }}
-    </component>
+    <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden transition-colors bg-neutral-200 dark:bg-background"
+      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-200 dark:bg-background"
       :class="[
         { 'pt-[30px]': isTauri, 'pt-2': !isTauri },
         store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''

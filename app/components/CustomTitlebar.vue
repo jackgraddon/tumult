@@ -7,9 +7,10 @@
     <div class="w-[135px] h-full flex items-center" data-tauri-drag-region />
 
     <div 
-      class="flex-1 h-full flex items-center justify-center text-[11px] font-medium text-muted-foreground pointer-events-none"
+      class="flex-1 h-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-muted-foreground pointer-events-none"
       data-tauri-drag-region
     >
+       <img src="~/assets/Flame.svg" class="size-3.5" alt="Tumult Logo" />
        Tumult
     </div>
 

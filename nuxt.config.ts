@@ -12,7 +12,8 @@ export default defineNuxtConfig({
       },
       title: 'Tumult',
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'apple-touch-icon', href: '/pwa-192x192.png' }
       ]
     }
   },
@@ -122,7 +123,7 @@ export default defineNuxtConfig({
     manifest: {
       name: 'Tumult',
       short_name: 'Tumult',
-      description: 'A modern, decentralized Matrix chat client.',
+      description: 'Own your noise. A smart, rebellious friend for your conversations.',
       theme_color: '#ffffff',
       background_color: '#ffffff',
       display: 'standalone',
@@ -131,6 +132,11 @@ export default defineNuxtConfig({
       start_url: '/',
       categories: ['social', 'chat', 'communications'],
       icons: [
+        {
+          src: 'pwa-64x64.png',
+          sizes: '64x64',
+          type: 'image/png'
+        },
         {
           src: 'pwa-192x192.png',
           sizes: '192x192',
