@@ -356,7 +356,9 @@ watch(() => store.verificationPhase, (phase) => {
 watch(() => store.qrCodeData, async (data) => {
   if (data) {
     try {
-      qrCodeUrl.value = await QRCode.toDataURL(data, {
+      // If it's a QRCode object from matrix-js-sdk, extract encoded data
+      const encoded = typeof data.getEncodedData === 'function' ? data.getEncodedData() : data;
+      qrCodeUrl.value = await QRCode.toDataURL(encoded, {
         margin: 0,
         scale: 10,
         color: {
@@ -428,10 +430,11 @@ async function tick() {
         inversionAttempts: 'dontInvert',
       });
 
-      if (code && code.data.startsWith('matrix-qrcode/')) {
+      if (code) {
         console.log('[QRScanner] Found QR code:', code.data);
         stopScanning();
-        await store.reciprocateQrCode(code.data);
+        // Pass the raw byte data if available for higher accuracy
+        await store.reciprocateQrCode(code.binaryData ? new Uint8ClampedArray(code.binaryData) : code.data);
         return;
       }
     }

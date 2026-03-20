@@ -198,7 +198,7 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationCompleted: false,
     isRestoringHistory: false,
     verificationPhase: null as VerificationPhase | null,
-    qrCodeData: null as string | null,
+    qrCodeData: null as any | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
     createRoomModalOpen: false,
@@ -1439,6 +1439,13 @@ export const useMatrixStore = defineStore('matrix', {
               return [cachedKeyId, secretStorageKeys.get(cachedKeyId)!] as [string, Uint8Array<ArrayBuffer>];
             }
 
+            // Suppress automatic modal on refresh if we are already verified and cross-signing is ready.
+            // This prevents the annoying "Security Key Required" popup when everything is already working.
+            if (this.isCrossSigningReady && this.isSecretStorageReady) {
+              console.log('[SecretStorage] Device is already ready, suppressing automatic modal.');
+              return null;
+            }
+
             // If a device verification is active, wait for it instead of prompting immediately.
             // This prioritizes interactive verification (Emoji/QR) and gossip over backup keys.
             if (this.activeVerificationRequest || this.isRequestingVerification) {
@@ -1498,10 +1505,14 @@ export const useMatrixStore = defineStore('matrix', {
         // Auto-restore if we have the keys locally and crypto is not fully ready
         if (cryptoReady) {
           const crypto = this.client.getCrypto();
-          const isReady = await crypto?.isCrossSigningReady();
-          console.log('[MatrixStore] Crypto cross-signing ready:', isReady);
+          this.isCrossSigningReady = await crypto?.isCrossSigningReady() || false;
+          this.isSecretStorageReady = await crypto?.isSecretStorageReady() || false;
+          console.log('[MatrixStore] Crypto status (Early Init):', {
+            crossSigningReady: this.isCrossSigningReady,
+            secretStorageReady: this.isSecretStorageReady
+          });
 
-          if (isReady === false) {
+          if (this.isCrossSigningReady === false) {
             console.log('[MatrixStore] Cross-signing not ready, checking for local SSSS keys...');
             const hasSsssKey = await this.client.secretStorage.hasKey();
             if (hasSsssKey) {
@@ -2368,7 +2379,10 @@ export const useMatrixStore = defineStore('matrix', {
             // Check for QR code data
             const qrData = (request as any).qrCodeData;
             if (qrData) {
-              this.qrCodeData = qrData.getEncodedData();
+              // We store the raw QRCode object so we can use its methods if needed,
+              // or extract encoded data.
+              this.qrCodeData = qrData;
+              console.log('[Verification] QR code data available');
             } else {
               this.qrCodeData = null;
             }
@@ -2556,21 +2570,24 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async reciprocateQrCode(scannedData: string) {
+    async reciprocateQrCode(scannedData: string | Uint8ClampedArray) {
       if (!this.activeVerificationRequest) return;
 
       console.log('[QRVerification] Reciprocating QR code...');
       try {
-        // Matrix QR data as defined in MSC1543 is a byte array 
-        // encoded in base64, usually prefixed with 'matrix-qrcode/'
-        const parts = scannedData.split('/');
-        const base64 = parts[parts.length - 1];
+        let uint8Array: Uint8ClampedArray;
 
-        // Convert base64 to Uint8ClampedArray
-        const binaryString = atob(base64 || '');
-        const uint8Array = new Uint8ClampedArray(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          uint8Array[i] = binaryString.charCodeAt(i);
+        if (scannedData instanceof Uint8ClampedArray) {
+          uint8Array = scannedData;
+        } else {
+          // Fallback for legacy string format: matrix-qrcode/...base64...
+          const parts = scannedData.split('/');
+          const base64 = parts[parts.length - 1];
+          const binaryString = atob(base64 || '');
+          uint8Array = new Uint8ClampedArray(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            uint8Array[i] = binaryString.charCodeAt(i);
+          }
         }
 
         // Call the official SDK method for scanning a QR code
@@ -3150,9 +3167,10 @@ export const useMatrixStore = defineStore('matrix', {
 
         // Query the server for the current device's OTK count
         // Note: Using the internal API as a sanity check.
+        // We use the path without leading slash to avoid double-prefixing in some SDK versions.
         const res = await (this.client as any).getInternalHttpApi().authedRequest(
           sdk.Method.Post,
-          "/_matrix/client/v3/keys/upload",
+          "keys/upload",
           {},
           {}
         );
