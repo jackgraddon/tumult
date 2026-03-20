@@ -1498,10 +1498,23 @@ export const useMatrixStore = defineStore('matrix', {
         // Auto-restore if we have the keys locally and crypto is not fully ready
         if (cryptoReady) {
           const crypto = this.client.getCrypto();
-          const isReady = await crypto?.isCrossSigningReady();
-          console.log('[MatrixStore] Crypto cross-signing ready:', isReady);
 
-          if (isReady === false) {
+          // CRITICAL: We fetch these statuses as early as possible to prevent the SDK
+          // from triggering redundant secret storage prompts during the initial sync.
+          const [xsReady, ssssReady] = await Promise.all([
+            crypto?.isCrossSigningReady() ?? false,
+            crypto?.isSecretStorageReady() ?? false
+          ]);
+
+          this.isCrossSigningReady = xsReady;
+          this.isSecretStorageReady = ssssReady;
+
+          console.log('[MatrixStore] Crypto status (Early Init):', {
+            crossSigningReady: this.isCrossSigningReady,
+            secretStorageReady: this.isSecretStorageReady
+          });
+
+          if (this.isCrossSigningReady === false) {
             console.log('[MatrixStore] Cross-signing not ready, checking for local SSSS keys...');
             const hasSsssKey = await this.client.secretStorage.hasKey();
             if (hasSsssKey) {
@@ -2647,7 +2660,10 @@ export const useMatrixStore = defineStore('matrix', {
           this.requestSecretsFromOtherDevices();
 
           // Ensure we try to restore history if we now have the keys
-          await this.restoreKeysFromBackup();
+          // Only if it's the first time we've reached this state in this session
+          if (!this.isFullySynced || this.isVerificationCompleted) {
+            await this.restoreKeysFromBackup();
+          }
 
           // Provision a dehydrated device now that we are verified
           this.provisionDehydratedDevice();
@@ -3294,8 +3310,9 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     openCreateRoomModal() {
-      this.createRoomModalOpen = true;
+      // Ensure the search modal is closed before opening creation to avoid z-index layering issues
       this.globalSearchModalOpen = false;
+      this.createRoomModalOpen = true;
     },
 
     closeCreateRoomModal() {

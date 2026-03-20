@@ -129,7 +129,7 @@
         
         <UiInput 
           v-model="backupKeyInput" 
-          type="hidden"
+          type="password"
           placeholder="Security Key or Passphrase" 
           class="my-2"
           @keyup.enter="submitKey"
