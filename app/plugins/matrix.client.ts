@@ -5,6 +5,9 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     const store = useMatrixStore();
     const route = useRoute();
 
+    // Initialise basic storage (preferences, theme, etc.)
+    await store.initStorage();
+
     // Prevent auto-login on the callback page to avoid race conditions
     if (!route.path.includes('/auth/callback')) {
         console.log('[MatrixPlugin] Starting session restoration check...');

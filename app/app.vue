@@ -4,9 +4,13 @@
   </div> -->
   <GlobalContextMenu>
     <CustomTitlebar v-if="isTauri" />
+    <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden transition-colors bg-neutral-200 dark:bg-background"
-      :class="{ 'pt-[30px]': isTauri, 'pt-2': !isTauri }"
+      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-200 dark:bg-background"
+      :class="[
+        { 'pt-[30px]': isTauri, 'pt-2': !isTauri },
+        store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''
+      ]"
     >
       <!-- Sync Progress Bar -->
       <div 
@@ -45,12 +49,24 @@ import { toast } from 'vue-sonner';
 
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
+const store = useMatrixStore();
 
 const isFailover = ref(false);
 
+watch(() => store.ui.themePreset, (newTheme) => {
+  if (import.meta.client) {
+    const body = document.body;
+    body.classList.forEach(cls => {
+      if (cls.startsWith('theme-')) body.classList.remove(cls);
+    });
+    if (newTheme && newTheme !== 'default') {
+      body.classList.add('theme-' + newTheme);
+    }
+  }
+}, { immediate: true });
+
 onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri);
-  const store = useMatrixStore();
 
   // PWA Update Handling
   if (import.meta.client && 'serviceWorker' in navigator) {

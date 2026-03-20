@@ -159,12 +159,24 @@ async fn start_rpc_server(
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
+    let sidecar_app = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
+        use tauri::Emitter;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
-                    log::info!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                    let text = String::from_utf8_lossy(&line);
+                    let trimmed = text.trim();
+                    log::info!("[rpc-sidecar] {}", trimmed);
+
+                    // Bridge JSON messages to the frontend
+                    if trimmed.starts_with("JSON_BRIDGE_MSG:") {
+                        let json = &trimmed["JSON_BRIDGE_MSG:".len()..];
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
+                            let _ = sidecar_app.emit("arrpc-activity", value);
+                        }
+                    }
                 }
                 CommandEvent::Stderr(line) => {
                     log::error!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());

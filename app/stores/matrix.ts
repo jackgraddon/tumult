@@ -44,6 +44,8 @@ export interface UIState {
     categories: Record<string, string[]>; // Order of categories per spaceId
     rooms: Record<string, string[]>; // Order of rooms per categoryId
   };
+  themePreset: string;
+  customCss: string;
   sidebarOpen: boolean;
   contextMenu: {
     type: 'room' | 'message' | 'global' | null;
@@ -271,6 +273,8 @@ export const useMatrixStore = defineStore('matrix', {
       showEmptyRooms: false,
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
+      themePreset: 'default',
+      customCss: '',
       sidebarOpen: false,
       contextMenu: {
         type: null,
@@ -631,6 +635,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
       this.ui.collapsedCategories = await getPref('matrix_collapsed_categories', []);
       this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
+      this.ui.themePreset = await getPref('matrix_theme_preset', 'default');
+      this.ui.customCss = await getPref('matrix_custom_css', '');
       this.ui.uiOrder = await getPref('matrix_ui_order', {
         rootSpaces: [], categories: {}, rooms: {}
       });
@@ -648,8 +654,10 @@ export const useMatrixStore = defineStore('matrix', {
       const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
       if (isTauri) {
         const { listen } = await import('@tauri-apps/api/event');
+
+        // Listen for BASIC scanner events (native Rust process scanner)
         listen('game-activity', (event: any) => {
-          console.log('[MatrixStore] Game activity event from Rust:', event.payload);
+          console.log('[MatrixStore] Game activity event from Rust (Basic):', event.payload);
           const { name, exe, is_running } = event.payload;
           if (is_running) {
             this.activityDetails = {
@@ -663,6 +671,12 @@ export const useMatrixStore = defineStore('matrix', {
             }
           }
           this.refreshPresence();
+        });
+
+        // Listen for ADVANCED scanner events (arRPC stdout bridge)
+        listen('arrpc-activity', (event: any) => {
+          console.log('[MatrixStore] arRPC activity event from Rust (Advanced):', event.payload);
+          this.handleRpcActivity(event.payload);
         });
       }
 
@@ -776,7 +790,15 @@ export const useMatrixStore = defineStore('matrix', {
           noRpc: this.gameDetectionLevel === 'basic'
         });
 
-        this.connectRpcWebSocket();
+        // Only connect to WebSocket bridge in dev mode or non-Tauri (PWA).
+        // In built Tauri app, we use the stdout-to-event bridge for efficiency
+        // and to avoid Mixed Content / Connection Refused errors in the console.
+        const isDev = (process as any).dev;
+        if (isDev || !isTauri) {
+          this.connectRpcWebSocket();
+        } else {
+          console.log('[MatrixStore] Using Tauri event bridge for arRPC (WebSocket bridge suppressed)');
+        }
       } catch (e) {
         console.error('[MatrixStore] Failed to start arRPC server:', e);
       }
@@ -821,64 +843,10 @@ export const useMatrixStore = defineStore('matrix', {
         console.log('[MatrixStore] Connected to arRPC bridge');
       };
 
-      socket.onmessage = async (event) => {
+      socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[MatrixStore] arRPC message:', data);
-
-          if (data.activity) {
-            let name = this._sanitizeActivityString(data.activity.name);
-            const details = this._sanitizeActivityString(data.activity.details);
-            const appId = data.activity.application_id;
-            let appIcon = null;
-
-            let largeImage = data.activity.assets?.large_image;
-            let smallImage = data.activity.assets?.small_image;
-
-            // Always try to resolve from appId for authoritative name and assets
-            if (appId) {
-              const [appInfo, assets] = await Promise.all([
-                this.resolveApplicationInfo(appId),
-                this.resolveApplicationAssets(appId)
-              ]);
-
-              if (appInfo) {
-                name = appInfo.name || name;
-                appIcon = appInfo.icon;
-              }
-
-              // Map asset names to IDs if they are not already IDs
-              if (largeImage && assets[largeImage]) largeImage = assets[largeImage];
-              if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
-            }
-
-            // Enhanced activity details from arRPC
-            this.activityDetails = {
-              name: name || details || 'a game',
-              details: details,
-              state: this._sanitizeActivityString(data.activity.state),
-              applicationId: appId,
-              iconHash: largeImage || appIcon,
-              smallIconHash: smallImage,
-              startTimestamp: data.activity.timestamps?.start,
-              is_running: true,
-              last_updated: Date.now()
-            };
-          } else {
-            this.activityDetails = null;
-          }
-
-          // Update local remoteActivityDetails immediately to prevent stale fallbacks
-          const userId = this.client?.getUserId();
-          if (userId) {
-            if (this.activityDetails) {
-              this.remoteActivityDetails[userId] = { ...this.activityDetails };
-            } else {
-              delete this.remoteActivityDetails[userId];
-            }
-          }
-
-          this.refreshPresence();
+          this.handleRpcActivity(data);
         } catch (e) {
           console.error('[MatrixStore] Failed to parse arRPC message:', e);
         }
@@ -897,6 +865,64 @@ export const useMatrixStore = defineStore('matrix', {
       };
 
       this.rpcSocket = socket;
+    },
+
+    async handleRpcActivity(data: any) {
+      console.log('[MatrixStore] Processing arRPC activity:', data);
+
+      if (data.activity) {
+        let name = this._sanitizeActivityString(data.activity.name);
+        const details = this._sanitizeActivityString(data.activity.details);
+        const appId = data.activity.application_id;
+        let appIcon = null;
+
+        let largeImage = data.activity.assets?.large_image;
+        let smallImage = data.activity.assets?.small_image;
+
+        // Always try to resolve from appId for authoritative name and assets
+        if (appId) {
+          const [appInfo, assets] = await Promise.all([
+            this.resolveApplicationInfo(appId),
+            this.resolveApplicationAssets(appId)
+          ]);
+
+          if (appInfo) {
+            name = appInfo.name || name;
+            appIcon = appInfo.icon;
+          }
+
+          // Map asset names to IDs if they are not already IDs
+          if (largeImage && assets[largeImage]) largeImage = assets[largeImage];
+          if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
+        }
+
+        // Enhanced activity details from arRPC
+        this.activityDetails = {
+          name: name || details || 'a game',
+          details: details,
+          state: this._sanitizeActivityString(data.activity.state),
+          applicationId: appId,
+          iconHash: largeImage || appIcon,
+          smallIconHash: smallImage,
+          startTimestamp: data.activity.timestamps?.start,
+          is_running: true,
+          last_updated: Date.now()
+        };
+      } else {
+        this.activityDetails = null;
+      }
+
+      // Update local remoteActivityDetails immediately to prevent stale fallbacks
+      const userId = this.client?.getUserId();
+      if (userId) {
+        if (this.activityDetails) {
+          this.remoteActivityDetails[userId] = { ...this.activityDetails };
+        } else {
+          delete this.remoteActivityDetails[userId];
+        }
+      }
+
+      this.refreshPresence();
     },
 
     setCustomStatus(status: string | null) {
@@ -1057,6 +1083,16 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.sidebarOpen) {
         this.ui.memberListVisible = false;
       }
+    },
+
+    async setThemePreset(id: string) {
+      this.ui.themePreset = id;
+      await setPref('matrix_theme_preset', id);
+    },
+
+    async setCustomCss(css: string) {
+      this.ui.customCss = css;
+      await setPref('matrix_custom_css', css);
     },
 
     setContextMenu(type: UIState['contextMenu']['type'], data: any = null) {
