@@ -32,6 +32,7 @@ export default defineNuxtConfig({
     public: {
       matrix: {
         baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
+        recommendedHomeservers: (process.env.NUXT_PUBLIC_MATRIX_RECOMMENDED_HOMESERVERS || 'matrix.org,mozilla.org,gnome.org,kde.org').split(','),
       },
       push: {
         relayUrl: process.env.NUXT_PUBLIC_PUSH_RELAY_URL || 'https://tumult.jackg.cc/api/push-relay',
@@ -118,7 +119,7 @@ export default defineNuxtConfig({
     manifest: {
       name: 'Tumult',
       short_name: 'Tumult',
-      description: 'A modern, decentralized Matrix chat client.',
+      description: 'Own your noise. A smart, rebellious friend for your conversations.',
       theme_color: '#ffffff',
       background_color: '#ffffff',
       display: 'standalone',
@@ -146,7 +147,7 @@ export default defineNuxtConfig({
       maximumFileSizeToCacheInBytes: 5000000,
     },
     injectManifest: {
-      swSrc: 'app/public/sw.js',
+      swSrc: 'public/sw.js',
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       maximumFileSizeToCacheInBytes: 5000000,
     },

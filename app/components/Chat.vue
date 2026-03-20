@@ -438,7 +438,7 @@
       </div>
 
       <div v-if="messages.length === 0 && !isLoadingHistory" class="flex items-center justify-center h-full order-last">
-        <p class="text-muted-foreground text-sm">No messages yet. Say hello!</p>
+        <p class="text-muted-foreground text-sm italic">"It’s quiet here. Too quiet. Start a tumult."</p>
       </div>
     </div>
 
