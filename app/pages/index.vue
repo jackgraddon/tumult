@@ -10,7 +10,7 @@
       <!-- Logo/Brand -->
       <div class="flex flex-col items-center space-y-4">
         <div class="size-20 bg-primary flex items-center justify-center rounded-2xl shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500 group">
-          <span class="text-5xl font-black text-primary-foreground group-hover:scale-110 transition-transform">T</span>
+          <img src="~/assets/Flame.svg" class="size-12 group-hover:scale-110 transition-transform" alt="Tumult Logo" />
         </div>
         <h1 class="text-6xl font-black tracking-tighter">Tumult</h1>
       </div>

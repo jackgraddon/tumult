@@ -69,7 +69,9 @@
           <div v-if="matrixStore.isLoggingIn" class="flex flex-col items-center gap-6 py-12 animate-in zoom-in-95 duration-300">
             <div class="relative flex items-center justify-center">
               <UiSpinner class="size-16 text-primary" />
-              <div class="absolute text-xl font-bold text-primary animate-pulse">T</div>
+              <div class="absolute flex items-center justify-center animate-pulse">
+                <img src="~/assets/Flame.svg" class="size-8" alt="Tumult Logo" />
+              </div>
             </div>
             <div class="text-center space-y-2">
               <p class="text-lg font-bold">Securing your foundation...</p>
