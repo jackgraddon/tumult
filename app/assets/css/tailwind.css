@@ -117,6 +117,30 @@
   --sidebar-ring: var(--mint-leaf);
 }
 
+.theme-forest {
+  --primary: oklch(0.6 0.15 145);
+  --accent: oklch(0.7 0.12 180);
+  --ring: oklch(0.6 0.15 145);
+}
+
+.theme-sunset {
+  --primary: oklch(0.65 0.22 35);
+  --accent: oklch(0.75 0.18 70);
+  --ring: oklch(0.65 0.22 35);
+}
+
+.theme-midnight {
+  --primary: oklch(0.5 0.12 250);
+  --accent: oklch(0.6 0.15 280);
+  --ring: oklch(0.5 0.12 250);
+}
+
+.theme-lava {
+  --primary: oklch(0.55 0.25 25);
+  --accent: oklch(0.65 0.2 45);
+  --ring: oklch(0.55 0.25 25);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

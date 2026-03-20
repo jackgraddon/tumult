@@ -44,6 +44,8 @@ export interface UIState {
     categories: Record<string, string[]>; // Order of categories per spaceId
     rooms: Record<string, string[]>; // Order of rooms per categoryId
   };
+  themePreset: string;
+  customCss: string;
   sidebarOpen: boolean;
   contextMenu: {
     type: 'room' | 'message' | 'global' | null;
@@ -271,6 +273,8 @@ export const useMatrixStore = defineStore('matrix', {
       showEmptyRooms: false,
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
+      themePreset: 'default',
+      customCss: '',
       sidebarOpen: false,
       contextMenu: {
         type: null,
@@ -631,6 +635,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
       this.ui.collapsedCategories = await getPref('matrix_collapsed_categories', []);
       this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
+      this.ui.themePreset = await getPref('matrix_theme_preset', 'default');
+      this.ui.customCss = await getPref('matrix_custom_css', '');
       this.ui.uiOrder = await getPref('matrix_ui_order', {
         rootSpaces: [], categories: {}, rooms: {}
       });
@@ -1057,6 +1063,16 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.sidebarOpen) {
         this.ui.memberListVisible = false;
       }
+    },
+
+    async setThemePreset(id: string) {
+      this.ui.themePreset = id;
+      await setPref('matrix_theme_preset', id);
+    },
+
+    async setCustomCss(css: string) {
+      this.ui.customCss = css;
+      await setPref('matrix_custom_css', css);
     },
 
     setContextMenu(type: UIState['contextMenu']['type'], data: any = null) {
