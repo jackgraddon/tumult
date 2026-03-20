@@ -114,7 +114,7 @@ export default defineNuxtConfig({
   pwa: {
     strategies: 'injectManifest',
     filename: 'sw.js',
-    egisterType: 'autoUpdate',
+    registerType: 'autoUpdate',
     manifest: {
       name: 'Tumult',
       short_name: 'Tumult',
@@ -146,7 +146,7 @@ export default defineNuxtConfig({
       maximumFileSizeToCacheInBytes: 5000000,
     },
     injectManifest: {
-      swSrc: 'app/sw.js',
+      swSrc: 'app/public/sw.js',
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       maximumFileSizeToCacheInBytes: 5000000,
     },
