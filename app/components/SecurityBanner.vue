@@ -75,21 +75,21 @@ const iconName = computed(() => {
 });
 
 const title = computed(() => {
-  if (type.value === 'degraded') return 'Encryption Desync';
-  if (type.value === 'soft-trigger') return 'Verify session';
-  return 'Secure your account';
+  if (type.value === 'degraded') return 'Revolution speed bump';
+  if (type.value === 'soft-trigger') return 'Solidify the foundation';
+  return 'Own your noise';
 });
 
 const description = computed(() => {
-  if (type.value === 'degraded') return store.cryptoStatusMessage || 'Encryption keys are out of sync.';
-  if (type.value === 'soft-trigger') return 'Verify session to see older messages.';
-  return 'Set up a recovery key to ensure you never lose access to your messages.';
+  if (type.value === 'degraded') return store.cryptoStatusMessage || "Something's not right in the foundation.";
+  if (type.value === 'soft-trigger') return 'Reclaim your conversations from the ether.';
+  return 'Your data belongs to you, not a boardroom. Secure it with a key.';
 });
 
 const actionLabel = computed(() => {
   if (type.value === 'degraded') return 'Repair';
-  if (type.value === 'soft-trigger') return 'Verify Now';
-  return 'Set Up Now';
+  if (type.value === 'soft-trigger') return 'Verify';
+  return 'Secure';
 });
 
 const showClose = computed(() => type.value === 'soft-trigger');

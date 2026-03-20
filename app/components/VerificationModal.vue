@@ -3,30 +3,30 @@
     <UiDialogContent class="sm:max-w-md">
       <UiDialogHeader>
         <UiDialogTitle>
-          <template v-if="store.isVerificationCompleted">Verification Complete</template>
-          <template v-else-if="store.secretStoragePrompt && store.isCrossSigningReady">Restore Encrypted History</template>
-          <template v-else-if="store.secretStoragePrompt">Security Key Required</template>
-          <template v-else>Device Verification</template>
+            <template v-if="store.isVerificationCompleted">Revolution Secured</template>
+            <template v-else-if="store.secretStoragePrompt && store.isCrossSigningReady">Reclaiming Your History</template>
+            <template v-else-if="store.secretStoragePrompt">Your Data, Your Keys</template>
+            <template v-else>Solidify the Foundation</template>
         </UiDialogTitle>
         <UiDialogDescription v-if="store.secretStoragePrompt">
           <template v-if="store.isCrossSigningReady">
-            Your device is now verified! To access your previous message history, please enter your security key or passphrase.
+              Foundation solid. To pull your previous conversations from the ether, enter your security key or passphrase.
           </template>
           <template v-else>
-            Enter your security key or passphrase to verify this session and access encrypted messages.
+              Your data belongs to you, not a boardroom. Prove it's you with your security key or passphrase.
           </template>
         </UiDialogDescription>
         <UiDialogDescription v-else-if="store.activeVerificationRequest">
-          {{ store.isVerificationInitiatedByMe ? 'Verify this device with another session.' : 'Someone is trying to verify this device.' }}
+            {{ store.isVerificationInitiatedByMe ? 'Connecting to your other strongholds.' : 'A smart, rebellious friend is knocking at the door.' }}
         </UiDialogDescription>
         <UiDialogDescription v-else-if="store.isRequestingVerification">
-          Sending verification request...
+            Reaching out across the decentralized web...
         </UiDialogDescription>
         <UiDialogDescription v-else-if="store.isCryptoDegraded">
-          {{ store.cryptoStatusMessage || 'Your encryption state is out of sync.' }}
+            {{ store.cryptoStatusMessage || "Something's not right in the foundation. Let's fix it." }}
         </UiDialogDescription>
         <UiDialogDescription v-else>
-          Choose how you would like to secure your messages.
+            Decide how you'll own your noise today.
         </UiDialogDescription>
       </UiDialogHeader>
 
@@ -36,9 +36,9 @@
            <div class="bg-destructive/20 size-12 rounded-full flex items-center justify-center mx-auto mb-4">
               <Icon name="solar:shield-warning-bold" class="size-6 text-destructive" />
            </div>
-           <h4 class="text-base font-bold text-destructive">Encryption Desync Detected</h4>
+           <h4 class="text-base font-bold text-destructive">A revolution speed bump</h4>
            <p class="text-sm text-muted-foreground mt-2 leading-relaxed">
-              We've detected a problem with your device's security keys. This often happens when multiple sessions conflict.
+              Something broke in the foundation. We checked; it's not in our pockets, but it's out of sync.
            </p>
         </div>
 
@@ -104,8 +104,8 @@
               </div>
            </div>
            <div class="text-center space-y-2">
-              <p class="font-bold text-lg">Verified!</p>
-              <p class="text-sm text-muted-foreground animate-pulse">Syncing encrypted history from your other devices...</p>
+              <p class="font-bold text-lg">Peace in the chaos.</p>
+              <p class="text-sm text-muted-foreground animate-pulse">Reclaiming your conversations from the decentralized ether...</p>
            </div>
         </div>
         <div v-else class="flex flex-col items-center gap-4 text-green-600 w-full">

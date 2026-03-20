@@ -32,6 +32,7 @@ export default defineNuxtConfig({
     public: {
       matrix: {
         baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
+        recommendedHomeservers: (process.env.NUXT_PUBLIC_MATRIX_RECOMMENDED_HOMESERVERS || 'matrix.org,mozilla.org,gnome.org,kde.org').split(','),
       },
       push: {
         relayUrl: process.env.NUXT_PUBLIC_PUSH_RELAY_URL || 'https://tumult.jackg.cc/api/push-relay',

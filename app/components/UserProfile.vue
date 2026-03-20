@@ -18,7 +18,7 @@
       <button 
         v-if="store.user?.userId === displayUserId"
         class="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-background border shadow-sm hover:bg-muted transition-colors"
-        :title="store.isCrossSigningReady ? 'Session Verified' : 'Verify Session'"
+        :title="store.isCrossSigningReady ? 'Foundation Secured' : 'Solidify the Foundation'"
       >
         <svg 
           v-if="store.isCrossSigningReady" 
