@@ -245,6 +245,7 @@
                    :intrinsic-height="msg.imageHeight"
                    :msgtype="msg.msgtype"
                    :mimetype="msg.mimetype"
+                   :info="msg.rawEvent?.getContent()?.info"
                    class="max-w-[400px]"
                  />
                  <div 
@@ -285,6 +286,7 @@
                     :alt="msg.body"
                     :msgtype="msg.msgtype"
                     :mimetype="msg.mimetype"
+                    :info="msg.rawEvent?.getContent()?.info"
                   />
               </div>
 

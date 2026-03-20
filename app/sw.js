@@ -17,6 +17,55 @@ sw.addEventListener('activate', (event) => {
     event.waitUntil(sw.clients.claim());
 });
 
+// --- Media Proxy (Authenticated Streaming) ---
+
+const MEDIA_PROXY_PATH = '/_media_proxy/';
+
+sw.addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url);
+
+    if (url.pathname === MEDIA_PROXY_PATH) {
+        event.respondWith(handleMediaProxy(event.request));
+    }
+});
+
+async function handleMediaProxy(request) {
+    const url = new URL(request.url);
+    const encodedData = url.searchParams.get('data');
+
+    if (!encodedData) {
+        return new Response('Missing data parameter', { status: 400 });
+    }
+
+    try {
+        // Data is passed as a base64 encoded JSON string in the URL to avoid
+        // issues with special characters in the homeserver URL or token.
+        const decoded = JSON.parse(atob(encodedData));
+        const { mediaUrl, accessToken } = decoded;
+
+        if (!mediaUrl || !accessToken) {
+            return new Response('Missing mediaUrl or accessToken', { status: 400 });
+        }
+
+        // Forward the original request headers (like 'Range' for video streaming)
+        const headers = new Headers(request.headers);
+        headers.set('Authorization', `Bearer ${accessToken}`);
+
+        const response = await fetch(mediaUrl, {
+            headers,
+            credentials: 'omit', // Matrix tokens are handled via Authorization header
+        });
+
+        // We return the response as-is. If the browser sent a Range header,
+        // the homeserver (if it supports it) will return 206 Partial Content,
+        // which the browser's <video> element needs for seeking.
+        return response;
+    } catch (err) {
+        console.error('[Service Worker] Media proxy error:', err);
+        return new Response('Internal Proxy Error', { status: 500 });
+    }
+}
+
 // Helper to extract a readable summary of the message
 function getMessageSummary(content) {
     if (!content) return 'New message';

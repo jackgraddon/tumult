@@ -28,7 +28,11 @@
       <video 
         v-if="imageUrl"
         :src="imageUrl" 
-        controls 
+        :controls="!isGif"
+        :autoplay="isGif || props.info?.['fi.mau.autoplay']"
+        :loop="isGif || props.info?.['fi.mau.loop']"
+        :muted="isGif || props.info?.['fi.mau.no_audio']"
+        playsinline
         class="w-full max-h-[400px] object-contain"
         preload="metadata"
       ></video>
@@ -89,6 +93,7 @@ const props = defineProps<{
   alt?: string;
   mimetype?: string;
   msgtype?: string;
+  info?: any;
   // Dimension props primarily for images
   maxWidth?: number;
   maxHeight?: number;
@@ -103,6 +108,14 @@ const isImage = computed(() => props.mimetype?.startsWith('image/') || props.msg
 const isVideo = computed(() => props.mimetype?.startsWith('video/') || props.msgtype === 'm.video');
 const isAudio = computed(() => props.mimetype?.startsWith('audio/') || props.msgtype === 'm.audio');
 const isInlineMedia = computed(() => isImage.value || isVideo.value || isAudio.value);
+
+const isGif = computed(() => {
+  // Matrix-style GIF detection
+  return isVideo.value && (
+    props.info?.['fi.mau.gif'] === true ||
+    props.info?.['fi.mau.discord.gifv'] === true
+  );
+});
 
 // --- 2. State & Hooks ---
 const mediaUrl = ref<string | null>(null);
@@ -169,9 +182,20 @@ const loadMedia = async () => {
   if (props.mxcUrl && !props.encryptedFile) {
     if (props.mxcUrl.startsWith('mxc://')) {
       // For images, useAuthenticatedMedia (standardUrl) handles the thumbnailing
-      // For video/audio, we use mxcUrlToHttp for streaming
+      // For video/audio, we use the Service Worker proxy for authenticated streaming
       if (!isImage.value) {
-        mediaUrl.value = store.client.mxcUrlToHttp(props.mxcUrl);
+        const mxcParts = props.mxcUrl.replace('mxc://', '').split('/');
+        const serverName = mxcParts[0];
+        const mediaId = mxcParts[1];
+        const matrixMediaUrl = `${store.client.baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+        const accessToken = store.client.getAccessToken();
+
+        const proxyData = btoa(JSON.stringify({
+          mediaUrl: matrixMediaUrl,
+          accessToken
+        }));
+
+        mediaUrl.value = `/_media_proxy/?data=${encodeURIComponent(proxyData)}`;
       }
     } else {
       // Direct web URL (https://...) - use as-is
