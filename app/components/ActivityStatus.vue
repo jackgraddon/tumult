@@ -149,9 +149,9 @@ const effectivePresence = computed(() => {
 });
 
 const presenceDotColor = computed(() => {
-    if (effectivePresence.value === 'online') return 'bg-emerald-500';
-    if (effectivePresence.value === 'unavailable') return 'bg-yellow-500';
-    return 'bg-gray-400 dark:bg-gray-600';
+    if (effectivePresence.value === 'online') return 'bg-[var(--status-online)]';
+    if (effectivePresence.value === 'unavailable') return 'bg-[var(--status-idle)]';
+    return 'bg-[var(--status-offline)]';
 });
 
 const displayPresenceText = computed(() => {

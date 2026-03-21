@@ -103,6 +103,7 @@ const presets = [
   { id: 'sunset', label: 'Solar Sunset', color: 'oklch(0.65 0.22 35)' },
   { id: 'midnight', label: 'Purple Midnight', color: 'oklch(0.5 0.12 250)' },
   { id: 'lava', label: 'Volcanic Lava', color: 'oklch(0.55 0.25 25)' },
+  { id: 'crimson', label: 'Rebel Crimson', color: 'oklch(0.55 0.2 25)' },
 ]
 
 const customCss = ref(store.ui.customCss || '');
