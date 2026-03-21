@@ -23,6 +23,9 @@
             <Icon :name="mode.icon" class="size-6 text-muted-foreground" :class="{ 'text-primary': colorMode.preference === mode.id }" />
           </div>
           <span class="text-sm font-medium">{{ mode.label }}</span>
+          <div v-if="mode.id === 'system'" class="text-[10px] text-muted-foreground mt-[-4px]">
+             (currently {{ colorMode.value }})
+          </div>
         </button>
       </div>
     </div>

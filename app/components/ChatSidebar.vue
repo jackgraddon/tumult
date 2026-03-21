@@ -16,7 +16,7 @@
                 </h2>
             </div>
             <UiButton 
-                v-if="activeSpaceId"
+                v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
                 size="icon" 
                 class="shrink-0"
