@@ -51,11 +51,11 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0 0);
   
-  --stormy-teal: oklch(0.407 0.068 206.13);
+  --stormy-teal: oklch(0.395 0.081 206.6);
   --mint-leaf: oklch(0.704 0.191 165.23);
   --royal-gold: oklch(0.887 0.161 87.05);
   --powder-blush: oklch(0.852 0.07 35.84);
-  --coral-glow: oklch(0.718 0.17 44.47);
+  --coral-glow: oklch(0.729 0.174 48.3);
 
   --primary: var(--stormy-teal);
   --primary-foreground: oklch(1 0 0);
