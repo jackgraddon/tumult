@@ -1,9 +1,9 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
-    response::{IntoResponse, Response},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection}, Query, State},
+    response::IntoResponse,
     routing::get,
     Router,
-    http::{HeaderMap, Method},
+    http::Method,
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde_json::json;
@@ -74,33 +74,34 @@ pub async fn start_websocket_server(
 
 async fn handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    params: Query<HashMap<String, String>>,
-    ws_opt: Option<WebSocketUpgrade>,
-) -> Response {
+    Query(params): Query<HashMap<String, String>>,
+    ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
+) -> impl IntoResponse {
     let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
 
-    if let Some(ws) = ws_opt {
-        debug!("[rpc-ws] WebSocket upgrade detected for client: {}", client_id);
-        return ws.on_upgrade(move |socket| {
-            handle_socket(socket, state, client_id)
-        }).into_response();
+    match ws {
+        Ok(ws) => {
+            debug!("[rpc-ws] WebSocket upgrade detected for client: {}", client_id);
+            ws.on_upgrade(move |socket| {
+                handle_socket(socket, state, client_id)
+            }).into_response()
+        }
+        Err(_) => {
+            // Standard HTTP handshake/probe
+            debug!("[rpc-ws] Standard HTTP probe for client: {}", client_id);
+
+            axum::response::Json(json!({
+                "code": 200,
+                "message": "Ready",
+                "v": 1
+            })).into_response()
+        }
     }
-
-    // Standard HTTP handshake/probe
-    debug!("[rpc-ws] Standard HTTP probe for client: {} (headers: {:?})", client_id, headers);
-
-    axum::response::Json(json!({
-        "code": 200,
-        "message": "Ready",
-        "v": 1
-    })).into_response()
 }
 
 async fn fallback_handler(
-    State(_state): State<AppState>,
     req: axum::http::Request<axum::body::Body>
-) -> Response {
+) -> impl IntoResponse {
     let method = req.method();
     let uri = req.uri();
     warn!("[rpc-ws] 404 Fallback triggered! Method: {}, URI: {}", method, uri);
