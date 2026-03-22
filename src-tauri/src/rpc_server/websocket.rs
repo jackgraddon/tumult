@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use tokio_util::sync::CancellationToken;
 use std::sync::Mutex;
+use super::types::{RpcMessage, RpcResponse};
 
 pub async fn start_websocket_server(
     app: AppHandle,
@@ -97,30 +98,26 @@ async fn handle_ws_connection(
             info!("[rpc-ws] New connection (client_id: {})", cid);
 
             // Immediately send the READY event as arRPC does
-            let ready = json!({
-                "cmd": "DISPATCH",
-                "data": {
-                    "v": 1,
-                    "config": {
-                        "cdn_host": "cdn.discordapp.com",
-                        "api_endpoint": "//discord.com/api",
-                        "environment": "production"
-                    },
-                    "user": {
-                        "id": user_id,
-                        "username": user_name,
-                        "discriminator": "0",
-                        "global_name": user_name,
-                        "avatar": avatar,
-                        "avatar_decoration_data": null,
-                        "bot": false,
-                        "flags": 0,
-                        "premium_type": 0,
-                    }
+            let ready_data = json!({
+                "v": 1,
+                "config": {
+                    "cdn_host": "cdn.discordapp.com",
+                    "api_endpoint": "//discord.com/api",
+                    "environment": "production"
                 },
-                "evt": "READY",
-                "nonce": null
+                "user": {
+                    "id": user_id,
+                    "username": user_name,
+                    "discriminator": "0",
+                    "global_name": user_name,
+                    "avatar": avatar,
+                    "avatar_decoration_data": null,
+                    "bot": false,
+                    "flags": 0,
+                    "premium_type": 0,
+                }
             });
+            let ready = RpcResponse::new("DISPATCH", Some(ready_data), Some("READY".to_string()), None);
 
             if let Err(e) = ws_stream.send(Message::Text(ready.to_string().into())).await {
                 error!("[rpc-ws] Failed to send READY: {}", e);
@@ -136,31 +133,31 @@ async fn handle_ws_connection(
                         match msg {
                             Some(Ok(Message::Text(text))) => {
                                 debug!("[rpc-ws] Received message: {}", text);
-                                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    let cmd = value["cmd"].as_str().unwrap_or("");
-                                    let nonce = value["nonce"].as_str();
+                                if let Ok(msg) = serde_json::from_str::<RpcMessage>(&text) {
+                                    match msg.cmd.as_str() {
+                                        "SET_ACTIVITY" => {
+                                            let args = msg.args.clone().unwrap_or(json!({}));
 
-                                    if cmd == "SET_ACTIVITY" {
-                                        let args = value["args"].clone();
+                                            let _ = app.emit("arrpc-activity", json!({
+                                                "activity": args["activity"],
+                                                "pid": args["pid"],
+                                                "socketId": format!("ws-{}", cid)
+                                            }));
 
-                                        let _ = app.emit("arrpc-activity", json!({
-                                            "activity": args["activity"],
-                                            "pid": args["pid"],
-                                            "socketId": format!("ws-{}", cid)
-                                        }));
-
-                                        let response = json!({
-                                            "cmd": "SET_ACTIVITY",
-                                            "data": {
+                                            let response = json!({
                                                 "application_id": cid,
                                                 "name": "",
                                                 "type": 0,
                                                 "activity": args["activity"]
-                                            },
-                                            "evt": null,
-                                            "nonce": nonce
-                                        });
-                                        let _ = ws_stream.send(Message::Text(response.to_string().into())).await;
+                                            });
+                                            let frame = RpcResponse::new("SET_ACTIVITY", Some(response), None, msg.nonce);
+                                            let _ = ws_stream.send(Message::Text(frame.to_string().into())).await;
+                                        }
+                                        _ => {
+                                            // Acknowledge other commands with an empty result to avoid hanging
+                                            let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
+                                            let _ = ws_stream.send(Message::Text(frame.to_string().into())).await;
+                                        }
                                     }
                                 }
                             }
@@ -179,5 +176,11 @@ async fn handle_ws_connection(
         Err(e) => {
             error!("[rpc-ws] Handshake failed: {}", e);
         }
+    }
+}
+
+impl ToString for RpcResponse {
+    fn to_string(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
     }
 }

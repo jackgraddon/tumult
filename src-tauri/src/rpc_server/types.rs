@@ -28,3 +28,14 @@ pub struct ActivityUpdate {
     pub pid: Option<i32>,
     pub socket_id: String,
 }
+
+impl RpcResponse {
+    pub fn new(cmd: &str, data: Option<serde_json::Value>, evt: Option<String>, nonce: Option<String>) -> Self {
+        Self {
+            cmd: cmd.to_string(),
+            data,
+            evt,
+            nonce,
+        }
+    }
+}

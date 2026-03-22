@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
+use super::types::{RpcHandshake, RpcMessage, RpcResponse};
 
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
@@ -141,15 +141,14 @@ async fn handle_ipc_connection(
             }
             read_res = read_ipc_frame(&mut stream) => {
                 match read_res {
-                    Ok(Some((opcode, data))) => {
-                        debug!("[rpc-ipc] Received frame: opcode={}, data={:?}", opcode, data);
+                    Ok(Some((opcode, body))) => {
+                        debug!("[rpc-ipc] Received frame: opcode={}, body={}", opcode, String::from_utf8_lossy(&body));
                         if opcode == 0 { // HANDSHAKE
-                            client_id = data["client_id"].as_str().unwrap_or("").to_string();
-                            info!("[rpc-ipc] Handshake from client_id: {}", client_id);
+                            if let Ok(handshake) = serde_json::from_slice::<RpcHandshake>(&body) {
+                                client_id = handshake.client_id.clone();
+                                info!("[rpc-ipc] Handshake from client_id: {}", client_id);
 
-                            let response = json!({
-                                "cmd": "DISPATCH",
-                                "data": {
+                                let response_data = json!({
                                     "v": 1,
                                     "config": {
                                         "cdn_host": "cdn.discordapp.com",
@@ -167,40 +166,41 @@ async fn handle_ipc_connection(
                                         "flags": 0,
                                         "premium_type": 0,
                                     }
-                                },
-                                "evt": "READY",
-                                "nonce": null
-                            });
-                            send_ipc_frame(&mut stream, 1, response).await;
-                        } else if opcode == 1 { // FRAME
-                            let cmd = data["cmd"].as_str().unwrap_or("");
-                            let nonce = data["nonce"].as_str();
-
-                            if cmd == "SET_ACTIVITY" {
-                                let args = data["args"].clone();
-
-                                let _ = app.emit("arrpc-activity", json!({
-                                    "activity": args["activity"],
-                                    "pid": args["pid"],
-                                    "socketId": format!("ipc-{}", client_id)
-                                }));
-
-                                let response = json!({
-                                    "cmd": "SET_ACTIVITY",
-                                    "data": {
-                                        "application_id": client_id,
-                                        "name": "",
-                                        "type": 0,
-                                        "activity": args["activity"]
-                                    },
-                                    "evt": null,
-                                    "nonce": nonce
                                 });
+                                let response = RpcResponse::new("DISPATCH", Some(response_data), Some("READY".to_string()), None);
                                 send_ipc_frame(&mut stream, 1, response).await;
+                            }
+                        } else if opcode == 1 { // FRAME
+                            if let Ok(msg) = serde_json::from_slice::<RpcMessage>(&body) {
+                                match msg.cmd.as_str() {
+                                    "SET_ACTIVITY" => {
+                                        let args = msg.args.clone().unwrap_or(json!({}));
+
+                                        let _ = app.emit("arrpc-activity", json!({
+                                            "activity": args["activity"],
+                                            "pid": args["pid"],
+                                            "socketId": format!("ipc-{}", client_id)
+                                        }));
+
+                                        let response_data = json!({
+                                            "application_id": client_id,
+                                            "name": "",
+                                            "type": 0,
+                                            "activity": args["activity"]
+                                        });
+                                        let response = RpcResponse::new("SET_ACTIVITY", Some(response_data), None, msg.nonce);
+                                        send_ipc_frame(&mut stream, 1, response).await;
+                                    }
+                                    _ => {
+                                        // Acknowledge other commands with an empty result to avoid hanging
+                                        let response = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
+                                        send_ipc_frame(&mut stream, 1, response).await;
+                                    }
+                                }
                             }
                         } else if opcode == 3 { // PING
                             debug!("[rpc-ipc] Received PING, sending PONG");
-                            send_ipc_frame(&mut stream, 4, data).await;
+                            send_ipc_raw_frame(&mut stream, 4, body).await;
                         }
                     }
                     Ok(None) => break,
@@ -214,7 +214,7 @@ async fn handle_ipc_connection(
     }
 }
 
-async fn read_ipc_frame(stream: &mut IpcStream) -> Result<Option<(u32, serde_json::Value)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn read_ipc_frame(stream: &mut IpcStream) -> Result<Option<(u32, Vec<u8>)>, Box<dyn std::error::Error + Send + Sync>> {
     let mut header = [0u8; 8];
     if stream.read_exact(&mut header).await.is_err() {
         return Ok(None);
@@ -225,15 +225,18 @@ async fn read_ipc_frame(stream: &mut IpcStream) -> Result<Option<(u32, serde_jso
     let mut body = vec![0u8; length];
     stream.read_exact(&mut body).await?;
 
-    let value = serde_json::from_slice(&body)?;
-    Ok(Some((opcode, value)))
+    Ok(Some((opcode, body)))
 }
 
-async fn send_ipc_frame(stream: &mut IpcStream, opcode: u32, data: serde_json::Value) {
-    let response_bytes = data.to_string().into_bytes();
-    let mut full_response = Vec::with_capacity(8 + response_bytes.len());
+async fn send_ipc_frame(stream: &mut IpcStream, opcode: u32, data: RpcResponse) {
+    let json_data = serde_json::to_string(&data).unwrap_or("{}".to_string());
+    send_ipc_raw_frame(stream, opcode, json_data.into_bytes()).await;
+}
+
+async fn send_ipc_raw_frame(stream: &mut IpcStream, opcode: u32, body: Vec<u8>) {
+    let mut full_response = Vec::with_capacity(8 + body.len());
     full_response.extend_from_slice(&opcode.to_le_bytes());
-    full_response.extend_from_slice(&(response_bytes.len() as u32).to_le_bytes());
-    full_response.extend_from_slice(&response_bytes);
+    full_response.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    full_response.extend_from_slice(&body);
     let _ = stream.write_all(&full_response).await;
 }
