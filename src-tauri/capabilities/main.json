@@ -14,16 +14,7 @@
     "core:default",
     "core:event:default",
     "shell:allow-open",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "name": "binaries/arrpc",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    },
+    "shell:allow-spawn",
     "shell:allow-kill",
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-set-background-color",

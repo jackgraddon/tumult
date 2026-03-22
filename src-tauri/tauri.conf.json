@@ -43,9 +43,7 @@
     "active": true,
     "publisher": "cc.jackg.tumult",
     "createUpdaterArtifacts": true,
-    "externalBin": [
-      "binaries/arrpc"
-    ],
+    "externalBin": [],
     "targets": "all",
     "icon": [
       "icons/App.icns",
