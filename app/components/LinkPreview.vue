@@ -60,6 +60,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import type { IPreviewUrlResponse } from 'matrix-js-sdk';
 import ChatFile from '~/components/ChatFile.vue';
+import { cleanUrl } from '~/utils/url';
 
 const props = defineProps<{
   url: string;
@@ -69,6 +70,7 @@ const props = defineProps<{
 
 const store = useMatrixStore();
 const preview = ref<IPreviewUrlResponse | null>(null);
+const isFetching = ref(false);
 
 const resolvedTitle = computed(() => preview.value?.['og:title'] || preview.value?.['title'] || preview.value?.['twitter:title']);
 const resolvedDescription = computed(() => preview.value?.['og:description'] || preview.value?.['description'] || preview.value?.['twitter:description']);
@@ -130,15 +132,47 @@ const youtubeEmbedUrl = computed(() => {
 });
 
 async function fetchPreview() {
-  if (!store.client) return;
+  if (!store.client || isFetching.value) return;
   
+  isFetching.value = true;
+  const cleaned = cleanUrl(props.url);
+
   try {
-    const res = await store.client.getUrlPreview(props.url, props.timestamp);
-    if (res && (res['og:title'] || res['title'] || res['author_name'] || res['og:image'] || res['image'] || res['og:video:url'] || res['og:audio:url'])) {
-      preview.value = res;
+    // We attempt a manual fetch first to handle CORS more explicitly.
+    // Wildcard CORS (Access-Control-Allow-Origin: *) fails in browsers if credentials (cookies)
+    // are sent. matrix-js-sdk uses a global fetch that might include credentials.
+    const baseUrl = store.client.baseUrl;
+    const accessToken = store.client.getAccessToken();
+    const ts = props.timestamp;
+
+    // Matrix preview_url endpoint
+    const previewUrl = `${baseUrl}/_matrix/media/v3/preview_url?url=${encodeURIComponent(cleaned)}&ts=${ts}`;
+
+    console.log(`[LinkPreview] Fetching: ${cleaned}`);
+
+    const response = await fetch(previewUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      // IMPORTANT: omit credentials ensures same-site cookies aren't sent,
+      // allowing wildcard CORS to work on most homeservers.
+      credentials: 'omit',
+    });
+
+    if (response.ok) {
+        const res = await response.json() as IPreviewUrlResponse;
+        if (res && (res['og:title'] || res['title'] || res['author_name'] || res['og:image'] || res['image'] || res['og:video:url'] || res['og:audio:url'])) {
+            preview.value = res;
+        }
+    } else {
+        console.warn(`[LinkPreview] Direct fetch failed with status ${response.status}.`);
     }
+
   } catch (err) {
-    console.error('Failed to fetch URL preview:', err);
+    console.error('[LinkPreview] Failed to fetch URL preview:', err);
+  } finally {
+    isFetching.value = false;
   }
 }
 
