@@ -4,7 +4,7 @@
             v-if="!isVirtual"
             @click="toggleCategory"
             @contextmenu="store.openRoomContextMenu(category.id)"
-            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full"
+            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
         >
             <MatrixAvatar
                 v-if="category.avatarUrl"
@@ -24,7 +24,7 @@
         <button 
             v-else
             @click="toggleCategory"
-            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full"
+            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
         >
             <Icon 
                 :name="isCollapsed ? 'solar:alt-arrow-right-bold' : 'solar:alt-arrow-down-bold'" 
@@ -55,7 +55,7 @@
                     <div 
                         v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
                         role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                         :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                         @contextmenu="store.openRoomContextMenu(room.roomId)"
                         @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
@@ -145,7 +145,7 @@
                         <div 
                             v-for="user in getVoiceParticipants(room.roomId)" 
                             :key="user.id" 
-                            class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-accent/40 transition-colors cursor-default group/participant"
+                            class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-muted/40 transition-colors cursor-default group/participant"
                         >
                             <MatrixAvatar 
                                 :mxc-url="user.avatarUrl" 

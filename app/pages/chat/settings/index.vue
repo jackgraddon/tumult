@@ -1,11 +1,6 @@
 <template>
   <div class="space-y-4">
     <h2 class="text-2xl font-semibold tracking-tight">General</h2>
-
-    <div class="flex items-center gap-2">
-      <ColorModeToggle />
-    </div>
-
     <div v-if="$isTauri" class="space-y-4">
       <h3 class="text-xl font-semibold tracking-tight">Backend</h3>
 
@@ -51,6 +46,53 @@
       </div>
     </div>
 
+
+    <!-- Activity Status (Desktop Only) -->
+    <div class="space-y-4">
+      <h3 class="text-xl font-semibold tracking-tight">Status</h3>
+
+      <div v-if="gameActivity.isSupported.value" class="space-y-4">
+        <div class="flex items-start justify-between rounded-lg border p-4">
+          <div class="flex items-start gap-3">
+            <Icon name="solar:gamepad-bold" class="h-5 w-5 text-muted-foreground mt-0.5" />
+            <div class="space-y-1">
+              <p class="text-sm font-medium">Game Detection</p>
+              <p class="text-xs text-muted-foreground max-w-md">
+                Automatically detect running games and show them as your Matrix status.
+              </p>
+              <div class="pt-2">
+                <UiDropdownMenu>
+                  <UiDropdownMenuTrigger as-child>
+                    <UiButton variant="outline" size="sm" class="capitalize">
+                      {{ store.gameDetectionLevel }}
+                      <Icon name="solar:alt-arrow-down-outline" class="ml-2 h-4 w-4" />
+                    </UiButton>
+                  </UiDropdownMenuTrigger>
+                  <UiDropdownMenuContent align="start" class="w-80">
+                    <UiDropdownMenuRadioGroup v-model="gameDetectionLevel">
+                      <UiDropdownMenuRadioItem value="off" class="flex flex-col items-start py-2 gap-0 cursor-pointer">
+                        <span class="font-medium">Off</span>
+                        <span class="text-[10px] text-muted-foreground line-clamp-2">Disable all game detection and activity status.</span>
+                      </UiDropdownMenuRadioItem>
+                      <UiDropdownMenuRadioItem value="basic" class="flex flex-col items-start py-2 gap-0 cursor-pointer">
+                        <span class="font-medium">Basic</span>
+                        <span class="text-[10px] text-muted-foreground">Scans for running processes and matches them with known games. Less acurate, but more compatible.</span>
+                      </UiDropdownMenuRadioItem>
+                      <UiDropdownMenuRadioItem value="advanced" class="flex flex-col items-start py-2 gap-0 cursor-pointer">
+                        <span class="font-medium">Advanced</span>
+                        <span class="text-[10px] text-muted-foreground">Hooks into games that supports Discord RPC (Cannot be running with Discord open). More acurate, but less compatible.</span>
+                      </UiDropdownMenuRadioItem>
+                    </UiDropdownMenuRadioGroup>
+                  </UiDropdownMenuContent>
+                </UiDropdownMenu>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
     <div class="space-y-4">
       <h3 class="text-xl font-semibold tracking-tight">Rooms</h3>
 
@@ -80,6 +122,11 @@ definePageMeta({
 
 const store = useMatrixStore();
 const gameActivity = useGameActivity();
+
+const gameDetectionLevel = computed({
+  get: () => store.gameDetectionLevel,
+  set: (val: any) => store.setGameDetectionLevel(val),
+});
 
 const showEmptyRoomsToggle = computed({
   get: () => store.ui.showEmptyRooms,

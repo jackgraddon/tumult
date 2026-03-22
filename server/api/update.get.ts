@@ -8,6 +8,13 @@ export default defineEventHandler(async (event) => {
     // then served by Nuxt at the root.
     const updateData = await $fetch<any>('https://tumult.jackg.cc/update.json');
 
+    // Validation: If it's not JSON (e.g. HTML fallback), return 204
+    if (!updateData || typeof updateData !== 'object' || !updateData.version) {
+       console.warn("[Updater] Invalid update metadata received:", updateData);
+       setResponseStatus(event, 204);
+       return;
+    }
+
     // If version matches, return 204 No Content as per Tauri spec
     if (updateData.version === version) {
        setResponseStatus(event, 204);

@@ -82,54 +82,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate and Merge Update Metadata
-        shell: bash
-        run: |
-          VERSION="${{ github.ref_name }}"
-          RAW_VERSION=$(echo $VERSION | sed 's/^v//')
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            
-            const platform = '${{ matrix.platform }}' === 'macos-latest' ? 'darwin-aarch64' : 'windows-x86_64';
-            const sigPath = '${{ matrix.platform }}' === 'macos-latest' 
-              ? 'src-tauri/target/release/bundle/macos/Tumult.app.tar.gz.sig'
-              : 'src-tauri/target/release/bundle/msi/Tumult_' + '$RAW_VERSION' + '_x64_en-US.msi.sig';
-            
-            const updateDir = 'app/public';
-            const updateFile = path.join(updateDir, 'update.json');
-
-            if (fs.existsSync(sigPath)) {
-              const signature = fs.readFileSync(sigPath, 'utf8').trim();
-              
-              if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
-
-              // 1. Load existing data if it exists to prevent overwriting other platforms
-              let data = { version: '$VERSION', notes: 'Release $VERSION', pub_date: '$DATE', platforms: {} };
-              if (fs.existsSync(updateFile)) {
-                try {
-                  const existing = JSON.parse(fs.readFileSync(updateFile, 'utf8'));
-                  // Keep existing platforms from the other runner
-                  data.platforms = existing.platforms;
-                } catch (e) {
-                  console.log('Starting new update.json');
-                }
-              }
-
-              // 2. Add current platform data
-              data.platforms[platform] = {
-                signature: signature,
-                url: 'https://github.com/${{ github.repository }}/releases/download/' + '$VERSION' + '/' + 
-                     (platform.includes('darwin') ? 'Tumult.app.tar.gz' : 'Tumult_' + '$RAW_VERSION' + '_x64_en-US.msi')
-              };
-
-              fs.writeFileSync(updateFile, JSON.stringify(data, null, 2));
-              console.log('Updated ' + platform + ' in update.json');
-            }
-          "
-
       - name: Commit and Push update.json
         # Only run this if we are on a tag push
         if: startsWith(github.ref, 'refs/tags/')
@@ -138,20 +90,85 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 1. Add the file generated in the previous step
-          git add app/public/update.json
+          VERSION="${{ github.ref_name }}"
+          RAW_VERSION=$(echo $VERSION | sed 's/^v//')
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          PLATFORM='${{ matrix.platform }}'
           
-          # 2. Attempt to commit and push with a retry loop to handle Mac/Win race conditions
-          for i in {1..5}; do
-            # If there's nothing to commit (e.g. other runner already pushed this version), skip
-            git commit -m "chore: update metadata for ${{ matrix.platform }} [skip ci]" || break
+          # Attempt to commit and push with a retry loop to handle Mac/Win race conditions
+          for i in {1..10}; do
+            # 1. Pull with rebase to ensure we have the latest update.json from the other platform
+            git fetch origin main
+            git rebase origin/main || (git rebase --abort && git pull --rebase origin main)
             
-            # Pull with rebase to get the other platform's changes before pushing
-            if git pull --rebase origin main && git push origin HEAD:main; then
-              echo "Successfully pushed update.json"
-              break
+            # 2. Generate/Merge the update.json content
+            node -e "
+              const fs = require('fs');
+              const path = require('path');
+              
+              const platformLabel = '$PLATFORM' === 'macos-latest' ? 'darwin-aarch64' : 'windows-x86_64';
+              
+              // Windows artifacts may vary by version in the filename
+              let sigPath = '$PLATFORM' === 'macos-latest' 
+                ? 'src-tauri/target/release/bundle/macos/Tumult.app.tar.gz.sig'
+                : 'src-tauri/target/release/bundle/msi/Tumult_' + '$RAW_VERSION' + '_x64_en-US.msi.sig';
+
+              // Fallback for Windows if filename differs
+              if ('$PLATFORM' === 'windows-latest' && !fs.existsSync(sigPath)) {
+                 const msiDir = 'src-tauri/target/release/bundle/msi';
+                 if (fs.existsSync(msiDir)) {
+                    const files = fs.readdirSync(msiDir);
+                    const sigFile = files.find(f => f.endsWith('.msi.sig'));
+                    if (sigFile) sigPath = path.join(msiDir, sigFile);
+                 }
+              }
+              
+              const updateDir = 'app/public';
+              const updateFile = path.join(updateDir, 'update.json');
+
+              if (fs.existsSync(sigPath)) {
+                const signature = fs.readFileSync(sigPath, 'utf8').trim();
+                if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
+
+                let data = { version: '$VERSION', notes: 'Release $VERSION', pub_date: '$DATE', platforms: {} };
+                if (fs.existsSync(updateFile)) {
+                  try {
+                    const existing = JSON.parse(fs.readFileSync(updateFile, 'utf8'));
+                    // If the existing file is for the SAME version, merge platforms. 
+                    // Otherwise, start fresh for the new version.
+                    if (existing.version === '$VERSION') {
+                       data.platforms = existing.platforms;
+                    }
+                  } catch (e) { console.log('Starting new update.json'); }
+                }
+
+                data.platforms[platformLabel] = {
+                  signature: signature,
+                  url: 'https://github.com/${{ github.repository }}/releases/download/' + '$VERSION' + '/' + 
+                       (platformLabel.includes('darwin') ? 'Tumult.app.tar.gz' : path.basename(sigPath).replace('.sig', ''))
+                };
+
+                fs.writeFileSync(updateFile, JSON.stringify(data, null, 2));
+                console.log('Updated ' + platformLabel + ' in update.json');
+              } else {
+                console.error('Signature file not found: ' + sigPath);
+                process.exit(1);
+              }
+            "
+            
+            # 3. Commit and Push
+            git add app/public/update.json
+            if git commit -m "chore: update metadata for $PLATFORM [skip ci]"; then
+              if git push origin HEAD:main; then
+                echo "Successfully pushed update.json"
+                break
+              fi
             else
-              echo "Conflict detected or push failed, retrying in a few seconds... ($i/5)"
-              sleep $(( (RANDOM % 10) + 5 ))
+              echo "Nothing to commit for $PLATFORM (possibly already updated)"
+              # Check if push is needed even if no new commit (maybe rebase brought in changes)
+              git push origin HEAD:main && break || true
             fi
+
+            echo "Conflict detected or push failed, retrying in a few seconds... ($i/10)"
+            sleep $(( (RANDOM % 15) + 10 ))
           done

@@ -66,7 +66,7 @@
           <p class="text-sm text-center text-muted-foreground pb-2">
             Verification ensures that only you can read your messages.
           </p>
-          <UiCard class="p-4 cursor-pointer hover:bg-accent/50 transition-colors" @click="handleDeviceVerification">
+          <UiCard class="p-4 cursor-pointer hover:bg-muted/50 transition-colors" @click="handleDeviceVerification">
             <div class="flex items-center gap-4">
               <div class="bg-primary/10 p-2 rounded-full">
                 <Icon name="solar:devices-bold" class="size-6 text-primary" />
@@ -79,7 +79,7 @@
             </div>
           </UiCard>
 
-          <UiCard class="p-4 cursor-pointer hover:bg-accent/50 transition-colors" @click="store.bootstrapVerification()">
+          <UiCard class="p-4 cursor-pointer hover:bg-muted/50 transition-colors" @click="store.bootstrapVerification()">
             <div class="flex items-center gap-4">
               <div class="bg-muted p-2 rounded-full">
                 <Icon name="solar:key-bold" class="size-6 text-muted-foreground" />

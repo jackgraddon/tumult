@@ -23,6 +23,9 @@
             <Icon :name="mode.icon" class="size-6 text-muted-foreground" :class="{ 'text-primary': colorMode.preference === mode.id }" />
           </div>
           <span class="text-sm font-medium">{{ mode.label }}</span>
+          <div v-if="mode.id === 'system'" class="text-[10px] text-muted-foreground mt-[-4px]">
+             (currently {{ colorMode.value }})
+          </div>
         </button>
       </div>
     </div>
@@ -98,7 +101,7 @@ const modes = [
 ]
 
 const presets = [
-  { id: 'default', label: 'Tumult Teal', color: 'oklch(0.407 0.068 206.13)' },
+  { id: 'default', label: 'Tumult Teal', color: 'oklch(0.395 0.081 206.6)' },
   { id: 'forest', label: 'Deep Forest', color: 'oklch(0.6 0.15 145)' },
   { id: 'sunset', label: 'Solar Sunset', color: 'oklch(0.65 0.22 35)' },
   { id: 'midnight', label: 'Purple Midnight', color: 'oklch(0.5 0.12 250)' },

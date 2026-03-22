@@ -1,14 +1,14 @@
 <template>
-  <div class="flex flex-col min-h-screen items-center justify-center p-4 bg-background">
+  <div class="flex flex-col min-h-screen items-center justify-center p-4">
     <div class="w-full max-w-lg space-y-8">
       <div class="text-center space-y-2">
-        <h1 class="text-4xl font-black tracking-tight">Choose your foundation</h1>
+        <h1 class="text-4xl font-black tracking-tight">Choose your home</h1>
         <p class="text-muted-foreground">
-          Tumult is the house, and Matrix is the ground it's built on—solid, unshakeable, and owned by no one.
+          Tumult is the house, and Matrix is the ground it's built on.
         </p>
       </div>
 
-      <UiCard class="border-2 shadow-xl overflow-hidden">
+      <UiCard class="border-2 shadow-xl overflow-hidden bg-neutral-100 dark:bg-neutral-900">
         <UiCardContent class="p-6 space-y-6">
           <div v-if="!matrixStore.isLoggingIn" class="space-y-6">
             <div class="grid grid-cols-2 gap-3">
@@ -20,7 +20,6 @@
                 :class="homeserver === hs ? 'border-primary bg-primary/5' : 'bg-card border-transparent'"
               >
                 <span class="font-bold group-hover:text-primary transition-colors">{{ hs }}</span>
-                <span class="text-xs text-muted-foreground">{{ hs === 'matrix.org' ? 'The giant' : hs === 'mozilla.org' ? 'The non-profit' : hs === 'gnome.org' ? 'The community' : 'Solid foundation' }}</span>
               </button>
             </div>
 
@@ -28,13 +27,13 @@
               <div class="absolute inset-0 flex items-center">
                 <span class="w-full border-t" />
               </div>
-              <div class="relative flex justify-center text-xs uppercase">
-                <span class="bg-card px-2 text-muted-foreground">Or build on your own</span>
+              <div class="relative flex justify-center text-xs">
+                <span class="bg-neutral-100 dark:bg-neutral-900 px-2 text-muted-foreground">Or build on your own</span>
               </div>
             </div>
 
             <form @submit.prevent="handleLogin" class="space-y-4">
-              <UiInputGroup>
+              <UiInputGroup class="bg-card">
                 <UiInputGroupAddon>
                   <UiInputGroupText>https://</UiInputGroupText>
                 </UiInputGroupAddon>
@@ -43,7 +42,7 @@
                   type="text"
                   v-model="homeserver"
                   placeholder="custom.homeserver.com"
-                  class="!pl-2"
+                  class="!pl-0"
                 />
                 <UiInputGroupAddon align="inline-end">
                   <UiInputGroupButton
@@ -82,10 +81,6 @@
           </div>
         </UiCardContent>
       </UiCard>
-
-      <p class="text-center text-xs text-muted-foreground/60 italic">
-        "Smart, rebellious, and entirely yours."
-      </p>
     </div>
   </div>
 </template>

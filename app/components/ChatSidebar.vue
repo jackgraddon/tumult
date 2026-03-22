@@ -16,7 +16,7 @@
                 </h2>
             </div>
             <UiButton 
-                v-if="activeSpaceId"
+                v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
                 size="icon" 
                 class="shrink-0"
@@ -44,7 +44,7 @@
                             v-for="invite in store.invites" 
                             :key="invite.roomId"
                             role="button"
-                            class="flex items-center gap-2 px-2 py-2.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors group"
+                            class="flex items-center gap-2 px-2 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors group"
                             @click="navigateToInvite(invite)"
                         >
                             <MatrixAvatar
@@ -75,7 +75,7 @@
                         <div 
                             v-for="friend in friends" :key="friend.roomId"
                             role="button"
-                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                             @contextmenu="store.openRoomContextMenu(friend.roomId)"
                             @click="() => {
@@ -130,7 +130,7 @@
                         <div 
                             v-for="room in rooms" :key="room.roomId"
                             role="button"
-                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                             @contextmenu="store.openRoomContextMenu(room.roomId)"
                             @click="() => {
@@ -177,7 +177,7 @@
                             v-for="page in group.pages"
                             :key="page.path"
                             role="button"
-                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
                             :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
                             @click="() => {
                                 navigateTo(page.path);

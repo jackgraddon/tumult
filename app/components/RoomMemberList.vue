@@ -29,8 +29,8 @@
           <div 
             v-for="member in online" 
             :key="member.userId"
-            class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-            :class="{ 'bg-accent/80': selectedUserId === member.userId }"
+            class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
+            :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 
@@ -52,8 +52,8 @@
           <div 
             v-for="member in offline" 
             :key="member.userId"
-            class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-            :class="{ 'bg-accent/80': selectedUserId === member.userId }"
+            class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
+            :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 

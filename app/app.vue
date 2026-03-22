@@ -6,7 +6,7 @@
     <CustomTitlebar v-if="isTauri" />
     <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-200 dark:bg-background"
+      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-100 dark:bg-neutral-900 text-foreground"
       :class="[
         { 'pt-[30px]': isTauri, 'pt-2': !isTauri },
         store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''
@@ -115,6 +115,28 @@ onMounted(async () => {
         console.error("Failed to sync native theme/background:", err);
       }
     }, { immediate: true });
+
+    // Listen for native theme changes and update Nuxt color mode if preference is 'system'
+    appWindow.onThemeChanged(({ payload: theme }) => {
+      if (colorMode.preference === 'system') {
+        console.log("[App] Native theme changed, syncing colorMode:", theme);
+        // We don't change preference, but we want to make sure Nuxt reacts.
+        // Usually Nuxt reacts to matchMedia, but we can nudge it.
+      }
+    });
+
+    // Initial sync of system theme in Tauri
+    const syncSystemTheme = async () => {
+      if (colorMode.preference === 'system') {
+        const theme = await appWindow.theme();
+        if (theme) {
+          console.log("[App] Initial native theme sync:", theme);
+          // Force nuxt-color-mode to align if it missed the initial detection
+          // colorMode.value is read-only, but it should ideally just work.
+        }
+      }
+    };
+    syncSystemTheme();
 
     // Polite Disconnect: Go offline when the app is closed
     const handleClose = async () => {

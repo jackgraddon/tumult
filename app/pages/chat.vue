@@ -10,7 +10,7 @@
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-background">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -62,7 +62,7 @@
                     </NuxtLink>
                 </UiButton>
 
-                <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
+                <div class="w-8 h-[2px] bg-border shrink-0" />
 
                 <!-- Server List -->
                 <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
@@ -101,7 +101,7 @@
                 <!-- Add Space / Explorer -->
                 <UiButton 
                     variant="secondary"
-                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0" 
                     @click="store.openCreateSpaceModal()"
                     title="Create a space"
                 >
@@ -115,12 +115,12 @@
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20 bg-neutral-200 dark:bg-background"
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
-            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden relative">
+            <div class="rounded-lg h-full bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative">
                 <!-- Mobile Overlays to close sidebars -->
                 <div 
                     v-if="store.ui.sidebarOpen" 

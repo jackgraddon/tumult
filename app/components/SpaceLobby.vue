@@ -63,7 +63,7 @@
                         v-for="room in featuredChatRooms" 
                         :key="room.roomId"
                         :to="`/chat/spaces/${space.roomId}/${room.roomId}`"
-                        class="group p-4 rounded-xl border bg-card hover:bg-accent/50 transition-all flex items-center gap-4"
+                        class="group p-4 rounded-xl border bg-card hover:bg-muted/50 transition-all flex items-center gap-4"
                     >
                         <MatrixAvatar :mxc-url="room.getMxcAvatarUrl()" :name="room.name" class="h-10 w-10 shrink-0" />
                         <div class="min-w-0 flex-1">
@@ -85,7 +85,7 @@
                         :key="room.roomId"
                         role="button"
                         @click="voiceStore.joinVoiceRoom(room)"
-                        class="group p-4 rounded-xl border bg-card hover:bg-accent/50 transition-all flex items-center gap-4 cursor-pointer"
+                        class="group p-4 rounded-xl border bg-card hover:bg-muted/50 transition-all flex items-center gap-4 cursor-pointer"
                     >
                         <div class="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
                             <Icon name="solar:phone-calling-linear" class="text-green-500 w-6 h-6" />
@@ -105,7 +105,7 @@
             <section class="border rounded-2xl overflow-hidden bg-card/30">
                 <button 
                     @click="isHierarchyCollapsed = !isHierarchyCollapsed"
-                    class="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/50 transition-colors"
+                    class="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
                 >
                     <div class="flex items-center gap-3">
                         <div class="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">

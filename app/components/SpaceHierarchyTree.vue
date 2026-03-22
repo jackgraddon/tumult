@@ -22,7 +22,7 @@
             </div>
             <div v-else class="flex-1 min-w-0">
                 <div 
-                    class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-accent/50 transition-all cursor-pointer"
+                    class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-muted/50 transition-all cursor-pointer"
                     @contextmenu="store.openRoomContextMenu(roomData.room_id)"
                 >
                     <MatrixAvatar

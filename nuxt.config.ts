@@ -119,7 +119,8 @@ export default defineNuxtConfig({
   pwa: {
     strategies: 'injectManifest',
     filename: 'sw.js',
-    registerType: 'autoUpdate',
+    registerType: 'prompt',
+    injectRegister: 'script',
     manifest: {
       name: 'Tumult',
       short_name: 'Tumult',

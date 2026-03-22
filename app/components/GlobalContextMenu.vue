@@ -77,7 +77,7 @@
         </UiContextMenuItem>
 
         <div 
-          class="relative flex items-center px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm transition-colors cursor-default select-none group/react"
+          class="relative flex items-center px-2 py-1.5 text-sm hover:bg-muted hover:text-foreground rounded-sm transition-colors cursor-default select-none group/react"
           @mousedown.stop
           @mouseup.stop
           @click.stop
@@ -87,11 +87,11 @@
               <div class="flex items-center w-full gap-2 cursor-pointer">
                 <span class="text-sm">React</span>
                 <div class="flex items-center gap-1 ml-auto">
-                  <button @click.stop="quickReact('👍')" class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base">👍</button>
-                  <button @click.stop="quickReact('❤️')" class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base">❤️</button>
-                  <button @click.stop="quickReact('😂')" class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base">😂</button>
+                  <button @click.stop="quickReact('👍')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">👍</button>
+                  <button @click.stop="quickReact('❤️')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">❤️</button>
+                  <button @click.stop="quickReact('😂')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">😂</button>
                   <div class="w-px h-3.5 bg-border mx-0.5" />
-                  <div class="hover:bg-accent rounded p-1 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center w-6 h-6">
+                  <div class="hover:bg-muted rounded p-1 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center w-6 h-6">
                     <Icon name="solar:add-circle-linear" class="w-4 h-4" />
                   </div>
                 </div>
