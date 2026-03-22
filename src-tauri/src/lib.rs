@@ -114,10 +114,12 @@ async fn start_rpc_server(
     avatar: Option<String>,
     no_rpc: bool,
 ) -> Result<(), String> {
-    let mut token_guard = state.cancel_token.lock().unwrap();
-    if let Some(token) = token_guard.take() {
-        log::info!("[rpc] Stopping existing RPC server...");
-        token.cancel();
+    {
+        let mut token_guard = state.cancel_token.lock().unwrap();
+        if let Some(token) = token_guard.take() {
+            log::info!("[rpc] Stopping existing RPC server...");
+            token.cancel();
+        }
     }
 
     // Basic mode: No RPC server, just process scanning (handled by game_scanner)
@@ -132,7 +134,7 @@ async fn start_rpc_server(
     let rpc_server = rpc_server::RpcServer::new(app, cancel_token.clone(), user_id, user_name, avatar);
     rpc_server.start().await;
 
-    *token_guard = Some(cancel_token);
+    state.cancel_token.lock().unwrap().replace(cancel_token);
     Ok(())
 }
 

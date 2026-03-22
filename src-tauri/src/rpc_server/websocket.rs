@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -100,7 +99,7 @@ async fn handle_ws_connection(
                                         "evt": null,
                                         "nonce": nonce
                                     });
-                                    let _ = ws_stream.send(Message::Text(response.to_string())).await;
+                                    let _ = ws_stream.send(Message::Text(response.to_string().into())).await;
                                 } else if surface_is_handshake(&value) {
                                     client_id = value["args"]["client_id"].as_str().unwrap_or("").to_string();
                                     info!("[rpc-ws] Handshake from client_id: {}", client_id);
@@ -128,7 +127,7 @@ async fn handle_ws_connection(
                                         "evt": "READY",
                                         "nonce": nonce
                                     });
-                                    let _ = ws_stream.send(Message::Text(response.to_string())).await;
+                                    let _ = ws_stream.send(Message::Text(response.to_string().into())).await;
                                 }
                             }
                         }
