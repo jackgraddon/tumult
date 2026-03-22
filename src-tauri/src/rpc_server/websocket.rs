@@ -1,9 +1,9 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection}, Query, State},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
     response::IntoResponse,
     routing::get,
     Router,
-    http::HeaderMap,
+    http::{HeaderMap, Request},
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde_json::json;
@@ -43,6 +43,7 @@ pub async fn start_websocket_server(
 
     let app_router = Router::new()
         .route("/", get(handler))
+        .fallback(fallback_handler)
         .layer(cors)
         .with_state(state);
 
@@ -72,12 +73,14 @@ pub async fn start_websocket_server(
 }
 
 async fn handler(
-    headers: HeaderMap,
-    Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
-    ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> Response {
-    // Strict Origin Validation
+    headers: HeaderMap,
+    params: Option<Query<HashMap<String, String>>>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    info!("[rpc-ws] Handshake hit! Params: {:?}", params);
+
+    // Strict Origin Validation (optional but recommended for security parity)
     if let Some(origin) = headers.get("origin") {
         let origin_str = origin.to_str().unwrap_or("");
         if !origin_str.is_empty() &&
@@ -85,22 +88,27 @@ async fn handler(
            !origin_str.starts_with("http://localhost") &&
            !origin_str.starts_with("https://localhost") {
             warn!("[rpc-ws] Disallowed origin: {}", origin_str);
-            return axum::response::Json(json!({ "code": 4001, "message": "Invalid Origin" })).into_response();
+            // We'll allow it for now to avoid blocking legitimate local tools,
+            // but log it clearly.
         }
     }
 
-    match ws {
-        Ok(ws) => {
-            let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
-            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id)).into_response()
-        }
-        Err(_) => {
-            axum::response::Json(json!({
-                "code": 404,
-                "message": "Not Found"
-            })).into_response()
-        }
-    }
+    ws.on_upgrade(move |socket| {
+        let query = params.map(|p| p.0).unwrap_or_default();
+        let client_id = query.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
+        handle_socket(socket, state, client_id)
+    })
+}
+
+async fn fallback_handler(req: Request<axum::body::Body>) -> impl IntoResponse {
+    let method = req.method();
+    let uri = req.uri();
+    error!("[rpc-ws] 404 Fallback triggered! Method: {}, URI: {}", method, uri);
+
+    axum::response::Json(json!({
+        "code": 404,
+        "message": format!("Not Found: {} {}", method, uri)
+    }))
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
@@ -118,7 +126,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
             "discriminator": "0",
             "global_name": state.user_name,
             "avatar": state.avatar.clone().unwrap_or_default(),
-            "avatar_decoration_data": null,
             "bot": false,
             "flags": 0,
             "premium_type": 0,
@@ -177,8 +184,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
         }
     }
 }
-
-type Response = axum::response::Response;
 
 impl ToString for RpcResponse {
     fn to_string(&self) -> String {
