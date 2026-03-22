@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
     Router,
+    http::{HeaderMap, Method},
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde_json::json;
@@ -37,7 +38,7 @@ pub async fn start_websocket_server(
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
+        .allow_methods([Method::GET, Method::OPTIONS])
         .allow_headers(Any);
 
     let app_router = Router::new()
@@ -73,15 +74,27 @@ pub async fn start_websocket_server(
 
 async fn handler(
     State(state): State<AppState>,
-    Query(params): Query<HashMap<String, String>>,
-    ws: WebSocketUpgrade,
+    headers: HeaderMap,
+    params: Query<HashMap<String, String>>,
+    ws_opt: Option<WebSocketUpgrade>,
 ) -> Response {
-    debug!("[rpc-ws] Handshake hit! Params: {:?}", params);
+    let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
 
-    ws.on_upgrade(move |socket| {
-        let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
-        handle_socket(socket, state, client_id)
-    }).into_response()
+    if let Some(ws) = ws_opt {
+        debug!("[rpc-ws] WebSocket upgrade detected for client: {}", client_id);
+        return ws.on_upgrade(move |socket| {
+            handle_socket(socket, state, client_id)
+        }).into_response();
+    }
+
+    // Standard HTTP handshake/probe
+    debug!("[rpc-ws] Standard HTTP probe for client: {} (headers: {:?})", client_id, headers);
+
+    axum::response::Json(json!({
+        "code": 200,
+        "message": "Ready",
+        "v": 1
+    })).into_response()
 }
 
 async fn fallback_handler(
@@ -90,7 +103,7 @@ async fn fallback_handler(
 ) -> Response {
     let method = req.method();
     let uri = req.uri();
-    error!("[rpc-ws] 404 Fallback triggered! Method: {}, URI: {}", method, uri);
+    warn!("[rpc-ws] 404 Fallback triggered! Method: {}, URI: {}", method, uri);
 
     axum::response::Json(json!({
         "code": 404,
