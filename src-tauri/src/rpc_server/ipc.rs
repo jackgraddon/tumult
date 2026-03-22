@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tauri::{AppHandle, Emitter};
 use log::{info, error};
@@ -158,22 +159,27 @@ async fn handle_ipc_connection(
                                 info!("[rpc-ipc] Handshake from client_id: {}", client_id);
 
                                 let response = json!({
-                                    "v": 1,
-                                    "config": {
-                                        "cdn_host": "cdn.discordapp.com",
-                                        "api_endpoint": "//discord.com/api",
-                                        "environment": "production"
+                                    "cmd": "DISPATCH",
+                                    "data": {
+                                        "v": 1,
+                                        "config": {
+                                            "cdn_host": "cdn.discordapp.com",
+                                            "api_endpoint": "//discord.com/api",
+                                            "environment": "production"
+                                        },
+                                        "user": {
+                                            "id": user_id,
+                                            "username": user_name,
+                                            "discriminator": "0",
+                                            "global_name": user_name,
+                                            "avatar": avatar,
+                                            "bot": false,
+                                            "flags": 0,
+                                            "premium_type": 0,
+                                        }
                                     },
-                                    "user": {
-                                        "id": user_id,
-                                        "username": user_name,
-                                        "discriminator": "0",
-                                        "global_name": user_name,
-                                        "avatar": avatar,
-                                        "bot": false,
-                                        "flags": 0,
-                                        "premium_type": 0,
-                                    }
+                                    "evt": "READY",
+                                    "nonce": null
                                 });
                                 send_ipc_frame(&mut stream, 1, response).await;
                             } else if cmd == "SET_ACTIVITY" {
