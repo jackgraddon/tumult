@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-use super::types::{RpcHandshake, RpcMessage, RpcResponse};
+use super::types::{RpcMessage, RpcResponse};
 
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
@@ -144,8 +144,8 @@ async fn handle_ipc_connection(
                     Ok(Some((opcode, body))) => {
                         debug!("[rpc-ipc] Received frame: opcode={}, body={}", opcode, String::from_utf8_lossy(&body));
                         if opcode == 0 { // HANDSHAKE
-                            if let Ok(handshake) = serde_json::from_slice::<RpcHandshake>(&body) {
-                                client_id = handshake.client_id.clone();
+                            if let Ok(handshake) = serde_json::from_slice::<serde_json::Value>(&body) {
+                                client_id = handshake["client_id"].as_str().unwrap_or("0").to_string();
                                 info!("[rpc-ipc] Handshake from client_id: {}", client_id);
 
                                 let response_data = json!({
@@ -175,19 +175,27 @@ async fn handle_ipc_connection(
                                 match msg.cmd.as_str() {
                                     "SET_ACTIVITY" => {
                                         let args = msg.args.clone().unwrap_or(json!({}));
+                                        let activity = &args["activity"];
 
                                         let _ = app.emit("arrpc-activity", json!({
-                                            "activity": args["activity"],
+                                            "activity": activity,
                                             "pid": args["pid"],
                                             "socketId": format!("ipc-{}", client_id)
                                         }));
 
-                                        let response_data = json!({
+                                        // BUILD THE CORRECT RESPONSE: Flatten the activity fields
+                                        let mut response_data = json!({
                                             "application_id": client_id,
                                             "name": "",
-                                            "type": 0,
-                                            "activity": args["activity"]
+                                            "type": 0
                                         });
+
+                                        if let Some(act_obj) = activity.as_object() {
+                                            for (k, v) in act_obj {
+                                                response_data[k] = v.clone();
+                                            }
+                                        }
+
                                         let response = RpcResponse::new("SET_ACTIVITY", Some(response_data), None, msg.nonce);
                                         send_ipc_frame(&mut stream, 1, response).await;
                                     }

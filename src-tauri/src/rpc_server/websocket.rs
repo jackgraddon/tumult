@@ -77,7 +77,8 @@ async fn handler(
 ) -> Response {
     match ws {
         Ok(ws) => {
-            ws.on_upgrade(move |socket| handle_socket(socket, state, params)).into_response()
+            let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
+            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id)).into_response()
         }
         Err(_) => {
             // Standard HTTP request
@@ -89,26 +90,8 @@ async fn handler(
     }
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState, query: HashMap<String, String>) {
-    // 1. Wait for the INITIAL Handshake message from the client
-    let client_id = match socket.recv().await {
-        Some(Ok(Message::Text(text))) => {
-            if let Ok(handshake) = serde_json::from_str::<serde_json::Value>(&text) {
-                handshake["args"]["client_id"]
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| query.get("client_id").cloned())
-                    .unwrap_or_else(|| "0".to_string())
-            } else {
-                "0".to_string()
-            }
-        }
-        _ => return, // Drop connection if no handshake received
-    };
-
-    info!("[rpc-ws] Handshake received for client: {}", client_id);
-
-    // 2. NOW send the READY event
+async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
+    // 1. IMMEDIATELY send the READY event to avoid deadlock
     let ready_data = json!({
         "v": 1,
         "config": {
@@ -119,19 +102,23 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, query: HashMap<St
         "user": {
             "id": state.user_id,
             "username": state.user_name,
-            "avatar": state.avatar,
             "discriminator": "0",
-            "public_flags": 0
+            "global_name": state.user_name,
+            "avatar": state.avatar,
+            "bot": false,
+            "flags": 0,
+            "premium_type": 0,
         }
     });
     let ready = RpcResponse::new("DISPATCH", Some(ready_data), Some("READY".to_string()), None);
 
-    if let Err(e) = socket.send(Message::Text(ready.to_string().into())).await {
+    if let Err(e) = socket.send(Message::Text(serde_json::to_string(&ready).unwrap().into())).await {
         error!("[rpc-ws] Failed to send READY: {}", e);
         return;
     }
+    info!("[rpc-ws] Connection established for {}", client_id);
 
-    // 3. Main Message Loop
+    // 2. Main Message Loop
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
             Message::Text(text) => {
@@ -140,25 +127,34 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, query: HashMap<St
                     match msg.cmd.as_str() {
                         "SET_ACTIVITY" => {
                             let args = msg.args.clone().unwrap_or(json!({}));
+                            let activity = &args["activity"];
 
                             let _ = state.app.emit("arrpc-activity", json!({
-                                "activity": args["activity"],
+                                "activity": activity,
                                 "pid": args["pid"],
                                 "socketId": format!("ws-{}", client_id)
                             }));
 
-                            let response = json!({
+                            // BUILD THE CORRECT RESPONSE: Flatten the activity fields
+                            let mut response_data = json!({
                                 "application_id": client_id,
                                 "name": "",
-                                "type": 0,
-                                "activity": args["activity"]
+                                "type": 0
                             });
-                            let frame = RpcResponse::new("SET_ACTIVITY", Some(response), None, msg.nonce);
-                            let _ = socket.send(Message::Text(frame.to_string().into())).await;
+
+                            if let Some(act_obj) = activity.as_object() {
+                                for (k, v) in act_obj {
+                                    response_data[k] = v.clone();
+                                }
+                            }
+
+                            let frame = RpcResponse::new("SET_ACTIVITY", Some(response_data), None, msg.nonce);
+                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
                         }
                         _ => {
+                            // Acknowledge other commands with an empty result to avoid hanging
                             let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
-                            let _ = socket.send(Message::Text(frame.to_string().into())).await;
+                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
                         }
                     }
                 }
