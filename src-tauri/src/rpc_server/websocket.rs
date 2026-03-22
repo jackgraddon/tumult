@@ -1,9 +1,8 @@
 use axum::{
     extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
     Router,
-    http::{HeaderMap, Request},
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde_json::json;
@@ -74,33 +73,21 @@ pub async fn start_websocket_server(
 
 async fn handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    params: Option<Query<HashMap<String, String>>>,
+    Query(params): Query<HashMap<String, String>>,
     ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    info!("[rpc-ws] Handshake hit! Params: {:?}", params);
-
-    // Strict Origin Validation (optional but recommended for security parity)
-    if let Some(origin) = headers.get("origin") {
-        let origin_str = origin.to_str().unwrap_or("");
-        if !origin_str.is_empty() &&
-           !origin_str.ends_with("discord.com") &&
-           !origin_str.starts_with("http://localhost") &&
-           !origin_str.starts_with("https://localhost") {
-            warn!("[rpc-ws] Disallowed origin: {}", origin_str);
-            // We'll allow it for now to avoid blocking legitimate local tools,
-            // but log it clearly.
-        }
-    }
+) -> Response {
+    debug!("[rpc-ws] Handshake hit! Params: {:?}", params);
 
     ws.on_upgrade(move |socket| {
-        let query = params.map(|p| p.0).unwrap_or_default();
-        let client_id = query.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
+        let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
         handle_socket(socket, state, client_id)
-    })
+    }).into_response()
 }
 
-async fn fallback_handler(req: Request<axum::body::Body>) -> impl IntoResponse {
+async fn fallback_handler(
+    State(_state): State<AppState>,
+    req: axum::http::Request<axum::body::Body>
+) -> Response {
     let method = req.method();
     let uri = req.uri();
     error!("[rpc-ws] 404 Fallback triggered! Method: {}, URI: {}", method, uri);
@@ -108,7 +95,7 @@ async fn fallback_handler(req: Request<axum::body::Body>) -> impl IntoResponse {
     axum::response::Json(json!({
         "code": 404,
         "message": format!("Not Found: {} {}", method, uri)
-    }))
+    })).into_response()
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
@@ -126,6 +113,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
             "discriminator": "0",
             "global_name": state.user_name,
             "avatar": state.avatar.clone().unwrap_or_default(),
+            "avatar_decoration_data": null,
             "bot": false,
             "flags": 0,
             "premium_type": 0,
