@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio_tungstenite::accept_hdr_async;
@@ -87,7 +88,7 @@ async fn handle_ws_connection(server: Arc<RpcServer>, mut stream: TcpStream) {
             response.push_str("Access-Control-Allow-Origin: *\r\n");
             response.push_str("Connection: close\r\n\r\n");
             response.push_str("{\"arRPC\": true}");
-            let _ = AsyncWriteExt::write_all(&mut stream, response.as_bytes()).await;
+            let _ = stream.write_all(response.as_bytes()).await;
             return;
         }
     }
