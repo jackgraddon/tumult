@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State, rejection::WebSocketUpgradeRejection},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection}, Query, State},
     response::IntoResponse,
     routing::get,
     Router,
@@ -73,11 +73,11 @@ async fn handler(
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,
     ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> impl IntoResponse {
+) -> Response {
     match ws {
         Ok(ws) => {
             let client_id = params.get("client_id").cloned().unwrap_or_default();
-            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id)).into_response()
         }
         Err(_) => {
             // Not a WebSocket upgrade request, return a 404
@@ -155,6 +155,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
         }
     }
 }
+
+type Response = axum::response::Response;
 
 impl ToString for RpcResponse {
     fn to_string(&self) -> String {
