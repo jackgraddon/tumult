@@ -623,13 +623,29 @@ export const useMatrixStore = defineStore('matrix', {
       // 3. Presence fallback (works for everyone)
       const user = this.client?.getUser(targetUserId);
       const presenceMsg = user?.presenceStatusMsg;
-      if (presenceMsg && presenceMsg.startsWith('Playing ')) {
-        const name = sanitize(presenceMsg.substring(8));
-        if (name) {
-          return {
-            name,
-            is_running: true
-          };
+      if (presenceMsg) {
+        // Try rich JSON payload first (Tumult clients)
+        if (presenceMsg.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(presenceMsg);
+            if (parsed.playing && parsed.is_running) {
+              return {
+                name: parsed.playing,
+                details: parsed.details,
+                state: parsed.state,
+                applicationId: parsed.applicationId,
+                iconHash: parsed.iconHash,
+                smallIconHash: parsed.smallIconHash,
+                startTimestamp: parsed.startTimestamp,
+                is_running: true,
+              };
+            }
+          } catch { /* fall through to plain text */ }
+        }
+        // Plain text fallback ("Playing X") for non-Tumult clients
+        if (presenceMsg.startsWith('Playing ')) {
+          const name = sanitize(presenceMsg.substring(8));
+          if (name) return { name, is_running: true };
         }
       }
 
@@ -677,12 +693,6 @@ export const useMatrixStore = defineStore('matrix', {
             }
           }
           this.refreshPresence();
-        });
-
-        // Listen for ADVANCED scanner events (arRPC stdout bridge)
-        listen('arrpc-activity', (event: any) => {
-          console.log('[MatrixStore] arRPC activity event from Rust (Advanced):', event.payload);
-          this.handleRpcActivity(event.payload);
         });
       }
 
@@ -781,32 +791,16 @@ export const useMatrixStore = defineStore('matrix', {
       const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
       if (!isTauri) return;
 
-      const userId = this.client?.getUserId() || 'unknown';
-      const hashedId = await this._hashUserId(userId);
-      const userName = this.user?.displayName || (userId.split(':')[0] || 'Unknown').replace('@', '');
-      const avatarHash = this.user?.avatarUrl?.split('/').pop();
-
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        console.log(`[MatrixStore] Starting arRPC sidecar (${this.gameDetectionLevel})...`);
-        await invoke('start_rpc_server', {
-          userId: hashedId,
-          userName,
-          avatar: avatarHash || null,
-          noRpc: this.gameDetectionLevel === 'basic'
+        console.log('[MatrixStore] Starting rsRPC sidecar...');
+        await invoke('start_rsrpc_server', {
+          bridgePort: 1337,
+          noProcessScanning: false,
         });
-
-        // Only connect to WebSocket bridge in dev mode or non-Tauri (PWA).
-        // In built Tauri app, we use the stdout-to-event bridge for efficiency
-        // and to avoid Mixed Content / Connection Refused errors in the console.
-        const isDev = (process as any).dev;
-        if (isDev || !isTauri) {
-          this.connectRpcWebSocket();
-        } else {
-          console.log('[MatrixStore] Using Tauri event bridge for arRPC (WebSocket bridge suppressed)');
-        }
+        this.connectRpcWebSocket();
       } catch (e) {
-        console.error('[MatrixStore] Failed to start arRPC server:', e);
+        console.error('[MatrixStore] Failed to start rsRPC server:', e);
       }
     },
 
@@ -816,8 +810,8 @@ export const useMatrixStore = defineStore('matrix', {
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        console.log('[MatrixStore] Stopping arRPC sidecar...');
-        await invoke('stop_rpc_server');
+        console.log('[MatrixStore] Stopping rsRPC sidecar...');
+        await invoke('stop_rsrpc_server');
 
         if (this.rpcSocket) {
           this.rpcSocket.close();
@@ -827,7 +821,7 @@ export const useMatrixStore = defineStore('matrix', {
         this.activityDetails = null;
         this.refreshPresence();
       } catch (e) {
-        console.error('[MatrixStore] Failed to stop arRPC server:', e);
+        console.error('[MatrixStore] Failed to stop rsRPC server:', e);
       }
     },
 
@@ -841,12 +835,12 @@ export const useMatrixStore = defineStore('matrix', {
         this.rpcRetryTimer = null;
       }
 
-      const port = 13337; // use custom port to avoid conflicts
-      console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
+      const port = 1337;
+      console.log(`[MatrixStore] Connecting to rsRPC bridge on port ${port}...`);
       const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 
       socket.onopen = () => {
-        console.log('[MatrixStore] Connected to arRPC bridge');
+        console.log('[MatrixStore] Connected to rsRPC bridge');
       };
 
       socket.onmessage = (event) => {
@@ -854,12 +848,12 @@ export const useMatrixStore = defineStore('matrix', {
           const data = JSON.parse(event.data);
           this.handleRpcActivity(data);
         } catch (e) {
-          console.error('[MatrixStore] Failed to parse arRPC message:', e);
+          console.error('[MatrixStore] Failed to parse rsRPC message:', e);
         }
       };
 
       socket.onclose = () => {
-        console.log('[MatrixStore] Disconnected from arRPC bridge');
+        console.log('[MatrixStore] Disconnected from rsRPC bridge');
         if (this.gameDetectionLevel === 'advanced') {
           // Retry connection after a delay
           this.rpcRetryTimer = setTimeout(() => this.connectRpcWebSocket(), 5000);
@@ -867,14 +861,14 @@ export const useMatrixStore = defineStore('matrix', {
       };
 
       socket.onerror = (e) => {
-        console.error('[MatrixStore] arRPC bridge error:', e);
+        console.error('[MatrixStore] rsRPC bridge error:', e);
       };
 
       this.rpcSocket = socket;
     },
 
     async handleRpcActivity(data: any) {
-      console.log('[MatrixStore] Processing arRPC activity:', data);
+      console.log('[MatrixStore] Processing rsRPC activity:', data);
 
       if (data.activity) {
         let name = this._sanitizeActivityString(data.activity.name);
@@ -902,7 +896,7 @@ export const useMatrixStore = defineStore('matrix', {
           if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
         }
 
-        // Enhanced activity details from arRPC
+        // Enhanced activity details from rsRPC
         this.activityDetails = {
           name: name || details || 'a game',
           details: details,
@@ -971,15 +965,27 @@ export const useMatrixStore = defineStore('matrix', {
 
       const presence = this.isIdle ? 'unavailable' : 'online';
 
-      let status_msg = this.customStatus;
+      let status_msg: string = this.customStatus || '';
+
       if (!status_msg && this.activityDetails?.is_running) {
-        const gameName = this._sanitizeActivityString(this.activityDetails.name);
+        const act = this.activityDetails;
+        const gameName = this._sanitizeActivityString(act.name);
         if (gameName) {
-          status_msg = `Playing ${gameName}`;
+          // Encode the full payload so remote Tumult clients can render
+          // icons, timestamps, and details. Non-Tumult clients will see
+          // the JSON string as their status — not ideal but acceptable.
+          status_msg = JSON.stringify({
+            playing: gameName,
+            details: act.details ?? null,
+            state: act.state ?? null,
+            applicationId: act.applicationId ?? null,
+            iconHash: act.iconHash ?? null,
+            smallIconHash: act.smallIconHash ?? null,
+            startTimestamp: act.startTimestamp ?? null,
+            is_running: true,
+          });
         }
       }
-
-      if (!status_msg) status_msg = '';
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
@@ -1908,6 +1914,35 @@ export const useMatrixStore = defineStore('matrix', {
       this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
         if (toStartOfTimeline) return;
         handleGameEvent(event);
+      });
+
+      this.client.on(sdk.UserEvent.Presence, (event, user) => {
+        if (!user?.userId || user.userId === this.client?.getUserId()) return;
+
+        const msg = user.presenceStatusMsg;
+        if (msg?.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(msg);
+            if (parsed.playing && parsed.is_running) {
+              this.remoteActivityDetails[user.userId] = {
+                name: parsed.playing,
+                details: parsed.details,
+                state: parsed.state,
+                applicationId: parsed.applicationId,
+                iconHash: parsed.iconHash,
+                smallIconHash: parsed.smallIconHash,
+                startTimestamp: parsed.startTimestamp,
+                is_running: true,
+                last_updated: Date.now(),
+              };
+            } else {
+              delete this.remoteActivityDetails[user.userId];
+            }
+          } catch { /* malformed JSON, ignore */ }
+        } else if (!msg || !msg.startsWith('Playing ')) {
+          // User cleared their activity
+          delete this.remoteActivityDetails[user.userId];
+        }
       });
 
       // Initial trigger

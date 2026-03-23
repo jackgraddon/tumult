@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../.output/public",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "corepack yarn dev",
-    "beforeBuildCommand": "corepack yarn generate"
+    "beforeDevCommand": "cd src-tauri && cargo build -p rsrpc && cd .. && corepack yarn dev",
+    "beforeBuildCommand": "cd src-tauri && cargo build -p rsrpc --release && cd .. && corepack yarn generate"
   },
   "app": {
     "withGlobalTauri": true,
@@ -21,14 +21,14 @@
         "height": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": true,
+        "decorations": false,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "visible": true
       }
     ],
     "security": {
-      "csp": "default-src 'self' https://tumult.jackg.cc; script-src 'self' https://tumult.jackg.cc; style-src 'self' 'unsafe-inline' https://tumult.jackg.cc; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com https://tumult.jackg.cc; connect-src 'self' ws://127.0.0.1:13337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com https://tumult.jackg.cc;"
+      "csp": "default-src 'self' https://tumult.jackg.cc; script-src 'self' https://tumult.jackg.cc; style-src 'self' 'unsafe-inline' https://tumult.jackg.cc; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com https://tumult.jackg.cc; connect-src 'self' ws://127.0.0.1:1337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com https://tumult.jackg.cc;"
     }
   },
   "plugins": {
@@ -44,7 +44,7 @@
     "publisher": "cc.jackg.tumult",
     "createUpdaterArtifacts": true,
     "externalBin": [
-      "binaries/arrpc"
+      "binaries/rsrpc"
     ],
     "targets": "all",
     "icon": [

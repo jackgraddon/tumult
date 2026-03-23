@@ -3,10 +3,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build:sidecar": "node scripts/build-arrpc-sidecar.cjs",
-    "build": "yarn build:sidecar && nuxt build",
-    "dev": "yarn build:sidecar & nuxt dev",
-    "generate": "yarn build:sidecar && nuxt generate",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "tauri": "dotenv -e .env -- tauri"

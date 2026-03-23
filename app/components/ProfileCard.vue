@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col w-[400px] p-4 rounded-lg bg-background border-1 border-border">
-    <div class="mt-[-50px] mb-2">
+    <div class="mb-2">
       <UserProfile
         :user="user"
         size="full"

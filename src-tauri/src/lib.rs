@@ -9,13 +9,23 @@ use tauri::Manager;
 
 mod game_scanner;
 
+// ─── State structs ────────────────────────────────────────────────────────────
+
+/// Manages the legacy arRPC sidecar child process (kept for compatibility).
 pub struct RpcState {
+    pub child: Mutex<Option<CommandChild>>,
+}
+
+/// Manages the rsRPC sidecar child process.
+pub struct RsRpcState {
     pub child: Mutex<Option<CommandChild>>,
 }
 
 pub struct FailoverState {
     pub is_failover: bool,
 }
+
+// ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -36,18 +46,24 @@ pub fn run() {
         .manage(RpcState {
             child: Mutex::new(None),
         })
+        .manage(RsRpcState {
+            child: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             game_scanner::set_scanner_enabled,
             game_scanner::update_watch_list,
             start_oauth_server,
+            // Legacy arRPC (kept for any rollback path)
             start_rpc_server,
             stop_rpc_server,
+            // rsRPC
+            start_rsrpc_server,
+            stop_rsrpc_server,
             is_failover
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
 
-            // macOS/Windows decoration logic
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
                 window.set_decorations(false).unwrap();
@@ -55,7 +71,6 @@ pub fn run() {
             }
 
             let remote_url = "https://tumult.jackg.cc";
-            // Use option_env! to bake the value into the binary at build time.
             let forced_offline = option_env!("BUILD_FOR_OFFLINE").is_some();
             let mut use_remote = !forced_offline;
 
@@ -65,7 +80,7 @@ pub fn run() {
                     .timeout(Duration::from_secs(3))
                     .build()
                     .unwrap();
-                
+
                 match client.head(remote_url).send() {
                     Ok(res) if res.status().is_success() => {
                         log::info!("Remote server is reachable.");
@@ -95,14 +110,123 @@ pub fn run() {
                 )?;
             }
 
-            // Start game scanner loop
             game_scanner::start(app.handle().clone(), scanner_state);
-
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+// ─── rsRPC sidecar ────────────────────────────────────────────────────────────
+//
+// rsRPC is a self-contained Rust binary. It exposes:
+//   - WebSocket on port 1337 (JSON, arRPC-compatible)
+//   - WebSocket on port 1338 (MessagePack, optional)
+//
+// Unlike the arRPC JS sidecar, rsRPC does NOT need a stdout bridge — the
+// frontend connects to its WebSocket directly. We just need to manage the
+// process lifecycle.
+
+#[tauri::command]
+async fn start_rsrpc_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RsRpcState>,
+    bridge_port: Option<u16>,
+    no_process_scanning: Option<bool>,
+) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+
+    // Kill any existing instance cleanly before spawning a new one.
+    if let Some(mut child) = child_guard.take() {
+        log::info!("[rsrpc] Killing existing sidecar instance...");
+        let _ = child.kill();
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    // Belt-and-suspenders: kill any orphaned rsrpc processes from a previous run.
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("killall")
+            .args(["rsrpc-aarch64-apple-darwin", "rsrpc-x86_64-apple-darwin"])
+            .output();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "rsrpc.exe"])
+            .output();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("pkill")
+            .arg("-f")
+            .arg("rsrpc-x86_64-unknown-linux")
+            .output();
+    }
+
+    let port = bridge_port.unwrap_or(1337);
+    let scan_disabled = no_process_scanning.unwrap_or(false);
+
+    let mut args = vec![
+        "--bridge-port".to_string(),
+        port.to_string(),
+    ];
+
+    if scan_disabled {
+        args.push("--no-process-scanning".to_string());
+    }
+
+    log::info!("[rsrpc] Spawning sidecar on port {}...", port);
+
+    let sidecar = app
+        .shell()
+        .sidecar("rsrpc")
+        .map_err(|e| format!("Failed to create rsrpc sidecar: {}", e))?
+        .args(&args);
+
+    // rsRPC logs to stderr by default. We capture it so it surfaces in the
+    // Tauri log (visible in `tauri dev` and in the app's log file), but we
+    // do NOT bridge stdout to the frontend — the WebSocket on port 1337 does
+    // that job natively.
+    let (mut rx, child) = sidecar
+        .spawn()
+        .map_err(|e| format!("Failed to spawn rsrpc sidecar: {}", e))?;
+
+    log::info!("[rsrpc] Sidecar spawned (PID {:?})", child.pid());
+
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    log::info!("[rsrpc] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Stderr(line) => {
+                    log::info!("[rsrpc] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::warn!("[rsrpc] Process terminated: {:?}", payload);
+                }
+                _ => {}
+            }
+        }
+    });
+
+    *child_guard = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_rsrpc_server(state: tauri::State<'_, RsRpcState>) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+    if let Some(mut child) = child_guard.take() {
+        log::info!("[rsrpc] Stopping rsRPC sidecar...");
+        child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ─── Legacy arRPC sidecar (kept for rollback) ─────────────────────────────────
 
 #[tauri::command]
 async fn start_rpc_server(
@@ -127,13 +251,10 @@ async fn start_rpc_server(
             .arg("arrpc-aarch64-apple-darwin")
             .output();
     }
-
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("taskkill")
-            .arg("/F")
-            .arg("/IM")
-            .arg("arrpc.exe")
+            .args(["/F", "/IM", "arrpc.exe"])
             .output();
     }
 
@@ -148,26 +269,9 @@ async fn start_rpc_server(
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
     sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
 
-    // Logic: 
-    // Basic: Scans only (User says: "Advanced hooks into games that supports Discord RPC")
-    // Advanced: Scans + RPC Hooks
-    // So if Basic, we should probably DISABLE the RPC listeners but keep scanning.
-    // However, arRPC's --no-process-scanning DISABLES scanning.
-    // Let's re-read the user's requirement.
-    // "Basic scans for running processes... Advanced hooks into games that supports Discord RPC"
-    // So:
-    // Basic = process scanning = YES, RPC = NO
-    // Advanced = process scanning = YES, RPC = YES
     if no_rpc {
-        // This is for 'basic' level. We want to DISABLE the RPC interface 
-        // but arRPC doesn't have a simple flag for that.
-        // Usually arRPC is used for the RPC interface.
-        // If we want ONLY scanning, we might need to modify arRPC or find another way.
-        // For now, I will use a custom env var that we can use if we ever modify arRPC,
-        // but I will follow the user's spirit.
         sidecar = sidecar.env("ARRPC_NO_RPC_SERVER", "true");
     }
-
     if let Some(avatar_hash) = avatar {
         sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
     }
@@ -177,8 +281,6 @@ async fn start_rpc_server(
     let (mut rx, child) = sidecar
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-    println!("[rpc] Sidecar process ID: {:?}", child.pid());
 
     let sidecar_app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -191,7 +293,6 @@ async fn start_rpc_server(
                     let trimmed = text.trim();
                     log::info!("[rpc-sidecar] {}", trimmed);
 
-                    // Bridge JSON messages to the frontend
                     if trimmed.starts_with("JSON_BRIDGE_MSG:") {
                         let json = &trimmed["JSON_BRIDGE_MSG:".len()..];
                         if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
@@ -215,11 +316,6 @@ async fn start_rpc_server(
 }
 
 #[tauri::command]
-fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
-    state.is_failover
-}
-
-#[tauri::command]
 async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
     if let Some(child) = child_guard.take() {
@@ -227,6 +323,13 @@ async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String
         child.kill().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+// ─── OAuth loopback server ────────────────────────────────────────────────────
+
+#[tauri::command]
+fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
+    state.is_failover
 }
 
 #[tauri::command]
