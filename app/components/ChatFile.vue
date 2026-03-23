@@ -10,10 +10,11 @@
         v-if="finalImageUrl"
         :src="finalImageUrl"
         :alt="alt || 'Image'"
-        class="max-w-full h-auto object-contain rounded-md"
+        class="max-w-full h-auto object-contain rounded-md cursor-zoom-in hover:opacity-90 transition-opacity"
         :width="displayWidth || undefined"
         :height="displayHeight || undefined"
         loading="lazy"
+        @click="store.openMediaPreview({ url: finalImageUrl, type: 'image', alt: alt })"
       />
       <div v-else-if="!isLoading" class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm bg-muted/50">
         <span>Failed to load image</span>
@@ -34,8 +35,9 @@
         :muted="isGif || props.info?.['fi.mau.no_audio']"
         @error="handleVideoError"
         playsinline
-        class="w-full max-h-[400px] object-contain"
+        class="w-full max-h-[400px] object-contain cursor-zoom-in"
         preload="metadata"
+        @click="store.openMediaPreview({ url: finalImageUrl, type: 'video', alt: alt })"
       ></video>
       <div v-else class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm">
         <span v-if="!isLoading">Failed to load video</span>

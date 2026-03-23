@@ -30,6 +30,7 @@
       <CreateSpaceModal />
       <RoomSettingsModal />
       <SpaceSettingsModal />
+      <MediaPreviewModal />
 
       <!-- Failover Notice -->
       <div 

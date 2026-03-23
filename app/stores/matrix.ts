@@ -60,6 +60,11 @@ export interface UIState {
     cancelLabel: string;
     onConfirm: () => void;
   };
+  mediaPreview: {
+    url: string;
+    type: 'image' | 'video';
+    alt?: string;
+  } | null;
 }
 
 // Enhanced HTML for OAuth Loopback Response
@@ -289,6 +294,7 @@ export const useMatrixStore = defineStore('matrix', {
         cancelLabel: 'Cancel',
         onConfirm: () => { },
       },
+      mediaPreview: null,
     } as UIState,
   }),
 
@@ -3277,8 +3283,8 @@ export const useMatrixStore = defineStore('matrix', {
 
         // 4. Re-initialize
         const accessToken = await getSecret('matrix_access_token');
-        const userId = await getPref('matrix_user_id');
-        if (accessToken && userId) {
+        const storedUserId = await getPref('matrix_user_id', null);
+        if (accessToken && storedUserId) {
           // This will effectively restart everything
           window.location.reload();
         } else {
@@ -3864,6 +3870,14 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Force Vue to re-evaluate getVoiceParticipants
       this.hierarchyTrigger++;
+    },
+    
+    openMediaPreview(media: { url: string, type: 'image' | 'video', alt?: string }) {
+      this.ui.mediaPreview = media;
+    },
+
+    closeMediaPreview() {
+      this.ui.mediaPreview = null;
     },
 
   }
