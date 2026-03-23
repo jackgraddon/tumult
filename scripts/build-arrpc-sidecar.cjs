@@ -36,9 +36,19 @@ let code = fs.readFileSync(bundleFile, 'utf8');
 
 // Strip shebang and prepend polyfill
 code = code.replace(/^#!.*\n/, '');
+
 const polyfillCode = `
 const fs = require('fs');
 const path = require('path');
+
+const rgb = (r, g, b, msg) => \`\\x1b[38;2;\${r};\${g};\${b}m\${msg}\\x1b[0m\`;
+const logMsg = (tag, ...args) => {
+  const line = \`[\${tag}] \${args.join(' ')}\\n\`;
+  process.stderr.write(line);
+  try { fs.appendFileSync('/tmp/tumult-arrpc.log', line); } catch(e) {}
+};
+
+logMsg('arRPC-INIT', 'Process starting...');
 
 process.env.ELECTRON_RUN_AS_NODE = '1';
 process.env.QT_QPA_PLATFORM = 'offscreen';
@@ -52,9 +62,64 @@ fs.readFileSync = function(p, opts) {
   return _origRead.apply(this, arguments);
 };
 const __import_meta_url = require('url').pathToFileURL(__filename).href;
+
+process.on('unhandledRejection', (reason, promise) => {
+  logMsg(rgb(237, 66, 69, 'arRPC-ERROR'), 'Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err, origin) => {
+  logMsg(rgb(237, 66, 69, 'arRPC-ERROR'), \`Caught exception: \${err}\\nException origin: \${origin}\`);
+});
+
+try {
 \n`;
 
-fs.writeFileSync(bundleFile, polyfillCode + code);
+const polyfillSuffix = `
+} catch (err) {
+  process.stderr.write('Failed to initialize arRPC server: ' + err + '\\n');
+  process.exit(1);
+}
+`;
+
+// Inject diagnostic logging into the bundled code by replacing key sections
+code = code.replace(
+  /const SOCKET_PATH = platform === "win32" \? "\\\\\\\\\\\\\\\\\\?\\\\pipe\\\\discord-ipc" : join\(env.XDG_RUNTIME_DIR \|\| env.TMPDIR \|\| env.TMP \|\| env.TEMP \|\| "\/tmp", "discord-ipc"\);/g,
+  '$&; logMsg("arRPC > ipc", "socket path:", SOCKET_PATH);'
+);
+
+// Fallback for different esbuild output variations
+if (!code.includes('socket path:')) {
+  code = code.replace(
+    /const SOCKET_PATH = [^;]+discord-ipc[^;]+;/g,
+    '$&; logMsg("arRPC > ipc", "socket path:", SOCKET_PATH);'
+  );
+}
+
+code = code.replace(
+  /if \(await socketIsAvailable\(socket\)\) \{[\s\S]*?return path;/g,
+  `if (await socketIsAvailable(socket)) {
+    if (process.platform !== 'win32') {
+      try {
+        fs.unlinkSync(path);
+        logMsg('arRPC > ipc', 'cleaned up old socket file:', path);
+      } catch (e) { }
+    }
+    return path;
+  }`
+);
+
+// Another attempt at injecting the socket cleanup if the first regex failed due to minification/formatting
+if (!code.includes('cleaned up old socket file:')) {
+    code = code.replace(
+        /if\s*\(await\s*socketIsAvailable\(socket\)\)\s*\{/g,
+        \`$& if (process.platform !== 'win32') { try { fs.unlinkSync(path); logMsg('arRPC > ipc', 'cleaned up old socket file:', path); } catch (e) { } }\`
+    );
+}
+
+// Redirect all logs to stderr and the log file, ensuring newlines are preserved
+code = code.replace(/console\.log\(/g, 'logMsg("arRPC", ');
+
+fs.writeFileSync(bundleFile, polyfillCode + code + polyfillSuffix);
 
 // 4. Node SEA Blob
 console.log('Step 3: Generating Node SEA Blob...');

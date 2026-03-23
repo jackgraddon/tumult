@@ -121,10 +121,17 @@ async fn start_rpc_server(
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
+    if no_rpc {
+        // If Basic, we should probably DISABLE the RPC sidecar entirely
+        // to save resources and prevent port conflicts.
+        log::info!("[rpc] RPC sidecar disabled for basic mode.");
+        return Ok(());
+    }
+
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("killall")
-            .arg("arrpc-aarch64-apple-darwin")
+            .arg("arrpc")
             .output();
     }
 
@@ -137,59 +144,50 @@ async fn start_rpc_server(
             .output();
     }
 
+    // Check if ports are already in use
+    use std::net::TcpStream;
+    for port in &[13337, 6463] {
+        if TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", port).parse().unwrap(),
+            std::time::Duration::from_millis(100),
+        ).is_ok() {
+            log::warn!("[rpc] Port {} is already in use. arRPC might fail to start.", port);
+        }
+    }
+
     let mut sidecar = app
         .shell()
         .sidecar("arrpc")
         .map_err(|e| format!("Failed to create sidecar: {}", e))?;
 
-    sidecar = sidecar.env_clear();
-    sidecar = sidecar.env("PATH", std::env::var("PATH").unwrap_or_default());
+    // sidecar = sidecar.env_clear(); // Removed to allow inheriting TMPDIR and other essential variables
     sidecar = sidecar.env("ARRPC_USER_ID", user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
     sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
-
-    // Logic: 
-    // Basic: Scans only (User says: "Advanced hooks into games that supports Discord RPC")
-    // Advanced: Scans + RPC Hooks
-    // So if Basic, we should probably DISABLE the RPC listeners but keep scanning.
-    // However, arRPC's --no-process-scanning DISABLES scanning.
-    // Let's re-read the user's requirement.
-    // "Basic scans for running processes... Advanced hooks into games that supports Discord RPC"
-    // So:
-    // Basic = process scanning = YES, RPC = NO
-    // Advanced = process scanning = YES, RPC = YES
-    if no_rpc {
-        // This is for 'basic' level. We want to DISABLE the RPC interface 
-        // but arRPC doesn't have a simple flag for that.
-        // Usually arRPC is used for the RPC interface.
-        // If we want ONLY scanning, we might need to modify arRPC or find another way.
-        // For now, I will use a custom env var that we can use if we ever modify arRPC,
-        // but I will follow the user's spirit.
-        sidecar = sidecar.env("ARRPC_NO_RPC_SERVER", "true");
-    }
 
     if let Some(avatar_hash) = avatar {
         sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
     }
 
-    log::info!("[rpc] Spawning arRPC sidecar...");
+    log::info!("[rpc] Spawning arRPC sidecar with user_id={}...", user_id);
 
     let (mut rx, child) = sidecar
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
-    println!("[rpc] Sidecar process ID: {:?}", child.pid());
+    log::info!("[rpc] Sidecar process ID: {:?}", child.pid());
 
     let sidecar_app = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         use tauri::Emitter;
         while let Some(event) = rx.recv().await {
+            log::info!("[rpc-sidecar] Raw event: {:?}", event);
             match event {
                 CommandEvent::Stdout(line) => {
                     let text = String::from_utf8_lossy(&line);
                     let trimmed = text.trim();
-                    log::info!("[rpc-sidecar] {}", trimmed);
+                    log::info!("[rpc-sidecar] STDOUT: {}", trimmed);
 
                     // Bridge JSON messages to the frontend
                     if trimmed.starts_with("JSON_BRIDGE_MSG:") {
@@ -200,7 +198,7 @@ async fn start_rpc_server(
                     }
                 }
                 CommandEvent::Stderr(line) => {
-                    log::error!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                    log::error!("[rpc-sidecar] STDERR: {}", String::from_utf8_lossy(&line).trim());
                 }
                 CommandEvent::Terminated(payload) => {
                     log::warn!("[rpc-sidecar] Process terminated: {:?}", payload);
