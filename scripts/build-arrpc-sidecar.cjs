@@ -10,35 +10,41 @@ const distDir = path.join(arrpcDir, 'dist');
 if (!fs.existsSync(binariesDir)) fs.mkdirSync(binariesDir, { recursive: true });
 if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
 
-console.log('--- Building arRPC Sidecar (Node 25 Final) ---');
+console.log('--- Building arRPC Sidecar (Stable Build) ---');
 
-// Determine Target Triple
-let rustTriple = process.env.TAURI_ENV_TARGET_TRIPLE ||
+// 1. Determine Target Triple
+let targetTriple = process.env.TAURI_ENV_TARGET_TRIPLE ||
   execSync('rustc -Vv').toString().split('\n').find(l => l.startsWith('host:')).split(' ')[1].trim();
 
-const isWindows = rustTriple.includes('windows');
-const isMac = rustTriple.includes('apple') || rustTriple.includes('darwin');
-const binaryName = `arrpc-${rustTriple}${isWindows ? '.exe' : ''}`;
+const isWindows = targetTriple.includes('windows');
+const isMac = targetTriple.includes('apple') || targetTriple.includes('darwin');
+const binaryName = `arrpc-${targetTriple}${isWindows ? '.exe' : ''}`;
 const outputPath = path.join(binariesDir, binaryName);
 
-// Bundle with esbuild
-console.log('Step 1: Bundling code...');
-const bundlePath = path.join(distDir, 'index.cjs');
-
-execSync(`npx esbuild src/index.js --bundle --platform=node --format=cjs --outfile="${bundlePath}" --define:import.meta.url="__import_meta_url"`, {
+// 2. Bundle code
+console.log('Step 1: Bundling with esbuild...');
+const bundleFile = path.join(distDir, 'index.cjs');
+execSync(`npx esbuild src/index.js --bundle --platform=node --format=cjs --outfile="${bundleFile}" --define:import.meta.url="__import_meta_url"`, {
   cwd: arrpcDir,
   stdio: 'inherit'
 });
 
-// Manual Asset Injection (Bypasses E2BIG)
-console.log('Step 2: Injecting assets and polyfills...');
+// 3. Asset Injection & Polyfills
+console.log('Step 2: Injecting assets and directory polyfill...');
 const detectableData = fs.readFileSync(path.join(arrpcDir, 'src', 'process', 'detectable.json'), 'utf8');
-let originalBundle = fs.readFileSync(bundlePath, 'utf8');
+let code = fs.readFileSync(bundleFile, 'utf8');
 
-originalBundle = originalBundle.replace(/^#!.*\n/, '');
-
-const polyfill = `
+// Strip shebang and prepend polyfill
+code = code.replace(/^#!.*\n/, '');
+const polyfillCode = `
 const fs = require('fs');
+const path = require('path');
+
+process.env.ELECTRON_RUN_AS_NODE = '1';
+process.env.QT_QPA_PLATFORM = 'offscreen';
+
+process.chdir(require('os').tmpdir());
+
 const _origRead = fs.readFileSync;
 const _detectable = ${JSON.stringify(detectableData)};
 fs.readFileSync = function(p, opts) {
@@ -48,55 +54,46 @@ fs.readFileSync = function(p, opts) {
 const __import_meta_url = require('url').pathToFileURL(__filename).href;
 \n`;
 
-fs.writeFileSync(bundlePath, polyfill + originalBundle);
+fs.writeFileSync(bundleFile, polyfillCode + code);
 
-// Create SEA Blob
+// 4. Node SEA Blob
 console.log('Step 3: Generating Node SEA Blob...');
-const seaConfigPath = path.join(distDir, 'sea-config.json');
-fs.writeFileSync(seaConfigPath, JSON.stringify({
-  main: bundlePath,
+const seaConf = path.join(distDir, 'sea-config.json');
+fs.writeFileSync(seaConf, JSON.stringify({
+  main: bundleFile,
   output: path.join(distDir, 'sea-prep.blob'),
   disableExperimentalSEAWarning: true
 }, null, 2));
 
-execSync(`node --experimental-sea-config "${seaConfigPath}"`, { stdio: 'inherit' });
+execSync(`node --experimental-sea-config "${seaConf}"`, { stdio: 'inherit' });
 
-// Finalize Binary
+// 5. Finalize Binary
 console.log('Step 4: Preparing base binary...');
 fs.copyFileSync(process.execPath, outputPath);
 
 if (isMac) {
-  console.log('... Removing existing signatures');
-  // We MUST remove signatures before postjecting
+  console.log('... Handling macOS signatures and architecture');
   try { execSync(`codesign --remove-signature "${outputPath}"`); } catch (e) { }
 
-  const lipoInfo = execSync(`lipo -info "${outputPath}"`).toString();
-  if (lipoInfo.includes('Architectures in the fat file')) {
-    const arch = rustTriple.startsWith('aarch64') ? 'arm64' : 'x86_64';
+  const info = execSync(`lipo -info "${outputPath}"`).toString();
+  if (info.includes('Architectures in the fat file')) {
+    const arch = targetTriple.startsWith('aarch64') ? 'arm64' : 'x86_64';
     execSync(`lipo "${outputPath}" -thin ${arch} -output "${outputPath}"`);
   }
+} else if (isWindows) {
+  try { execSync(`signtool remove /s "${outputPath}"`, { stdio: 'ignore' }); } catch (e) { }
 }
 
-console.log('Step 5: Injecting blob...');
-let postjectCmd = `npx postject "${outputPath}" NODE_SEA_BLOB "${path.join(distDir, 'sea-prep.blob')}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`;
-if (isMac) postjectCmd += ' --macho-segment-name NODE_SEA';
+// 6. Postject Injection
+console.log('Step 5: Injecting blob into binary...');
+let postjectArgs = `"${outputPath}" NODE_SEA_BLOB "${path.join(distDir, 'sea-prep.blob')}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`;
+if (isMac) postjectArgs += ' --macho-segment-name NODE_SEA';
 
-execSync(postjectCmd, { stdio: 'inherit' });
+execSync(`npx postject ${postjectArgs}`, { stdio: 'inherit' });
 
 if (isMac) {
-  console.log('... Re-signing binary for local execution');
-  // Ad-hoc sign so macOS allows it to run
+  console.log('... Re-signing binary');
   execSync(`codesign -s - "${outputPath}"`);
 }
 
-console.log('Step 5: Injecting blob...');
-let postjectCmd = `npx postject "${outputPath}" NODE_SEA_BLOB "${path.join(distDir, 'sea-prep.blob')}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`;
-if (isMac) postjectCmd += ' --macho-segment-name NODE_SEA';
-
-execSync(postjectCmd, { stdio: 'inherit' });
-
-if (isMac) {
-  execSync(`codesign -s - "${outputPath}"`);
-}
-
-console.log(`\nSuccess! Sidecar built: ${binaryName}`);
+console.log(`\nDone! Sidecar ready at: ${binaryName}`);

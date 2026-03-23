@@ -115,9 +115,26 @@ async fn start_rpc_server(
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
 
-    if let Some(child) = child_guard.take() {
+    if let Some(mut child) = child_guard.take() {
         log::info!("[rpc] Killing existing sidecar instance...");
         let _ = child.kill();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("killall")
+            .arg("arrpc-aarch64-apple-darwin")
+            .output();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .arg("/F")
+            .arg("/IM")
+            .arg("arrpc.exe")
+            .output();
     }
 
     let mut sidecar = app
@@ -125,6 +142,8 @@ async fn start_rpc_server(
         .sidecar("arrpc")
         .map_err(|e| format!("Failed to create sidecar: {}", e))?;
 
+    sidecar = sidecar.env_clear();
+    sidecar = sidecar.env("PATH", std::env::var("PATH").unwrap_or_default());
     sidecar = sidecar.env("ARRPC_USER_ID", user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
     sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
@@ -158,6 +177,8 @@ async fn start_rpc_server(
     let (mut rx, child) = sidecar
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    println!("[rpc] Sidecar process ID: {:?}", child.pid());
 
     let sidecar_app = app.clone();
     tauri::async_runtime::spawn(async move {
