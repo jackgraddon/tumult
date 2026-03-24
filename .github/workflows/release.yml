@@ -5,7 +5,7 @@ on:
       - '*'
 
 jobs:
-  # Build on each platform
+  # ─── Job 1: Build on each platform ───────────────────────────────────────────
   build:
     permissions:
       contents: write
@@ -42,6 +42,8 @@ jobs:
         run: corepack yarn install --no-immutable
         shell: bash
 
+      # Tags are formatted as "0.3.23-1" — no v prefix, already valid semver.
+      # Write it directly into tauri.conf.json.
       - name: Set version from tag
         shell: bash
         run: |
@@ -80,19 +82,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Upload .sig files as Actions artifacts so the update_json job can download both platforms' sigs at once with no race condition.
+      # Upload .sig files as Actions artifacts so the update_json job can
+      # download both platforms' sigs at once with no race condition.
       - name: Upload .sig files as Actions artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sig-${{ matrix.platform }}
+          # Glob both possible locations; only one will match per platform
           path: |
             src-tauri/target/release/bundle/macos/*.tar.gz.sig
             src-tauri/target/release/bundle/msi/*.msi.sig
           if-no-files-found: error
 
-  # Generate update.json after both platforms have finished
+  # ─── Job 2: Generate update.json after BOTH platforms have finished ──────────
   update_json:
-    needs: build
+    needs: build          # Waits for the full build matrix to complete
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -101,7 +105,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: main       # Always work off main, not the tag commit
 
       - name: Download macOS .sig
         uses: actions/download-artifact@v4
@@ -122,36 +126,42 @@ jobs:
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           REPO="${{ github.repository }}"
 
+          # The upload-artifact action preserves subdirectory structure relative
+          # to the least common ancestor, so the .sig files may be nested inside
+          # sigs/mac/macos/ or sigs/win/msi/ rather than directly in sigs/mac/.
+          # Use find to locate them regardless of nesting depth.
+          MAC_SIG_PATH=$(find sigs/mac -name "*.tar.gz.sig" | head -n 1)
+          WIN_SIG_PATH=$(find sigs/win -name "*.msi.sig"    | head -n 1)
+
+          echo "macOS sig: $MAC_SIG_PATH"
+          echo "Windows sig: $WIN_SIG_PATH"
+
+          if [ -z "$MAC_SIG_PATH" ]; then echo "ERROR: macOS .sig not found"; exit 1; fi
+          if [ -z "$WIN_SIG_PATH" ]; then echo "ERROR: Windows .sig not found"; exit 1; fi
+
           node -e "
             const fs   = require('fs');
             const path = require('path');
 
-            const version = '$VERSION';
-            const date    = '$DATE';
-            const repo    = '$REPO';
+            const version    = '$VERSION';
+            const date       = '$DATE';
+            const repo       = '$REPO';
+            const macSigPath = '$MAC_SIG_PATH';
+            const winSigPath = '$WIN_SIG_PATH';
 
-            // ── macOS sig ────────────────────────────────────────────────────
-            const macSigDir = 'sigs/mac';
-            const macSigFile = fs.readdirSync(macSigDir).find(f => f.endsWith('.tar.gz.sig'));
-            if (!macSigFile) { console.error('macOS .sig not found'); process.exit(1); }
-            const macSig = fs.readFileSync(path.join(macSigDir, macSigFile), 'utf8').trim();
-
-            // ── Windows sig ──────────────────────────────────────────────────
-            const winSigDir = 'sigs/win';
-            const winSigFile = fs.readdirSync(winSigDir).find(f => f.endsWith('.msi.sig'));
-            if (!winSigFile) { console.error('Windows .sig not found'); process.exit(1); }
-            const winSig = fs.readFileSync(path.join(winSigDir, winSigFile), 'utf8').trim();
+            const macSig = fs.readFileSync(macSigPath, 'utf8').trim();
+            const winSig = fs.readFileSync(winSigPath, 'utf8').trim();
 
             // ── Build download URLs ──────────────────────────────────────────
-            const base = 'https://github.com/' + repo + '/releases/download/' + version + '/';
+            const base     = 'https://github.com/' + repo + '/releases/download/' + version + '/';
             const macAsset = 'Tumult.app.tar.gz';
-            // Strip the .sig suffix to get the actual installer filename
-            const winAsset = winSigFile.replace('.sig', '');
+            // Strip .sig to get the real installer filename (e.g. Tumult_0.3.23-2_x64_en-US.msi)
+            const winAsset = path.basename(winSigPath).replace('.sig', '');
 
             // ── Write update.json ────────────────────────────────────────────
             const data = {
               version,
-              notes: 'Release ' + version,
+              notes:    'Release ' + version,
               pub_date: date,
               platforms: {
                 'darwin-aarch64': { signature: macSig, url: base + macAsset },
@@ -163,7 +173,7 @@ jobs:
             fs.mkdirSync('app/public', { recursive: true });
             fs.writeFileSync('app/public/update.json', JSON.stringify(data, null, 2));
             console.log('update.json written for version ' + version);
-            console.log('  macOS asset : ' + macAsset);
+            console.log('  macOS asset  : ' + macAsset);
             console.log('  Windows asset: ' + winAsset);
           "
 

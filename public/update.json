@@ -1,0 +1,19 @@
+{
+  "version": "0.3.23-2",
+  "notes": "Release 0.3.23-2",
+  "pub_date": "2026-03-24T04:20:40Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa29JOEphaUJidzlYbVpsa1RkUVNTUE83RVpSS0JDWktoNXRlVkxHZzBxQTBLVWsxejFPVWdBMDlKQ09rQ094OFUzbEFzaS9NS3h2Ky9NN1FtTGhlT0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc0MzI1NjQ3CWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKcHMzc05lMm1hb0tackYzdk94Rkd5RmJNcVZTNmlHc1BFb1BUalQyNEV3U1piZDdjSTQxOWxMY0VXSWZBOXlHK2ZSMFpkdkd1OG9MdnRFQWRuYnFXQmc9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.3.23-2/Tumult.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa29JOEphaUJidzlYbVpsa1RkUVNTUE83RVpSS0JDWktoNXRlVkxHZzBxQTBLVWsxejFPVWdBMDlKQ09rQ094OFUzbEFzaS9NS3h2Ky9NN1FtTGhlT0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc0MzI1NjQ3CWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKcHMzc05lMm1hb0tackYzdk94Rkd5RmJNcVZTNmlHc1BFb1BUalQyNEV3U1piZDdjSTQxOWxMY0VXSWZBOXlHK2ZSMFpkdkd1OG9MdnRFQWRuYnFXQmc9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.3.23-2/Tumult.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa2xOTHVNb1EvRFNxNUNuQ1dvdzVEOUJ5RDlpbXJEMDBwbitHMkhkYkNKbzhpeDFWWHVvODV5eGp6ZytmTm9Sb3JJN2w5Ukw4SWFUQ3lYYUFvQXdGQWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc0MzI2MDIxCWZpbGU6VHVtdWx0XzAuMy4yMy0yX3g2NF9lbi1VUy5tc2kKd0QxQkJvMUoxWUVOMkNmRTF2WDFIekZPNFc0TUpVcXlFWXN2NGVUdnVTdDZ4YTJZeEZpUmNJVTFTZS9NV2gwemVzU2V5ZGFuQ0tobEIxelBUZXlsQ3c9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.3.23-2/Tumult_0.3.23-2_x64_en-US.msi"
+    }
+  }
+}
