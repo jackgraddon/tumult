@@ -126,6 +126,34 @@ onMounted(async () => {
       }
     });
 
+    // Handle startup minimized logic
+    const handleMinimizedStartup = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const isMinimizedArg = await invoke<boolean>('get_cli_args');
+        const startMinimizedPref = await store.startMinimized;
+
+        if (isMinimizedArg || startMinimizedPref) {
+          console.log("[App] Starting minimized to tray");
+          await appWindow.hide();
+        }
+      } catch (e) {
+        console.warn("Failed to handle minimized startup:", e);
+      }
+    };
+    handleMinimizedStartup();
+
+    // Listen for tray update event
+    const { listen } = await import('@tauri-apps/api/event');
+    listen('check-updates', () => {
+      console.log("[App] Received check-updates from tray");
+      navigateTo('/chat/settings', { replace: true });
+      // Trigger update check after a small delay to ensure page is loaded
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('tumult-check-updates'));
+      }, 500);
+    });
+
     // Initial sync of system theme in Tauri
     const syncSystemTheme = async () => {
       if (colorMode.preference === 'system') {

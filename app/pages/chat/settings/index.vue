@@ -6,6 +6,32 @@
 
       <div class="flex items-center justify-between rounded-lg border p-4">
         <div class="flex items-center gap-3">
+          <Icon name="solar:power-bold" class="h-5 w-5 text-muted-foreground" />
+          <div class="space-y-0.5">
+            <p class="text-sm font-medium">Run at Startup</p>
+            <p class="text-xs text-muted-foreground">
+              Automatically start Tumult when you log in
+            </p>
+          </div>
+        </div>
+        <UiSwitch v-model="runAtStartup" />
+      </div>
+
+      <div class="flex items-center justify-between rounded-lg border p-4">
+        <div class="flex items-center gap-3">
+          <Icon name="solar:minus-square-bold" class="h-5 w-5 text-muted-foreground" />
+          <div class="space-y-0.5">
+            <p class="text-sm font-medium">Open Minimized</p>
+            <p class="text-xs text-muted-foreground">
+              Start the app hidden in the system tray
+            </p>
+          </div>
+        </div>
+        <UiSwitch v-model="startMinimized" />
+      </div>
+
+      <div class="flex items-center justify-between rounded-lg border p-4">
+        <div class="flex items-center gap-3">
           <Icon name="solar:upload-minimalistic-bold" class="h-5 w-5 text-muted-foreground" />
           <div class="space-y-0.5">
             <p class="text-sm font-medium">Updates</p>
@@ -133,6 +159,16 @@ const showEmptyRoomsToggle = computed({
   set: () => store.toggleShowEmptyRooms(),
 });
 
+const runAtStartup = computed({
+  get: () => store.runAtStartup,
+  set: (val: boolean) => store.setRunAtStartup(val),
+});
+
+const startMinimized = computed({
+  get: () => store.startMinimized,
+  set: (val: boolean) => store.setStartMinimized(val),
+});
+
 const isChecking = ref(false);
 const isInstalling = ref(false);
 const updateInfo = ref<any>(null);
@@ -178,6 +214,14 @@ const installUpdate = async () => {
         isInstalling.value = false;
     }
 };
+
+onMounted(() => {
+    window.addEventListener('tumult-check-updates', checkForUpdates);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('tumult-check-updates', checkForUpdates);
+});
 
 </script>
 

@@ -2,10 +2,14 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, Emitter,
+};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
-use tauri::Manager;
 
 mod game_scanner;
 
@@ -25,6 +29,10 @@ pub struct FailoverState {
     pub is_failover: bool,
 }
 
+pub struct CliArgs {
+    pub minimized: bool,
+}
+
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -42,6 +50,10 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosRegistration::ApplicationItem,
+            Some(vec!["--minimized"]),
+        ))
         .manage(scanner_state.clone())
         .manage(RpcState {
             child: Mutex::new(None),
@@ -59,7 +71,8 @@ pub fn run() {
             // rsRPC
             start_rsrpc_server,
             stop_rsrpc_server,
-            is_failover
+            is_failover,
+            get_cli_args
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
@@ -95,6 +108,10 @@ pub fn run() {
             let is_failover_mode = !use_remote && !forced_offline;
             app.manage(FailoverState { is_failover: is_failover_mode });
 
+            let args: Vec<String> = std::env::args().collect();
+            let has_minimized_arg = args.contains(&"--minimized".to_string());
+            app.manage(CliArgs { minimized: has_minimized_arg });
+
             if use_remote {
                 log::info!("Navigating to remote: {}", remote_url);
                 window.navigate(remote_url.parse().unwrap()).unwrap();
@@ -111,7 +128,56 @@ pub fn run() {
             }
 
             game_scanner::start(app.handle().clone(), scanner_state);
+
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+            let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &check_updates, &quit])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .tooltip("Tumult")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => app.exit(0),
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "check_updates" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.emit("check-updates", ());
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                window.hide().unwrap();
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -407,6 +473,11 @@ async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String
 #[tauri::command]
 fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
     state.is_failover
+}
+
+#[tauri::command]
+fn get_cli_args(state: tauri::State<'_, CliArgs>) -> bool {
+    state.minimized
 }
 
 #[tauri::command]

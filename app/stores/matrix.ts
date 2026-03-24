@@ -233,6 +233,8 @@ export const useMatrixStore = defineStore('matrix', {
     } | null,
     // Activity Status (Game Detection)
     isGameDetectionEnabled: false,
+    runAtStartup: false,
+    startMinimized: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
     remoteActivityDetails: {} as Record<string, any>,
@@ -663,6 +665,17 @@ export const useMatrixStore = defineStore('matrix', {
       this.lastVisitedRooms = await getPref('matrix_last_visited_rooms', {
         dm: null, rooms: null, spaces: {}
       });
+      this.startMinimized = await getPref('matrix_start_minimized', false);
+
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
+      if (isTauri) {
+        try {
+          const { isEnabled } = await import('@tauri-apps/plugin-autostart');
+          this.runAtStartup = await isEnabled();
+        } catch (e) {
+          console.error('Failed to check autostart status:', e);
+        }
+      }
     },
 
     async initGameDetection() {
@@ -779,6 +792,28 @@ export const useMatrixStore = defineStore('matrix', {
       } else {
         await this.stopRpcServer();
       }
+    },
+
+    async setRunAtStartup(enabled: boolean) {
+      this.runAtStartup = enabled;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
+      if (isTauri) {
+        try {
+          const { enable, disable } = await import('@tauri-apps/plugin-autostart');
+          if (enabled) {
+            await enable();
+          } else {
+            await disable();
+          }
+        } catch (e) {
+          console.error('Failed to set autostart status:', e);
+        }
+      }
+    },
+
+    async setStartMinimized(enabled: boolean) {
+      this.startMinimized = enabled;
+      await setPref('matrix_start_minimized', enabled);
     },
 
     async _hashUserId(userId: string): Promise<string> {

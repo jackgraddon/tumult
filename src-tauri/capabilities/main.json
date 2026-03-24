@@ -42,6 +42,10 @@
     "store:allow-load",
     "store:default",
     "notification:default",
-    "updater:default"
+    "updater:default",
+    "tray-icon:default",
+    "tray-icon:allow-set-tooltip",
+    "tray-icon:allow-set-visible",
+    "autostart:default"
   ]
 }
