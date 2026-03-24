@@ -57,6 +57,27 @@
         </div>
       </div>
     </div>
+
+    <!-- PWA Install Prompt -->
+    <div v-if="showInstallButton || showIOSTip" class="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <div v-if="showInstallButton" class="group relative">
+        <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+        <UiButton variant="secondary" size="lg" class="relative rounded-xl px-12 flex items-center gap-2" @click="installPWA">
+          <Icon name="solar:download-square-linear" class="size-5" />
+          Install Tumult App
+        </UiButton>
+      </div>
+
+      <div v-if="showIOSTip" class="p-6 rounded-2xl bg-card border border-primary/20 shadow-lg max-w-xs text-center space-y-3">
+        <div class="size-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+          <Icon name="solar:share-linear" class="size-6 text-primary" />
+        </div>
+        <h3 class="font-bold">Install on iOS</h3>
+        <p class="text-sm text-muted-foreground leading-relaxed">
+          Tap the <span class="text-foreground font-semibold">Share</span> icon in Safari and select <span class="text-foreground font-semibold">"Add to Home Screen"</span> to enjoy Tumult as a full app.
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -64,6 +85,21 @@
 const matrixStore = useMatrixStore();
 const { isAuthenticated, isRestoringSession } = storeToRefs(matrixStore);
 const { logout } = matrixStore; // Actions can be destructured directly
+
+const deferredPrompt = ref<any>(null);
+const showInstallButton = ref(false);
+const showIOSTip = ref(false);
+
+const installPWA = async () => {
+  if (!deferredPrompt.value) return;
+  
+  deferredPrompt.value.prompt();
+  const { outcome } = await deferredPrompt.value.userChoice;
+  console.log(`User response to the install prompt: ${outcome}`);
+  
+  deferredPrompt.value = null;
+  showInstallButton.value = false;
+};
 
 // Auto navigate to chat if already logged in
 watch(isAuthenticated, (val) => {
@@ -76,6 +112,30 @@ onMounted(() => {
   if (isAuthenticated.value) {
     navigateTo('/chat');
   }
+
+  // PWA Install Logic
+  const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+
+  if (isIOSDevice && !isStandalone) {
+    showIOSTip.value = true;
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent the mini-infobar from appearing on mobile
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt.value = e;
+    // Update UI notify the user they can install the PWA
+    showInstallButton.value = true;
+  });
+
+  window.addEventListener('appinstalled', () => {
+    showInstallButton.value = false;
+    showIOSTip.value = false;
+    deferredPrompt.value = null;
+    console.log('PWA was installed');
+  });
 });
 </script>
 
