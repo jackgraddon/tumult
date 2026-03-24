@@ -204,7 +204,7 @@ pub fn run() {
                 // We no longer prevent exit universally here, as it blocks the intentional app.exit(0)
                 // calls from the tray menu. The window cloes is already handled by WindowEvent::CloseRequested.
             }
-            tauri::RunEvent::Reopened => {
+            tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
