@@ -54,6 +54,13 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
         ))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(scanner_state.clone())
         .manage(RpcState {
             child: Mutex::new(None),
@@ -143,16 +150,22 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("Tumult")
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        log::info!("[tray] Quit requested via menu");
+                        app.exit(0);
+                    }
                     "show" => {
+                        log::info!("[tray] Show requested via menu");
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
                         }
                     }
                     "check_updates" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
                             let _ = window.emit("check-updates", ());
                         }
@@ -169,6 +182,7 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
                         }
                     }
@@ -186,8 +200,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { api, .. } => {
-                api.prevent_exit();
+            tauri::RunEvent::ExitRequested { .. } => {
+                // We no longer prevent exit universally here, as it blocks the intentional app.exit(0)
+                // calls from the tray menu. The window cloes is already handled by WindowEvent::CloseRequested.
+            }
+            tauri::RunEvent::Reopened => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
             }
             tauri::RunEvent::Exit => {
                 log::info!("[app] App exiting, cleaning up sidecars...");

@@ -622,8 +622,15 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       // 3. Presence fallback (works for everyone)
-      const user = this.client?.getUser(targetUserId);
-      const presenceMsg = user?.presenceStatusMsg;
+      let presenceMsg: string | undefined;
+
+      if (isSelf && this.lastPresenceState !== null) {
+        presenceMsg = this.lastPresenceState.status_msg;
+      } else {
+        const user = this.client?.getUser(targetUserId);
+        presenceMsg = user?.presenceStatusMsg;
+      }
+
       if (presenceMsg) {
         // Try rich JSON payload first (Tumult clients)
         if (presenceMsg.startsWith('{')) {
