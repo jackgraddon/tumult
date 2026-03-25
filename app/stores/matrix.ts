@@ -238,6 +238,9 @@ export const useMatrixStore = defineStore('matrix', {
     startMinimized: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
+    pushNotificationsEnabled: true,
+    customPushEndpoint: null as string | null,
+    notificationsQuietUntil: 0,
     remoteActivityDetails: {} as Record<string, any>,
     appCache: {} as Record<string, { name: string; icon: string | null }>,
     assetCache: {} as Record<string, Record<string, string>>,
@@ -662,6 +665,9 @@ export const useMatrixStore = defineStore('matrix', {
 
     async initStorage() {
       // Load all persisted prefs into Pinia state on startup
+      this.pushNotificationsEnabled = await getPref('push_notifications_enabled', true);
+      this.customPushEndpoint = await getPref('custom_push_endpoint', null);
+      this.notificationsQuietUntil = await getPref('notifications_quiet_until', 0);
       this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
       this.ui.collapsedCategories = await getPref('matrix_collapsed_categories', []);
       this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
@@ -822,6 +828,36 @@ export const useMatrixStore = defineStore('matrix', {
     async setStartMinimized(enabled: boolean) {
       this.startMinimized = enabled;
       await setPref('matrix_start_minimized', enabled);
+    },
+
+    async setPushNotificationsEnabled(enabled: boolean) {
+        this.pushNotificationsEnabled = enabled;
+        await setPref('push_notifications_enabled', enabled);
+        // This will trigger the watch in push-registration.client.ts
+        this.unreadTrigger++;
+    },
+
+    async setCustomPushEndpoint(endpoint: string | null) {
+        this.customPushEndpoint = endpoint;
+        if (endpoint) {
+            await setPref('custom_push_endpoint', endpoint);
+        } else {
+            await deletePref('custom_push_endpoint');
+        }
+        // Force re-registration
+        this.unreadTrigger++;
+    },
+
+    async setNotificationsQuietUntil(timestamp: number) {
+        this.notificationsQuietUntil = timestamp;
+        await setPref('notifications_quiet_until', timestamp);
+        // Sync to Service Worker via message (simplified mechanism)
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'SET_QUIET_UNTIL',
+                timestamp
+            });
+        }
     },
 
     async _hashUserId(userId: string): Promise<string> {
@@ -1760,6 +1796,26 @@ export const useMatrixStore = defineStore('matrix', {
         // We use an arrow function so 'this' remains bound to the Pinia store
         this.logout();
       });
+
+      // Handle background sync requests from Service Worker
+      if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.addEventListener('message', (event) => {
+              if (event.data?.type === 'SYNC_BUFFERS') {
+                  console.log('[MatrixStore] Service Worker requested buffer sync');
+                  // This is already being handled by the client's continuous background sync,
+                  // but we can force a catch-up if needed.
+                  this.client?.sync();
+              }
+          });
+
+          // Sync current quiet status to SW on boot
+          if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                  type: 'SET_QUIET_UNTIL',
+                  timestamp: this.notificationsQuietUntil
+              });
+          }
+      }
 
       // Global Error Interceptor for Crypto Failures (OTK 400s, etc.)
       this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState, prevState: sdk.SyncState | null, data?: any) => {
