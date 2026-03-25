@@ -80,8 +80,6 @@ fn show_main_window(app: &tauri::AppHandle) {
         // 2. Standard restoration
         let _ = window.unminimize();
         
-        // TELEPORT BACK to screen
-        let _ = window.center();
         let _ = window.show();
         let _ = window.set_focus();
 
@@ -219,42 +217,6 @@ pub fn run() {
 
             game_scanner::start(app.handle().clone(), scanner_state);
 
-            // ─── Window Persistence ────────────────────────────────────────────────
-            // Register close/minimize interception directly on the window 
-            // to ensure it stays alive and doesn't get destroyed on MacOS.
-            let window_persistence = window.clone();
-            window.on_window_event(move |event| {
-                match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
-                        log::info!("[window] CloseRequested intercepted locally, hiding...");
-                        api.prevent_close();
-                        let _ = window_persistence.hide();
-                        
-                        let app_handle = window_persistence.app_handle().clone();
-                        tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                            #[cfg(target_os = "macos")]
-                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                        });
-                    }
-                    tauri::WindowEvent::Resized(_) => {
-                        if window_persistence.is_minimized().unwrap_or(false) {
-                            log::info!("[window] Minimized intercepted locally, hiding...");
-                            let _ = window_persistence.unminimize(); // Preempt OS from fully minimizing window content
-                            let _ = window_persistence.hide();
-                            
-                            let app_handle = window_persistence.app_handle().clone();
-                            tauri::async_runtime::spawn(async move {
-                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                #[cfg(target_os = "macos")]
-                                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                            });
-                        }
-                    }
-                    _ => {}
-                }
-            });
-
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
@@ -309,24 +271,46 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|_window, event| match event {
-            tauri::WindowEvent::CloseRequested { .. } => {
-                log::info!("[global-window] CloseRequested reached global handler");
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                let quit = window.state::<AppQuit>();
+                if quit.0.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+
+                log::info!("[window] CloseRequested intercepted, hiding instead of closing...");
+                api.prevent_close();
+                let _ = window.hide();
+
+                let app_handle = window.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    #[cfg(target_os = "macos")]
+                    let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                });
+            }
+            tauri::WindowEvent::Resized(_) => {
+                if window.is_minimized().unwrap_or(false) {
+                    log::info!("[window] Minimized intercepted, hiding...");
+                    let _ = window.unminimize();
+                    let _ = window.hide();
+
+                    let app_handle = window.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        #[cfg(target_os = "macos")]
+                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    });
+                }
             }
             tauri::WindowEvent::Destroyed { .. } => {
-                log::warn!("[global-window] Window is being DESTROYED!");
+                log::warn!("[window] Window '{}' is being DESTROYED!", window.label());
             }
             _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { api, .. } => {
-                let quit = app_handle.state::<AppQuit>();
-                if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
-                    api.prevent_exit();
-                }
-            }
             tauri::RunEvent::Reopen { .. } => {
                 show_main_window(app_handle);
             }
@@ -346,17 +330,6 @@ pub fn run() {
                         let _ = child.kill();
                     }
                 }
-            }
-            tauri::RunEvent::WindowEvent { label, event, .. } => {
-                 match event {
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        log::info!("[run-event] Window '{}' CloseRequested", label);
-                    }
-                    tauri::WindowEvent::Destroyed { .. } => {
-                        log::warn!("[run-event] Window '{}' Destroyed!", label);
-                    }
-                    _ => {}
-                 }
             }
             _ => {}
         });
