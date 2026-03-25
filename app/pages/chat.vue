@@ -232,7 +232,7 @@ const draggableRootSpaces = computed({
 const updateRooms = () => {};
 
 // Hook up listeners so the UI updates when messages come in
-const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStartOfTimeline: boolean | undefined) => {
+const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, toStartOfTimeline: boolean | undefined) => {
   // Update the room list UI
   updateRooms();
 
@@ -254,24 +254,74 @@ const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStart
   // Don't notify for our own messages
   if (event.getSender() === store.client.getUserId()) return;
 
+  // For encrypted messages, we need to wait for decryption
+  if (event.getType() === 'm.room.encrypted' && !event.getClearContent()) {
+    try {
+      await event.attemptDecryption(store.client.getCrypto() as any);
+    } catch (e) {
+      console.warn('Failed to decrypt event for notification:', e);
+    }
+  }
+
   const processor = new PushProcessor(store.client as MatrixClient);
   const actions = processor.actionsForEvent(event);
   
   if (actions.notify) {
-      const content = event.getContent();
-      const sender = room.getMember(event.getSender())?.name || event.getSender();
+      const content = event.getClearContent() || event.getContent();
+      const senderMember = room.getMember(event.getSender());
+      const senderName = senderMember?.name || event.getSender();
       
       let bodyText = 'New message';
-      if (content.msgtype === 'm.image') bodyText = 'Sent an image';
-      else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
+      let imageUrl: string | undefined;
+
+      if (content.msgtype === 'm.image') {
+        bodyText = `Sent an image: ${content.body || 'filename'}`;
+        const mxcUrl = content.file?.url || content.url;
+        if (mxcUrl) {
+          // Use authenticated thumbnail if possible, otherwise fallback to unauthenticated MXC
+          const serverName = mxcUrl.replace('mxc://', '').split('/')[0];
+          const mediaId = mxcUrl.replace('mxc://', '').split('/')[1];
+          if (serverName && mediaId) {
+            imageUrl = `${store.client.baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=800&height=600&method=scale&animated=true`;
+            // Add access token if we have one
+            const token = store.client.getAccessToken();
+            if (token) imageUrl += `&access_token=${encodeURIComponent(token)}`;
+          } else {
+            imageUrl = store.client.mxcUrlToHttp(mxcUrl);
+          }
+        }
+      } else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
       else if (content.msgtype === 'm.file') bodyText = `Sent a file: ${content.body}`;
       else if (content.body) bodyText = content.body;
 
-      const title = room.name || 'New Message';
-      const notificationBody = room.name ? `${sender}: ${bodyText}` : bodyText;
+      // Determine if it is a private DM
+      const isDirect = room.getMember(store.client.getUserId()!)?.events.member?.getContent().is_direct ||
+                       room.currentState.getStateEvents('m.room.member', store.client.getUserId()!)?.getContent().is_direct;
       
-      notify(title, notificationBody, room.getMxcAvatarUrl() || undefined, room.roomId);
-      console.log('Notification sent', { title, body: notificationBody });
+      // Better way to check for DM: check the store's directMessageMap or room members count
+      const isDM = room.getInvitedAndJoinedMemberCount() === 2 && isDirect;
+
+      const title = isDM ? senderName : `${senderName} in ${room.name || 'Room'}`;
+      const notificationBody = bodyText;
+
+      let iconUrl = isDM
+        ? senderMember?.getMxcAvatarUrl()
+        : room.getMxcAvatarUrl();
+
+      if (iconUrl) {
+        const serverName = iconUrl.replace('mxc://', '').split('/')[0];
+        const mediaId = iconUrl.replace('mxc://', '').split('/')[1];
+        if (serverName && mediaId) {
+          iconUrl = `${store.client.baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=96&height=96&method=crop`;
+          const token = store.client.getAccessToken();
+          if (token) iconUrl += `&access_token=${encodeURIComponent(token)}`;
+        } else {
+          iconUrl = store.client.mxcUrlToHttp(iconUrl);
+        }
+      }
+
+      notify(title, notificationBody, iconUrl || undefined, room.roomId, imageUrl);
+      console.log('Notification sent', { title, body: notificationBody, imageUrl });
   }
 };
 
