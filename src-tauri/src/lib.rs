@@ -80,8 +80,6 @@ fn show_main_window(app: &tauri::AppHandle) {
         // 2. Standard restoration
         let _ = window.unminimize();
         
-        // TELEPORT BACK to screen
-        let _ = window.center();
         let _ = window.show();
         let _ = window.set_focus();
 
@@ -219,43 +217,7 @@ pub fn run() {
 
             game_scanner::start(app.handle().clone(), scanner_state);
 
-            // ─── Window Persistence ────────────────────────────────────────────────
-            // Register close/minimize interception directly on the window 
-            // to ensure it stays alive and doesn't get destroyed on MacOS.
-            let window_persistence = window.clone();
-            window.on_window_event(move |event| {
-                match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
-                        log::info!("[window] CloseRequested intercepted locally, hiding...");
-                        api.prevent_close();
-                        let _ = window_persistence.hide();
-                        
-                        let app_handle = window_persistence.app_handle().clone();
-                        tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                            #[cfg(target_os = "macos")]
-                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                        });
-                    }
-                    tauri::WindowEvent::Resized(_) => {
-                        if window_persistence.is_minimized().unwrap_or(false) {
-                            log::info!("[window] Minimized intercepted locally, hiding...");
-                            let _ = window_persistence.unminimize(); // Preempt OS from fully minimizing window content
-                            let _ = window_persistence.hide();
-                            
-                            let app_handle = window_persistence.app_handle().clone();
-                            tauri::async_runtime::spawn(async move {
-                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                #[cfg(target_os = "macos")]
-                                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                            });
-                        }
-                    }
-                    _ => {}
-                }
-            });
-
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
             let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &check_updates, &quit])?;
@@ -268,33 +230,6 @@ pub fn run() {
                 .icon(tray_icon)
                 .menu(&menu)
                 .tooltip("Tumult")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => {
-                        log::info!("[tray] Quit requested via menu");
-                        app.state::<AppQuit>().0.store(true, std::sync::atomic::Ordering::Relaxed);
-                        app.exit(0);
-                    }
-                    "show" => {
-                        log::info!("[tray] Show requested via menu");
-                        for (label, _w) in app.webview_windows() {
-                            log::info!("[debug] Active window label: {}", label);
-                        }
-                        let window_exists = app.get_webview_window("main").is_some();
-                        log::info!("[debug] Does 'main' window exist? {}", window_exists);
-                        if let Some(window) = app.get_webview_window("main") {
-                            println!("Window visible: {:?}", window.is_visible());
-                            println!("Window minimized: {:?}", window.is_minimized());
-                        }
-                        show_main_window(app);
-                    }
-                    "check_updates" => {
-                        show_main_window(app);
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit("check-updates", ());
-                        }
-                    }
-                    _ => {}
-                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -309,12 +244,60 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|_window, event| match event {
-            tauri::WindowEvent::CloseRequested { .. } => {
-                log::info!("[global-window] CloseRequested reached global handler");
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    log::info!("[global-window] CloseRequested intercepted, hiding instead of closing...");
+                    api.prevent_close();
+                    let _ = window.hide();
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let app_handle = window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        });
+                    }
+                }
+                tauri::WindowEvent::Resized(_) => {
+                    if window.is_minimized().unwrap_or(false) {
+                        log::info!("[global-window] Minimized intercepted, hiding...");
+                        let _ = window.unminimize();
+                        let _ = window.hide();
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            let app_handle = window.app_handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            });
+                        }
+                    }
+                }
+                tauri::WindowEvent::Destroyed { .. } => {
+                    log::warn!("[global-window] Window is being DESTROYED! This shouldn't happen!");
+                }
+                _ => {}
             }
-            tauri::WindowEvent::Destroyed { .. } => {
-                log::warn!("[global-window] Window is being DESTROYED!");
+        })
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "quit" => {
+                log::info!("[menu] Quit requested via menu");
+                app.state::<AppQuit>().0.store(true, std::sync::atomic::Ordering::Relaxed);
+                app.exit(0);
+            }
+            "show" => {
+                log::info!("[menu] Show requested via menu");
+                show_main_window(app);
+            }
+            "check_updates" => {
+                log::info!("[menu] Check updates requested via menu");
+                show_main_window(app);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("check-updates", ());
+                }
             }
             _ => {}
         })
@@ -324,8 +307,23 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 let quit = app_handle.state::<AppQuit>();
                 if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
+                    log::info!("[run-event] ExitRequested blocked - keeping application alive.");
                     api.prevent_exit();
+                } else {
+                    log::info!("[run-event] ExitRequested allowed - user quitting.");
                 }
+            }
+            tauri::RunEvent::WindowEvent { label, event, .. } => {
+                 match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        log::info!("[run-event] Window '{}' CloseRequested - blocking exit as absolute fail-safe", label);
+                        api.prevent_close();
+                    }
+                    tauri::WindowEvent::Destroyed { .. } => {
+                        log::warn!("[run-event] Window '{}' Destroyed!", label);
+                    }
+                    _ => {}
+                 }
             }
             tauri::RunEvent::Reopen { .. } => {
                 show_main_window(app_handle);
@@ -346,17 +344,6 @@ pub fn run() {
                         let _ = child.kill();
                     }
                 }
-            }
-            tauri::RunEvent::WindowEvent { label, event, .. } => {
-                 match event {
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        log::info!("[run-event] Window '{}' CloseRequested", label);
-                    }
-                    tauri::WindowEvent::Destroyed { .. } => {
-                        log::warn!("[run-event] Window '{}' Destroyed!", label);
-                    }
-                    _ => {}
-                 }
             }
             _ => {}
         });
