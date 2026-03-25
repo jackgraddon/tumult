@@ -231,33 +231,6 @@ pub fn run() {
                 .icon(tray_icon)
                 .menu(&menu)
                 .tooltip("Tumult")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => {
-                        log::info!("[tray] Quit requested via menu");
-                        app.state::<AppQuit>().0.store(true, std::sync::atomic::Ordering::Relaxed);
-                        app.exit(0);
-                    }
-                    "show" => {
-                        log::info!("[tray] Show requested via menu");
-                        for (label, _w) in app.webview_windows() {
-                            log::info!("[debug] Active window label: {}", label);
-                        }
-                        let window_exists = app.get_webview_window("main").is_some();
-                        log::info!("[debug] Does 'main' window exist? {}", window_exists);
-                        if let Some(window) = app.get_webview_window("main") {
-                            println!("Window visible: {:?}", window.is_visible());
-                            println!("Window minimized: {:?}", window.is_minimized());
-                        }
-                        show_main_window(app);
-                    }
-                    "check_updates" => {
-                        show_main_window(app);
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit("check-updates", ());
-                        }
-                    }
-                    _ => {}
-                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -271,6 +244,41 @@ pub fn run() {
                 .build(app)?;
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    log::info!("[window] CloseRequested intercepted, hiding instead of closing...");
+                    api.prevent_close();
+                    let _ = window.hide();
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let app_handle = window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        });
+                    }
+                }
+                tauri::WindowEvent::Resized(_) => {
+                    if window.is_minimized().unwrap_or(false) {
+                        log::info!("[window] Minimized intercepted, hiding...");
+                        let _ = window.unminimize();
+                        let _ = window.hide();
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            let app_handle = window.app_handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
@@ -299,50 +307,6 @@ pub fn run() {
                 if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
                     api.prevent_exit();
                 }
-            }
-            tauri::RunEvent::WindowEvent { label, event, .. } => {
-                 match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
-                        let quit = app_handle.state::<AppQuit>();
-                        if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
-                            log::info!("[run] Window '{}' CloseRequested intercepted, hiding...", label);
-
-                            api.prevent_close();
-
-                            if let Some(window) = app_handle.get_webview_window(&label) {
-                                let _ = window.hide();
-
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let app_handle_inner = app_handle.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                        let _ = app_handle_inner.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    tauri::WindowEvent::Resized(_) => {
-                        if let Some(window) = app_handle.get_webview_window(&label) {
-                            if window.is_minimized().unwrap_or(false) {
-                                log::info!("[run] Window '{}' Minimized intercepted, hiding...", label);
-                                let _ = window.unminimize();
-                                let _ = window.hide();
-
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let app_handle_inner = app_handle.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                        let _ = app_handle_inner.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                 }
             }
             tauri::RunEvent::Reopen { .. } => {
                 show_main_window(app_handle);
