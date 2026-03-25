@@ -70,7 +70,7 @@ fn show_main_window(app: &tauri::AppHandle) {
             
             // Re-apply navigation if we are not in failover
             let is_failover = app.try_state::<FailoverState>().map(|s| s.is_failover).unwrap_or(false);
-            if !is_failover {
+            if !is_failover && !cfg!(debug_assertions) {
                 let _ = w.navigate("https://tumult.jackg.cc".parse().unwrap());
             }
             
@@ -200,7 +200,7 @@ pub fn run() {
                 });
             }
 
-            if use_remote {
+            if use_remote && !cfg!(debug_assertions) {
                 log::info!("Navigating to remote: {}", remote_url);
                 window.navigate(remote_url.parse().unwrap()).unwrap();
             } else if is_failover_mode {
