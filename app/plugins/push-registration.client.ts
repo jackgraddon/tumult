@@ -5,10 +5,17 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 
     // The relay URL is always the production one to ensure 
     // it works across local/dev/Tauri environments.
-    const relayUrl = config.public.push.relayUrl;
+    const defaultRelayUrl = config.public.push.relayUrl;
     const vapidPublicKey = config.public.push.vapidPublicKey;
 
     const subscribeToPush = async () => {
+        if (!store.pushNotificationsEnabled) {
+            console.log('[PushPlugin] Push notifications disabled in settings, skipping registration');
+            // If they were already registered, we should ideally unregister the Matrix pusher,
+            // but for simplicity, we just skip registration/updates here.
+            return;
+        }
+
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
             console.warn('[PushPlugin] Service Worker or Push Manager not supported');
             return;
@@ -43,6 +50,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             // We stringify the entire subscription object and send it as the "pushkey".
             // The relay server will then parse it back to get the endpoint, p256dh, and auth keys.
             const pushKey = JSON.stringify(subscription.toJSON());
+            const relayUrl = store.customPushEndpoint || defaultRelayUrl;
             
             console.log('[PushPlugin] Registering Matrix Pusher with relay:', relayUrl);
             
@@ -64,7 +72,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     };
 
     // Initialize push registration when the client is ready
-    watch(() => store.client, (newClient) => {
+    watch(() => [store.client, store.pushNotificationsEnabled, store.customPushEndpoint], ([newClient]) => {
         if (newClient) {
             subscribeToPush();
         }

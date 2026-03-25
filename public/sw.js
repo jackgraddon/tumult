@@ -3,6 +3,15 @@ import { precacheAndRoute } from 'workbox-precaching';
 
 const sw = self;
 
+let quietUntil = 0;
+
+sw.addEventListener('message', (event) => {
+    if (event.data?.type === 'SET_QUIET_UNTIL') {
+        quietUntil = event.data.timestamp || 0;
+        console.log('[Service Worker] Quiet hours updated until:', new Date(quietUntil).toLocaleString());
+    }
+});
+
 // This is the magic line that Nuxt PWA module needs to inject the asset manifest.
 // If it's missing, the PWA won't be considered "complete" for some browsers.
 precacheAndRoute(self.__WB_MANIFEST);
@@ -16,6 +25,24 @@ sw.addEventListener('activate', (event) => {
     console.log('Service Worker activating.');
     event.waitUntil(sw.clients.claim());
 });
+
+// --- Periodic Background Sync (2026 Standards) ---
+
+sw.addEventListener('periodicsync', (event) => {
+    if (event.tag === 'sync-messages') {
+        console.log('[Service Worker] Periodic sync: pre-fetching messages for active rooms');
+        event.waitUntil(preFetchActiveRooms());
+    }
+});
+
+async function preFetchActiveRooms() {
+    // Logic: In 2026, we notify the client to sync buffers if open,
+    // or we attempt a background fetch for unread messages if supported.
+    const clients = await sw.clients.matchAll({ type: 'window' });
+    for (const client of clients) {
+        client.postMessage({ type: 'SYNC_BUFFERS', reason: 'periodicsync' });
+    }
+}
 
 // --- Media Proxy (Authenticated Streaming) ---
 
@@ -112,35 +139,51 @@ sw.addEventListener('push', (event) => {
         }
     }
 
+    // If this browser supports Declarative Web Push (web_push: 8030),
+    // it may have already shown the notification natively.
+    // However, we still handle the push event to ensure the Service Worker
+    // can perform background logic like pre-fetching.
+
     // Matrix Sygnal-derived format from our relay
+    // Fallback logic for when the browser doesn't natively handle declarative push:
     const sender = data.sender_display_name || 'Someone';
     const roomName = data.room_name;
     const bodyText = getMessageSummary(data.content);
 
-    // Formatting:
-    // If it's a room: "Room Name: Sender: Message"
-    // If it's a DM: "Sender: Message"
-    const title = roomName || sender;
-    const notificationBody = roomName ? `${sender}: ${bodyText}` : bodyText;
+    // Formatting (Prefer server-sent title/body if available)
+    const title = data.title || (roomName || sender);
+    const notificationBody = data.body || (roomName ? `${sender}: ${bodyText}` : bodyText);
+    const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
 
     const options = {
         body: notificationBody,
-        icon: '/pwa-192x192.png',
+        icon: data.icon || '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
         data: {
             roomId: data.room_id,
             eventId: data.event_id,
-            url: data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'
+            url: urlToOpen
         },
         tag: data.room_id || 'general-notification',
         renotify: true
     };
 
-    if (data.counts && data.counts.unread !== undefined && navigator.setAppBadge) {
+    // Update App Badge (iOS 16.4+ / Android)
+    if (data.counts && data.counts.unread !== undefined && 'setAppBadge' in navigator) {
         navigator.setAppBadge(data.counts.unread).catch(console.error);
     }
 
-    event.waitUntil(sw.registration.showNotification(title, options));
+    // Show Notification (Imperative Fallback)
+    const now = Date.now();
+    const shouldShow = now > quietUntil;
+
+    event.waitUntil(
+        Promise.all([
+            shouldShow ? sw.registration.showNotification(title, options) : Promise.resolve(),
+            // Use this wake-up to also pre-fetch if appropriate
+            preFetchActiveRooms()
+        ])
+    );
 });
 
 // Handle notification clicks
@@ -180,4 +223,11 @@ sw.addEventListener('notificationclick', (event) => {
             }
         })
     );
+});
+
+// Handle notification dismissal
+sw.addEventListener('notificationclose', (event) => {
+    console.log('[Service Worker] Notification closed/dismissed.');
+    // In 2026, we could report this to analytics to help maintain ML reputation,
+    // but the user has requested to discard engagement monitoring for now.
 });

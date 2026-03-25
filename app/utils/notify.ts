@@ -1,13 +1,37 @@
-import { isPermissionGranted, requestPermission, sendNotification as tauriNotify } from '@tauri-apps/plugin-notification';
-
 /**
  * Unified notification helper that handles Native OS notifications (via Tauri)
  * and falls back to standard Web Notifications API for browsers/PWAs.
  */
 export async function notify(title: string, body: string, iconUrl?: string, roomId?: string) {
+  let store;
+  try {
+    // Check if useMatrixStore is available as a global (auto-import)
+    const getStore = (globalThis as any).useMatrixStore || (typeof useMatrixStore !== 'undefined' ? useMatrixStore : null);
+    if (getStore) {
+      store = getStore();
+    } else {
+      throw new Error('useMatrixStore not found');
+    }
+  } catch (e) {
+    // Fallback if called outside of active pinia context or before auto-imports are ready
+    const { useMatrixStore: getStore } = await import('../stores/matrix');
+    store = getStore();
+  }
+
+  // Respect global toggle
+  if (!store.pushNotificationsEnabled) return;
+
+  // Respect Quiet Hours / Pause
+  if (Date.now() < store.notificationsQuietUntil) {
+    console.log('[Notify Helper] Notifications are currently paused (Quiet Hours)');
+    return;
+  }
+
   try {
     // 1. Check if running in Tauri
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      const { isPermissionGranted, requestPermission, sendNotification: tauriNotify } = await import('@tauri-apps/plugin-notification');
+
       let permissionGranted = await isPermissionGranted();
       
       if (!permissionGranted) {
