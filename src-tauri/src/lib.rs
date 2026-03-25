@@ -36,6 +36,10 @@ pub struct CliArgs {
 
 pub struct AppQuit(pub std::sync::atomic::AtomicBool);
 
+/// A generalized window manager to keep strong references to all windows,
+/// preventing them from being dropped even if they are hidden.
+pub struct WindowMap(pub Mutex<std::collections::HashMap<String, tauri::WebviewWindow>>);
+
 fn show_main_window(app: &tauri::AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -130,6 +134,7 @@ pub fn run() {
         .manage(RsRpcState {
             child: Mutex::new(None),
         })
+        .manage(WindowMap(Mutex::new(std::collections::HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             game_scanner::set_scanner_enabled,
             game_scanner::update_watch_list,
@@ -145,6 +150,10 @@ pub fn run() {
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
+
+            // Register the main window in our generalized manager to ensure longevity
+            app.state::<WindowMap>().0.lock().unwrap().insert("main".to_string(), window.clone());
+
             window.open_devtools();
 
             #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -247,8 +256,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                    log::info!("[global-window] CloseRequested intercepted, hiding instead of closing...");
+                    // MUST BE SYNCHRONOUS: Calling prevent_close immediately to halt destruction
                     api.prevent_close();
+                    log::info!("[global-window] CloseRequested intercepted, hiding instead of closing...");
                     let _ = window.hide();
 
                     #[cfg(target_os = "macos")]
@@ -307,8 +317,9 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 let quit = app_handle.state::<AppQuit>();
                 if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
-                    log::info!("[run-event] ExitRequested blocked - keeping application alive.");
+                    // MUST BE SYNCHRONOUS: Calling prevent_exit immediately to stop process termination
                     api.prevent_exit();
+                    log::info!("[run-event] ExitRequested blocked - keeping application alive.");
                 } else {
                     log::info!("[run-event] ExitRequested allowed - user quitting.");
                 }
@@ -316,8 +327,9 @@ pub fn run() {
             tauri::RunEvent::WindowEvent { label, event, .. } => {
                  match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
-                        log::info!("[run-event] Window '{}' CloseRequested - blocking exit as absolute fail-safe", label);
+                        // MUST BE SYNCHRONOUS: Absolute fail-safe to prevent window destruction
                         api.prevent_close();
+                        log::info!("[run-event] Window '{}' CloseRequested - blocking exit as absolute fail-safe", label);
                     }
                     tauri::WindowEvent::Destroyed { .. } => {
                         log::warn!("[run-event] Window '{}' Destroyed!", label);

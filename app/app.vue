@@ -167,29 +167,26 @@ onMounted(async () => {
     };
     syncSystemTheme();
 
-    // Polite Disconnect: Go offline when the app is closed
-    const handleClose = async () => {
-      await store.goOffline();
-    };
-
     // Tauri: Handle app closure
-    // We use onCloseRequested to ensure we have a moment to fire the offline flare
+    // We intercept the close request to hide the window instead,
+    // ensuring the webview state remains alive in the background.
     appWindow.onCloseRequested(async (event) => {
-      // Prevent the default close behavior
+      // Prevent the default destruction behavior
       event.preventDefault();
+
+      console.log("[App] Close requested, hiding window instead of destroying.");
 
       try {
         const { flushSecrets } = await import('~/composables/useAppStorage');
-        await Promise.all([
-          handleClose(),
-          flushSecrets()
-        ]);
+        // We flush secrets to ensure they are persisted before the window is hidden
+        await flushSecrets();
       } catch (err) {
-        console.error("Failed to perform cleanup, closing anyway", err);
-      } finally {
-        // Force the window to close
-        await appWindow.destroy();
+        console.error("Failed to flush secrets on hide:", err);
       }
+
+      // Hide the window. The Rust side also handles this, but doing it here
+      // provides an immediate UI response.
+      await appWindow.hide();
     });
   }
 

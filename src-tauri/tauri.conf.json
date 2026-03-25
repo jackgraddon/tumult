@@ -25,6 +25,15 @@
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "visible": true
+      },
+      {
+        "label": "guard",
+        "title": "Tumult Guard",
+        "width": 0,
+        "height": 0,
+        "visible": false,
+        "decorations": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
