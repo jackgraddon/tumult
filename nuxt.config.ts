@@ -106,7 +106,9 @@ export default defineNuxtConfig({
         '@tauri-apps/plugin-notification',
         '@tauri-apps/plugin-updater',
         'clsx',
-        'tailwind-merge'
+        'tailwind-merge',
+        'matrix-js-sdk/lib/pushprocessor',
+        'vue-draggable-plus'
       ],
       entries: [
         './app/app.vue',
