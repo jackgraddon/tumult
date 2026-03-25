@@ -2,7 +2,7 @@
  * Unified notification helper that handles Native OS notifications (via Tauri)
  * and falls back to standard Web Notifications API for browsers/PWAs.
  */
-export async function notify(title: string, body: string, iconUrl?: string, roomId?: string) {
+export async function notify(title: string, body: string, iconUrl?: string, roomId?: string, imageUrl?: string) {
   let store;
   try {
     // Check if useMatrixStore is available as a global (auto-import)
@@ -40,7 +40,11 @@ export async function notify(title: string, body: string, iconUrl?: string, room
       }
       
       if (permissionGranted) {
-        tauriNotify({ title, body });
+        tauriNotify({
+          title,
+          body,
+          icon: iconUrl || undefined
+        });
         return;
       }
     } 
@@ -51,6 +55,7 @@ export async function notify(title: string, body: string, iconUrl?: string, room
         const options: NotificationOptions = { 
           body,
           icon: iconUrl || '/pwa-192x192.png',
+          image: imageUrl,
           tag: roomId || 'general',
           renotify: true
         };
@@ -65,6 +70,7 @@ export async function notify(title: string, body: string, iconUrl?: string, room
             new Notification(title, { 
               body,
               icon: iconUrl || '/pwa-192x192.png',
+              image: imageUrl,
               tag: roomId || 'general',
               renotify: true
             });
