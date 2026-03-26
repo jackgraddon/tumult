@@ -1087,6 +1087,8 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.memberListVisible) {
         this.ui.sidebarOpen = false;
       }
+      const haptics = useHaptics();
+      haptics.light();
       await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
@@ -1131,6 +1133,8 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.sidebarOpen) {
         this.ui.memberListVisible = false;
       }
+      const haptics = useHaptics();
+      haptics.light();
     },
 
     async setThemePreset(id: string) {
@@ -1735,6 +1739,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.client.once(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
         if (state === sdk.SyncState.Prepared || state === sdk.SyncState.Syncing) {
           console.log("⚡ [MatrixStore] Matrix background sync complete (Initial Catch-up).");
+          const haptics = useHaptics();
+          haptics.success();
           this.isFullySynced = true;
           this.isClientReady = true;
           this.loginStatus = '';

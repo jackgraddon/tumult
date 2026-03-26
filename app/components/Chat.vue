@@ -175,6 +175,8 @@
             msg.isOwn ? 'md:flex-row-reverse items-end' : 'md:flex-row items-start',
             (msg.reactions?.length || msg.readReceipts?.length) ? 'mb-4' : ''
           ]"
+          @touchstart="onTouchStart"
+          @touchend="(e) => onTouchEnd(e, { type: 'message', msg })"
         >
           <!-- Avatar & Metadata Column -->
           <div 
@@ -580,7 +582,7 @@
             v-model="newMessage"
             placeholder="Type a message..."
             rows="1" 
-            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1"
+            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1 text-base md:text-sm"
             @keydown.enter.exact.prevent="sendMessage"
             @input="autoResize"
             @paste="handlePaste"
@@ -656,6 +658,7 @@ const props = defineProps<{
 const route = useRoute();
 const store = useMatrixStore();
 const haptics = useHaptics();
+const { onTouchStart, onTouchEnd } = useMobileGestures();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 

@@ -15,16 +15,16 @@ export const useMobileGestures = () => {
     };
   };
 
-  const onTouchEnd = (e: TouchEvent) => {
+  const onTouchEnd = (e: TouchEvent, data?: any) => {
     touchEnd.value = {
       x: e.changedTouches[0].clientX,
       y: e.changedTouches[0].clientY
     };
 
-    handleSwipe();
+    handleSwipe(data);
   };
 
-  const handleSwipe = () => {
+  const handleSwipe = (data?: any) => {
     const dx = touchEnd.value.x - touchStart.value.x;
     const dy = touchEnd.value.y - touchStart.value.y;
 
@@ -45,6 +45,13 @@ export const useMobileGestures = () => {
           store.toggleSidebar(false);
           haptics.light();
         } else if (!store.ui.memberListVisible) {
+          // Swipe to Reply check (Swipe Left on a message)
+          if (data?.type === 'message' && data.msg) {
+            store.handleReply(data.msg);
+            haptics.light();
+            return;
+          }
+
           // Only open member list via swipe if we are in a chat route
           const route = useRoute();
           const isChatRoute = route.path.startsWith('/chat/dms/') ||

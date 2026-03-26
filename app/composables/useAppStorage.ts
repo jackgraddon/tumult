@@ -7,13 +7,13 @@
  *   setPref / getPref / deletePref  — non-sensitive preferences, backed by
  *                                     @tauri-apps/plugin-store (plain JSON
  *                                     file in appDataDir) in Tauri, or
- *                                     localStorage on the web.
+ *                                     IndexedDB on the web/mobile.
  *
  *   setSecret / getSecret / deleteSecret — sensitive credentials (access
  *                                          token, refresh token…), encrypted
  *                                          with AES-256-GCM via Web Crypto API
  *                                          and stored in a dedicated Tauri Store
- *                                          file, or sessionStorage on web.
+ *                                          file, or IndexedDB on web/mobile.
  *
  * ─── ENCRYPTION DESIGN ────────────────────────────────────────────────────
  * On first launch a random AES-256-GCM key is generated via Web Crypto and
@@ -22,6 +22,10 @@
  * ciphertext are stored as base64 in a separate `secrets.json` store file.
  *
  * This provides encryption-at-rest with zero startup delay (no Argon2id).
+ *
+ * ─── INDEXEDDB FALLBACK (PWA/Mobile) ──────────────────────────────────────
+ * On mobile browsers, localStorage can be cleared aggressively. We use
+ * IndexedDB as the primary persistence layer for web to ensure session stability.
  */
 
 import type { LazyStore } from '@tauri-apps/plugin-store';
@@ -29,6 +33,63 @@ import type { LazyStore } from '@tauri-apps/plugin-store';
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+
+const DB_NAME = 'tumult-storage';
+const PREF_STORE = 'preferences';
+const SECRET_STORE = 'secrets';
+const DB_VERSION = 1;
+
+let _db: IDBDatabase | null = null;
+
+async function getDb(): Promise<IDBDatabase> {
+    if (_db) return _db;
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(PREF_STORE)) db.createObjectStore(PREF_STORE);
+            if (!db.objectStoreNames.contains(SECRET_STORE)) db.createObjectStore(SECRET_STORE);
+        };
+        request.onsuccess = () => {
+            _db = request.result;
+            resolve(_db);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function idbGet<T>(storeName: string, key: string): Promise<T | null> {
+    const db = await getDb();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
+        request.onsuccess = () => resolve(request.result ?? null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function idbSet<T>(storeName: string, key: string, value: T): Promise<void> {
+    const db = await getDb();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put(value, key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function idbDelete(storeName: string, key: string): Promise<void> {
+    const db = await getDb();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
 
 // ─── Preferences (non-sensitive) ─────────────────────────────────────────────
 
@@ -48,9 +109,9 @@ export async function setPref<T>(key: string, value: T): Promise<void> {
         await store.save();
     } else {
         try {
-            localStorage.setItem(key, JSON.stringify(value));
-        } catch {
-            // Quota exceeded or SSR — ignore
+            await idbSet(PREF_STORE, key, value);
+        } catch (e) {
+            console.warn('[AppStorage] setPref failed:', e);
         }
     }
 }
@@ -62,9 +123,8 @@ export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
         return stored ?? defaultValue;
     }
     try {
-        const raw = localStorage.getItem(key);
-        if (raw === null) return defaultValue;
-        return JSON.parse(raw) as T;
+        const stored = await idbGet<T>(PREF_STORE, key);
+        return stored ?? defaultValue;
     } catch {
         return defaultValue;
     }
@@ -77,7 +137,7 @@ export async function deletePref(key: string): Promise<void> {
         await store.save();
     } else {
         try {
-            localStorage.removeItem(key);
+            await idbDelete(PREF_STORE, key);
         } catch {
             // Ignore
         }
@@ -135,8 +195,7 @@ async function _ensureCryptoKey(): Promise<void> {
             existingJwk = await store.get<JsonWebKey>('_crypto_key');
         } else {
             try {
-                const raw = localStorage.getItem('_crypto_key');
-                if (raw) existingJwk = JSON.parse(raw);
+                existingJwk = await idbGet<JsonWebKey>(PREF_STORE, '_crypto_key');
             } catch { /* ignore */ }
         }
 
@@ -164,7 +223,7 @@ async function _ensureCryptoKey(): Promise<void> {
                 await store.save();
             } else {
                 try {
-                    localStorage.setItem('_crypto_key', JSON.stringify(jwk));
+                    await idbSet(PREF_STORE, '_crypto_key', jwk);
                 } catch { /* ignore */ }
             }
 
@@ -223,7 +282,7 @@ export async function setSecret(key: string, value: string): Promise<void> {
     } else {
         try {
             const encrypted = await _encrypt(value);
-            localStorage.setItem(`secret:${key}`, JSON.stringify(encrypted));
+            await idbSet(SECRET_STORE, key, encrypted);
         } catch { /* SSR */ }
     }
 }
@@ -241,9 +300,8 @@ export async function getSecret(key: string): Promise<string | null> {
         }
     }
     try {
-        const raw = localStorage.getItem(`secret:${key}`);
-        if (!raw) return null;
-        const blob = JSON.parse(raw) as EncryptedBlob;
+        const blob = await idbGet<EncryptedBlob>(SECRET_STORE, key);
+        if (!blob) return null;
         return await _decrypt(blob);
     } catch { return null; }
 }
@@ -262,7 +320,7 @@ export async function deleteSecrets(keys: string[]): Promise<void> {
     } else {
         try {
             for (const key of keys) {
-                localStorage.removeItem(`secret:${key}`);
+                await idbDelete(SECRET_STORE, key);
             }
         } catch { /* SSR */ }
     }
