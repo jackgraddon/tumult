@@ -32,7 +32,8 @@
         <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
           <div 
             class="cursor-pointer group/header"
-            @contextmenu="store.openRoomContextMenu(roomId as string)"
+            @contextmenu.prevent="store.openRoomContextMenu(roomId as string)"
+            v-long-press="() => { haptics.medium(); store.openRoomContextMenu(roomId as string); }"
           >
             <RoomHeader 
               v-if="!isDm"
@@ -174,6 +175,8 @@
             msg.isOwn ? 'md:flex-row-reverse items-end' : 'md:flex-row items-start',
             (msg.reactions?.length || msg.readReceipts?.length) ? 'mb-4' : ''
           ]"
+          @touchstart="onTouchStart"
+          @touchend="(e) => onTouchEnd(e, { type: 'message', msg })"
         >
           <!-- Avatar & Metadata Column -->
           <div 
@@ -209,7 +212,8 @@
           <!-- Message content -->
           <div 
             class="contents"
-            @contextmenu="store.openMessageContextMenu(msg)"
+            @contextmenu.prevent="store.openMessageContextMenu(msg)"
+            v-long-press="() => { haptics.medium(); store.openMessageContextMenu(msg); }"
           >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
@@ -578,7 +582,7 @@
             v-model="newMessage"
             placeholder="Type a message..."
             rows="1" 
-            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1"
+            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1 text-base md:text-sm"
             @keydown.enter.exact.prevent="sendMessage"
             @input="autoResize"
             @paste="handlePaste"
@@ -653,6 +657,8 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
+const haptics = useHaptics();
+const { onTouchStart, onTouchEnd } = useMobileGestures();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 

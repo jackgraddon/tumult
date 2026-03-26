@@ -6,9 +6,9 @@
     <CustomTitlebar v-if="isTauri" />
     <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-100 dark:bg-neutral-900 text-foreground"
+      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-100 dark:bg-neutral-900 text-foreground safe-area-padding"
       :class="[
-        { 'pt-[30px]': isTauri, 'pt-2': !isTauri },
+        isTauri ? 'pt-[30px]' : 'pt-0',
         store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''
       ]"
     >
@@ -51,6 +51,18 @@ import { toast } from 'vue-sonner';
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
 const store = useMatrixStore();
+
+// Dynamic theme-color meta tag for PWA/Mobile
+// We precisely match the neutral-100 (#f5f5f5) and neutral-900 (#171717)
+// backgrounds used in our Tailwind config to ensure an "edge-to-edge" look.
+const themeColor = computed(() => colorMode.value === 'dark' ? '#171717' : '#f5f5f5');
+
+useHead({
+  meta: [
+    { name: 'theme-color', content: themeColor },
+    { name: 'apple-mobile-web-app-status-bar-style', content: 'default' }
+  ]
+});
 
 const isFailover = ref(false);
 
@@ -153,6 +165,21 @@ onMounted(async () => {
         window.dispatchEvent(new CustomEvent('tumult-check-updates'));
       }, 500);
     });
+
+    // Handle App Resume/Focus to restart stalled sync
+    const handleAppResume = async () => {
+      console.log("[App] Focus/Resume detected, verifying sync state...");
+      if (store.client && store.isAuthenticated && !store.isSyncing) {
+        console.log("[App] Sync was stalled or stopped, restarting...");
+        try {
+          await store.client.startClient();
+        } catch (e) {
+          console.warn("[App] Failed to restart sync on resume:", e);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleAppResume);
 
     // Initial sync of system theme in Tauri
     const syncSystemTheme = async () => {

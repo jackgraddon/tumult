@@ -32,6 +32,7 @@
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e) => openUserProfileCard(e, member.userId)"
+            v-long-press="(e) => openUserProfileCard(e as any, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"
@@ -55,6 +56,7 @@
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e) => openUserProfileCard(e, member.userId)"
+            v-long-press="(e) => openUserProfileCard(e as any, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"

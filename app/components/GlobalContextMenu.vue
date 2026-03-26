@@ -1,7 +1,12 @@
 <template>
   <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger class="contents" @contextmenu="onGlobalContextMenu">
-      <slot />
+    <UiContextMenuTrigger
+      class="contents"
+      @contextmenu="onGlobalContextMenu"
+    >
+      <div v-long-press="onGlobalLongPress" class="contents">
+        <slot />
+      </div>
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
       <!-- Room Context Menu Content -->
@@ -149,6 +154,7 @@ import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 
 const store = useMatrixStore();
+const haptics = useHaptics();
 const showReactionPicker = ref(false);
 
 // --- Global Actions ---
@@ -168,6 +174,12 @@ const onGlobalContextMenu = (e: MouseEvent) => {
     }, 10);
     return;
   }
+  store.setContextMenu('global');
+};
+
+const onGlobalLongPress = () => {
+  if (store.ui._contextMenuHandled) return;
+  haptics.medium();
   store.setContextMenu('global');
 };
 
