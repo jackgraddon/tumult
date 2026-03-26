@@ -104,6 +104,41 @@
               </div>
             </template>
 
+            <!-- Integrations Settings -->
+            <template v-else-if="activeTab === 'integrations'">
+              <div class="space-y-6">
+                <div class="p-4 border rounded-md bg-muted/20">
+                  <div class="flex items-center gap-3 mb-4">
+                    <Icon name="logos:discord-icon" class="h-6 w-6" />
+                    <div>
+                      <h4 class="font-bold">Discord Bridge</h4>
+                      <p class="text-xs text-muted-foreground">Bridge this room's voice call to a Discord channel.</p>
+                    </div>
+                  </div>
+
+                  <div class="space-y-4">
+                    <div class="grid gap-2">
+                      <UiLabel for="discord-guild-id">Discord Guild ID</UiLabel>
+                      <UiInput id="discord-guild-id" v-model="discordGuildId" placeholder="e.g. 123456789012345678" />
+                    </div>
+                    <div class="grid gap-2">
+                      <UiLabel for="discord-channel-id">Discord Voice Channel ID</UiLabel>
+                      <UiInput id="discord-channel-id" v-model="discordChannelId" placeholder="e.g. 123456789012345678" />
+                    </div>
+
+                    <div class="flex justify-end gap-2">
+                      <UiButton variant="destructive" size="sm" @click="removeDiscordBridge" :disabled="!hasDiscordBridge">
+                        Remove Bridge
+                      </UiButton>
+                      <UiButton size="sm" @click="saveDiscordBridge" :disabled="!canSaveDiscordBridge">
+                        {{ hasDiscordBridge ? 'Update Bridge' : 'Setup Bridge' }}
+                      </UiButton>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <!-- Visibility Settings -->
             <template v-else-if="activeTab === 'visibility'">
                <div class="space-y-8">
@@ -180,10 +215,14 @@ const avatarFile = ref<File | null>(null);
 
 const newAlias = ref('');
 
+const discordGuildId = ref('');
+const discordChannelId = ref('');
+
 const tabs = [
   { id: 'general', label: 'General', icon: 'solar:settings-minimalistic-bold', description: 'Change basic room information.' },
   { id: 'members', label: 'Members', icon: 'solar:users-group-rounded-bold', description: 'Manage people in this room.' },
   { id: 'visibility', label: 'Visibility', icon: 'solar:eye-bold', description: 'Control who can find and join this room.' },
+  { id: 'integrations', label: 'Integrations', icon: 'solar:plug-connect-bold', description: 'Connect this room to external services.' },
 ];
 
 const currentTab = computed(() => tabs.find(t => t.id === activeTab.value));
@@ -221,6 +260,16 @@ watch(room, (newRoom) => {
   if (newRoom) {
     editName.value = newRoom.name || '';
     editTopic.value = newRoom.currentState.getStateEvents('m.room.topic', '')?.getContent().topic || '';
+
+    const discordEvent = newRoom.currentState.getStateEvents('cc.tumult.bridge.discord', '');
+    if (discordEvent) {
+      const content = discordEvent.getContent();
+      discordGuildId.value = content.discord_guild_id || '';
+      discordChannelId.value = content.discord_channel_id || '';
+    } else {
+      discordGuildId.value = '';
+      discordChannelId.value = '';
+    }
   }
 }, { immediate: true });
 
@@ -295,6 +344,39 @@ const addAlias = async () => {
     toast.success('Address added successfully');
   } catch (err: any) {
     toast.error('Failed to add address', { description: err.message });
+  }
+};
+
+const hasDiscordBridge = computed(() => {
+  return !!room.value?.currentState.getStateEvents('cc.tumult.bridge.discord', '');
+});
+
+const canSaveDiscordBridge = computed(() => {
+  return discordGuildId.value.trim().length > 0 && discordChannelId.value.trim().length > 0;
+});
+
+const saveDiscordBridge = async () => {
+  if (!roomId.value || !canSaveDiscordBridge.value) return;
+  try {
+    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord', {
+      discord_guild_id: discordGuildId.value.trim(),
+      discord_channel_id: discordChannelId.value.trim(),
+    }, '');
+    toast.success('Discord bridge configured');
+  } catch (err: any) {
+    toast.error('Failed to save bridge', { description: err.message });
+  }
+};
+
+const removeDiscordBridge = async () => {
+  if (!roomId.value) return;
+  try {
+    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord', {}, '');
+    discordGuildId.value = '';
+    discordChannelId.value = '';
+    toast.success('Discord bridge removed');
+  } catch (err: any) {
+    toast.error('Failed to remove bridge', { description: err.message });
   }
 };
 </script>

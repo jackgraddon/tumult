@@ -10,6 +10,7 @@ export class DiscordGateway extends EventEmitter {
     private heartbeatInterval?: NodeJS.Timeout;
     private lastSequence: number | null = null;
     private sessionId: string | null = null;
+    private userId: string | null = null;
 
     constructor(private options: DiscordGatewayOptions) {
         super();
@@ -71,7 +72,8 @@ export class DiscordGateway extends EventEmitter {
     private handleDispatch(type: string, data: any) {
         if (type === 'READY') {
             this.sessionId = data.session_id;
-            console.log(`[DiscordGateway] Ready (session: ${this.sessionId})`);
+            this.userId = data.user.id;
+            console.log(`[DiscordGateway] Ready (User: ${this.userId}, Session: ${this.sessionId})`);
         }
         this.emit(type, data);
     }
@@ -105,5 +107,9 @@ export class DiscordGateway extends EventEmitter {
 
     getSessionId() {
         return this.sessionId;
+    }
+
+    getUserId() {
+        return this.userId;
     }
 }

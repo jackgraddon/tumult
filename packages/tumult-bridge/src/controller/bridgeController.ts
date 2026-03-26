@@ -17,6 +17,9 @@ interface BridgeSession {
     forwardSocket: dgram.Socket;
     lkRoom?: LKRoom;
     discordUserTransports: Map<number, any>; // ssrc -> mediasoup transport
+    discordVoiceSessionId?: string;
+    discordVoiceToken?: string;
+    discordVoiceEndpoint?: string;
 }
 
 export class BridgeController {
@@ -58,8 +61,22 @@ export class BridgeController {
         this.discordGateway.on('VOICE_SERVER_UPDATE', (data) => this.handleVoiceServerUpdate(data));
         this.discordGateway.on('VOICE_STATE_UPDATE', (data) => this.handleVoiceStateUpdate(data));
 
+        this.discordGateway.on('GUILD_CREATE', (data) => {
+            console.log(`[BridgeController] Joined guild ${data.id} (${data.name})`);
+        });
+
         await this.matrixClient.startClient({ initialSyncLimit: 10 });
         console.log('[BridgeController] Bridge started');
+
+        // Initial check for rooms already bridged
+        const rooms = this.matrixClient.getRooms();
+        for (const room of rooms) {
+            const discordEvent = room.currentState.getStateEvents('cc.tumult.bridge.discord', '');
+            if (discordEvent) {
+                console.log(`[BridgeController] Found existing bridge in ${room.roomId}`);
+                this.handleBridgeState(discordEvent);
+            }
+        }
     }
 
     private async handleBridgeState(event: any) {
@@ -94,15 +111,39 @@ export class BridgeController {
         const session = Array.from(this.sessions.values()).find(s => s.discordGuildId === data.guild_id);
         if (!session) return;
 
-        console.log(`[BridgeController] Connecting to Discord voice for guild ${data.guild_id}`);
+        session.discordVoiceToken = data.token;
+        session.discordVoiceEndpoint = data.endpoint;
+
+        this.maybeConnectVoice(session);
+    }
+
+    private handleVoiceStateUpdate(data: any) {
+        if (data.user_id !== this.discordGateway.getUserId()) {
+            this.updateDiscordStatusMessage(data.guild_id);
+            return;
+        }
+
+        const session = Array.from(this.sessions.values()).find(s => s.discordGuildId === data.guild_id);
+        if (!session) return;
+
+        session.discordVoiceSessionId = data.session_id;
+        this.maybeConnectVoice(session);
+    }
+
+    private async maybeConnectVoice(session: BridgeSession) {
+        if (session.voiceConnection || !session.discordVoiceSessionId || !session.discordVoiceToken || !session.discordVoiceEndpoint) {
+            return;
+        }
+
+        console.log(`[BridgeController] Connecting to Discord voice for guild ${session.discordGuildId}`);
 
         session.voiceConnection = new DiscordVoiceConnection({
             guildId: session.discordGuildId,
             channelId: session.discordChannelId,
-            userId: this.discordGateway.getSessionId()!,
-            sessionId: this.discordGateway.getSessionId()!,
-            token: data.token,
-            endpoint: data.endpoint,
+            userId: this.discordGateway.getUserId()!,
+            sessionId: session.discordVoiceSessionId,
+            token: session.discordVoiceToken,
+            endpoint: session.discordVoiceEndpoint,
         });
 
         session.voiceConnection.on('rtp', async (packet: Buffer) => {
@@ -121,10 +162,6 @@ export class BridgeController {
 
         await session.voiceConnection.connect();
         await this.setupReturnPath(session);
-    }
-
-    private handleVoiceStateUpdate(data: any) {
-        this.updateDiscordStatusMessage(data.guild_id);
     }
 
     private async updateDiscordStatusMessage(guildId: string) {
@@ -193,19 +230,21 @@ export class BridgeController {
             }
         });
 
-        // We need LiveKit URL and a token for the bridge to join
-        // For now, these would come from env or a service
         const lkUrl = process.env.LIVEKIT_URL!;
-        const lkToken = "FIXME_GENERATE_TOKEN";
+        const lkToken = await this.livekitManager.generateBridgeToken(session.matrixRoomId);
 
-        // await lkRoom.connect(lkUrl, lkToken);
+        console.log(`[BridgeController] Bridge joining LiveKit room ${session.matrixRoomId}`);
+        await lkRoom.connect(lkUrl, lkToken);
     }
 
     private removeSession(matrixRoomId: string) {
         const session = this.sessions.get(matrixRoomId);
         if (session) {
+            console.log(`[BridgeController] Cleaning up session for ${matrixRoomId}`);
             session.forwardSocket.close();
             session.lkRoom?.disconnect();
+            session.voiceConnection?.removeAllListeners();
+            // In a real implementation, we'd also close mediasoup transports/producers here
             this.sessions.delete(matrixRoomId);
         }
     }
