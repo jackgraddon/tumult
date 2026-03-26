@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <h2 class="text-2xl font-semibold tracking-tight">Diagnostics</h2>
 
-    <div class="flex gap-2">
+    <div class="flex flex-wrap gap-2">
       <UiButton @click="getPushers" variant="outline" class="gap-2">
         <Icon name="solar:monitor-bold-duotone" class="h-4 w-4" />
         Get Pushers
@@ -10,6 +10,10 @@
       <UiButton @click="resetPusher" variant="destructive" class="gap-2" :disabled="isResettingPusher">
         <Icon :name="isResettingPusher ? 'solar:refresh-bold' : 'solar:refresh-bold-duotone'" class="h-4 w-4" :class="{ 'animate-spin': isResettingPusher }" />
         {{ isResettingPusher ? 'Fixing...' : 'Fix Pusher URL' }}
+      </UiButton>
+      <UiButton @click="hardResetPush" variant="destructive" class="gap-2" :disabled="isResettingPusher">
+        <Icon name="solar:bomb-bold-duotone" class="h-4 w-4" />
+        Hard Reset Push
       </UiButton>
     </div>
 
@@ -103,6 +107,7 @@
           <DiagRow label="Notification Permission" :status="getStatus(diagnostics.push.permission)" />
           <DiagRow label="Push Subscription" :status="getStatus(diagnostics.push.subscription)" />
           <DiagRow label="Matrix Pusher Registered" :status="getStatus(diagnostics.push.pusherRegistered)" />
+          <DiagRow label="Pusher Key Format (JSON)" :status="getStatus(diagnostics.push.pusherKeyValid)" />
           <DiagRow label="Pusher URL Correct" :status="getStatus(diagnostics.push.pusherUrlCorrect)" />
           <div v-if="diagnostics.push.pusherUrl" class="mt-2 p-2 rounded bg-muted/40 font-mono text-[10px] break-all text-muted-foreground">
             <span class="text-foreground font-semibold">Registered URL: </span>{{ diagnostics.push.pusherUrl }}
@@ -219,6 +224,12 @@
                 >
                   URL OK
                 </span>
+                <span
+                  v-if="p.app_id === 'cc.jackg' && !isValidJson(p.pushkey)"
+                  class="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium"
+                >
+                  Invalid Key Format
+                </span>
                 <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{{ p.kind || 'none' }}</span>
               </div>
             </div>
@@ -285,6 +296,15 @@ function isCorrectPusherUrl(url: string | undefined): boolean {
   return url === CORRECT_PUSHER_URL;
 }
 
+function isValidJson(str: string): boolean {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Tri-state: null = not yet checked, true = pass, false = fail
 const diagnostics = reactive({
   browser: {
@@ -312,6 +332,7 @@ const diagnostics = reactive({
     permission: null as boolean | null,
     subscription: null as boolean | null,
     pusherRegistered: null as boolean | null,
+    pusherKeyValid: null as boolean | null,
     pusherUrlCorrect: null as boolean | null,
     pusherUrl: null as string | null,
     expectedUrl: null as string | null,
@@ -395,6 +416,67 @@ async function resetPusher() {
     isResettingPusher.value = false;
   }
 }
+
+/**
+ * Hard Reset: Unsubscribes from push entirely and re-subscribes to force a fresh JSON pushkey.
+ */
+async function hardResetPush() {
+  console.log('[Diagnostics] hardResetPush called');
+
+  if (!matrixStore.client) {
+    pusherResetStatus.value = { ok: false, message: 'Matrix client not ready.' };
+    return;
+  }
+
+  isResettingPusher.value = true;
+  pusherResetStatus.value = null;
+
+  try {
+    if (!('serviceWorker' in navigator)) {
+       throw new Error('Service Worker not supported');
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      console.log('[Diagnostics] Unsubscribing from existing push...');
+      await subscription.unsubscribe();
+    }
+
+    console.log('[Diagnostics] Re-subscribing...');
+    const newSub = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: config.public.push.vapidPublicKey
+    });
+
+    console.log('[Diagnostics] Registering new pusher on homeserver...');
+    await (matrixStore.client as any).setPusher({
+      app_id: 'cc.jackg',
+      app_display_name: 'Tumult',
+      device_display_name: 'Web Client (Reset)',
+      pushkey: JSON.stringify(newSub.toJSON()),
+      kind: 'http',
+      lang: 'en',
+      data: {
+        url: CORRECT_PUSHER_URL,
+      },
+    });
+
+    pusherResetStatus.value = { ok: true, message: '✓ Hard reset complete. Push subscription and Matrix pusher recreated.' };
+    await getPushers();
+    await checkPushNotifications();
+  } catch (error) {
+    console.error('[Diagnostics] hardResetPush failed:', error);
+    pusherResetStatus.value = {
+      ok: false,
+      message: `Hard Reset Error: ${error instanceof Error ? error.message : String(error)}`
+    };
+  } finally {
+    isResettingPusher.value = false;
+  }
+}
+
 // Maps boolean | null to a display status
 function getStatus(val: boolean | null): 'pending' | 'pass' | 'fail' {
   if (val === null) return 'pending';
@@ -560,6 +642,7 @@ async function checkPushNotifications() {
     diagnostics.push.permission = false;
     diagnostics.push.subscription = false;
     diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherKeyValid = false;
     diagnostics.push.pusherUrlCorrect = false;
     return;
   }
@@ -595,6 +678,7 @@ async function checkPushNotifications() {
   // Matrix Pusher & URL check
   if (!matrixStore.client) {
     diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherKeyValid = false;
     diagnostics.push.pusherUrlCorrect = false;
     return;
   }
@@ -607,11 +691,19 @@ async function checkPushNotifications() {
     diagnostics.push.pusherRegistered = !!tumultPusher;
     if (!tumultPusher) {
       diagnostics.errors.push('No Tumult pusher registered on the homeserver — push will not be delivered when closed');
+      diagnostics.push.pusherKeyValid = false;
+      diagnostics.push.pusherUrlCorrect = false;
     } else {
       const registeredUrl = tumultPusher.data?.url ?? '';
       diagnostics.push.pusherUrl = registeredUrl;
       diagnostics.push.expectedUrl = CORRECT_PUSHER_URL;
       diagnostics.push.pusherUrlCorrect = isCorrectPusherUrl(registeredUrl);
+
+      diagnostics.push.pusherKeyValid = isValidJson(tumultPusher.pushkey);
+
+      if (!diagnostics.push.pusherKeyValid) {
+        diagnostics.errors.push('Pusher key format is invalid (not JSON). This is likely an old FCM subscription. Use "Hard Reset Push" to fix it.');
+      }
 
       if (!diagnostics.push.pusherUrlCorrect) {
         diagnostics.errors.push(
@@ -621,6 +713,7 @@ async function checkPushNotifications() {
     }
   } catch (e) {
     diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherKeyValid = false;
     diagnostics.push.pusherUrlCorrect = false;
     diagnostics.errors.push(`Failed to fetch pushers: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -641,6 +734,9 @@ function generateRecommendations() {
   }
   if (diagnostics.push.pusherRegistered && !diagnostics.push.pusherUrlCorrect) {
     diagnostics.recommendations.push('Click "Fix Pusher URL" at the top of this page to correct the push relay address');
+  }
+  if (diagnostics.push.pusherRegistered && !diagnostics.push.pusherKeyValid) {
+    diagnostics.recommendations.push('Click "Hard Reset Push" to fix the invalid pushkey format');
   }
   if (!diagnostics.push.permission) {
     diagnostics.recommendations.push('On iOS, make sure this app is added to your Home Screen and notifications are enabled in Settings → Notifications');
