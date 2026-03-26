@@ -37,7 +37,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' https://tumult.jackg.cc; script-src 'self' 'wasm-unsafe-eval' https://tumult.jackg.cc; style-src 'self' 'unsafe-inline' https://tumult.jackg.cc; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com https://tumult.jackg.cc https://*.jackg.cc; connect-src 'self' ipc://localhost ws://127.0.0.1:1337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com https://tumult.jackg.cc https://*.jackg.cc https://api.iconify.design;"
+      "csp": "default-src 'self' https://tumult.jackg.cc; script-src 'self' blob: 'wasm-unsafe-eval' https://tumult.jackg.cc; style-src 'self' 'unsafe-inline' https://tumult.jackg.cc; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com https://tumult.jackg.cc https://*.jackg.cc; connect-src 'self' ipc://localhost ws://127.0.0.1:1337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com https://tumult.jackg.cc https://*.jackg.cc https://api.iconify.design https://*.livekit.cloud wss://*.livekit.cloud https://livekit-jwt.call.matrix.org wss://livekit.call.matrix.org; worker-src 'self' blob:;"
     }
   },
   "plugins": {

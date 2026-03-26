@@ -100,7 +100,12 @@ async function buildLivekitWorker(): Promise<Worker> {
     // these from being extractable) and patch deriveKey to force the *output*
     // AES key extractable so it stays in-memory only, bypassing the Keychain.
     const workerUrl = new URL('livekit-client/e2ee-worker', import.meta.url).href;
-    const workerCode = await (await fetch(workerUrl)).text();
+    console.log('[Voice] Fetching E2EE worker from:', workerUrl);
+    const workerRes = await fetch(workerUrl);
+    if (!workerRes.ok) {
+        throw new Error(`Failed to fetch E2EE worker: ${workerRes.status} ${workerRes.statusText}`);
+    }
+    const workerCode = await workerRes.text();
 
     const patchCode = `
         const _NON_EXTRACTABLE_ALGOS = new Set(['HKDF', 'PBKDF2']);
@@ -132,7 +137,9 @@ async function buildLivekitWorker(): Promise<Worker> {
         new Blob([patchCode + '\n' + workerCode], { type: 'application/javascript' })
     );
     const worker = new Worker(blobUrl);
-    URL.revokeObjectURL(blobUrl);
+    // DO NOT revoke immediately on some browsers/Tauri versions as it might
+    // cause issues if the worker isn't fully initialized.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
     return worker;
 }
 

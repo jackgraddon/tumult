@@ -27,7 +27,8 @@
 
     <div class="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-white px-2 py-0.5 bg-black/40 rounded backdrop-blur-sm">
+        <span class="text-xs font-medium text-white px-2 py-0.5 bg-black/40 rounded backdrop-blur-sm flex items-center gap-1">
+          <Icon v-if="isDiscordParticipant" name="logos:discord-icon" class="h-3 w-3" />
           {{ displayName }}
         </span>
       </div>
@@ -94,6 +95,8 @@ const roomMember = computed(() => {
 
 const displayName = computed(() => roomMember.value?.name || matrixUserId.value?.split(':')?.[0]?.replace('@', '') || 'Guest');
 const avatarUrl = computed(() => roomMember.value?.getMxcAvatarUrl() || null);
+
+const isDiscordParticipant = computed(() => props.participant.identity.startsWith('discord::'));
 
 // Unified Attach/Detach logic
 function attachTrack(track: Track) {
