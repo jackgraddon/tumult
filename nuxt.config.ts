@@ -9,6 +9,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover',
       htmlAttrs: {
         lang: 'en'
       },
@@ -166,8 +167,8 @@ export default defineNuxtConfig({
       name: 'Tumult',
       short_name: 'Tumult',
       description: 'Own your noise. A smart, rebellious friend for your conversations.',
-      theme_color: '#ffffff',
-      background_color: '#ffffff',
+      theme_color: '#f5f5f5',
+      background_color: '#f5f5f5',
       display: 'standalone',
       orientation: 'any',
       scope: '/',

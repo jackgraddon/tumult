@@ -28,9 +28,6 @@ body {
 
     /* Disable the default blue tap highlight on mobile/touch screens */
     -webkit-tap-highlight-color: transparent;
-
-    /* Ensure fixed backgrounds cover safe areas */
-    background-color: transparent;
 }
 
 /* Safe Area Inset Support for Notches/Dynamic Islands */
