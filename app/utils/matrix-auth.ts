@@ -1,20 +1,11 @@
 import * as sdk from "matrix-js-sdk";
 import type { OidcClientConfig, ValidatedAuthMetadata } from "matrix-js-sdk";
+import { getPref } from "~/composables/useAppStorage";
 
 // Helper to get config safely (prevents top-level crash)
-export const getHomeserverUrl = () => {
-  if (typeof localStorage !== 'undefined') {
-    const persisted = localStorage.getItem('matrix_homeserver_url');
-    if (persisted) {
-      // Handle both raw string and JSON-stringified string (from setPref)
-      try {
-        const parsed = JSON.parse(persisted);
-        if (typeof parsed === 'string') return parsed;
-      } catch {
-        return persisted;
-      }
-    }
-  }
+export const getHomeserverUrl = async () => {
+  const persisted = await getPref<string | null>('matrix_homeserver_url', null);
+  if (persisted) return persisted;
   try {
     const config = useRuntimeConfig();
     if (config.public?.matrix?.baseUrl) {
@@ -57,7 +48,7 @@ const getRedirectUri = () => {
 
 // Discovery
 export async function getOidcConfig(homeserverUrl?: string): Promise<OidcClientConfig> {
-  const url = homeserverUrl || getHomeserverUrl();
+  const url = homeserverUrl || (await getHomeserverUrl());
   // Create a temp client just to fetch metadata
   const client = sdk.createClient({ baseUrl: url });
   return await client.getAuthMetadata();
@@ -97,7 +88,7 @@ export async function getLoginUrl(
   homeserverUrl?: string
 ): Promise<string> {
   const metadata = authConfig as unknown as ValidatedAuthMetadata;
-  const url = homeserverUrl || getHomeserverUrl();
+  const url = homeserverUrl || (await getHomeserverUrl());
   const effectiveRedirectUri = redirectUri || getRedirectUri();
 
   return await sdk.generateOidcAuthorizationUrl({

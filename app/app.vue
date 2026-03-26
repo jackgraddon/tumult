@@ -154,6 +154,21 @@ onMounted(async () => {
       }, 500);
     });
 
+    // Handle App Resume/Focus to restart stalled sync
+    const handleAppResume = async () => {
+      console.log("[App] Focus/Resume detected, verifying sync state...");
+      if (store.client && store.isAuthenticated && !store.isSyncing) {
+        console.log("[App] Sync was stalled or stopped, restarting...");
+        try {
+          await store.client.startClient();
+        } catch (e) {
+          console.warn("[App] Failed to restart sync on resume:", e);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleAppResume);
+
     // Initial sync of system theme in Tauri
     const syncSystemTheme = async () => {
       if (colorMode.preference === 'system') {

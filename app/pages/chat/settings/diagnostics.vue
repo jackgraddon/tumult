@@ -589,7 +589,7 @@ async function checkMatrixRTC() {
     
     // 2. If SDK says undefined, force a fresh fetch to verify the Worker
     if (!wellKnown) {
-      const response = await fetch(`${matrixStore.client.getHomeserverUrl()}/.well-known/matrix/client`);
+      const response = await fetch(`${await matrixStore.client.getHomeserverUrl()}/.well-known/matrix/client`);
       if (response.ok) {
         wellKnown = await response.json();
       }
