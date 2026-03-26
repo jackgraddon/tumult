@@ -6,7 +6,8 @@
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
-                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto'
+                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto',
+                isTauri ? '' : 'top-safe'
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
@@ -148,7 +149,8 @@
             :class="[
                 store.ui.memberListVisible ? 'translate-x-0 md:w-60' : 'translate-x-full md:translate-x-0 md:w-0',
                 'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
-                !store.ui.memberListVisible && 'pointer-events-none'
+                !store.ui.memberListVisible && 'pointer-events-none',
+                isTauri ? '' : 'top-safe'
             ]"
         >
             <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background shrink-0" />
@@ -184,6 +186,7 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
+const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
 
 const sidebarRef = ref<any>(null);

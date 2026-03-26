@@ -34,17 +34,15 @@ body {
 }
 
 /* Safe Area Inset Support for Notches/Dynamic Islands */
-.safe-area-padding {
-    padding-top: env(safe-area-inset-top, 0);
-    padding-bottom: env(safe-area-inset-bottom, 0);
-    padding-left: env(safe-area-inset-left, 0);
-    padding-right: env(safe-area-inset-right, 0);
-}
+.pt-safe { padding-top: env(safe-area-inset-top, 0); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0); }
+.pl-safe { padding-left: env(safe-area-inset-left, 0); }
+.pr-safe { padding-right: env(safe-area-inset-right, 0); }
+.top-safe { top: env(safe-area-inset-top, 0); }
 
-/* Ensure child layouts respect safe area padding without collapsing */
-.h-screen.safe-area-padding {
-    height: calc(100vh - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0));
-}
+/* Ensure Tauri titlebar always has space */
+.is-tauri .pt-safe { padding-top: 30px !important; }
+.is-tauri .top-safe { top: 30px !important; }
 
 /* Reenable text selection for inputs, textareas, and contenteditable elements */
 input,
