@@ -40,6 +40,13 @@ export default defineEventHandler(async (event) => {
 
     const promises = notification.devices.map(async (device: any) => {
         try {
+            // 1. Skip self-notifications
+            // Check the registered user_id in device.data against the event sender
+            if (device.data?.user_id && device.data.user_id === notification.sender) {
+                console.log(`[Push Relay] 🛑 Skipping self-notification for ${notification.sender} on device ${device.pushkey.slice(-15)}`);
+                return;
+            }
+
             let subscription;
             try {
                 subscription = JSON.parse(device.pushkey);
@@ -50,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
             // --- 2026 Standards: Declarative Web Push Construction ---
             // We move the formatting logic to the server so we can support Declarative Web Push (Safari 18.4+)
-            const sender = notification.sender_display_name || 'Someone';
+            const sender = notification.sender_display_name || notification.sender || 'Someone';
             const roomName = notification.room_name;
             const bodyText = getMessageSummary(notification.content);
 
@@ -90,6 +97,8 @@ export default defineEventHandler(async (event) => {
                     status: result.statusCode,      // Should be 201
                     endpoint: subscription.endpoint.slice(-30), // Last 30 chars to identify without leaking full URL
                     room: notification.room_id,
+                    sender: notification.sender,
+                    event_id: notification.event_id
                 });
 
             } catch (err: any) {
@@ -99,6 +108,8 @@ export default defineEventHandler(async (event) => {
                     body: err.body,                 // APNs error string e.g. "InvalidVapidKey", "ExpiredSubscription"
                     endpoint: subscription.endpoint?.slice(-30),
                     room: notification.room_id,
+                    sender: notification.sender,
+                    event_id: notification.event_id
                 });
 
                 // Clean up dead subscriptions (410 = expired, 404 = not found)

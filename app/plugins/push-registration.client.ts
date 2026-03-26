@@ -13,7 +13,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
      */
     const isVapidKeyMatch = (appServerKey: ArrayBuffer | null, vapidBase64: string): boolean => {
         if (!appServerKey) return false;
-        
+
         try {
             // Convert base64 to Uint8Array
             const binaryString = atob(vapidBase64.replace(/-/g, '+').replace(/_/g, '/'));
@@ -80,18 +80,18 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 // 4. Verify if we already have this pusher registered on the homeserver and if it's valid
                 const { pushers } = await store.client.getPushers();
                 const currentPusher = pushers.find(p => p.app_id === 'cc.jackg');
-                
+
                 let needsUpdate = !currentPusher;
-                
+
                 if (currentPusher) {
                     // Check if the pushkey is valid JSON (not an old FCM URL)
                     try {
                         JSON.parse(currentPusher.pushkey);
-                        
+
                         // Check if URL matches
                         const relayUrl = (store.customPushEndpoint || defaultRelayUrl).replace(/\/$/, '');
                         const expectedUrl = `${relayUrl}/_matrix/push/v1/notify`;
-                        
+
                         // Check if key matches
                         const hasKey = currentPusher.data?.ek && typeof currentPusher.data.ek === 'object';
                         const keyMatch = hasKey && JSON.stringify(currentPusher.data.ek) === JSON.stringify(jwk);
@@ -124,7 +124,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             // We stringify the entire subscription object and send it as the "pushkey".
             // The relay server will then parse it back to get the endpoint, p256dh, and auth keys.
             const pushKey = JSON.stringify(subscription.toJSON());
-            
+
             // Normalize relay URL to remove trailing slash
             const relayUrl = (store.customPushEndpoint || defaultRelayUrl).replace(/\/$/, '');
 
@@ -140,6 +140,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 data: {
                     url: `${relayUrl}/_matrix/push/v1/notify`,
                     ek: encryptionKey // "Encryption Key" for blind relay
+                    user_id: store.client.getUserId(),
                 },
             });
             console.log('[PushPlugin] Matrix Pusher registered successfully');
