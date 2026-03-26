@@ -42,7 +42,7 @@ export default defineNuxtConfig({
         recommendedHomeservers: (process.env.NUXT_PUBLIC_MATRIX_RECOMMENDED_HOMESERVERS || 'matrix.org,mozilla.org,gnome.org,kde.org').split(','),
       },
       push: {
-        relayUrl: process.env.NUXT_PUBLIC_PUSH_RELAY_URL || 'https://tumult.jackg.cc/api/_matrix/push/v1/notify',
+        relayUrl: process.env.NUXT_PUBLIC_PUSH_BASE_URL || 'https://tumult.jackg.cc/',
         vapidPublicKey: process.env.NUXT_VAPID_PUBLIC_KEY || 'BG1ZIw13v4KW4i2Xu6cV8IdPBgvXWj2E3CmjmI5njf_rCf05h0jv3D85uzKvn9YAuwMd0UBZfDDlbr3hbutwF_Y',
       }
     }

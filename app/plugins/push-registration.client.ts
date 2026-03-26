@@ -23,10 +23,10 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 
         try {
             const registration = await navigator.serviceWorker.ready;
-            
+
             // Check current subscription
             let subscription = await registration.pushManager.getSubscription();
-            
+
             if (!subscription) {
                 console.log('[PushPlugin] Requesting new push subscription...');
                 subscription = await registration.pushManager.subscribe({
@@ -45,24 +45,24 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 
     const registerMatrixPusher = async (subscription: PushSubscription) => {
         if (!store.client) return;
-        
+
         try {
             // We stringify the entire subscription object and send it as the "pushkey".
             // The relay server will then parse it back to get the endpoint, p256dh, and auth keys.
             const pushKey = JSON.stringify(subscription.toJSON());
             const relayUrl = store.customPushEndpoint || defaultRelayUrl;
-            
+
             console.log('[PushPlugin] Registering Matrix Pusher with relay:', relayUrl);
-            
+
             await store.client.setPusher({
                 app_id: 'cc.jackg',
                 app_display_name: 'Tumult',
                 device_display_name: 'Web Client',
-                pushkey: pushKey, 
+                pushkey: pushKey,
                 kind: 'http',
                 lang: 'en',
                 data: {
-                    url: relayUrl,
+                    url: `${relayUrl}/_matrix/push/v1/notify`,
                 },
             });
             console.log('[PushPlugin] Matrix Pusher registered successfully');

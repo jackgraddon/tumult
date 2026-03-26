@@ -279,7 +279,7 @@ const pusherResetStatus = ref<{ ok: boolean; message: string } | null>(null);
 
 // The correct URL is the Nuxt server route path directly.
 // The homeserver POSTs to this URL as-is (does NOT append anything).
-const CORRECT_PUSHER_URL = 'https://tumult.jackg.cc/api/_matrix/push/v1/notify';
+const CORRECT_PUSHER_URL = 'https://tumult.jackg.cc/_matrix/push/v1/notify';
 
 function isCorrectPusherUrl(url: string | undefined): boolean {
   return url === CORRECT_PUSHER_URL;
@@ -336,6 +336,8 @@ async function getPushers() {
  * Instead, setPusher with the same app_id overwrites the existing entry in-place.
  */
 async function resetPusher() {
+  console.log('[Diagnostics] resetPusher called, client:', !!matrixStore.client);
+
   if (!matrixStore.client) {
     pusherResetStatus.value = { ok: false, message: 'Matrix client not ready.' };
     return;
@@ -358,11 +360,11 @@ async function resetPusher() {
 
     // Re-use the existing pushkey exactly as stored — no SW lookup needed.
     // setPusher with the same app_id overwrites the entry in-place on the homeserver.
-    await matrixStore.client.setPusher({
+    await (matrixStore.client as any).setPusher({
       app_id: 'cc.jackg',
       app_display_name: 'Tumult',
       device_display_name: tumultPusher.device_display_name ?? 'Web Client',
-      pushkey: tumultPusher.pushkey,  // exact value already on the server
+      pushkey: tumultPusher.pushkey,
       kind: 'http',
       lang: 'en',
       data: {
