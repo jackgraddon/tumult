@@ -120,7 +120,7 @@
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 mr-2 mb-2 transition-transform duration-300 ease-in-out z-20"
+            class="flex-1 flex-col min-w-0 min-h-0 mx-2 md:ml-0 mb-2 transition-transform duration-300 ease-in-out z-20"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"

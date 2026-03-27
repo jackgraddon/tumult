@@ -170,9 +170,9 @@
         <div
           v-else
           :data-event-id="msg.eventId"
-          class="flex flex-col md:flex-row gap-2.5 group items-start md:items-end relative"
+          class="flex flex-col gap-2.5 group items-start relative"
           :class="[
-            msg.isOwn ? 'md:flex-row-reverse items-end' : 'md:flex-row items-start',
+            msg.isOwn ? 'flex-row-reverse items-end' : 'flex-row items-start',
             (msg.reactions?.length || msg.readReceipts?.length) ? 'mb-4' : ''
           ]"
           @touchstart="onTouchStart"
@@ -182,7 +182,7 @@
           <div 
             class="flex flex-col shrink-0 gap-0.5 order-2 md:order-none"
             :class="[
-              msg.isOwn ? 'items-end md:items-start text-right md:text-left' : 'items-start md:items-end text-left md:text-right',
+              msg.isOwn ? 'items-end items-start text-right' : 'items-start text-left',
               // Ensure minimum width to maintain alignment even if avatar is missing/timestamp is small
               'min-w-[32px]'
             ]"
@@ -317,9 +317,6 @@
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
-                   <!-- Also show the bubble/card below the board for context? Or just the board? 
-                        User wants board ONLY on latest. Let's show both board and the status bubble if it's an action/gameover for clarity. 
-                   -->
                    <div class="mt-2 w-full flex flex-col" :class="msg.isOwn ? 'items-end' : 'items-start'">
                      <GameActionBubble v-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
                      <GameResultCard v-if="msg.isGameOver && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
@@ -582,7 +579,7 @@
             v-model="newMessage"
             placeholder="Type a message..."
             rows="1" 
-            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1 text-base md:text-sm"
+            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 py-2.5 flex-1 text-base"
             @keydown.enter.exact="(e) => {
               const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
               if (!isMobile) {

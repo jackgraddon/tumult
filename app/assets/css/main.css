@@ -12,16 +12,6 @@ body {
 
     font-family: 'Figtree', sans-serif;
 
-    /* Responsive Fluid Typography using clamp() */
-    /* Base font scales from 16px to 18px between 375px and 1200px viewport widths */
-    @media screen and (max-width: 768px) {
-        font-size: 18px;
-    }
-
-    @media screen and (min-width: 769px) {
-        font-size: 16px;
-    }
-
     /* Disable the elastic "rubber band" scrolling on macOS */
     overscroll-behavior: none;
 
