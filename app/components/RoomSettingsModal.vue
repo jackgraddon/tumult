@@ -127,10 +127,13 @@
                     </div>
 
                     <div class="flex justify-end gap-2">
-                      <UiButton variant="destructive" size="sm" @click="removeDiscordBridge" :disabled="!hasDiscordBridge">
+                      <p v-if="!canManageIntegrations" class="text-xs text-destructive flex-1">
+                        You do not have permission to manage integrations in this room.
+                      </p>
+                      <UiButton v-if="canManageIntegrations" variant="destructive" size="sm" @click="removeDiscordBridge" :disabled="!hasDiscordBridge">
                         Remove Bridge
                       </UiButton>
-                      <UiButton size="sm" @click="saveDiscordBridge" :disabled="!canSaveDiscordBridge">
+                      <UiButton v-if="canManageIntegrations" size="sm" @click="saveDiscordBridge" :disabled="!canSaveDiscordBridge">
                         {{ hasDiscordBridge ? 'Update Bridge' : 'Setup Bridge' }}
                       </UiButton>
                     </div>
@@ -351,8 +354,15 @@ const hasDiscordBridge = computed(() => {
   return !!room.value?.currentState.getStateEvents('cc.tumult.bridge.discord', '');
 });
 
+const canManageIntegrations = computed(() => {
+  if (!room.value || !store.client) return false;
+  return room.value.currentState.maySendStateEvent('cc.tumult.bridge.discord', store.client.getUserId()!);
+});
+
 const canSaveDiscordBridge = computed(() => {
-  return discordGuildId.value.trim().length > 0 && discordChannelId.value.trim().length > 0;
+  return canManageIntegrations.value &&
+         discordGuildId.value.trim().length > 0 &&
+         discordChannelId.value.trim().length > 0;
 });
 
 const saveDiscordBridge = async () => {

@@ -58,6 +58,13 @@ export class BridgeController {
             }
         });
 
+        this.matrixClient.on('Room.myMembership' as any, (room: any, membership: string) => {
+            if (membership === 'invite') {
+                console.log(`[BridgeController] Invited to ${room.roomId}, joining...`);
+                this.matrixClient.joinRoom(room.roomId);
+            }
+        });
+
         this.discordGateway.on('VOICE_SERVER_UPDATE', (data) => this.handleVoiceServerUpdate(data));
         this.discordGateway.on('VOICE_STATE_UPDATE', (data) => this.handleVoiceStateUpdate(data));
 
