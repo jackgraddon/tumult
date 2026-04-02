@@ -134,7 +134,6 @@ sw.addEventListener('push', (event) => {
     // Matrix Sygnal-derived format from our relay
     const senderName = sender || 'Someone';
     const roomName = data.room_name;
-    const bodyText = getMessageSummary(data.content);
 
     // Formatting (User preference: "Sender in Room: Message")
     const title = roomName ? `${senderName} in ${roomName}` : senderName;
