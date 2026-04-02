@@ -148,13 +148,16 @@
 <script setup lang="ts">
 import { computed, ref, toRaw } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { useWebHaptics } from 'web-haptics/vue';
 import { toast } from 'vue-sonner';
 import { EventType } from 'matrix-js-sdk';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 
 const store = useMatrixStore();
-const haptics = useHaptics();
+const { trigger } = useWebHaptics({
+  debug: store.ui.hapticsDebugEnabled
+});
 const showReactionPicker = ref(false);
 
 // --- Global Actions ---
@@ -179,7 +182,7 @@ const onGlobalContextMenu = (e: MouseEvent) => {
 
 const onGlobalLongPress = () => {
   if (store.ui._contextMenuHandled) return;
-  haptics.medium();
+  if (store.ui.hapticFeedbackEnabled) trigger('medium');
   store.setContextMenu('global');
 };
 

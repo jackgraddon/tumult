@@ -77,7 +77,7 @@
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
                         @click="() => { store.ui.memberListVisible = false; }"
                         @contextmenu.capture="store.openRoomContextMenu(server.roomId)"
-                        v-long-press="() => { haptics.medium(); store.openRoomContextMenu(server.roomId); }"
+                        v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(server.roomId); }"
                         as-child
                     >
                         <NuxtLink 
@@ -172,7 +172,7 @@ definePageMeta({
 import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
-import { useHaptics } from '~/composables/useHaptics';
+import { useWebHaptics } from 'web-haptics/vue';
 import { notify } from '~/utils/notify';
 
 const route = useRoute();
@@ -191,7 +191,9 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
-const haptics = useHaptics();
+const { trigger } = useWebHaptics({
+    debug: store.ui.hapticsDebugEnabled
+});
 const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
 

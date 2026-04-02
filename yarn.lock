@@ -14055,6 +14055,7 @@ __metadata:
     vue-router: "npm:^4.6.4"
     vue-sonner: "npm:^2.0.9"
     vue3-emoji-picker: "npm:^1.1.8"
+    web-haptics: "npm:^0.0.6"
     web-push: "npm:^3.6.7"
   languageName: unknown
   linkType: soft
@@ -15095,6 +15096,27 @@ __metadata:
     typescript:
       optional: true
   checksum: 10c0/87d16ab49b212c9b2d021bc1aa950b6f8207b68cb09add1f26c5f12494d16764d0faa8d22a2016ddaeb58eef428d09ba0dc2a7807864c7c182e0430acf5a6f9d
+  languageName: node
+  linkType: hard
+
+"web-haptics@npm:^0.0.6":
+  version: 0.0.6
+  resolution: "web-haptics@npm:0.0.6"
+  peerDependencies:
+    react: ">=18"
+    react-dom: ">=18"
+    svelte: ">=4"
+    vue: ">=3"
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+    svelte:
+      optional: true
+    vue:
+      optional: true
+  checksum: 10c0/71d3bfb0299469362e23ef177337f2cf665ed66aa49b6d5e7afc9d97fc05af9a2056263c17766eb929eb86ec1f526fba21502e926ea3cc39175f251c5c9374db
   languageName: node
   linkType: hard
 

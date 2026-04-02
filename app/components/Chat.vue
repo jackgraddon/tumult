@@ -33,7 +33,7 @@
           <div 
             class="cursor-pointer group/header"
             @contextmenu.capture="store.openRoomContextMenu(roomId as string)"
-            v-long-press="() => { haptics.medium(); store.openRoomContextMenu(roomId as string); }"
+            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(roomId as string); }"
           >
             <RoomHeader 
               v-if="!isDm"
@@ -213,7 +213,7 @@
           <div 
             class="contents"
             @contextmenu.capture="store.openMessageContextMenu(msg)"
-            v-long-press="() => { haptics.medium(); store.openMessageContextMenu(msg); }"
+            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openMessageContextMenu(msg); }"
           >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
@@ -630,7 +630,7 @@ import IncomingCallBanner from '~/components/IncomingCallBanner.vue';
 import { useVoiceStore } from '~/stores/voice';
 import KeychainWarningDialog from '~/components/KeychainWarningDialog.vue';
 import { useJoinCall } from '~/composables/useJoinCall';
-import { useHaptics } from '~/composables/useHaptics';
+import { useWebHaptics } from 'web-haptics/vue';
 
 
 function extractUrls(text: string): string[] {
@@ -661,7 +661,9 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
-const haptics = useHaptics();
+const { trigger } = useWebHaptics({
+  debug: store.ui.hapticsDebugEnabled
+});
 const { onTouchStart, onTouchEnd } = useMobileGestures();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
@@ -1473,7 +1475,7 @@ async function handleTypingInput() {
 
 async function sendMessage() {
   if (!canSend.value || !store.client) return;
-  haptics.light();
+  if (store.ui.hapticFeedbackEnabled) trigger('light');
   
   const text = newMessage.value.trim();
   const filesToSend = [...stagedFiles.value]; // Copy array
