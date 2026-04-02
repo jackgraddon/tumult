@@ -1842,6 +1842,7 @@ export const useMatrixStore = defineStore('matrix', {
       // Check if both the Session and the Crypto Store exist to prevent "Asymmetric Wipe" logouts.
       const hasCryptoStore = await (window.indexedDB.databases ? window.indexedDB.databases().then(dbs => dbs.some(db => db.name?.includes('crypto'))) : Promise.resolve(true));
       const hasAccessToken = !!accessToken;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
 
       console.log('[MatrixStore] Session Heartbeat:', { hasAccessToken, hasCryptoStore });
 
@@ -1874,8 +1875,6 @@ export const useMatrixStore = defineStore('matrix', {
       this.isLoggingIn = false;
       this.isRestoringSession = false;
       console.log('[MatrixStore] UI Unlocked. Syncing in background.');
-
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
 
       // Listen for token invalidation from the server (e.g. device deleted)
       this.client.on(sdk.HttpApiEvent.SessionLoggedOut, (err) => {
@@ -3690,13 +3689,13 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
       try {
         // Add child to space
-        await this.client.sendStateEvent(spaceId, "m.space.child", {
+        await this.client.sendStateEvent(spaceId, "m.space.child" as any, {
           via: [this.client.getDomain()!],
           suggested: false
         }, roomId);
 
         // Add parent to room
-        await this.client.sendStateEvent(roomId, "m.space.parent", {
+        await this.client.sendStateEvent(roomId, "m.space.parent" as any, {
           via: [this.client.getDomain()!],
           canonical: true
         }, spaceId);
@@ -3719,7 +3718,7 @@ export const useMatrixStore = defineStore('matrix', {
         }
         if (metadata.avatarFile) {
           const response = await this.client.uploadContent(metadata.avatarFile);
-          await this.client.sendStateEvent(roomId, "m.room.avatar", { url: response.content_uri }, "");
+          await this.client.sendStateEvent(roomId, "m.room.avatar" as any, { url: response.content_uri }, "");
         }
         toast.success("Settings updated successfully");
       } catch (err: any) {
@@ -3753,7 +3752,7 @@ export const useMatrixStore = defineStore('matrix', {
     async setRoomJoinRule(roomId: string, joinRule: string) {
       if (!this.client) return;
       try {
-        await this.client.sendStateEvent(roomId, "m.room.join_rules", { join_rule: joinRule }, "");
+        await this.client.sendStateEvent(roomId, "m.room.join_rules" as any, { join_rule: joinRule }, "");
         toast.success("Join rules updated");
       } catch (err: any) {
         console.error("Failed to set join rules:", err);
@@ -3855,7 +3854,7 @@ export const useMatrixStore = defineStore('matrix', {
         const inviterId = room?.getDMInviter();
         const viaServers: string[] = [];
         if (inviterId && inviterId.includes(':')) {
-          viaServers.push(inviterId.split(':')[1]);
+          viaServers.push(inviterId.split(':')[1]!);
         }
 
         await this.joinRoom(roomId, viaServers);
@@ -3901,9 +3900,9 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
       try {
         if (value === null) {
-          await this.client.deleteTag(roomId, tag);
+          await (this.client as any).deleteTag(roomId, tag);
         } else {
-          await this.client.setTag(roomId, tag, value);
+          await (this.client as any).setTag(roomId, tag, value);
         }
         this.hierarchyTrigger++;
       } catch (err: any) {
