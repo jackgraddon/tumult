@@ -169,10 +169,6 @@ const onGlobalContextMenu = (e: MouseEvent) => {
   // We don't want to reset it to false until AFTER the menu has been triggered to render.
   // Using nextTick or a small timeout to clear the flag ensures it stays true during the bubble phase.
   if (store.ui._contextMenuHandled) {
-    // If the event was already handled by a child, we MUST still prevent default
-    // to avoid the browser's native context menu from showing up.
-    e.preventDefault();
-
     setTimeout(() => {
         store.ui._contextMenuHandled = false;
     }, 10);
@@ -190,6 +186,8 @@ const onGlobalLongPress = () => {
 const onOpenChange = (open: boolean) => {
   if (!open) {
     showReactionPicker.value = false;
+    // Reset context menu state when closed
+    store.setContextMenu(null);
   }
 };
 

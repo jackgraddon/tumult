@@ -1,11 +1,11 @@
 <template>
     <div
-        class="flex flex-row h-full relative overflow-hidden pb-safe pl-safe pr-safe"
+        class="flex flex-row h-full relative overflow-hidden m-2 mt-0 pb-safe pl-safe pr-safe"
         :class="isTauri ? 'pt-[30px]' : 'pt-safe'"
     >
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div 
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto pb-2"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
@@ -14,7 +14,7 @@
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-sidebar">
+            <aside class="rounded-lg flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-sidebar">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -76,7 +76,7 @@
                         class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
                         @click="() => { store.ui.memberListVisible = false; }"
-                        @contextmenu="store.openRoomContextMenu(server.roomId)"
+                        @contextmenu.capture="store.openRoomContextMenu(server.roomId)"
                         v-long-press="() => { haptics.medium(); store.openRoomContextMenu(server.roomId); }"
                         as-child
                     >
@@ -120,7 +120,7 @@
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 mx-2 md:ml-0 mb-2 transition-transform duration-300 ease-in-out z-20"
+            class="flex-1 flex-col min-w-0 min-h-0 md:ml-0 mb-2 transition-transform duration-300 ease-in-out z-20"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
@@ -172,6 +172,7 @@ definePageMeta({
 import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
+import { useHaptics } from '~/composables/useHaptics';
 import { notify } from '~/utils/notify';
 
 const route = useRoute();
@@ -190,6 +191,7 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
+const haptics = useHaptics();
 const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
 
@@ -256,8 +258,12 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
   const age = Date.now() - event.getTs();
   if (age > 5000) return;
 
-  // Only notify for actual messages
-  if (event.getType() !== EventType.RoomMessage && event.getType() !== 'm.room.encrypted') return;
+  // Only notify for actual messages or custom game events
+  const type = event.getType();
+  const isMessage = type === EventType.RoomMessage || type === 'm.room.encrypted';
+  const isGameEvent = type === 'cc.jackg.ruby.game.state' || type === 'cc.jackg.ruby.game.action';
+  
+  if (!isMessage && !isGameEvent) return;
   
   // Don't notify for our own messages
   if (event.getSender() === store.client.getUserId()) return;
@@ -275,10 +281,22 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
   const actions = processor.actionsForEvent(event);
   
   if (actions.notify) {
+      // Don't notify if the user is currently in this room and the window is focused
+      if (roomId.value === room.roomId && document.visibilityState === 'visible') {
+        console.log('[Chat] Skipping notification as room is currently active and focused.');
+        return;
+      }
       const content = event.getClearContent() || event.getContent();
       const senderMember = room.getMember(event.getSender());
       const senderName = senderMember?.name || event.getSender();
       
+      console.log('[Chat] Notification triggered:', { 
+        type: event.getType(), 
+        sender: senderName, 
+        room: room.name,
+        hasClearContent: !!event.getClearContent()
+      });
+
       let bodyText = 'New message';
       let imageUrl: string | undefined;
 
@@ -300,6 +318,8 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
         }
       } else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
       else if (content.msgtype === 'm.file') bodyText = `Sent a file: ${content.body}`;
+      else if (type === 'cc.jackg.ruby.game.state') bodyText = 'Game state updated';
+      else if (type === 'cc.jackg.ruby.game.action') bodyText = 'New game action';
       else if (content.body) bodyText = content.body;
 
       // Determine if it is a private DM

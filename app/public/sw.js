@@ -78,6 +78,13 @@ function getMessageSummary(content) {
         return 'Encrypted message';
     }
 
+    // Custom game state events
+    if (content.game_id) {
+        if (content.type === 'cc.jackg.ruby.game.state' || content.msgtype === 'cc.jackg.ruby.game.state') return 'Game state updated';
+        if (content.type === 'cc.jackg.ruby.game.action' || content.msgtype === 'cc.jackg.ruby.game.action') return 'New game action';
+        return 'Game update';
+    }
+
     switch (content.msgtype) {
         case 'm.text':
         case 'm.notice':
@@ -106,22 +113,32 @@ sw.addEventListener('push', (event) => {
     if (event.data) {
         try {
             data = event.data.json();
+            console.log('[Service Worker] Push data received:', data);
         } catch (e) {
             console.warn('Push event has no JSON data:', event.data.text());
             return;
         }
     }
 
+    // Diagnostic/Filtering logic:
+    // If we have no sender and no readable message, skip the notification.
+    // This suppresses the "Someone: New message" mystery notifications.
+    const sender = data.sender_display_name;
+    const bodyText = getMessageSummary(data.content);
+
+    if (!sender && bodyText === 'New message') {
+        console.log('[Service Worker] Suppressing incomplete notification (no sender and no content).', data);
+        return;
+    }
+
     // Matrix Sygnal-derived format from our relay
-    const sender = data.sender_display_name || 'Someone';
+    const senderName = sender || 'Someone';
     const roomName = data.room_name;
     const bodyText = getMessageSummary(data.content);
 
-    // Formatting:
-    // If it's a room: "Room Name: Sender: Message"
-    // If it's a DM: "Sender: Message"
-    const title = roomName || sender;
-    const notificationBody = roomName ? `${sender}: ${bodyText}` : bodyText;
+    // Formatting (User preference: "Sender in Room: Message")
+    const title = roomName ? `${senderName} in ${roomName}` : senderName;
+    const notificationBody = bodyText;
 
     const options = {
         body: notificationBody,
@@ -132,7 +149,7 @@ sw.addEventListener('push', (event) => {
             eventId: data.event_id,
             url: data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'
         },
-        tag: data.room_id || 'general-notification',
+        tag: data.room_id || 'general', // Standardize to 'general'
         renotify: true
     };
 
@@ -140,7 +157,24 @@ sw.addEventListener('push', (event) => {
         navigator.setAppBadge(data.counts.unread).catch(console.error);
     }
 
-    event.waitUntil(sw.registration.showNotification(title, options));
+    // Check if any window is already open and focused on this room
+    const showNotificationPromise = sw.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+    }).then(windowClients => {
+        const isFocusedOnRoom = windowClients.some(client => {
+            return client.visibilityState === 'visible' && client.url.includes(data.room_id);
+        });
+
+        if (isFocusedOnRoom) {
+            console.log('[Service Worker] App is focused on room, skipping push notification.');
+            return;
+        }
+
+        return sw.registration.showNotification(title, options);
+    });
+
+    event.waitUntil(showNotificationPromise);
 });
 
 // Handle notification clicks

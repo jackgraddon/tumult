@@ -45,6 +45,30 @@ export async function decryptAttachment(data: ArrayBuffer, info: any): Promise<A
     );
 }
 
+const MEDIA_CACHE_NAME = 'matrix-media-cache-v1';
+
+async function getFromCache(url: string): Promise<Response | undefined> {
+    if (typeof caches === 'undefined') return undefined;
+    try {
+        const cache = await caches.open(MEDIA_CACHE_NAME);
+        const match = await cache.match(url);
+        if (match) return match;
+    } catch (e) {
+        console.warn('Cache read error:', e);
+    }
+    return undefined;
+}
+
+async function saveToCache(url: string, response: Response) {
+    if (typeof caches === 'undefined' || !response.ok) return;
+    try {
+        const cache = await caches.open(MEDIA_CACHE_NAME);
+        await cache.put(url, response.clone());
+    } catch (e) {
+        console.warn('Cache write error:', e);
+    }
+}
+
 /**
  * Fetches media from the Matrix homeserver using the authenticated MSC3916 API endpoint.
  * This is required for servers that restrict open access to _matrix/media/v3 endpoints.
@@ -61,6 +85,9 @@ export async function fetchAuthenticatedDownload(client: any, mxc: string): Prom
 
     const httpUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
 
+    const cached = await getFromCache(httpUrl);
+    if (cached) return cached;
+
     const headers: Record<string, string> = {};
     const token = client.getAccessToken();
     if (token) {
@@ -69,6 +96,8 @@ export async function fetchAuthenticatedDownload(client: any, mxc: string): Prom
 
     const response = await fetch(httpUrl, { headers });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    
+    await saveToCache(httpUrl, response);
     return response;
 }
 
@@ -93,6 +122,9 @@ export async function fetchAuthenticatedThumbnail(
 
     const httpUrl = `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${width}&height=${height}&method=${resizeMethod}`;
 
+    const cached = await getFromCache(httpUrl);
+    if (cached) return cached;
+
     const headers: Record<string, string> = {};
     const token = client.getAccessToken();
     if (token) {
@@ -104,11 +136,19 @@ export async function fetchAuthenticatedThumbnail(
     if (!response.ok) {
         console.warn(`Thumbnail fetch failed (${response.status}) for ${mxc}. Falling back to full download.`);
         const downloadUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+        
+        const cachedFallback = await getFromCache(downloadUrl);
+        if (cachedFallback) return cachedFallback;
+
         response = await fetch(downloadUrl, { headers });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status} on both thumbnail and download`);
         }
+        
+        await saveToCache(downloadUrl, response);
+    } else {
+        await saveToCache(httpUrl, response);
     }
 
     return response;

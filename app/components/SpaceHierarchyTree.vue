@@ -4,7 +4,7 @@
             <div v-if="isSpace" class="flex-1 min-w-0">
                 <button 
                     @click="isCollapsed = !isCollapsed"
-                    @contextmenu="store.openRoomContextMenu(roomData.room_id)"
+                    @contextmenu.capture="store.openRoomContextMenu(roomData.room_id)"
                     class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
                 >
                     <MatrixAvatar
@@ -23,7 +23,7 @@
             <div v-else class="flex-1 min-w-0">
                 <div 
                     class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-muted/50 transition-all cursor-pointer"
-                    @contextmenu="store.openRoomContextMenu(roomData.room_id)"
+                    @contextmenu.capture="store.openRoomContextMenu(roomData.room_id)"
                 >
                     <MatrixAvatar
                         :mxc-url="roomData.avatar_url"

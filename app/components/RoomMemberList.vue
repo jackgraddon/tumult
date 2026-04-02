@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-full md:w-60 flex flex-col shrink-0 h-full relative">
+  <aside class="w-full md:w-60 flex flex-col shrink-0 h-full pl-2 relative">
     <div class="p-4 flex items-center gap-2">
       <UiButton
         variant="ghost"
@@ -19,7 +19,7 @@
       </h3>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-2 space-y-6 custom-scrollbar">
+    <div class="flex-1 overflow-y-auto space-y-6 custom-scrollbar">
       
       <div v-if="online.length > 0">
         <h4 class="px-2 mb-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -82,7 +82,7 @@
       <div 
         v-if="selectedUserId && selectedUser"
         class="fixed z-[100] shadow-2xl"
-        :style="{ top: profileCardPos.top, right: profileCardPos.right }"
+        :style="{ top: profileCardPos.top, right: profileCardPos.right, left: profileCardPos.left }"
       >
         <ProfileCard :userid="selectedUserId" />
       </div>
@@ -157,17 +157,25 @@ function openUserProfileCard(event: MouseEvent, userId: string) {
   // We use window.innerWidth - rect.left to calculate the distance from the right edge of the screen.
   const spacingGap = 16; 
   const estimatedCardHeight = 250; // Approximated height of ProfileCard.vue to prevent bottom clipping
+  const estimatedCardWidth = 400; // Approximated width from ProfileCard.vue
   
-  const pos = {
-    // Math.min ensures the card doesn't push off the bottom edge of the screen if clicked near the bottom
-    top: `${Math.min(rect.top, window.innerHeight - estimatedCardHeight - 20)}px`,
+  let pos: { top: string, right: string, left?: string };
 
-    // If on mobile, we want to position the card to the right of the sidebar. 
-    // If on desktop, we want to position the card to the left of the sidebar. 
-
-    right: window.innerWidth < 768 ? `${rect.left}px` : `${rect.left - spacingGap}px`
-
-  };
+  if (window.innerWidth < 768) {
+    // On mobile, center the card on the screen
+    pos = {
+      top: `${(window.innerHeight - estimatedCardHeight) / 2}px`,
+      left: `${(window.innerWidth - estimatedCardWidth) / 2}px`,
+      right: 'auto'
+    };
+  } else {
+    // On desktop, spawn to the left of the sidebar
+    pos = {
+      top: `${Math.min(rect.top, window.innerHeight - estimatedCardHeight - 20)}px`,
+      right: `${window.innerWidth - rect.left + spacingGap}px`,
+      left: 'auto'
+    };
+  }
 
   store.setUISelectedUser(userId, pos);
 }

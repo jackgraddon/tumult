@@ -74,9 +74,9 @@ async function idbSet<T>(storeName: string, key: string, value: T): Promise<void
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        store.put(value, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 
@@ -85,9 +85,9 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        store.delete(key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 
@@ -192,7 +192,8 @@ async function _ensureCryptoKey(): Promise<void> {
         let existingJwk: JsonWebKey | null = null;
         if (isTauri) {
             const store = await getPrefStore();
-            existingJwk = await store.get<JsonWebKey>('_crypto_key');
+            const stored = await store.get<JsonWebKey>('_crypto_key');
+            existingJwk = stored ?? null;
         } else {
             try {
                 existingJwk = await idbGet<JsonWebKey>(PREF_STORE, '_crypto_key');
@@ -216,7 +217,7 @@ async function _ensureCryptoKey(): Promise<void> {
                 ['encrypt', 'decrypt']
             );
             const jwk = await crypto.subtle.exportKey('jwk', _cryptoKey);
-            
+
             if (isTauri) {
                 const store = await getPrefStore();
                 await store.set('_crypto_key', jwk);

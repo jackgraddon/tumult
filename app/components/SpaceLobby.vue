@@ -16,7 +16,7 @@
 
             <div 
                 class="cursor-pointer group/avatar"
-                @contextmenu="store.openRoomContextMenu(space.roomId)"
+                @contextmenu.capture="store.openRoomContextMenu(space.roomId)"
             >
                 <MatrixAvatar 
                     :mxc-url="space.getMxcAvatarUrl()" 
@@ -28,7 +28,7 @@
             <div class="flex-1 mb-2 min-w-0">
                 <div 
                     class="cursor-pointer group/title"
-                    @contextmenu="store.openRoomContextMenu(space.roomId)"
+                    @contextmenu.capture="store.openRoomContextMenu(space.roomId)"
                 >
                     <h1 class="text-3xl font-bold tracking-tight truncate group-hover/title:text-primary transition-colors">{{ space.name }}</h1>
                 </div>
