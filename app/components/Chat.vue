@@ -630,6 +630,7 @@ import IncomingCallBanner from '~/components/IncomingCallBanner.vue';
 import { useVoiceStore } from '~/stores/voice';
 import KeychainWarningDialog from '~/components/KeychainWarningDialog.vue';
 import { useJoinCall } from '~/composables/useJoinCall';
+import { useHaptics } from '~/composables/useHaptics';
 
 
 function extractUrls(text: string): string[] {

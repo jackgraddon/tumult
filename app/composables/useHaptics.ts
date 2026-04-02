@@ -1,9 +1,10 @@
 
 export function useHaptics() {
-  const store = useMatrixStore();
-
   const vibrate = (pattern: number | number[] = 10) => {
     if (import.meta.server) return;
+
+    // Defer store access to avoid circular dependencies at initialization
+    const store = useMatrixStore();
     if (!store.ui.hapticFeedbackEnabled) return;
 
     if ('vibrate' in navigator) {

@@ -304,6 +304,7 @@ import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
+import { useHaptics } from '~/composables/useHaptics';
 
 const route = useRoute();
 const router = useRouter();
@@ -359,6 +360,7 @@ const settingsGroups = computed(() => {
 });
 
 const store = useMatrixStore();
+const haptics = useHaptics();
 const voiceStore = useVoiceStore();
 
 const isLobby = computed(() => {

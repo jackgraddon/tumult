@@ -173,6 +173,7 @@ import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixC
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import { notify } from '~/utils/notify';
+import { useHaptics } from '~/composables/useHaptics';
 
 const route = useRoute();
 
@@ -190,6 +191,7 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
+const haptics = useHaptics();
 const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
 
