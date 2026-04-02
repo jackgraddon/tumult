@@ -1,7 +1,11 @@
 
+import { useWebHaptics } from 'web-haptics/vue';
+
 export const useMobileGestures = () => {
   const store = useMatrixStore();
-  const haptics = useHaptics();
+  const { trigger } = useWebHaptics({
+    debug: store.ui.hapticsDebugEnabled
+  });
 
   const touchStart = ref({ x: 0, y: 0 });
   const touchEnd = ref({ x: 0, y: 0 });
@@ -34,21 +38,21 @@ export const useMobileGestures = () => {
         // Swipe Right: Open Sidebar if closed, or close Member List if open
         if (store.ui.memberListVisible) {
           store.toggleMemberList();
-          haptics.light();
+          if (store.ui.hapticFeedbackEnabled) trigger('light');
         } else if (!store.ui.sidebarOpen) {
           store.toggleSidebar(true);
-          haptics.light();
+          if (store.ui.hapticFeedbackEnabled) trigger('light');
         }
       } else {
         // Swipe Left: Close Sidebar if open, or open Member List if closed
         if (store.ui.sidebarOpen) {
           store.toggleSidebar(false);
-          haptics.light();
+          if (store.ui.hapticFeedbackEnabled) trigger('light');
         } else if (!store.ui.memberListVisible) {
           // Swipe to Reply check (Swipe Left on a message)
           if (data?.type === 'message' && data.msg) {
             store.handleReply(data.msg);
-            haptics.light();
+            if (store.ui.hapticFeedbackEnabled) trigger('light');
             return;
           }
 
@@ -60,7 +64,7 @@ export const useMobileGestures = () => {
 
           if (isChatRoute) {
             store.toggleMemberList();
-            haptics.light();
+            if (store.ui.hapticFeedbackEnabled) trigger('light');
           }
         }
       }

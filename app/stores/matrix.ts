@@ -48,6 +48,7 @@ export interface UIState {
   themePreset: string;
   customCss: string;
   hapticFeedbackEnabled: boolean;
+  hapticsDebugEnabled: boolean;
   sidebarOpen: boolean;
   contextMenu: {
     type: 'room' | 'message' | 'global' | null;
@@ -340,6 +341,7 @@ export const useMatrixStore = defineStore('matrix', {
       themePreset: 'default',
       customCss: '',
       hapticFeedbackEnabled: true,
+      hapticsDebugEnabled: false,
       sidebarOpen: false,
       contextMenu: {
         type: null,
@@ -730,6 +732,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.ui.themePreset = await getPref('matrix_theme_preset', 'default');
       this.ui.customCss = await getPref('matrix_custom_css', '');
       this.ui.hapticFeedbackEnabled = await getPref('matrix_haptic_feedback_enabled', true);
+      this.ui.hapticsDebugEnabled = await getPref('matrix_haptics_debug_enabled', false);
       this.ui.uiOrder = await getPref('matrix_ui_order', {
         rootSpaces: [], categories: {}, rooms: {}
       });
@@ -1144,8 +1147,11 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.memberListVisible) {
         this.ui.sidebarOpen = false;
       }
-      const haptics = useHaptics();
-      haptics.light();
+      if (this.ui.hapticFeedbackEnabled) {
+        const { WebHaptics } = await import('web-haptics');
+        const haptics = new WebHaptics({ debug: this.ui.hapticsDebugEnabled });
+        haptics.trigger('light');
+      }
       await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
@@ -1181,7 +1187,7 @@ export const useMatrixStore = defineStore('matrix', {
       await setPref('matrix_show_empty_rooms', this.ui.showEmptyRooms);
     },
 
-    toggleSidebar(open?: boolean) {
+    async toggleSidebar(open?: boolean) {
       if (typeof open === 'boolean') {
         this.ui.sidebarOpen = open;
       } else {
@@ -1190,8 +1196,11 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.ui.sidebarOpen) {
         this.ui.memberListVisible = false;
       }
-      const haptics = useHaptics();
-      haptics.light();
+      if (this.ui.hapticFeedbackEnabled) {
+        const { WebHaptics } = await import('web-haptics');
+        const haptics = new WebHaptics({ debug: this.ui.hapticsDebugEnabled });
+        haptics.trigger('light');
+      }
     },
 
     async setThemePreset(id: string) {
@@ -1207,6 +1216,11 @@ export const useMatrixStore = defineStore('matrix', {
     async setHapticFeedbackEnabled(enabled: boolean) {
       this.ui.hapticFeedbackEnabled = enabled;
       await setPref('matrix_haptic_feedback_enabled', enabled);
+    },
+
+    async setHapticsDebugEnabled(enabled: boolean) {
+      this.ui.hapticsDebugEnabled = enabled;
+      await setPref('matrix_haptics_debug_enabled', enabled);
     },
 
     setContextMenu(type: UIState['contextMenu']['type'], data: any = null) {
@@ -1806,11 +1820,14 @@ export const useMatrixStore = defineStore('matrix', {
       let _debugRestored = false;
 
       // 5. Setup a listener to notify the UI when the "Initial Catch-up" is done
-      this.client.once(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
+      this.client.once(sdk.ClientEvent.Sync, async (state: sdk.SyncState) => {
         if (state === sdk.SyncState.Prepared || state === sdk.SyncState.Syncing) {
           console.log("⚡ [MatrixStore] Matrix background sync complete (Initial Catch-up).");
-          const haptics = useHaptics();
-          haptics.success();
+          if (this.ui.hapticFeedbackEnabled) {
+            const { WebHaptics } = await import('web-haptics');
+            const haptics = new WebHaptics({ debug: this.ui.hapticsDebugEnabled });
+            haptics.trigger('success');
+          }
           this.isFullySynced = true;
           this.isClientReady = true;
           this.loginStatus = '';

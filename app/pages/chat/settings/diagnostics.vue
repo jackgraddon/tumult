@@ -242,6 +242,25 @@
       </UiCardContent>
     </UiCard>
 
+    <!-- Debug: Haptics (dev tool) -->
+    <UiCard class="border-dashed">
+      <UiCardHeader class="pb-2 pt-4 px-4">
+        <UiCardTitle class="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <Icon name="solar:vibration-bold-duotone" class="h-4 w-4" />
+          Haptics Debugging
+        </UiCardTitle>
+      </UiCardHeader>
+      <UiCardContent class="px-4 pb-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">Desktop Audio Feedback</p>
+            <p class="text-xs text-muted-foreground mt-0.5">Simulate haptics with audio when testing on desktop.</p>
+          </div>
+          <UiSwitch v-model="hapticsDebugToggle" />
+        </div>
+      </UiCardContent>
+    </UiCard>
+
     <!-- Debug: Room State Dump (dev tool) -->
     <UiCard class="border-dashed">
       <UiCardHeader class="pb-2 pt-4 px-4">
@@ -287,6 +306,11 @@ const isResettingPusher = ref(false);
 const debugRoomId = ref('');
 const pusherList = ref<any[]>([]);
 const pusherResetStatus = ref<{ ok: boolean; message: string } | null>(null);
+
+const hapticsDebugToggle = computed({
+  get: () => matrixStore.ui.hapticsDebugEnabled,
+  set: (val) => matrixStore.setHapticsDebugEnabled(val)
+});
 
 // The correct URL is the Nuxt server route path directly.
 // The homeserver POSTs to this URL as-is (does NOT append anything).

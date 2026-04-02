@@ -1,5 +1,9 @@
 
+import { WebHaptics } from 'web-haptics';
+
 export default defineNuxtPlugin((nuxtApp) => {
+  const haptics = new WebHaptics();
+
   nuxtApp.vueApp.directive('long-press', {
     mounted(el, binding) {
       if (typeof binding.value !== 'function') return;
@@ -29,8 +33,9 @@ export default defineNuxtPlugin((nuxtApp) => {
             binding.value(e);
 
             // Light haptic feedback to signal trigger
-            if (store.ui.hapticFeedbackEnabled && 'vibrate' in navigator) {
-              navigator.vibrate(10);
+            if (store.ui.hapticFeedbackEnabled) {
+              haptics.setDebug(store.ui.hapticsDebugEnabled);
+              haptics.trigger('light');
             }
 
             // Cleanup timer

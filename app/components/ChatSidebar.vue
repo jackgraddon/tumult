@@ -77,7 +77,7 @@
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                             @contextmenu.capture="store.openRoomContextMenu(friend.roomId)"
-                            v-long-press="() => { haptics.medium(); store.openRoomContextMenu(friend.roomId); }"
+                            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(friend.roomId); }"
                             @click="() => {
                                 if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
                                     voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!);
@@ -133,7 +133,7 @@
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                             @contextmenu.capture="store.openRoomContextMenu(room.roomId)"
-                            v-long-press="() => { haptics.medium(); store.openRoomContextMenu(room.roomId); }"
+                            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(room.roomId); }"
                             @click="() => {
                                 if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
                                     voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!);
@@ -304,7 +304,7 @@ import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
-import { useHaptics } from '~/composables/useHaptics';
+import { useWebHaptics } from 'web-haptics/vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -360,7 +360,9 @@ const settingsGroups = computed(() => {
 });
 
 const store = useMatrixStore();
-const haptics = useHaptics();
+const { trigger } = useWebHaptics({
+    debug: store.ui.hapticsDebugEnabled
+});
 const voiceStore = useVoiceStore();
 
 const isLobby = computed(() => {
