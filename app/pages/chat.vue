@@ -1,7 +1,7 @@
 <template>
     <div
         class="flex flex-row h-full relative overflow-hidden m-2 mt-0 pb-safe pl-safe pr-safe"
-        :class="isTauri ? 'pt-[30px]' : 'pt-safe'"
+        :class="isTauri ? 'pt-[30px]' : 'pt-safe mt-2'"
     >
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div 
