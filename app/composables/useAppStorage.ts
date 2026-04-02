@@ -192,7 +192,8 @@ async function _ensureCryptoKey(): Promise<void> {
         let existingJwk: JsonWebKey | null = null;
         if (isTauri) {
             const store = await getPrefStore();
-            existingJwk = await store.get<JsonWebKey>('_crypto_key');
+            const stored = await store.get<JsonWebKey>('_crypto_key');
+            existingJwk = stored ?? null;
         } else {
             try {
                 existingJwk = await idbGet<JsonWebKey>(PREF_STORE, '_crypto_key');

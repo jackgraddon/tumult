@@ -1875,6 +1875,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.isRestoringSession = false;
       console.log('[MatrixStore] UI Unlocked. Syncing in background.');
 
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
+
       // Listen for token invalidation from the server (e.g. device deleted)
       this.client.on(sdk.HttpApiEvent.SessionLoggedOut, (err) => {
         console.error("🚨 [MatrixStore] Server invalidated session (M_UNKNOWN_TOKEN). Forcing logout run.", {
@@ -1896,9 +1898,7 @@ export const useMatrixStore = defineStore('matrix', {
           navigator.serviceWorker.addEventListener('message', (event) => {
               if (event.data?.type === 'SYNC_BUFFERS') {
                   console.log('[MatrixStore] Service Worker requested buffer sync');
-                  // This is already being handled by the client's continuous background sync,
-                  // but we can force a catch-up if needed.
-                  this.client?.sync();
+                  // This is already being handled by the client's continuous background sync.
               }
           });
 
