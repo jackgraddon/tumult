@@ -92,7 +92,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
+import { useMatrixStore } from '../stores/matrix';
 import ProfileCard from './ProfileCard.vue'; 
 import type { Room, RoomMember } from 'matrix-js-sdk';
 

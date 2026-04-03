@@ -165,15 +165,19 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-    middleware: "auth",
-});
-
-import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useRoute, useNuxtApp } from '#app';
+import { useMatrixStore } from '~/stores/matrix';
+import { useGameActivity } from '~/composables/useGameActivity';
+import { Room, ClientEvent, RoomEvent, EventType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import { useWebHaptics } from 'web-haptics/vue';
-import { notify } from '~/utils/notify';
+import { notify } from '../utils/notify';
+
+definePageMeta({
+    middleware: "auth",
+});
 
 const route = useRoute();
 
@@ -289,8 +293,10 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
         return;
       }
       const content = event.getClearContent() || event.getContent();
-      const senderMember = room.getMember(event.getSender());
-      const senderName = senderMember?.name || event.getSender();
+      const senderId = event.getSender();
+      if (!senderId) return;
+      const senderMember = room.getMember(senderId);
+      const senderName = senderMember?.name || senderId;
       
       console.log('[Chat] Notification triggered:', { 
         type: event.getType(), 
@@ -315,7 +321,7 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
             const token = store.client.getAccessToken();
             if (token) imageUrl += `&access_token=${encodeURIComponent(token)}`;
           } else {
-            imageUrl = store.client.mxcUrlToHttp(mxcUrl);
+            imageUrl = store.client.mxcUrlToHttp(mxcUrl) || undefined;
           }
         }
       } else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
@@ -331,8 +337,8 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
       // Better way to check for DM: check the store's directMessageMap or room members count
       const isDM = room.getInvitedAndJoinedMemberCount() === 2 && isDirect;
 
-      const title = isDM ? senderName : `${senderName} in ${room.name || 'Room'}`;
-      const notificationBody = bodyText;
+      const title = (isDM ? senderName : `${senderName} in ${room.name || 'Room'}`) || 'New Message';
+      const notificationBody = bodyText || '';
 
       let iconUrl = isDM
         ? senderMember?.getMxcAvatarUrl()
@@ -401,7 +407,7 @@ onUnmounted(() => {
 
 // 2. If client initializes LATER (e.g. page refresh), watch for it
 watch(
-  () => store.client,
+  () => store.client as MatrixClient | null,
   (newClient) => {
     if (newClient) setupListeners();
   }

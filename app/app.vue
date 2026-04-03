@@ -28,7 +28,7 @@
 
       <!-- Sync Progress Bar -->
       <div 
-        v-if="!useMatrixStore().isFullySynced && useMatrixStore().isAuthenticated" 
+        v-if="!store.isFullySynced && store.isAuthenticated"
         class="fixed left-0 right-0 h-[1.5px] z-[100] bg-muted overflow-hidden pointer-events-none"
         :style="{ top: isTauri ? '30px' : '0' }"
       >
@@ -59,7 +59,11 @@
 </template>
 
 <script setup lang="ts">
-import { Toaster } from '@/components/ui/sonner';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useNuxtApp, useHead, navigateTo } from '#app';
+import { useColorMode } from '#imports';
+import { useMatrixStore } from '~/stores/matrix';
+import { Toaster } from '~/components/ui/sonner';
 import { toast } from 'vue-sonner';
 
 const { $isTauri: isTauri } = useNuxtApp();
@@ -80,7 +84,7 @@ useHead({
 
 const isFailover = ref(false);
 
-watch(() => store.ui.themePreset, (newTheme) => {
+watch(() => store.ui.themePreset, (newTheme: string) => {
   if (import.meta.client) {
     const body = document.body;
     body.classList.forEach(cls => {
@@ -128,7 +132,7 @@ onMounted(async () => {
     const appWindow = getCurrentWindow();
 
     // Watch for the resolved color mode ('light' or 'dark')
-    watch(() => colorMode.value, async (newMode) => {
+    watch(() => colorMode.value, async (newMode: string) => {
       // Light: oklch(0.96 0 0) -> #f5f5f5
       // Dark: oklch(0 0 0) -> #000000
       const bgColor = newMode === 'dark' ? '#000000' : '#f5f5f5';
@@ -218,7 +222,7 @@ onMounted(async () => {
       console.log("[App] Close requested, hiding window instead of destroying.");
       
       try {
-        const { flushSecrets } = await import('~/composables/useAppStorage');
+        const { flushSecrets } = await import('./composables/useAppStorage');
         // We flush secrets to ensure they are persisted before the window is hidden
         await flushSecrets();
       } catch (err) {
