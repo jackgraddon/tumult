@@ -4,11 +4,24 @@ import { precacheAndRoute } from 'workbox-precaching';
 const sw = self;
 
 let quietUntil = 0;
+let showContentInNotifications = true;
+const displayedEvents = new Set(); // Simple event_id deduplication
 
 sw.addEventListener('message', (event) => {
     if (event.data?.type === 'SET_QUIET_UNTIL') {
         quietUntil = event.data.timestamp || 0;
         console.log('[Service Worker] Quiet hours updated until:', new Date(quietUntil).toLocaleString());
+    }
+    if (event.data?.type === 'SET_SHOW_CONTENT') {
+        showContentInNotifications = !!event.data.enabled;
+        console.log('[Service Worker] Show content setting updated:', showContentInNotifications);
+    }
+    if (event.data?.type === 'MARK_EVENT_DISPLAYED') {
+        const eventId = event.data.eventId;
+        if (eventId && !displayedEvents.has(eventId)) {
+            displayedEvents.add(eventId);
+            console.log('[Service Worker] Marked event as displayed (internal sync):', eventId);
+        }
     }
 });
 
@@ -194,6 +207,22 @@ sw.addEventListener('push', (event) => {
             }
         }
 
+        // --- 0. Deduplication ---
+        if (data.event_id) {
+            if (displayedEvents.has(data.event_id)) {
+                console.log('[Service Worker] Skipping duplicate notification for event:', data.event_id);
+                return;
+            }
+            displayedEvents.add(data.event_id);
+            // Limit set size to avoid memory leak
+            if (displayedEvents.size > 100) {
+                const firstItem = displayedEvents.values().next().value;
+                displayedEvents.delete(firstItem);
+            }
+        }
+
+        let debugError = null;
+
         // --- 1. Transport Decryption (Relay Level) ---
         if (data.ciphertext) {
             try {
@@ -204,7 +233,7 @@ sw.addEventListener('push', (event) => {
                 }
             } catch (err) {
                 console.error('[Service Worker] Failed to decrypt transport payload:', err);
-                // Continue with generic fields if decryption fails
+                debugError = `Transport Error: ${err.message}`;
             }
         }
 
@@ -220,11 +249,13 @@ sw.addEventListener('push', (event) => {
                     // Re-calculate fields based on decrypted content
                     const sender = data.sender_display_name || 'Someone';
                     const roomName = data.room_name;
+                    const isDirect = data.is_direct || (roomName === sender);
                     data.body = getMessageSummary(decryptedContent);
-                    data.title = roomName ? `${sender} in ${roomName}` : sender;
+                    data.title = (roomName && !isDirect) ? `${sender} in ${roomName}` : sender;
                 }
             } catch (err) {
                 console.warn('[Service Worker] Background Matrix decryption failed:', err);
+                debugError = `Matrix Error: ${err.message}`;
             }
         }
 
@@ -240,8 +271,15 @@ sw.addEventListener('push', (event) => {
         const bodyText = getMessageSummary(data.content);
 
         // Formatting (Prefer server-sent title/body if available, fallback to required styling)
-        const title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
-        const notificationBody = data.body || bodyText;
+        let title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
+        let notificationBody = data.body || bodyText;
+
+        if (!showContentInNotifications) {
+            title = 'New Message';
+            notificationBody = 'Tap to view message content';
+        } else if (debugError) {
+            notificationBody = `${notificationBody} (${debugError})`;
+        }
         const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
 
         const options = {
@@ -405,7 +443,10 @@ async function fetchAndDecryptMatrixEvent(roomId, eventId) {
 
         // Fallback: Filter for any truthy results
         const allResults = await Promise.all(decryptionPromises);
-        return allResults.find(r => !!r) || null;
+        const successfulResult = allResults.find(r => !!r);
+        if (successfulResult) return successfulResult;
+
+        throw new Error('No active window could decrypt the event');
     } catch (e) {
         console.error('[SW] fetchAndDecryptMatrixEvent error:', e);
         return null;

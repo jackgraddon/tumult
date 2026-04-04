@@ -59,10 +59,11 @@ export default defineEventHandler(async (event) => {
             // We move the formatting logic to the server so we can support Declarative Web Push (Safari 18.4+)
             const sender = notification.sender_display_name || notification.sender || 'Someone';
             const roomName = notification.room_name;
+            const isDirect = notification.is_direct || (roomName === sender);
             const bodyText = getMessageSummary(notification.content);
 
             // Match frontend title: 'User in Room' or just 'User' for DMs
-            let title = roomName ? `${sender} in ${roomName}` : sender;
+            let title = (roomName && !isDirect) ? `${sender} in ${roomName}` : sender;
             let notificationBody = bodyText;
             const urlToOpen = notification.room_id ? `/chat/rooms/${notification.room_id}` : '/chat';
 

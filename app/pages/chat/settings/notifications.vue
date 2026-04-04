@@ -28,6 +28,18 @@
     </div>
 
     <div v-if="pushEnabled" class="space-y-4">
+      <div class="flex items-center justify-between rounded-lg border p-4">
+        <div class="flex items-center gap-3">
+          <Icon name="solar:eye-bold" class="h-5 w-5 text-muted-foreground" />
+          <div class="space-y-0.5">
+            <p class="text-sm font-medium">Show Message Content</p>
+            <p class="text-xs text-muted-foreground">
+              Include message text and sender in notifications
+            </p>
+          </div>
+        </div>
+        <UiSwitch v-model="showContent" />
+      </div>
       <div v-if="!isTauri" class="rounded-lg border p-4 space-y-4">
           <div class="flex items-center gap-3">
               <Icon name="solar:server-bold" class="h-5 w-5 text-muted-foreground" />
@@ -91,6 +103,11 @@ const region = useRegionDetection();
 const pushEnabled = computed({
     get: () => store.pushNotificationsEnabled,
     set: (val: boolean) => store.setPushNotificationsEnabled(val),
+});
+
+const showContent = computed({
+    get: () => store.showContentInNotifications,
+    set: (val: boolean) => store.setShowContentInNotifications(val),
 });
 
 const customPushEndpoint = computed({

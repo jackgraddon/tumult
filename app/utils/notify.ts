@@ -14,7 +14,7 @@ function hashStringToInt(str: string): number {
   return Math.abs(hash);
 }
 
-export async function notify(title: string, body: string, iconUrl?: string, roomId?: string, imageUrl?: string) {
+export async function notify(title: string, body: string, iconUrl?: string, roomId?: string, imageUrl?: string, eventId?: string) {
   let store;
   try {
     // Check if useMatrixStore is available as a global (auto-import)
@@ -37,6 +37,14 @@ export async function notify(title: string, body: string, iconUrl?: string, room
   if (Date.now() < store.notificationsQuietUntil) {
     console.log('[Notify Helper] Notifications are currently paused (Quiet Hours)');
     return;
+  }
+
+  // Deduplication with Service Worker
+  if (eventId && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'MARK_EVENT_DISPLAYED',
+      eventId
+    });
   }
 
   try {

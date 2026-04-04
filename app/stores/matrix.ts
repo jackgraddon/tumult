@@ -304,6 +304,7 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as any | null,
     pushNotificationsEnabled: true,
+    showContentInNotifications: true,
     customPushEndpoint: null as string | null,
     notificationsQuietUntil: 0,
     remoteActivityDetails: {} as Record<string, any>,
@@ -733,6 +734,7 @@ export const useMatrixStore = defineStore('matrix', {
     async initStorage() {
       // Load all persisted prefs into Pinia state on startup
       this.pushNotificationsEnabled = await getPref('push_notifications_enabled', true);
+      this.showContentInNotifications = await getPref('show_content_in_notifications', true);
       this.customPushEndpoint = await getPref('custom_push_endpoint', null);
       this.notificationsQuietUntil = await getPref('notifications_quiet_until', 0);
       this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
@@ -904,6 +906,17 @@ export const useMatrixStore = defineStore('matrix', {
       await setPref('push_notifications_enabled', enabled);
       // This will trigger the watch in push-registration.client.ts
       this.unreadTrigger++;
+    },
+
+    async setShowContentInNotifications(enabled: boolean) {
+      this.showContentInNotifications = enabled;
+      await setPref('show_content_in_notifications', enabled);
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SET_SHOW_CONTENT',
+          enabled
+        });
+      }
     },
 
     async setCustomPushEndpoint(endpoint: string | null) {
@@ -1944,11 +1957,15 @@ export const useMatrixStore = defineStore('matrix', {
           }
         });
 
-        // Sync current quiet status to SW on boot
+        // Sync current quiet status and content visibility to SW on boot
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({
             type: 'SET_QUIET_UNTIL',
             timestamp: this.notificationsQuietUntil
+          });
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SET_SHOW_CONTENT',
+            enabled: this.showContentInNotifications
           });
         }
       }

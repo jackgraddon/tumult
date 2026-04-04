@@ -266,6 +266,18 @@ onMounted(async () => {
           const sdkEvent = new MatrixEvent(matrixEventData);
           await sdkEvent.attemptDecryption(store.client.getCrypto() as any);
           const content = sdkEvent.getClearContent();
+
+          // Mark this event as displayed to prevent the app from showing a duplicate notification
+          // if it happens to be syncing this event at the same time.
+          if (matrixEventData.event_id) {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: 'MARK_EVENT_DISPLAYED',
+                eventId: matrixEventData.event_id
+              });
+            }
+          }
+
           event.ports[0]?.postMessage({ decrypted: content });
         } catch (e) {
           console.error('[App] Background decryption failed:', e);

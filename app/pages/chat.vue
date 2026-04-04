@@ -356,7 +356,7 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
         }
       }
 
-      notify(title, notificationBody, iconUrl || undefined, room.roomId, imageUrl);
+      notify(title, notificationBody, iconUrl || undefined, room.roomId, imageUrl, event.getId());
       console.log('Notification sent', { title, body: notificationBody, imageUrl });
   }
 };
