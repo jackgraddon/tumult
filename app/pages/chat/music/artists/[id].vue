@@ -5,13 +5,13 @@
       v-if="backgroundUrl"
       class="absolute top-0 left-0 right-0 h-[400px] z-0 opacity-40 mask-image-gradient"
       :style="{ backgroundImage: `url(${backgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }"
-    ></div>
+    />
 
     <div class="relative z-10 p-8 space-y-12 pt-24">
       <!-- Artist Header -->
       <div class="flex items-end gap-8">
         <div class="h-64 w-64 shrink-0 rounded-full overflow-hidden shadow-2xl border-4 border-background bg-muted">
-          <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
+          <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" >
           <div v-else class="h-full w-full flex items-center justify-center">
             <Icon name="solar:user-bold" class="h-32 w-32 text-muted-foreground/30" />
           </div>
@@ -46,8 +46,8 @@
               variant="ghost"
               size="icon"
               class="rounded-full h-12 w-12 border border-border/50"
-              @click="addAllToQueue"
               title="Add all to queue"
+              @click="addAllToQueue"
             >
               <Icon name="solar:list-line-duotone" class="h-6 w-6" />
             </UiButton>
@@ -72,7 +72,7 @@
               <Icon name="solar:play-bold" class="w-6 h-6 text-[#AA5CC3] hidden group-hover:block" />
 
               <div class="h-10 w-10 shrink-0 rounded bg-muted overflow-hidden">
-                <img v-if="getSongImageUrl(song)" :src="getSongImageUrl(song)" class="h-full w-full object-cover" alt="" />
+                <img v-if="getSongImageUrl(song)" :src="getSongImageUrl(song)" class="h-full w-full object-cover" alt="" >
               </div>
 
               <div class="flex-1 min-w-0">
@@ -93,7 +93,7 @@
             @click="navigateTo(`/chat/music/albums/${latestAlbum.Id}`)"
           >
             <div class="aspect-square rounded-lg overflow-hidden shadow-lg border border-border/50">
-              <img :src="getAlbumImageUrl(latestAlbum)" class="h-full w-full object-cover" alt="" />
+              <img :src="getAlbumImageUrl(latestAlbum)" class="h-full w-full object-cover" alt="" >
             </div>
             <div>
               <p class="text-lg font-bold">{{ latestAlbum.Name }}</p>

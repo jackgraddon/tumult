@@ -13,7 +13,7 @@
       class="flex-1 h-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-muted-foreground pointer-events-auto"
       data-tauri-drag-region
     >
-       <img src="~/assets/Flame.svg" class="size-3.5" alt="Tumult Logo" />
+       <img src="~/assets/Flame.svg" class="size-3.5" alt="Tumult Logo" >
        Tumult
     </div>
 

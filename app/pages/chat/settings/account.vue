@@ -27,9 +27,9 @@
               <div class="flex gap-2 items-end">
                 <div class="flex-1">
                   <UiInput
+                    v-model="updatedUserInfo.displayName"
                     label="Display Name"
                     :placeholder="updatedUserInfo.displayName"
-                    v-model="updatedUserInfo.displayName"
                     @keyup.enter="updateProfile"
                     @update:model-value="updatedUserInfo.isUpdating = true"
                   />
@@ -50,8 +50,8 @@
                   id="bio"
                   v-model="updatedUserInfo.description"
                   placeholder="Tell us about yourself..."
-                  @update:model-value="updatedUserInfo.isUpdating = true"
                   class="min-h-[100px]"
+                  @update:model-value="updatedUserInfo.isUpdating = true"
                 />
               </div>
 
@@ -108,8 +108,8 @@
       <h2 class="text-lg font-semibold tracking-tight">Bridging</h2>
       <p class="text-sm text-muted-foreground">Connect your off-platform chats to Matrix. Your homeserver must support the bridges to connect them.</p>
       <UiButton
-        @click="bridge('discord')"
         class="bg-[#5865F2] text-white hover:bg-[#5865F2]/90"
+        @click="bridge('discord')"
       >
         <Icon name="simple-icons:discord" />
         Discord
@@ -130,17 +130,17 @@
 </template>
 
 <script lang="ts" setup>
+import { toast } from 'vue-sonner';
+import { Preset, EventType } from 'matrix-js-sdk';
+import { useJellyfinStore } from '~/stores/jellyfin';
+import JellyfinLoginModal from '~/components/JellyfinLoginModal.vue';
+
 definePageMeta({
   icon: 'solar:user-bold',
   category: 'user',
   title: 'Account',
   place: 1
 })
-
-import { toast } from 'vue-sonner';
-import { Preset, EventType } from 'matrix-js-sdk';
-import { useJellyfinStore } from '~/stores/jellyfin';
-import JellyfinLoginModal from '~/components/JellyfinLoginModal.vue';
 
 const store = useMatrixStore();
 const uiStore = useUIStore();
@@ -221,7 +221,7 @@ async function unlink(account: string) {
 
 async function bridge(account: string) {
   const bridgeBotId = `@${account}bot:jackg.cc`;
-  let roomId = findExistingDM(bridgeBotId);
+  const roomId = findExistingDM(bridgeBotId);
   
   // If we already have a room, just go there
   if (roomId) {

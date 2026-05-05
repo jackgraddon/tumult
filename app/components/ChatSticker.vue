@@ -14,7 +14,7 @@
       class="max-w-full max-h-full object-contain drop-shadow-md rounded-2xl"
       loading="lazy"
       @load="emit('load')"
-    />
+    >
 
     <!-- Static image -->
     <img
@@ -24,7 +24,7 @@
       class="max-w-full max-h-full object-contain drop-shadow-md rounded-2xl"
       loading="lazy"
       @load="emit('load')"
-    />
+    >
 
     <!-- Loading state -->
     <div v-else-if="isLoading" class="flex items-center justify-center text-muted-foreground/50">

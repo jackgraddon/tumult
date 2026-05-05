@@ -42,7 +42,7 @@
     <!-- Basic Presence -->
     <template v-else-if="showBasicPresence">
       <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <div class="h-2 w-2 rounded-full shrink-0" :class="presenceDotColor"></div>
+        <div class="h-2 w-2 rounded-full shrink-0" :class="presenceDotColor"/>
         <span class="truncate capitalize">{{ displayPresenceText }}</span>
       </div>
     </template>

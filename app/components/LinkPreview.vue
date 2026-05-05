@@ -38,7 +38,7 @@
           frameborder="0"
           allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
           allowfullscreen
-        ></iframe>
+        />
       </div>
 
       <!-- 3. Standard Image Card -->

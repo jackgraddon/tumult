@@ -135,9 +135,9 @@ const transformStyle = computed(() => ({
         <!-- Zoom Controls -->
         <div class="flex items-center gap-1 bg-neutral-900/40 backdrop-blur-md rounded-full border border-white/5 p-1 shadow-2xl">
           <button 
-            @click="zoomOut"
             class="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all outline-none"
             title="Zoom Out"
+            @click="zoomOut"
           >
             <ZoomOut class="w-4.5 h-4.5" />
           </button>
@@ -145,17 +145,17 @@ const transformStyle = computed(() => ({
             {{ Math.round(scale * 100) }}%
           </span>
           <button 
-            @click="zoomIn"
             class="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all outline-none"
             title="Zoom In"
+            @click="zoomIn"
           >
             <ZoomIn class="w-4.5 h-4.5" />
           </button>
           <div class="w-px h-4 bg-white/10 mx-1" />
           <button 
-            @click="resetTransform"
             class="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all outline-none"
             title="Reset Zoom"
+            @click="resetTransform"
           >
             <Maximize2 class="w-4.5 h-4.5" />
           </button>
@@ -163,9 +163,9 @@ const transformStyle = computed(() => ({
 
         <!-- Close Button -->
         <button 
-          @click="close"
           class="p-3 rounded-full bg-neutral-900/40 backdrop-blur-md hover:bg-white/10 text-white/50 hover:text-white transition-all outline-none border border-white/5 hover:scale-110 active:scale-95 group shadow-2xl"
           title="Close (Esc)"
+          @click="close"
         >
           <X class="w-5.5 h-5.5" />
         </button>
@@ -192,7 +192,7 @@ const transformStyle = computed(() => ({
             @pointermove="handlePointerMove"
             @pointerup="handlePointerUp"
             @pointercancel="handlePointerUp"
-          />
+          >
           
           <!-- Video Preview -->
           <video 

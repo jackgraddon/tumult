@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center justify-center h-screen">
-    <UiCard class="w-full sm:max-w-md" v-if="error">
+    <UiCard v-if="error" class="w-full sm:max-w-md">
       <UiCardHeader>
         <UiCardTitle>Login Failed</UiCardTitle>
         <UiCardDescription>
@@ -14,7 +14,7 @@
             <p>{{ error.description }}</p>
           </UiAlertDescription>
         </UiAlert>
-        <UiButton @click="backOut" class="w-full">
+        <UiButton class="w-full" @click="backOut">
           Return to Home
         </UiButton>
       </UiCardContent>

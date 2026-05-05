@@ -4,8 +4,8 @@
       <UiDialogHeader>
         <div class="flex flex-col items-center gap-4 py-4">
           <div class="relative group">
-            <div class="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-            <img src="~/assets/Flame.svg" class="relative size-20" alt="Tumult Logo" />
+            <div class="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"/>
+            <img src="~/assets/Flame.svg" class="relative size-20" alt="Tumult Logo" >
           </div>
           <div class="text-center space-y-1">
             <UiDialogTitle class="text-3xl font-black tracking-tighter">Tumult</UiDialogTitle>
@@ -66,7 +66,7 @@ const buildDate = config.public.buildDate;
 
 const version = ref('');
 onMounted(async () => {
-  if (process.client && (window as any).__TAURI_INTERNALS__) {
+  if (import.meta.client && (window as any).__TAURI_INTERNALS__) {
     const { getVersion } = await import('@tauri-apps/api/app');
     version.value = await getVersion();
   } else {
@@ -75,7 +75,7 @@ onMounted(async () => {
 });
 
 const openUrl = async (url: string) => {
-  if (process.client && (window as any).__TAURI_INTERNALS__) {
+  if (import.meta.client && (window as any).__TAURI_INTERNALS__) {
     const { open } = await import('@tauri-apps/plugin-shell');
     await open(url);
   } else {

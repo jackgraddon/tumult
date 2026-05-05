@@ -15,9 +15,9 @@
               <button
                 v-for="hs in recommendedHomeservers"
                 :key="hs"
-                @click="homeserver = hs; handleLogin()"
                 class="flex flex-col items-start p-4 rounded-xl border-2 transition-all text-left hover:border-primary/50 group"
                 :class="homeserver === hs ? 'border-primary bg-primary/5' : 'bg-card border-transparent'"
+                @click="homeserver = hs; handleLogin()"
               >
                 <span class="font-bold group-hover:text-primary transition-colors">{{ hs }}</span>
               </button>
@@ -32,15 +32,15 @@
               </div>
             </div>
 
-            <form @submit.prevent="handleLogin" class="space-y-4">
+            <form class="space-y-4" @submit.prevent="handleLogin">
               <UiInputGroup class="bg-card">
                 <UiInputGroupAddon>
                   <UiInputGroupText>https://</UiInputGroupText>
                 </UiInputGroupAddon>
                 <UiInputGroupInput
                   id="homeserverURL"
-                  type="text"
                   v-model="homeserver"
+                  type="text"
                   placeholder="custom.homeserver.com"
                   class="!pl-0"
                 />
@@ -48,9 +48,9 @@
                   <UiInputGroupButton
                     variant="default"
                     class="rounded-full"
-                    @click="handleLogin"
                     size="icon-xs"
                     type="submit"
+                    @click="handleLogin"
                   >
                     <Icon name="solar:alt-arrow-right-linear" class="size-4" />
                   </UiInputGroupButton>
@@ -69,7 +69,7 @@
             <div class="relative flex items-center justify-center">
               <UiSpinner class="size-16 text-primary" />
               <div class="absolute flex items-center justify-center animate-pulse">
-                <img src="~/assets/Flame.svg" class="size-8" alt="Tumult Logo" />
+                <img src="~/assets/Flame.svg" class="size-8" alt="Tumult Logo" >
               </div>
             </div>
             <div class="text-center space-y-2">
@@ -86,9 +86,9 @@
 </template>
 
 <script setup lang="ts">
-const matrixStore = useMatrixStore();
 import { useUIStore } from "~/stores/ui";
 import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
+const matrixStore = useMatrixStore();
 const config = useRuntimeConfig();
 const recommendedHomeservers = config.public.matrix.recommendedHomeservers || ['matrix.org'];
 const homeserver = ref<string>((config.public.matrix.baseUrl as string) || 'matrix.org');

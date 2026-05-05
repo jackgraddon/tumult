@@ -101,13 +101,13 @@ function checkWinner(b: (string | null)[]) {
       <button
         v-for="(cell, i) in board"
         :key="i"
-        @click="makeMove(i)"
         :disabled="!isMyTurn || cell !== null"
         class="h-16 w-16 rounded-lg border-2 border-border flex items-center justify-center text-2xl font-bold transition-colors"
         :class="[
           !cell && isMyTurn ? 'hover:bg-primary/10 border-primary/50 cursor-pointer' : 'cursor-default',
           cell === 'X' ? 'text-blue-500' : 'text-red-500'
         ]"
+        @click="makeMove(i)"
       >
         {{ cell }}
       </button>

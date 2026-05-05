@@ -2,11 +2,11 @@
   <div class="container p-4 py-6 space-y-8">
     <div class="flex items-center gap-4">
       <UiButton
+        v-if="!uiStore.sidebarOpen"
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
         @click="uiStore.toggleSidebar(true)"
-        v-if="!uiStore.sidebarOpen"
       >
         <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
       </UiButton>
@@ -51,7 +51,7 @@
           <UiCard class="h-full transition-colors hover:bg-muted/50">
             <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
               <MatrixAvatar 
-                :mxcUrl="getRoomAvatarMxc(room)" 
+                :mxc-url="getRoomAvatarMxc(room)"
                 :name="room.name" 
                 class="h-12 w-12"
               />
@@ -86,7 +86,7 @@
           <UiCard class="h-full transition-colors hover:bg-muted/50">
              <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
               <MatrixAvatar 
-                :mxcUrl="getRoomAvatarMxc(room)" 
+                :mxc-url="getRoomAvatarMxc(room)"
                 :name="room.name" 
                 class="h-12 w-12"
               />
@@ -114,16 +114,16 @@
 </template>
 
 <script setup lang="ts">
+import * as sdk from 'matrix-js-sdk';
+import MatrixAvatar from '~/components/MatrixAvatar.vue';
+import { Card as UiCard, CardHeader as UiCardHeader, CardTitle as UiCardTitle, CardDescription as UiCardDescription } from '~/components/ui/card';
+import { useJellyfinStore } from '~/stores/jellyfin';
+
 const store = useMatrixStore();
 const uiStore = useUIStore();
 const matrixService = useMatrixService();
 const presenceStore = usePresenceStore();
 const jellyfinStore = useJellyfinStore();
-
-import * as sdk from 'matrix-js-sdk';
-import MatrixAvatar from '~/components/MatrixAvatar.vue';
-import { Card as UiCard, CardHeader as UiCardHeader, CardTitle as UiCardTitle, CardDescription as UiCardDescription } from '~/components/ui/card';
-import { useJellyfinStore } from '~/stores/jellyfin';
 
 // Use explicit casts or relaxed types to handle potential version mismatches in types
 const recentDms = ref<any[]>([]);

@@ -29,10 +29,10 @@
           <div 
             v-for="member in online" 
             :key="member.userId"
+            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e: any) => openUserProfileCard(e, member.userId)"
-            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"
@@ -53,10 +53,10 @@
           <div 
             v-for="member in offline" 
             :key="member.userId"
+            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
             @click="(e: any) => openUserProfileCard(e, member.userId)"
-            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"
@@ -76,7 +76,7 @@
       v-if="selectedUserId && selectedUser" 
       class="fixed inset-0 z-[99]" 
       @click="closeProfileCard"
-    ></div>
+    />
     
     <Transition name="popover">
       <div 

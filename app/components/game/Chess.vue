@@ -148,12 +148,12 @@ function getPieceIcon(type: string, color: string): string {
         <div
           v-for="(cell, j) in row"
           :key="j"
-          @click="handleSquareClick(i, j)"
           class="h-10 w-10 flex items-center justify-center cursor-pointer transition-colors relative"
           :class="[
             (i + j) % 2 === 0 ? 'bg-primary/35' : 'bg-primary/55',
             selectedSquare === getSquareName(i, j) ? 'ring-2 ring-primary ring-inset z-10' : ''
           ]"
+          @click="handleSquareClick(i, j)"
         >
           <Icon 
             v-if="cell" 

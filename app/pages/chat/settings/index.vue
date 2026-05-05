@@ -40,7 +40,7 @@
             </p>
           </div>
         </div>
-        <UiButton variant="outline" size="sm" @click="checkForUpdates" :disabled="isChecking">
+        <UiButton variant="outline" size="sm" :disabled="isChecking" @click="checkForUpdates">
           <Icon v-if="isChecking" name="svg-spinners:ring-resize" class="mr-2 h-4 w-4" />
           {{ isChecking ? 'Checking...' : 'Check for Updates' }}
         </UiButton>
@@ -54,11 +54,11 @@
               </div>
           </div>
           <div class="flex gap-2">
-            <UiButton size="sm" @click="installUpdate" :disabled="isInstalling">
+            <UiButton size="sm" :disabled="isInstalling" @click="installUpdate">
                 <Icon v-if="isInstalling" name="svg-spinners:ring-resize" class="mr-2 h-4 w-4" />
                 {{ isInstalling ? 'Installing...' : 'Install & Restart' }}
             </UiButton>
-            <UiButton variant="ghost" size="sm" @click="updateInfo = null" :disabled="isInstalling">
+            <UiButton variant="ghost" size="sm" :disabled="isInstalling" @click="updateInfo = null">
                 Dismiss
             </UiButton>
           </div>

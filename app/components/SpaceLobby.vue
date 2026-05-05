@@ -5,11 +5,11 @@
         <div class="absolute inset-0 bg-grid-white/[0.05] [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]" />
         <div class="relative h-full max-w-5xl mx-auto px-8 flex items-end pb-6 gap-6">
             <UiButton
+                v-if="!uiStore.sidebarOpen"
                 variant="ghost"
                 size="icon-sm"
                 class="md:hidden shrink-0 absolute top-4 left-4 z-10"
                 @click="() => { uiStore.toggleSidebar(true); uiStore.memberListVisible = false; }"
-                v-if="!uiStore.sidebarOpen"
             >
                 <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
             </UiButton>
@@ -43,7 +43,7 @@
                     <Icon name="solar:magnifer-linear" class="mr-2 h-4 w-4" />
                     Search
                 </UiButton>
-                <UiButton variant="default" size="sm" v-if="!isJoined" @click="matrixService.joinRoom(space.roomId)">
+                <UiButton v-if="!isJoined" variant="default" size="sm" @click="matrixService.joinRoom(space.roomId)">
                     Join Space
                 </UiButton>
             </div>
@@ -84,8 +84,8 @@
                         v-for="room in featuredVoiceRooms" 
                         :key="room.roomId"
                         role="button"
-                        @click="voiceStore.joinVoiceRoom(room)"
                         class="group p-4 rounded-xl border bg-card hover:bg-muted/50 transition-all flex items-center gap-4 cursor-pointer"
+                        @click="voiceStore.joinVoiceRoom(room)"
                     >
                         <div class="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
                             <Icon name="solar:phone-calling-linear" class="text-green-500 w-6 h-6" />
@@ -104,8 +104,8 @@
 
             <section class="border rounded-2xl overflow-hidden bg-card/30">
                 <button 
-                    @click="isHierarchyCollapsed = !isHierarchyCollapsed"
                     class="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+                    @click="isHierarchyCollapsed = !isHierarchyCollapsed"
                 >
                     <div class="flex items-center gap-3">
                         <div class="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">

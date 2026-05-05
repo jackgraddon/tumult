@@ -3,7 +3,7 @@
     <!-- Album Header -->
     <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-accent/30 to-transparent shrink-0">
       <div class="h-64 w-64 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-border/50 bg-muted">
-        <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
+        <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" >
         <div v-else class="h-full w-full flex items-center justify-center">
           <Icon name="solar:album-bold" class="h-32 w-32 text-muted-foreground/30" />
         </div>
@@ -21,11 +21,11 @@
           <span>{{ tracks.length }} songs</span>
         </div>
         <div class="flex items-center gap-3 pt-4">
-           <UiButton @click="playAll" class="bg-[#AA5CC3] hover:bg-[#AA5CC3]/90 text-white gap-2">
+           <UiButton class="bg-[#AA5CC3] hover:bg-[#AA5CC3]/90 text-white gap-2" @click="playAll">
              <Icon name="solar:play-bold" class="h-4 w-4" />
              Play All
            </UiButton>
-           <UiButton variant="secondary" @click="addAllToQueue" class="gap-2">
+           <UiButton variant="secondary" class="gap-2" @click="addAllToQueue">
              <Icon name="solar:list-line-duotone" class="h-4 w-4" />
              Add to Queue
            </UiButton>

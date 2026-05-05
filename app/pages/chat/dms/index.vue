@@ -2,11 +2,11 @@
   <div class="flex-1 flex flex-col min-h-0 bg-background">
     <header class="flex-none p-4 border-b border-border flex items-center gap-4">
       <UiButton
+        v-if="!uiStore.sidebarOpen"
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
         @click="uiStore.toggleSidebar(true)"
-        v-if="!uiStore.sidebarOpen"
       >
         <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
       </UiButton>
@@ -20,7 +20,7 @@
         <h2 class="text-xl font-bold">No message selected</h2>
         <p class="text-muted-foreground">Select a conversation from the sidebar, or start a new direct message.</p>
       </div>
-      <UiButton @click="uiStore.toggleSidebar(true)" class="md:hidden">
+      <UiButton class="md:hidden" @click="uiStore.toggleSidebar(true)">
         Open Sidebar
       </UiButton>
       <UiButton variant="outline" @click="uiStore.openGlobalSearchModal()">

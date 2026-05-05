@@ -40,7 +40,8 @@
         </div>
         <UiSwitch v-model="showContent" />
       </div>
-      <div v-if="pushEnabled && showContent && !isTauri"
+      <div
+v-if="pushEnabled && showContent && !isTauri"
            class="rounded-lg border bg-blue-500/10 border-blue-500/20 p-4">
           <div class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
               <Icon name="solar:lock-bold" class="h-5 w-5" />

@@ -3,15 +3,15 @@
     <h2 class="text-2xl font-semibold tracking-tight">Diagnostics</h2>
 
     <div class="flex flex-wrap gap-2">
-      <UiButton @click="getPushers" variant="outline" class="gap-2">
+      <UiButton variant="outline" class="gap-2" @click="getPushers">
         <Icon name="solar:monitor-bold-duotone" class="h-4 w-4" />
         Get Pushers
       </UiButton>
-      <UiButton @click="resetPusher" variant="destructive" class="gap-2" :disabled="isResettingPusher">
+      <UiButton variant="destructive" class="gap-2" :disabled="isResettingPusher" @click="resetPusher">
         <Icon :name="isResettingPusher ? 'solar:refresh-bold' : 'solar:refresh-bold-duotone'" class="h-4 w-4" :class="{ 'animate-spin': isResettingPusher }" />
         {{ isResettingPusher ? 'Fixing...' : 'Fix Pusher URL' }}
       </UiButton>
-      <UiButton @click="hardResetPush" variant="destructive" class="gap-2" :disabled="isResettingPusher">
+      <UiButton variant="destructive" class="gap-2" :disabled="isResettingPusher" @click="hardResetPush">
         <Icon name="solar:bomb-bold-duotone" class="h-4 w-4" />
         Hard Reset Push
       </UiButton>
@@ -21,7 +21,7 @@
       <div>
         <p class="text-sm text-muted-foreground mt-0.5">Check your voice call setup and connectivity</p>
       </div>
-      <UiButton @click="runDiagnostics" :disabled="isRunning" class="gap-2">
+      <UiButton :disabled="isRunning" class="gap-2" @click="runDiagnostics">
         <Icon
           :name="isRunning ? 'solar:refresh-bold' : 'solar:stethoscope-bold'"
           class="h-4 w-4"
@@ -260,7 +260,7 @@
               <span class="text-destructive font-medium block mt-1">You will be logged out and the app will restart.</span>
             </p>
           </div>
-          <UiButton variant="destructive" size="sm" @click="purgeAllData" class="shrink-0 gap-1.5">
+          <UiButton variant="destructive" size="sm" class="shrink-0 gap-1.5" @click="purgeAllData">
             <Icon name="solar:trash-bin-trash-bold" class="h-3.5 w-3.5" />
             Purge
           </UiButton>
@@ -298,7 +298,7 @@
       <UiCardContent class="px-4 pb-4 space-y-3">
         <div class="flex gap-2">
           <UiInput v-model="debugRoomId" placeholder="!roomId:server" class="font-mono text-xs h-8" />
-          <UiButton variant="outline" size="sm" @click="dumpRoomState" :disabled="!debugRoomId" class="gap-1.5 shrink-0">
+          <UiButton variant="outline" size="sm" :disabled="!debugRoomId" class="gap-1.5 shrink-0" @click="dumpRoomState">
             <Icon name="solar:magnifer-bold" class="h-3.5 w-3.5" />
             Inspect
           </UiButton>
@@ -311,17 +311,17 @@
 </template>
 
 <script lang="ts" setup>
+import { ref, reactive, computed } from 'vue';
+import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useMatrixService } from "~/composables/useServices";
+
 definePageMeta({
   icon: 'solar:bug-bold-duotone',
   category: 'advanced',
   title: 'Diagnostics',
   place: 1
 })
-
-import { ref, reactive, computed } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
-import { useUIStore } from "~/stores/ui";
-import { useMatrixService } from "~/composables/useServices";
 
 const matrixStore = useMatrixStore();
 const uiStore = useUIStore();

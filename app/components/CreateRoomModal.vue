@@ -104,8 +104,8 @@
       </div>
       
       <UiDialogFooter class="gap-2 sm:gap-0">
-        <UiButton variant="ghost" @click="uiStore.closeCreateRoomModal" :disabled="isSubmitting">Cancel</UiButton>
-        <UiButton @click="handleCreate" :disabled="!name.trim() || isSubmitting">
+        <UiButton variant="ghost" :disabled="isSubmitting" @click="uiStore.closeCreateRoomModal">Cancel</UiButton>
+        <UiButton :disabled="!name.trim() || isSubmitting" @click="handleCreate">
           <UiSpinner v-if="isSubmitting" class="mr-2 h-4 w-4" />
           Create room
         </UiButton>

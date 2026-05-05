@@ -3,11 +3,11 @@
     <div class="m-auto max-w-2xl px-4">
       <div class="flex items-center gap-4 mb-4">
         <UiButton
+          v-if="!uiStore.sidebarOpen"
           variant="ghost"
           size="icon-sm"
           class="md:hidden shrink-0"
           @click="() => { uiStore.toggleSidebar(true); uiStore.memberListVisible = false; }"
-          v-if="!uiStore.sidebarOpen"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>

@@ -11,7 +11,11 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let target_dir = manifest_dir.join("target");
 
-    let binary_name = if target.contains("windows") { "rsrpc.exe" } else { "rsrpc" };
+    let binary_name = if target.contains("windows") {
+        "rsrpc.exe"
+    } else {
+        "rsrpc"
+    };
 
     // Cargo places the binary at target/<triple>/<profile>/ when built with
     // --target, or at target/<profile>/ when built without --target.

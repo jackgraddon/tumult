@@ -1,18 +1,18 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, Emitter,
+    Emitter, Manager,
 };
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
-use tokio::sync::Notify;
-use tauri_plugin_store::StoreExt;
 #[cfg(target_os = "windows")]
 use tauri_plugin_frame::WebviewWindowExt;
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
+use tauri_plugin_store::StoreExt;
+use tokio::sync::Notify;
 
 mod game_scanner;
 
@@ -49,11 +49,11 @@ fn show_main_window(app: &tauri::AppHandle) {
         {
             // 1. Force policy to Regular to show Dock icon
             let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-            
+
             // Wait for macOS to actually process the policy switch
             // before we demand the window render, avoiding a state clash
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            
+
             let _ = app.show();
         }
 
@@ -62,30 +62,39 @@ fn show_main_window(app: &tauri::AppHandle) {
         } else {
             // RE-CREATE FALLBACK: If the window was destroyed, build it again.
             log::warn!("[window] 'main' window missing, re-creating...");
-            
-            let builder = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title("Tumult")
-                .inner_size(1200.0, 800.0)
-                .min_inner_size(1000.0, 500.0)
-                .resizable(true);
+
+            let builder = tauri::WebviewWindowBuilder::new(
+                &app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Tumult")
+            .inner_size(1200.0, 800.0)
+            .min_inner_size(1000.0, 500.0)
+            .resizable(true);
 
             #[cfg(target_os = "macos")]
-            let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
 
             let w = builder.build().unwrap();
-            
+
             // Re-apply navigation if we are not in failover
-            let is_failover = app.try_state::<FailoverState>().map(|s| s.is_failover).unwrap_or(false);
+            let is_failover = app
+                .try_state::<FailoverState>()
+                .map(|s| s.is_failover)
+                .unwrap_or(false);
             if !is_failover && !cfg!(debug_assertions) {
                 let _ = w.navigate("https://tumult.jackg.cc".parse().unwrap());
             }
-            
+
             w
         };
 
         // 2. Standard restoration
         let _ = window.unminimize();
-        
+
         let _ = window.show();
         let _ = window.set_focus();
 
@@ -97,9 +106,9 @@ fn show_main_window(app: &tauri::AppHandle) {
         }
 
         // 3. THE "KICKSTART": Open DevTools and request attention
-        // window.open_devtools(); 
+        // window.open_devtools();
         let _ = window.request_user_attention(Some(tauri::UserAttentionType::Critical));
-        
+
         // 4. Force a resize nudge by 1 pixel to wake the renderer
         if let Ok(size) = window.inner_size() {
             let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
@@ -193,7 +202,7 @@ pub fn run() {
             });
 
             let window = app.get_webview_window("main").unwrap();
-            
+
             // Register the main window in our generalized manager to ensure longevity
             app.state::<WindowMap>().0.lock().unwrap().insert("main".to_string(), window.clone());
 
@@ -398,7 +407,7 @@ pub fn run() {
             }
             tauri::RunEvent::Exit => {
                 log::info!("[app] App exiting, cleaning up sidecars...");
-                
+
                 // Clean up rsRPC
                 if let Ok(mut child_guard) = tauri::Manager::state::<RsRpcState>(app_handle).child.lock() {
                     if let Some(child) = child_guard.take() {
@@ -469,10 +478,7 @@ async fn start_rsrpc_server(
     let port = bridge_port.unwrap_or(1337);
     let scan_disabled = no_process_scanning.unwrap_or(false);
 
-    let mut args = vec![
-        "--bridge-port".to_string(),
-        port.to_string(),
-    ];
+    let mut args = vec!["--bridge-port".to_string(), port.to_string()];
 
     if scan_disabled {
         args.push("--no-process-scanning".to_string());
@@ -641,8 +647,8 @@ async fn start_rpc_server(
 
     let sidecar_app = app.clone();
     tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
         use tauri::Emitter;
+        use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
@@ -699,9 +705,17 @@ fn get_os_theme() -> String {
     let is_dark = std::process::Command::new("defaults")
         .args(["read", "-g", "AppleInterfaceStyle"])
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().eq_ignore_ascii_case("dark"))
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .eq_ignore_ascii_case("dark")
+        })
         .unwrap_or(false);
-    if is_dark { "dark".to_string() } else { "light".to_string() }
+    if is_dark {
+        "dark".to_string()
+    } else {
+        "light".to_string()
+    }
 }
 
 #[tauri::command]

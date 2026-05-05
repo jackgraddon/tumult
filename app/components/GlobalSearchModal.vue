@@ -1,10 +1,10 @@
 <template>
-  <UiCommandDialog :open="uiStore.globalSearchModalOpen" @update:open="(val: boolean) => { if(!val) { uiStore.closeGlobalSearchModal(); store.setInviteRoomId(null); } }" :filter-function="customFilter">
+  <UiCommandDialog :open="uiStore.globalSearchModalOpen" :filter-function="customFilter" @update:open="(val: boolean) => { if(!val) { uiStore.closeGlobalSearchModal(); store.setInviteRoomId(null); } }">
     <UiCommandInput v-model="searchQuery" :placeholder="store.inviteRoomId ? 'Type a Matrix ID to invite...' : 'Type a name, Matrix ID, or room alias...'" />
     <UiCommandList>
       <UiCommandEmpty>No results found.</UiCommandEmpty>
 
-      <UiCommandGroup :heading="store.inviteRoomId ? `Invite to ${inviteRoomName}` : 'People'" v-if="friends.length > 0">
+      <UiCommandGroup v-if="friends.length > 0" :heading="store.inviteRoomId ? `Invite to ${inviteRoomName}` : 'People'">
         <UiCommandItem 
           v-for="friend in friends" 
           :key="friend.roomId" 
@@ -17,7 +17,7 @@
         </UiCommandItem>
       </UiCommandGroup>
 
-      <UiCommandGroup heading="Rooms" v-if="rooms.length > 0 && !store.inviteRoomId">
+      <UiCommandGroup v-if="rooms.length > 0 && !store.inviteRoomId" heading="Rooms">
         <UiCommandItem 
           v-for="room in rooms" 
           :key="room.roomId" 
@@ -35,22 +35,22 @@
         <UiCommandItem 
           v-if="store.inviteRoomId"
           value="action_invite"
-          @select="(e) => { e.preventDefault(); inviteToRoom(parsedQuery); }"
           :class="{ 'text-destructive animate-shake': createError }"
+          @select="(e) => { e.preventDefault(); inviteToRoom(parsedQuery); }"
         >
-           <Icon name="solar:user-plus-bold" class="mr-2 h-4 w-4" v-if="!createError" />
-           <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
+           <Icon v-if="!createError" name="solar:user-plus-bold" class="mr-2 h-4 w-4" />
+           <Icon v-else name="solar:danger-circle-bold" class="mr-2 h-4 w-4" />
            <span>{{ createError ? createError : `Invite ${parsedQuery}` }}</span>
         </UiCommandItem>
 
         <template v-else>
           <UiCommandItem 
             value="action_create" 
-            @select="(e) => { e.preventDefault(); createChatFromQuery(); }"
             :class="{ 'text-destructive animate-shake': createError }"
+            @select="(e) => { e.preventDefault(); createChatFromQuery(); }"
           >
-             <Icon name="solar:user-plus-bold" class="mr-2 h-4 w-4" v-if="!createError" />
-             <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
+             <Icon v-if="!createError" name="solar:user-plus-bold" class="mr-2 h-4 w-4" />
+             <Icon v-else name="solar:danger-circle-bold" class="mr-2 h-4 w-4" />
              <span>{{ createError ? createError : `Start Chat with ${parsedQuery}` }}</span>
           </UiCommandItem>
           <UiCommandItem 
@@ -62,11 +62,11 @@
           </UiCommandItem>
           <UiCommandItem 
             value="action_join" 
-            @select="(e) => { e.preventDefault(); joinRoomFromQuery(); }"
             :class="{ 'text-destructive animate-shake': joinError }"
+            @select="(e) => { e.preventDefault(); joinRoomFromQuery(); }"
           >
-             <Icon name="solar:link-round-angle-bold" class="mr-2 h-4 w-4" v-if="!joinError" />
-             <Icon name="solar:danger-circle-bold" class="mr-2 h-4 w-4" v-else />
+             <Icon v-if="!joinError" name="solar:link-round-angle-bold" class="mr-2 h-4 w-4" />
+             <Icon v-else name="solar:danger-circle-bold" class="mr-2 h-4 w-4" />
              <span>{{ joinError ? joinError : `Join ${parsedQuery}` }}</span>
           </UiCommandItem>
         </template>
@@ -102,7 +102,7 @@ const customFilter = (val: string, search: string) => {
 };
 
 const extractMatrixId = (input: string) => {
-    let clean = input.trim();
+    const clean = input.trim();
     if (clean.includes('matrix.to')) {
         const urlObj = new URL(clean.startsWith('http') ? clean : 'https://' + clean);
         if (urlObj.hash && urlObj.hash.startsWith('#/')) {

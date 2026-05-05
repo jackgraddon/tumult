@@ -80,9 +80,9 @@
       <!-- Connection Status -->
       <div class="absolute top-4 left-4 z-10">
         <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 shadow-lg">
-          <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+          <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>
           <span class="text-[10px] md:text-xs font-bold text-white uppercase tracking-wider">{{ roomName }}</span>
-          <div class="w-px h-3 bg-white/20 mx-1"></div>
+          <div class="w-px h-3 bg-white/20 mx-1"/>
           <span class="text-[10px] md:text-xs text-white/70">{{ participants.length }}</span>
         </div>
       </div>
@@ -91,7 +91,8 @@
 </template>
 
 <script setup lang="ts">
-import { Room, RoomEvent, Participant } from 'livekit-client';
+import type { Room, Participant } from 'livekit-client';
+import { RoomEvent } from 'livekit-client';
 import { shallowRef, onMounted, onUnmounted, computed, markRaw, watch } from 'vue';
 import ParticipantTile from './ParticipantTile.vue';
 import { useVoiceStore } from '~/stores/voice';

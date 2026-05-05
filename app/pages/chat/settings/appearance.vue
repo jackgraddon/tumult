@@ -15,9 +15,9 @@
         <button 
           v-for="mode in modes" 
           :key="mode.id"
-          @click="colorMode.preference = mode.id"
           class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover:border-primary/50 group"
           :class="colorMode.preference === mode.id ? 'border-primary bg-primary/5' : 'bg-card border-transparent hover:bg-muted/50'"
+          @click="colorMode.preference = mode.id"
         >
           <div class="size-10 rounded-lg bg-muted flex items-center justify-center group-hover:scale-110 transition-transform">
             <Icon :name="mode.icon" class="size-6 text-muted-foreground" :class="{ 'text-primary': colorMode.preference === mode.id }" />
@@ -40,14 +40,14 @@
         <button 
           v-for="preset in presets" 
           :key="preset.id"
-          @click="setTheme(preset.id)"
           class="flex items-center gap-3 p-3 rounded-xl border-2 transition-all hover:border-primary/50 group text-left"
           :class="uiStore.themePreset === preset.id ? 'border-primary bg-primary/5' : 'bg-card border-transparent hover:bg-muted/50'"
+          @click="setTheme(preset.id)"
         >
           <div 
             class="size-8 rounded-full border-2 border-white/20 shadow-sm shrink-0"
             :style="{ backgroundColor: preset.color }"
-          ></div>
+          />
           <span class="text-sm font-medium truncate">{{ preset.label }}</span>
         </button>
       </div>
@@ -60,7 +60,7 @@
           <Icon name="solar:code-bold" class="size-5" />
           Custom CSS
         </h3>
-        <UiButton v-if="hasUnsavedCss" variant="ghost" size="sm" @click="resetCss" class="text-xs">
+        <UiButton v-if="hasUnsavedCss" variant="ghost" size="sm" class="text-xs" @click="resetCss">
           Reset
         </UiButton>
       </div>
@@ -74,7 +74,7 @@
           spellcheck="false"
         />
         <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-           <UiButton size="sm" @click="saveCss" :disabled="!hasUnsavedCss">
+           <UiButton size="sm" :disabled="!hasUnsavedCss" @click="saveCss">
              Apply
            </UiButton>
         </div>
@@ -84,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import { toast } from 'vue-sonner';
 definePageMeta({
   icon: 'solar:palette-bold',
   category: 'app',
@@ -93,7 +94,6 @@ definePageMeta({
 
 const store = useMatrixStore();
 const uiStore = useUIStore();
-import { toast } from 'vue-sonner';
 const matrixService = useMatrixService();
 const presenceStore = usePresenceStore();
 const colorMode = useColorMode();

@@ -10,20 +10,20 @@
     <header v-if="room" class="flex-none p-4 border-b border-border">
       <div class="flex items-center justify-between gap-2">
         <UiButton
+          v-if="!uiStore.sidebarOpen && !uiStore.memberListVisible"
           variant="ghost"
           size="icon-sm"
           class="md:hidden shrink-0"
           @click="uiStore.toggleSidebar(true)"
-          v-if="!uiStore.sidebarOpen && !uiStore.memberListVisible"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>
 
         <div :class="{'hidden md:block': uiStore.memberListVisible}" class="flex-1 min-w-0">
           <div 
+            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(roomId as string); }"
             class="cursor-pointer group/header"
             @contextmenu.capture="uiStore.openRoomContextMenu(roomId as string)"
-            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(roomId as string); }"
           >
             <RoomHeader 
               v-if="!isDm"
@@ -47,10 +47,10 @@
             v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
             variant="ghost" 
             size="icon-sm" 
-            @click="handleJoinCall(toRaw(room) as any)"
             :disabled="voiceStore.isConnecting"
             title="Start Call"
             class="rounded-full"
+            @click="handleJoinCall(toRaw(room) as any)"
           >
             <Icon v-if="voiceStore.isConnecting && voiceStore.activeRoomId === roomId" name="svg-spinners:ring-resize" class="h-5 w-5 text-muted-foreground" />
             <Icon v-else name="solar:phone-calling-linear" class="h-5 w-5 text-green-500" />
@@ -59,9 +59,9 @@
             v-if="voiceStore.activeRoomId === roomId"
             variant="ghost" 
             size="icon-sm" 
-            @click="isCallUiHidden = !isCallUiHidden"
             :title="isCallUiHidden ? 'Show Call UI' : 'Hide Call UI'"
             class="rounded-full"
+            @click="isCallUiHidden = !isCallUiHidden"
           >
             <Icon :name="isCallUiHidden ? 'solar:maximize-square-minimalistic-linear' : 'solar:minimize-square-minimalistic-linear'" class="h-5 w-5 text-foreground" />
           </UiButton>
@@ -69,9 +69,9 @@
             v-if="voiceStore.activeRoomId === roomId"
             variant="ghost" 
             size="icon-sm" 
-            @click="voiceStore.leaveVoiceRoom()"
             title="Disconnect Call"
             class="rounded-full"
+            @click="voiceStore.leaveVoiceRoom()"
           >
             <Icon name="solar:end-call-bold" class="h-5 w-5 text-red-500" />
           </UiButton>
@@ -79,10 +79,10 @@
             <UiButton
               variant="ghost"
               size="icon-sm"
-              @click="() => { uiStore.toggleMemberList(); uiStore.toggleSidebar(false); }"
               :class="{ 'bg-accent text-accent-foreground': uiStore.memberListVisible }"
               title="Toggle Member List"
               class="rounded-full"
+              @click="() => { uiStore.toggleMemberList(); uiStore.toggleSidebar(false); }"
             >
               <Icon name="solar:users-group-rounded-linear" class="h-5 w-5" />
             </UiButton>
@@ -107,8 +107,8 @@
         :room-id="roomId as string"
         :room-name="room?.name || 'Voice Room'"
         :is-minimized="isCallUiHidden"
-        @disconnect="voiceStore.leaveVoiceRoom()"
         :class="isCallUiHidden ? 'w-full flex-none h-16 md:h-20 z-40 w-full rounded-xl shadow-sm transition-all' : 'absolute inset-0 z-[60] transition-all'"
+        @disconnect="voiceStore.leaveVoiceRoom()"
       />
 
       <!-- Invite Prompt -->
@@ -146,8 +146,8 @@
 
     <!-- Loading / Hydration state -->
     <div v-if="!room || (store.isRestoringSession && !store.isFullySynced && displayMessages.length === 0)" class="flex-1 flex flex-col pt-20 items-center justify-start gap-4">
-      <div class="h-16 w-16 rounded-2xl bg-accent/20 animate-pulse"></div>
-      <div class="h-4 w-48 bg-accent/10 rounded animate-pulse"></div>
+      <div class="h-16 w-16 rounded-2xl bg-accent/20 animate-pulse"/>
+      <div class="h-4 w-48 bg-accent/10 rounded animate-pulse"/>
       <p class="text-xs text-muted-foreground animate-pulse">Hydrating room timeline...</p>
     </div>
 
@@ -224,9 +224,9 @@
 
           <!-- Message content -->
           <div 
+            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openMessageContextMenu(msg); }"
             class="contents"
             @contextmenu.capture="uiStore.openMessageContextMenu(msg)"
-            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openMessageContextMenu(msg); }"
           >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
@@ -403,7 +403,8 @@
           </div>
 
         <!-- Read Receipts -->
-        <div v-if="msg.readReceipts && msg.readReceipts.length > 0" 
+        <div
+v-if="msg.readReceipts && msg.readReceipts.length > 0"
              class="flex absolute -bottom-5 gap-0.5 z-10"
              :class="msg.isOwn ? 'right-0' : 'left-0 justify-start'">
             <UiTooltipProvider v-for="receipt in msg.readReceipts" :key="receipt.userId">
@@ -472,7 +473,7 @@
               Raw Matrix event data for debugging and inspection.
             </UiAlertDialogDescription>
           </div>
-          <UiButton variant="ghost" size="icon" @click="sourceEvent = null" class="h-8 w-8 rounded-full shrink-0">
+          <UiButton variant="ghost" size="icon" class="h-8 w-8 rounded-full shrink-0" @click="sourceEvent = null">
             <Icon name="solar:close-circle-bold" class="h-5 w-5" />
           </UiButton>
         </UiAlertDialogHeader>
@@ -505,16 +506,16 @@
             v-if="staged.file.type.startsWith('image/')"
             :src="staged.previewUrl" 
             class="h-24 w-24 object-cover rounded-xl border-2 border-border shadow-sm" 
-          />
+          >
           <div v-else class="h-24 w-24 rounded-xl border-2 border-border bg-muted flex flex-col items-center justify-center gap-1 p-2 text-center">
             <Icon name="solar:file-bold" class="h-8 w-8 text-muted-foreground" />
             <span class="text-[10px] text-muted-foreground truncate w-full">{{ staged.file.name }}</span>
           </div>
           
           <button 
-            @click.prevent="removeStagedFile(index)" 
             class="absolute -top-2 -right-2 bg-background border border-border hover:bg-destructive hover:text-destructive-foreground text-foreground rounded-full p-1 transition-colors"
             title="Remove attachment"
+            @click.prevent="removeStagedFile(index)"
           >
              <Icon name="solar:close-circle-bold" class="h-4 w-4" />
           </button>
@@ -534,7 +535,7 @@
             </template>
           </span>
         </div>
-        <button @click="cancelAction" class="p-1 hover:bg-muted rounded-full">
+        <button class="p-1 hover:bg-muted rounded-full" @click="cancelAction">
             <Icon name="solar:close-circle-bold" class="h-4 w-4" />
         </button>
       </div>
@@ -545,7 +546,7 @@
           type="file"
           class="hidden"
           @change="handleFileSelect"
-        />
+        >
         <UiInputGroup class="bg-background rounded-2xl flex items-end p-1 gap-1">
           <UiInputGroupAddon align="inline-start">
             <UiDropdownMenu>
@@ -558,7 +559,7 @@
                 </UiInputGroupButton>
               </UiDropdownMenuTrigger>
               <UiDropdownMenuContent align="start">
-                <UiDropdownMenuItem @click="triggerFileUpload" class="cursor-pointer">
+                <UiDropdownMenuItem class="cursor-pointer" @click="triggerFileUpload">
                   <Icon name="solar:file-send-linear" />
                   <span>Upload File</span>
                 </UiDropdownMenuItem>
@@ -569,13 +570,13 @@
                   </UiDropdownMenuSubTrigger>
                   <UiDropdownMenuPortal>
                     <UiDropdownMenuSubContent>
-                      <UiDropdownMenuItem @click="handleInviteToGame('tictactoe')" class="cursor-pointer">
+                      <UiDropdownMenuItem class="cursor-pointer" @click="handleInviteToGame('tictactoe')">
                         <span>Tic-Tac-Toe</span>
                       </UiDropdownMenuItem>
-                      <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
+                      <UiDropdownMenuItem class="cursor-pointer" @click="handleInviteToGame('chess')">
                         <span>Chess</span>
                       </UiDropdownMenuItem>
-                      <UiDropdownMenuItem @click="handleInviteToGame('slangtiles')" class="cursor-pointer">
+                      <UiDropdownMenuItem class="cursor-pointer" @click="handleInviteToGame('slangtiles')">
                         <span>Slanguage Tiles</span>
                       </UiDropdownMenuItem>
                     </UiDropdownMenuSubContent>
@@ -619,8 +620,7 @@
 </template>
 
 <script setup lang="ts">
-import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType,  } from 'matrix-js-sdk';
-import type { IRoomTimelineData } from 'matrix-js-sdk';
+import type { IRoomTimelineData, MatrixClient, RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, MatrixEvent, Room, RoomMember, Direction, TimelineWindow, RelationType } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
 import { ref, shallowRef, markRaw, toRaw, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';

@@ -1,7 +1,7 @@
 <template>
   <div class="relative max-w-4xl m-auto px-4 py-12 h-screen overflow-y-scroll flex flex-col justify-center items-center text-center space-y-12">
     <div class="flex items-end">
-      <img src="~/assets/Flame.svg" class="size-18" alt="Tumult Logo" />
+      <img src="~/assets/Flame.svg" class="size-18" alt="Tumult Logo" >
       <h1 class="text-6xl font-black">Tumult</h1>
     </div>
 
@@ -57,7 +57,7 @@
     <!-- PWA Install Prompt -->
     <div v-if="showInstallButton || showIOSTip" class="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-1000">
       <div v-if="showInstallButton" class="group relative">
-        <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+        <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"/>
         <UiButton variant="secondary" size="lg" class="relative rounded-xl px-12 flex items-center gap-2" @click="installPWA">
           <Icon name="solar:download-square-linear" class="size-5" />
           Install Tumult App
@@ -78,9 +78,9 @@
 </template>
 
 <script lang="ts" setup>
-const matrixStore = useMatrixStore();
 import { useUIStore } from "~/stores/ui";
 import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
+const matrixStore = useMatrixStore();
 const { isAuthenticated, isRestoringSession } = storeToRefs(matrixStore);
 const { matrixService } = useServices();
 

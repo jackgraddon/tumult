@@ -80,7 +80,7 @@ export function useMatrixGame(roomId: string) {
     if (!matrixClient) return null
 
     // 1. Try local timeline scan first
-    let state = getGameState(gameId)
+    const state = getGameState(gameId)
     if (state) return state
 
     // 2. Search room history via API

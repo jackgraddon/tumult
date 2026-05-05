@@ -2,9 +2,9 @@
     <div class="flex flex-col gap-1" :style="{ paddingLeft: depth > 0 ? '12px' : '0' }">
         <button 
             v-if="!isVirtual"
+            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
             @click="toggleCategory"
             @contextmenu.capture="uiStore.openRoomContextMenu(category.id)"
-            class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
         >
             <MatrixAvatar
                 v-if="category.avatarUrl"
@@ -23,8 +23,8 @@
 
         <button 
             v-else
-            @click="toggleCategory"
             class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
+            @click="toggleCategory"
         >
             <Icon 
                 :name="isCollapsed ? 'solar:alt-arrow-right-bold' : 'solar:alt-arrow-down-bold'" 
@@ -56,8 +56,8 @@
                         v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
                         :variant="(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'secondary' : 'ghost'"
                         class="justify-start px-2 h-9 w-full group relative"
-                        @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                         as-child
+                        @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                     >
                         <NuxtLink
                             :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`"
@@ -92,8 +92,8 @@
                                     variant="destructive"
                                     size="icon" 
                                     class="h-6 w-6 shrink-0 shadow-sm"
-                                    @click.prevent.stop="voiceStore.leaveVoiceRoom()"
                                     title="Leave voice channel"
+                                    @click.prevent.stop="voiceStore.leaveVoiceRoom()"
                                 >
                                     <Icon name="solar:end-call-bold" class="h-3 w-3" />
                                 </UiButton>
@@ -112,10 +112,10 @@
                         @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                     >
                     <UiButton 
-                        @click="() => { uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                         :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
                         class="justify-start px-2 h-10 w-full"
                         as-child
+                        @click="() => { uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                     >
                         <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">
                             <div v-if="!room.avatarUrl" class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">

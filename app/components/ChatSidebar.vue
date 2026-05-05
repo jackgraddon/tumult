@@ -19,8 +19,8 @@
                 v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
                 size="icon-sm" 
-                @click="uiStore.openSpaceSettingsModal(activeSpaceId)"
                 title="Space Settings"
+                @click="uiStore.openSpaceSettingsModal(activeSpaceId)"
             > 
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
@@ -30,7 +30,7 @@
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
                     <div class="flex flex-col gap-2">
-                        <UiButton variant="default" @click="uiStore.openGlobalSearchModal()" class="w-full">
+                        <UiButton variant="default" class="w-full" @click="uiStore.openGlobalSearchModal()">
                             <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
                             Find or start a chat
                         </UiButton>
@@ -76,19 +76,19 @@
                     <!-- Skeleton Loader for Background Sync -->
                     <div v-if="!matrixStore.isFullySynced && friends.length === 0" class="flex flex-col gap-2">
                         <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
-                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
-                            <div class="h-4 bg-accent/30 rounded w-24"></div>
+                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"/>
+                            <div class="h-4 bg-accent/30 rounded w-24"/>
                         </div>
                     </div>
                     
                     <div class="flex flex-col gap-0.5">
                         <UiButton
                             v-for="friend in friends" :key="friend.roomId"
+                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(friend.roomId); }"
                             :variant="(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'secondary' : 'ghost'"
                             class="justify-start px-2 h-10 w-full group relative"
-                            @contextmenu.capture="uiStore.openRoomContextMenu(friend.roomId)"
-                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(friend.roomId); }"
                             as-child
+                            @contextmenu.capture="uiStore.openRoomContextMenu(friend.roomId)"
                         >
                             <NuxtLink
                                 :to="`/chat/dms/${friend.roomId}`"
@@ -128,19 +128,19 @@
                     <!-- Skeleton Loader for Background Sync -->
                     <div v-if="!matrixStore.isFullySynced && rooms.length === 0" class="flex flex-col gap-2">
                         <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
-                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
-                            <div class="h-4 bg-accent/30 rounded w-32"></div>
+                            <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"/>
+                            <div class="h-4 bg-accent/30 rounded w-32"/>
                         </div>
                     </div>
                     
                     <div class="flex flex-col gap-0.5">
                         <UiButton
                             v-for="room in rooms" :key="room.roomId"
+                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(room.roomId); }"
                             :variant="(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'secondary' : 'ghost'"
                             class="justify-start px-2 h-10 w-full group relative"
-                            @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
-                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(room.roomId); }"
                             as-child
+                            @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                         >
                             <NuxtLink
                                 :to="`/chat/rooms/${room.roomId}`"
@@ -236,8 +236,8 @@
                                 variant="ghost"
                                 size="icon-sm"
                                 class="h-6 w-6 mr-1 p-0 hidden group-hover:flex shrink-0 hover:bg-accent/50 active:scale-95"
-                                @click.stop="quickPlayPlaylist(playlist)"
                                 title="Play Playlist"
+                                @click.stop="quickPlayPlaylist(playlist)"
                             >
                                 <Icon name="solar:play-bold" class="h-4 w-4 text-[#AA5CC3]" />
                             </UiButton>
@@ -251,8 +251,8 @@
                     <!-- Return to Lobby Button -->
                     <UiButton 
                         :variant="isLobby ? 'default' : 'secondary'" 
-                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                         class="w-full mb-2 justify-start gap-2"
+                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                     >
                         <Icon name="solar:home-2-bold" class="h-4 w-4" />
                         Space Lobby
@@ -261,10 +261,10 @@
                     <!-- Skeleton Loader for Background Sync -->
                     <div v-if="!matrixStore.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
                         <div v-for="i in 3" :key="i" class="flex flex-col gap-2 px-2">
-                            <div class="h-3 bg-accent/20 rounded w-16 mb-2"></div>
+                            <div class="h-3 bg-accent/20 rounded w-16 mb-2"/>
                             <div v-for="j in 3" :key="j" class="flex items-center gap-2 h-8 w-full rounded-md bg-accent/10">
-                                <div class="h-5 w-5 rounded bg-accent/20 ml-2 shrink-0"></div>
-                                <div class="h-3 bg-accent/20 rounded w-20"></div>
+                                <div class="h-5 w-5 rounded bg-accent/20 ml-2 shrink-0"/>
+                                <div class="h-3 bg-accent/20 rounded w-20"/>
                             </div>
                         </div>
                     </div>
@@ -301,7 +301,7 @@
                     <template v-else>
                         <div class="flex items-center justify-between px-2 mb-2">
                             <span class="text-xs font-bold uppercase text-muted-foreground">Categories</span>
-                            <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground/50 hover:text-foreground transition-colors" @click="isCategoryEditMode = true" title="Reorder categories">
+                            <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground/50 hover:text-foreground transition-colors" title="Reorder categories" @click="isCategoryEditMode = true">
                                 <Icon name="solar:sort-vertical-bold" class="h-3.5 w-3.5" />
                             </UiButton>
                         </div>
@@ -335,8 +335,8 @@
                     variant="destructive" 
                     size="icon" 
                     class="h-7 w-7 shrink-0 shadow-sm"
-                    @click="voiceStore.leaveVoiceRoom()"
                     title="Disconnect from call"
+                    @click="voiceStore.leaveVoiceRoom()"
                 >
                     <Icon name="solar:end-call-bold" class="h-4 w-4" />
                 </UiButton>
@@ -354,7 +354,8 @@
 </template>
 
 <script setup lang="ts">
-import { Room, EventType, NotificationCountType } from 'matrix-js-sdk';
+import type { Room} from 'matrix-js-sdk';
+import { EventType, NotificationCountType } from 'matrix-js-sdk';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';

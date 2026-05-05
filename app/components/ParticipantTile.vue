@@ -25,7 +25,7 @@
         playsinline
         muted
         class="w-full h-full object-cover bg-black absolute inset-0 z-0"
-      ></video>
+      />
 
       <div 
         v-show="!videoTrack || !isCameraEnabled"
@@ -56,20 +56,21 @@
     <div 
       v-if="isSpeaking" 
       class="absolute inset-0 ring-2 ring-green-500 rounded-lg pointer-events-none z-10 animate-pulse active-speaking-glow"
-    ></div>
+    />
 
     <audio 
       ref="audioElement" 
       autoplay 
       playsinline
       :muted="participant.isLocal"
-    ></audio>
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 // Import the ParticipantEvent enum to safely bind to LiveKit lifecycle hooks
-import { Participant, Track, RemoteTrack, TrackPublication, ParticipantEvent } from 'livekit-client';
+import type { Participant, RemoteTrack, TrackPublication} from 'livekit-client';
+import { Track, ParticipantEvent } from 'livekit-client';
 import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';

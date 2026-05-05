@@ -7,7 +7,7 @@ declare module 'web-haptics' {
 }
 
 declare module 'web-haptics/vue' {
-  import { WebHaptics } from 'web-haptics';
+  import type { WebHaptics } from 'web-haptics';
   export function useWebHaptics(options?: { debug?: boolean }): {
     haptics: WebHaptics;
     trigger: WebHaptics['trigger'];

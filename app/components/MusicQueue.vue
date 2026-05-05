@@ -4,10 +4,10 @@
     <div class="flex items-center justify-between p-4">
       <h3 class="font-bold text-sm">Up Next</h3>
       <div class="flex items-center gap-1">
-        <UiButton variant="ghost" size="icon-sm" @click="musicStore.shuffleQueue" title="Shuffle Queue">
+        <UiButton variant="ghost" size="icon-sm" title="Shuffle Queue" @click="musicStore.shuffleQueue">
           <Icon name="solar:shuffle-bold" class="h-4 w-4" />
         </UiButton>
-        <UiButton variant="ghost" size="icon-sm" @click="musicStore.clearQueue" title="Clear Queue">
+        <UiButton variant="ghost" size="icon-sm" title="Clear Queue" @click="musicStore.clearQueue">
           <Icon name="solar:trash-bin-trash-bold" class="h-4 w-4 text-destructive" />
         </UiButton>
       </div>
@@ -37,7 +37,7 @@
           <Icon name="solar:hamburger-menu-linear" class="h-4 w-4 text-muted-foreground" />
         </div>
 
-        <img v-if="song.coverUrl" :src="song.coverUrl" class="h-8 w-8 rounded object-cover shadow-sm" alt="" />
+        <img v-if="song.coverUrl" :src="song.coverUrl" class="h-8 w-8 rounded object-cover shadow-sm" alt="" >
         <div v-else class="h-8 w-8 rounded bg-muted flex items-center justify-center">
           <Icon name="solar:music-note-bold" class="h-4 w-4 text-muted-foreground/30" />
         </div>

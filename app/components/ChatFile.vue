@@ -15,7 +15,7 @@
         :height="displayHeight || undefined"
         loading="lazy"
         @click="uiStore.openMediaPreview({ url: finalImageUrl, type: 'image', alt: alt })"
-      />
+      >
       <div v-else-if="!isLoading" class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm bg-muted/50">
         <span>Failed to load image</span>
       </div>
@@ -33,12 +33,12 @@
         :autoplay="isGif || props.info?.['fi.mau.autoplay']"
         :loop="isGif || props.info?.['fi.mau.loop']"
         :muted="isGif || props.info?.['fi.mau.no_audio']"
-        @error="handleVideoError"
         playsinline
         class="w-full max-h-[400px] object-contain cursor-zoom-in"
         preload="metadata"
+        @error="handleVideoError"
         @click="uiStore.openMediaPreview({ url: finalImageUrl, type: 'video', alt: alt })"
-      ></video>
+      />
       <div v-else class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm">
         <span v-if="!isLoading">Failed to load video</span>
       </div>
@@ -51,7 +51,7 @@
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-xs font-medium text-muted-foreground truncate px-1">{{ alt || 'Audio File' }}</span>
-        <audio v-if="finalImageUrl" :src="finalImageUrl" controls class="w-full h-10"></audio>
+        <audio v-if="finalImageUrl" :src="finalImageUrl" controls class="w-full h-10"/>
       </div>
     </div>
 
@@ -73,8 +73,8 @@
         variant="secondary" 
         size="sm" 
         class="shrink-0 h-8 rounded-full px-3"
-        @click="downloadFile"
         :disabled="isDownloading"
+        @click="downloadFile"
       >
         <Icon v-if="isDownloading" name="svg-spinners:ring-resize" class="h-4 w-4 mr-1.5" />
         <Icon v-else name="solar:download-linear" class="h-4 w-4 mr-1.5" />

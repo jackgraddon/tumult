@@ -2,7 +2,7 @@ import * as sdk from 'matrix-js-sdk';
 import { useMatrixStore } from '~/stores/matrix';
 import { useUIStore } from '~/stores/ui';
 import { useActivityStore } from '~/stores/activity';
-import { getHomeserverUrl } from '~/utils/matrix-auth';
+import { getHomeserverUrl, completeLoginFlow  } from '~/utils/matrix-auth';
 import { setPref, getPref, setSecret, deleteSecrets, deletePref } from '~/composables/useAppStorage';
 import { markRaw } from 'vue';
 import { navigateTo } from '#app';
@@ -11,7 +11,6 @@ import { OidcTokenRefresher, type AccessTokens, IndexedDBStore, LocalStorageCryp
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { useDebounceFn } from '@vueuse/core';
 import { dismissNotification } from "~/utils/notify";
-import { completeLoginFlow } from "~/utils/matrix-auth";
 
 export class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
   public override async doRefreshAccessToken(refreshToken: string): Promise<AccessTokens> {

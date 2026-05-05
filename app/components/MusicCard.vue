@@ -16,12 +16,12 @@
             :src="displayActivity.coverUrl"
             :alt="displayActivity.name"
             class="w-full h-full object-cover transition-transform group-hover:scale-110"
-          />
+          >
           <Icon v-else name="solar:music-note-bold" class="w-10 h-10 text-muted-foreground/20" />
         </div>
 
         <!-- Live Indicator -->
-        <div class="absolute top-1.5 left-1.5 w-2.5 h-2.5 bg-[#AA5CC3] border-2 border-background rounded-full shadow-sm animate-pulse"></div>
+        <div class="absolute top-1.5 left-1.5 w-2.5 h-2.5 bg-[#AA5CC3] border-2 border-background rounded-full shadow-sm animate-pulse"/>
       </div>
 
       <!-- Music Info -->
@@ -45,7 +45,7 @@
             <div
               class="h-full bg-[#AA5CC3] transition-all duration-1000 ease-linear"
               :style="{ width: `${progressPercent}%` }"
-            ></div>
+            />
           </div>
         </div>
       </div>

@@ -183,7 +183,7 @@
            </p>
         </div>
 
-        <p class="text-sm font-semibold text-green-600" v-else>
+        <p v-else class="text-sm font-semibold text-green-600">
           Verification request has been accepted.
         </p>
         
@@ -191,7 +191,7 @@
         <div class="flex flex-col items-center gap-4 py-4">
           <template v-if="!isScanning">
             <div v-if="qrCodeUrl" class="bg-white p-4 rounded-xl shadow-inner mb-2">
-              <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" />
+              <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" >
             </div>
             
             <UiButton 
@@ -208,18 +208,18 @@
 
           <template v-else>
             <div class="relative w-full aspect-square max-w-[280px] bg-black rounded-xl overflow-hidden shadow-2xl border-2 border-primary/50">
-               <video ref="video" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
-               <canvas ref="canvas" class="hidden"></canvas>
+               <video ref="video" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted/>
+               <canvas ref="canvas" class="hidden"/>
                
                <!-- Scanner Overlay -->
                <div class="absolute inset-0 border-[40px] border-black/40">
                   <div class="w-full h-full border-2 border-primary/50 relative">
-                     <div class="absolute inset-0 animate-pulse bg-primary/5"></div>
+                     <div class="absolute inset-0 animate-pulse bg-primary/5"/>
                      <!-- Corner Accents -->
-                     <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary"></div>
-                     <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary"></div>
-                     <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary"></div>
-                     <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary"></div>
+                     <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary"/>
+                     <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary"/>
+                     <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary"/>
+                     <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary"/>
                   </div>
                </div>
             </div>

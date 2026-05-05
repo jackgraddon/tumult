@@ -16,17 +16,17 @@
             :src="iconUrl" 
             :alt="displayActivity.name"
             class="w-full h-full object-cover transition-transform group-hover:scale-110"
-          />
+          >
           <Icon v-else name="solar:gamepad-bold" class="w-10 h-10 text-muted-foreground/20" />
         </div>
         
         <!-- Small Overlay Icon -->
         <div v-if="smallIconUrl" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-background border-2 border-background overflow-hidden shadow-sm">
-          <img :src="smallIconUrl" class="w-full h-full object-cover" />
+          <img :src="smallIconUrl" class="w-full h-full object-cover" >
         </div>
         
         <!-- Live Indicator -->
-        <div class="absolute top-1.5 left-1.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-background rounded-full shadow-sm animate-pulse"></div>
+        <div class="absolute top-1.5 left-1.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-background rounded-full shadow-sm animate-pulse"/>
       </div>
 
       <!-- Game Info -->

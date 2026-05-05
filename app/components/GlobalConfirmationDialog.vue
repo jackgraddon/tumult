@@ -9,7 +9,7 @@
       </UiAlertDialogHeader>
       <UiAlertDialogFooter>
         <UiAlertDialogCancel @click="uiStore.closeConfirmationDialog">{{ uiStore.confirmationDialog.cancelLabel }}</UiAlertDialogCancel>
-        <UiAlertDialogAction @click="onConfirm" class="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+        <UiAlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="onConfirm">
           {{ uiStore.confirmationDialog.confirmLabel }}
         </UiAlertDialogAction>
       </UiAlertDialogFooter>

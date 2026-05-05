@@ -14,28 +14,28 @@
         <template v-if="room">
           <!-- Room/DM Options -->
           <template v-if="!isSpace">
-            <UiContextMenuItem @click="toggleRead" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="toggleRead">
               <Icon :name="isUnread ? 'solar:letter-opened-bold-duotone' : 'solar:letter-bold-duotone'" class="mr-2 h-4 w-4" />
               Mark as {{ isUnread ? 'Read' : 'Unread' }}
             </UiContextMenuItem>
-            <UiContextMenuItem @click="toggleFavorite" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="toggleFavorite">
               <Icon :name="isFavorite ? 'solar:star-fall-bold-duotone' : 'solar:star-bold-duotone'" class="mr-2 h-4 w-4" />
               {{ isFavorite ? 'Remove from Favorites' : 'Favorite' }}
             </UiContextMenuItem>
-            <UiContextMenuItem @click="() => roomId && uiStore.openRoomSettingsModal(roomId)" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="() => roomId && uiStore.openRoomSettingsModal(roomId)">
               <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
               Settings
             </UiContextMenuItem>
-            <UiContextMenuItem @click="openInvite" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="openInvite">
               <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
               Invite
             </UiContextMenuItem>
-            <UiContextMenuItem @click="copyLink" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="copyLink">
               <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
               Copy Room Link
             </UiContextMenuItem>
             <UiContextMenuSeparator />
-            <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
+            <UiContextMenuItem class="cursor-pointer text-destructive focus:text-destructive" @click="confirmLeave">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
               {{ isDM ? 'Close DM' : 'Leave the room' }}
             </UiContextMenuItem>
@@ -43,28 +43,28 @@
 
           <!-- Space Options -->
           <template v-else>
-            <UiContextMenuItem @click="markSpaceAsRead" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="markSpaceAsRead">
               <Icon name="solar:letter-opened-bold-duotone" class="mr-2 h-4 w-4" />
               Mark Space as Read
             </UiContextMenuItem>
-            <UiContextMenuItem @click="() => roomId && uiStore.openSpaceSettingsModal(roomId)" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="() => roomId && uiStore.openSpaceSettingsModal(roomId)">
               <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
               Settings
             </UiContextMenuItem>
-            <UiContextMenuItem @click="openInvite" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="openInvite">
               <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
               Invite
             </UiContextMenuItem>
-            <UiContextMenuItem @click="copyLink" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="copyLink">
               <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
               Copy Space Link
             </UiContextMenuItem>
-            <UiContextMenuItem @click="togglePin" class="cursor-pointer">
+            <UiContextMenuItem class="cursor-pointer" @click="togglePin">
               <Icon :name="isPinned ? 'solar:pin-off-bold-duotone' : 'solar:pin-bold-duotone'" class="mr-2 h-4 w-4" />
               {{ isPinned ? 'Unpin from Sidebar' : 'Pin to Sidebar' }}
             </UiContextMenuItem>
             <UiContextMenuSeparator />
-            <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
+            <UiContextMenuItem class="cursor-pointer text-destructive focus:text-destructive" @click="confirmLeave">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
               Leave space
             </UiContextMenuItem>
@@ -92,9 +92,9 @@
               <div class="flex items-center w-full gap-2 cursor-pointer">
                 <span class="text-sm">React</span>
                 <div class="flex items-center gap-1 ml-auto">
-                  <button @click.stop="quickReact('👍')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">👍</button>
-                  <button @click.stop="quickReact('❤️')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">❤️</button>
-                  <button @click.stop="quickReact('😂')" class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base">😂</button>
+                  <button class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base" @click.stop="quickReact('👍')">👍</button>
+                  <button class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base" @click.stop="quickReact('❤️')">❤️</button>
+                  <button class="hover:bg-muted rounded px-1.5 py-0.5 transition-colors text-base" @click.stop="quickReact('😂')">😂</button>
                   <div class="w-px h-3.5 bg-border mx-0.5" />
                   <div class="hover:bg-muted rounded p-1 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center w-6 h-6">
                     <Icon name="solar:add-circle-linear" class="w-4 h-4" />
@@ -120,7 +120,7 @@
         <UiContextMenuItem v-if="activeMessage.isOwn" @click="uiStore.setUIComposerState(activeMessage.roomId, { editingMessage: activeMessage, text: activeMessage.body })">
           Edit
         </UiContextMenuItem>
-        <UiContextMenuItem v-if="activeMessage.isOwn" @click="confirmDeleteMessage" class="text-red-500 focus:text-red-500">
+        <UiContextMenuItem v-if="activeMessage.isOwn" class="text-red-500 focus:text-red-500" @click="confirmDeleteMessage">
           Delete
         </UiContextMenuItem>
       </template>
@@ -128,29 +128,29 @@
       <!-- Music Item Context Menu Content -->
       <template v-else-if="uiStore.contextMenu.type === 'music-item'">
         <template v-if="musicItem">
-          <UiContextMenuItem @click="toggleMusicFavorite" class="cursor-pointer">
+          <UiContextMenuItem class="cursor-pointer" @click="toggleMusicFavorite">
             <Icon :name="musicItem.UserData?.IsFavorite ? 'solar:heart-bold' : 'solar:heart-linear'" class="mr-2 h-4 w-4" :class="{'text-red-500': musicItem.UserData?.IsFavorite}" />
             {{ musicItem.UserData?.IsFavorite ? 'Remove from Favorites' : 'Favorite' }}
           </UiContextMenuItem>
 
           <UiContextMenuSeparator />
 
-          <UiContextMenuItem v-if="musicItem.AlbumId || musicItem.Type === 'MusicAlbum'" @click="navigateTo(`/chat/music/albums/${musicItem.AlbumId || musicItem.Id}`)" class="cursor-pointer">
+          <UiContextMenuItem v-if="musicItem.AlbumId || musicItem.Type === 'MusicAlbum'" class="cursor-pointer" @click="navigateTo(`/chat/music/albums/${musicItem.AlbumId || musicItem.Id}`)">
             <Icon name="solar:album-bold" class="mr-2 h-4 w-4" />
             Go to Album
           </UiContextMenuItem>
-          <UiContextMenuItem v-if="musicItem.ArtistItems?.[0]?.Id || musicItem.Type === 'Artist' || musicItem.Type === 'MusicArtist'" @click="navigateTo(`/chat/music/artists/${musicItem.ArtistItems?.[0]?.Id || musicItem.Id}`)" class="cursor-pointer">
+          <UiContextMenuItem v-if="musicItem.ArtistItems?.[0]?.Id || musicItem.Type === 'Artist' || musicItem.Type === 'MusicArtist'" class="cursor-pointer" @click="navigateTo(`/chat/music/artists/${musicItem.ArtistItems?.[0]?.Id || musicItem.Id}`)">
             <Icon name="solar:user-bold" class="mr-2 h-4 w-4" />
             Go to Artist
           </UiContextMenuItem>
 
           <UiContextMenuSeparator v-if="musicItem.Type === 'Audio'" />
 
-          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" @click="addMusicToStartOfQueue" class="cursor-pointer">
+          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" class="cursor-pointer" @click="addMusicToStartOfQueue">
             <Icon name="solar:list-arrow-up-bold" class="mr-2 h-4 w-4" />
             Add to Start of Queue
           </UiContextMenuItem>
-          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" @click="addMusicToEndOfQueue" class="cursor-pointer">
+          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" class="cursor-pointer" @click="addMusicToEndOfQueue">
             <Icon name="solar:list-arrow-down-bold" class="mr-2 h-4 w-4" />
             Add to End of Queue
           </UiContextMenuItem>
@@ -162,17 +162,17 @@
 
       <!-- Global App Context Menu -->
       <template v-else>
-        <UiContextMenuItem inset @click="reloadPage" class="cursor-pointer">
+        <UiContextMenuItem inset class="cursor-pointer" @click="reloadPage">
           Reload
         </UiContextMenuItem>
-        <UiContextMenuItem inset @click="goBack" class="cursor-pointer">
+        <UiContextMenuItem inset class="cursor-pointer" @click="goBack">
           Back
         </UiContextMenuItem>
-        <UiContextMenuItem inset @click="goForward" class="cursor-pointer">
+        <UiContextMenuItem inset class="cursor-pointer" @click="goForward">
           Forward
         </UiContextMenuItem>
         <UiContextMenuSeparator />
-        <UiContextMenuItem inset @click="openAboutModal" class="cursor-pointer">
+        <UiContextMenuItem inset class="cursor-pointer" @click="openAboutModal">
           About
         </UiContextMenuItem>
       </template>

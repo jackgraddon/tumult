@@ -3,7 +3,7 @@
     <!-- Playlist Header -->
     <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-[#AA5CC3]/20 to-transparent shrink-0">
       <div class="h-64 w-64 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-border/50 bg-muted">
-        <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
+        <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" >
         <div v-else class="h-full w-full flex items-center justify-center">
           <Icon name="solar:playlist-minimalistic-bold" class="h-32 w-32 text-muted-foreground/30" />
         </div>
@@ -41,8 +41,8 @@
             variant="ghost"
             size="icon"
             class="rounded-full h-12 w-12 border border-border/50"
-            @click="addAllToQueue"
             title="Add all to queue"
+            @click="addAllToQueue"
           >
             <Icon name="solar:list-line-duotone" class="h-6 w-6" />
           </UiButton>
@@ -66,7 +66,7 @@
           </div>
 
           <div class="h-10 w-10 shrink-0 rounded bg-muted overflow-hidden">
-            <img v-if="getSongImageUrl(track)" :src="getSongImageUrl(track)" class="h-full w-full object-cover" alt="" />
+            <img v-if="getSongImageUrl(track)" :src="getSongImageUrl(track)" class="h-full w-full object-cover" alt="" >
           </div>
 
           <div class="flex-1 min-w-0">

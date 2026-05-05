@@ -1,5 +1,6 @@
 <template>
-  <div v-if="musicStore.currentSong"
+  <div
+v-if="musicStore.currentSong"
     class="flex flex-col rounded-md bg-sidebar border border-border/50 shadow-sm transition-all overflow-hidden"
     :class="[musicStore.isExpanded ? 'flex-1 h-full w-full' : 'p-2 group hover:bg-sidebar/30']"
   >
@@ -13,7 +14,7 @@
             :src="musicStore.currentSong.coverUrl"
             class="h-full w-full object-cover"
             alt=""
-          />
+          >
           <div v-else class="h-full w-full flex items-center justify-center">
             <Icon name="solar:music-note-bold" class="h-24 w-24 text-muted-foreground/30" />
           </div>
@@ -48,7 +49,7 @@
           :src="musicStore.currentSong.coverUrl"
           class="h-full w-full object-cover"
           alt=""
-        />
+        >
         <div v-else class="h-full w-full flex items-center justify-center">
           <Icon name="solar:music-note-bold" class="h-6 w-6 text-muted-foreground/30" />
         </div>
@@ -86,9 +87,9 @@
             max="1"
             step="0.01"
             :value="musicStore.volume"
-            @input="(e: any) => audioService.setVolume(parseFloat(e.target.value))"
             class="h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-[#AA5CC3] flex-1"
-          />
+            @input="(e: any) => audioService.setVolume(parseFloat(e.target.value))"
+          >
         </div>
         <UiButton variant="ghost" size="icon-sm" class="h-6 w-6" @click="musicStore.isExpanded = false">
           <Icon name="solar:alt-arrow-down-bold" class="h-4 w-4" />
@@ -102,20 +103,20 @@
           <div
             class="absolute top-0 left-0 h-full bg-[#AA5CC3] rounded-full transition-all duration-100"
             :style="{ width: `${progress}%` }"
-          ></div>
+          />
         </div>
         <span v-if="musicStore.isExpanded" class="text-[10px] text-muted-foreground w-8 tabular-nums">{{ formatTime(musicStore.duration) }}</span>
       </div>
 
       <!-- Extended Controls (Only when expanded) -->
       <div v-if="musicStore.isExpanded" class="flex items-center justify-center gap-6 py-2">
-        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="audioService.playPrevious" title="Previous">
+        <UiButton variant="ghost" size="icon" class="h-8 w-8" title="Previous" @click="audioService.playPrevious">
            <Icon name="solar:skip-previous-bold" class="h-5 w-5" />
         </UiButton>
         <UiButton variant="secondary" size="icon" class="h-10 w-10 rounded-full" @click="audioService.togglePlay">
            <Icon :name="musicStore.isPlaying ? 'solar:pause-bold' : 'solar:play-bold'" class="h-6 w-6" />
         </UiButton>
-        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="audioService.playNext" title="Next">
+        <UiButton variant="ghost" size="icon" class="h-8 w-8" title="Next" @click="audioService.playNext">
            <Icon name="solar:skip-next-bold" class="h-5 w-5" />
         </UiButton>
       </div>

@@ -517,12 +517,12 @@ const opponentScore = computed(() => {
           <div
             v-for="c in 15"
             :key="c"
-            @click="handleSquareClick(r-1, c-1)"
             class="relative flex items-center justify-center cursor-pointer transition-colors overflow-hidden text-[8px] sm:text-[10px]"
             :class="[
               getMultiplierClass(BOARD_MULTIPLIERS[r-1][c-1]),
               (r-1 === 7 && c-1 === 7 && !getTileAt(r-1, c-1)) ? 'bg-stone-300 dark:bg-stone-600' : ''
             ]"
+            @click="handleSquareClick(r-1, c-1)"
           >
             <!-- Multiplier Label -->
             <span v-if="!getTileAt(r-1, c-1)" class="opacity-50 font-bold select-none">
@@ -546,8 +546,8 @@ const opponentScore = computed(() => {
 
       <!-- Zoom Button Overlay -->
       <button 
-        @click="isZoomed = true"
         class="absolute top-2 right-2 p-1.5 bg-background/80 backdrop-blur-sm rounded-lg border border-border shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+        @click="isZoomed = true"
       >
         <Icon name="solar:magnifer-zoom-in-bold" class="h-4 w-4" />
       </button>
@@ -634,9 +634,9 @@ const opponentScore = computed(() => {
       <template v-for="item in rackWithIndices" :key="item.index">
         <div
           v-if="!item.isPlaced"
-          @click="handleRackClick(item.index)"
           class="h-10 w-8 sm:h-12 sm:w-10 rounded-md bg-[#f5deb3] text-stone-900 flex items-center justify-center font-bold shadow transition-transform cursor-pointer relative"
           :class="selectedRackIndex === item.index ? '-translate-y-2 ring-2 ring-primary' : 'hover:-translate-y-1'"
+          @click="handleRackClick(item.index)"
         >
           <span class="text-base sm:text-lg uppercase">{{ item.letter === ' ' ? '' : item.letter }}</span>
           <span v-if="item.letter !== ' '" class="absolute bottom-1 right-1 text-[8px] sm:text-[10px] leading-none">
@@ -651,7 +651,7 @@ const opponentScore = computed(() => {
       <div v-if="placedTiles.length > 0" class="flex flex-col gap-1 px-1 mb-1">
         <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           <span>Formed Words</span>
-          <button @click="clearPlaced" class="text-primary hover:underline">Recall tiles</button>
+          <button class="text-primary hover:underline" @click="clearPlaced">Recall tiles</button>
         </div>
         <div class="flex flex-wrap gap-1">
           <span 
@@ -665,24 +665,24 @@ const opponentScore = computed(() => {
       </div>
 
       <div class="flex flex-wrap gap-2 w-full justify-center">
-        <UiButton size="sm" @click="playMove" :disabled="placedTiles.length === 0" class="flex-1 min-w-[80px] font-bold">
+        <UiButton size="sm" :disabled="placedTiles.length === 0" class="flex-1 min-w-[80px] font-bold" @click="playMove">
           Play ({{ currentMoveScoreResult.total }})
         </UiButton>
         <UiButton 
           size="sm" 
           variant="outline" 
-          @click="showSwapModal = true" 
           :disabled="placedTiles.length > 0 || bag.length < 7" 
           class="flex-1 min-w-[80px]"
+          @click="showSwapModal = true"
         >
           Swap
         </UiButton>
         <UiButton 
           size="sm" 
           variant="outline" 
-          @click="passTurn" 
           :disabled="placedTiles.length > 0" 
           class="flex-1 min-w-[80px]"
+          @click="passTurn"
         >
           Pass
         </UiButton>
@@ -691,14 +691,14 @@ const opponentScore = computed(() => {
 
     <!-- Footer Actions -->
     <div class="flex gap-4 mt-2">
-      <button @click="lookupWord" class="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+      <button class="text-xs text-muted-foreground hover:text-primary flex items-center gap-1" @click="lookupWord">
         <Icon name="solar:book-linear" class="h-3 w-3" />
         Lookup Word
       </button>
       <button 
         v-if="lastMove && lastMove.type === 'play' && lastMove.player !== myUserId" 
-        @click="challengeMove"
         class="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"
+        @click="challengeMove"
       >
         <Icon name="solar:danger-bold" class="h-3 w-3" />
         Challenge Move
@@ -722,12 +722,12 @@ const opponentScore = computed(() => {
             <div
               v-for="c in 15"
               :key="c"
-              @click="handleSquareClick(r-1, c-1)"
               class="relative flex items-center justify-center cursor-pointer transition-colors overflow-hidden"
               :class="[
                 getMultiplierClass(BOARD_MULTIPLIERS[r-1][c-1]),
                 (r-1 === 7 && c-1 === 7 && !getTileAt(r-1, c-1)) ? 'bg-stone-300 dark:bg-stone-600' : ''
               ]"
+              @click="handleSquareClick(r-1, c-1)"
             >
               <span v-if="!getTileAt(r-1, c-1)" class="text-[8px] sm:text-xs opacity-50 font-black select-none">
                 {{ r-1 === 7 && c-1 === 7 ? '★' : getMultiplierLabel(BOARD_MULTIPLIERS[r-1][c-1]) }}
@@ -751,9 +751,9 @@ const opponentScore = computed(() => {
           <template v-for="item in rackWithIndices" :key="item.index">
             <div
               v-if="!item.isPlaced"
-              @click="handleRackClick(item.index)"
               class="h-12 w-10 sm:h-14 sm:w-12 rounded-md bg-[#f5deb3] text-stone-900 flex items-center justify-center font-bold shadow-md transition-transform cursor-pointer relative"
               :class="selectedRackIndex === item.index ? '-translate-y-2 ring-4 ring-primary' : 'hover:-translate-y-1'"
+              @click="handleRackClick(item.index)"
             >
               <span class="text-lg sm:text-xl uppercase">{{ item.letter === ' ' ? '' : item.letter }}</span>
               <span v-if="item.letter !== ' '" class="absolute bottom-1 right-1 text-[10px] leading-none">
@@ -781,8 +781,8 @@ const opponentScore = computed(() => {
             :key="l" 
             size="sm" 
             variant="outline" 
-            @click="assignBlank(l)"
             class="font-bold text-lg h-10 w-10 p-0"
+            @click="assignBlank(l)"
           >
             {{ l }}
           </UiButton>
@@ -802,9 +802,9 @@ const opponentScore = computed(() => {
           <div
             v-for="(letter, idx) in myRack"
             :key="idx"
-            @click="toggleSwapSelection(idx)"
             class="h-12 w-10 rounded-md bg-[#f5deb3] text-stone-900 flex items-center justify-center font-bold shadow-md cursor-pointer transition-all border-2"
             :class="swapSelection.includes(idx) ? 'border-primary ring-2 ring-primary/20 -translate-y-1' : 'border-transparent opacity-60'"
+            @click="toggleSwapSelection(idx)"
           >
             <span class="text-xl uppercase">{{ letter === ' ' ? '' : letter }}</span>
           </div>

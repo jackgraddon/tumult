@@ -3,9 +3,9 @@
         <div v-if="(depth > 0 && isSpace) || (!isSpace)" class="flex items-center gap-2 py-1">
             <div v-if="isSpace" class="flex-1 min-w-0">
                 <button 
+                    class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
                     @click="isCollapsed = !isCollapsed"
                     @contextmenu.capture="uiStore.openRoomContextMenu(roomData.room_id)"
-                    class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
                 >
                     <MatrixAvatar
                         :mxc-url="roomData.avatar_url"
@@ -47,17 +47,17 @@
                     
                     <div class="flex items-center gap-2 shrink-0">
                         <template v-if="membership === 'join'">
-                            <UiButton size="sm" variant="secondary" @click.stop="navigateToRoom" class="rounded-lg h-8 px-3">
+                            <UiButton size="sm" variant="secondary" class="rounded-lg h-8 px-3" @click.stop="navigateToRoom">
                                 Open
                             </UiButton>
                         </template>
                         <template v-else-if="membership === 'invite'">
-                            <UiButton size="sm" variant="default" @click.stop="matrixService.acceptInvite(roomData.room_id)" class="rounded-lg h-8 px-3">
+                            <UiButton size="sm" variant="default" class="rounded-lg h-8 px-3" @click.stop="matrixService.acceptInvite(roomData.room_id)">
                                 Accept
                             </UiButton>
                         </template>
                         <template v-else>
-                            <UiButton size="sm" variant="outline" :disabled="isJoining" @click.stop="joinRoom" class="rounded-lg h-8 px-3 hover:bg-primary hover:text-primary-foreground transition-colors">
+                            <UiButton size="sm" variant="outline" :disabled="isJoining" class="rounded-lg h-8 px-3 hover:bg-primary hover:text-primary-foreground transition-colors" @click.stop="joinRoom">
                                 {{ isJoining ? 'Joining...' : 'Join' }}
                             </UiButton>
                         </template>

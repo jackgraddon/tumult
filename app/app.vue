@@ -17,7 +17,7 @@
         class="fixed inset-0 z-[200] bg-background flex flex-col items-center justify-center gap-8 animate-in fade-in duration-300"
       >
         <div class="flex flex-col items-center gap-4">
-          <img src="~/assets/Flame.svg" class="size-24" alt="Tumult Logo" />
+          <img src="~/assets/Flame.svg" class="size-24" alt="Tumult Logo" >
           <h1 class="text-4xl font-black tracking-tighter">Tumult</h1>
         </div>
         <div class="flex flex-col items-center gap-3">
@@ -32,7 +32,7 @@
         class="fixed left-0 right-0 h-[1.5px] z-[100] bg-muted overflow-hidden pointer-events-none"
         :style="{ top: isTauri ? '30px' : '0' }"
       >
-        <div class="h-full bg-accent animate-sync-progress origin-left w-full"></div>
+        <div class="h-full bg-accent animate-sync-progress origin-left w-full"/>
       </div>
 
       <NuxtRouteAnnouncer />

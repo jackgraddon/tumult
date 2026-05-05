@@ -455,13 +455,13 @@ export const useMatrixStore = defineStore('matrix', {
 
     async handleRpcActivity(data: any) {
       if (data.activity) {
-        let name = data.activity.name;
+        const name = data.activity.name;
         const details = data.activity.details;
         const appId = data.activity.application_id;
-        let appIcon = null;
+        const appIcon = null;
 
-        let largeImage = data.activity.assets?.large_image;
-        let smallImage = data.activity.assets?.small_image;
+        const largeImage = data.activity.assets?.large_image;
+        const smallImage = data.activity.assets?.small_image;
 
         // Enhanced activity details from rsRPC
         this.activityDetails = {
@@ -1121,7 +1121,7 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       // Initialize room store
-      let roomStorePromise: Promise<void> | null = null;
+      const roomStorePromise: Promise<void> | null = null;
       let roomStore: any = new IndexedDBStore({
         indexedDB: window.indexedDB,
         dbName: "matrix-js-sdk::matrix-store",
@@ -2023,7 +2023,7 @@ export const useMatrixStore = defineStore('matrix', {
         const profile = await this.client.getProfileInfo(userId);
 
         // Store the mxc:// URL directly
-        let avatarUrl = profile.avatar_url;
+        const avatarUrl = profile.avatar_url;
 
         // Update state
         console.log(`[MatrixStore] Fetched profile for ${userId}:`, profile);
@@ -2780,7 +2780,7 @@ export const useMatrixStore = defineStore('matrix', {
       else if (file.type.startsWith('audio/')) msgType = MsgType.Audio;
 
       // Extract image dimensions if possible
-      let info: any = {
+      const info: any = {
         size: file.size,
         mimetype: file.type,
       };

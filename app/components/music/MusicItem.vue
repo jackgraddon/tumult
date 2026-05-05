@@ -12,7 +12,7 @@
         class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         alt=""
         loading="lazy"
-      />
+      >
       <div v-else class="h-full w-full flex items-center justify-center">
         <Icon
           :name="(item.Type as string) === 'Artist' ? 'solar:user-bold' : 'solar:music-note-bold'"
@@ -28,17 +28,17 @@
           size="icon"
           variant="secondary"
           class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform active:scale-95"
+          title="Play (Hold to Shuffle)"
           @click.stop="() => { if (!isShuffling) play(item); }"
           @mousedown="startHoldTimer(item)"
           @mouseup="clearHoldTimer"
           @mouseleave="clearHoldTimer"
           @touchstart.passive="startHoldTimer(item)"
           @touchend="clearHoldTimer"
-          title="Play (Hold to Shuffle)"
         >
           <Icon :name="isShuffling ? 'solar:shuffle-bold' : 'solar:play-bold'" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
         </UiButton>
-        <UiButton v-if="(item.Type as string) === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
+        <UiButton v-if="(item.Type as string) === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" title="Add to Queue" @click.stop="addToQueue">
           <Icon name="solar:list-line-duotone" class="h-4 w-4 text-[#AA5CC3]" />
         </UiButton>
       </div>
@@ -56,7 +56,8 @@
 import type { BaseItemDto } from '~/types/jellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
-import { useJellyfin } from '~/composables/useJellyfin';
+import { useJellyfin } from '~/composables/useJellyfin'; // Needed for types if used
+import { useAudioService } from "~/composables/useServices";
 
 const props = defineProps<{
   item: BaseItemDto;
@@ -65,8 +66,7 @@ const props = defineProps<{
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
 const uiStore = useUIStore();
-const matrixStore = useMatrixStore(); // Needed for types if used
-import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
+const matrixStore = useMatrixStore();
 const { fetcher } = useJellyfin();
 
 let holdTimer: any = null;

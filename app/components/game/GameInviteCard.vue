@@ -151,8 +151,8 @@ async function declineInvite() {
       <UiButton 
         size="sm" 
         class="flex-1 rounded-full text-xs font-semibold" 
-        @click="acceptInvite"
         :disabled="isProcessing"
+        @click="acceptInvite"
       >
         Accept
       </UiButton>
@@ -160,8 +160,8 @@ async function declineInvite() {
         size="sm" 
         variant="outline" 
         class="flex-1 rounded-full text-xs font-semibold"
-        @click="declineInvite"
         :disabled="isProcessing"
+        @click="declineInvite"
       >
         Decline
       </UiButton>

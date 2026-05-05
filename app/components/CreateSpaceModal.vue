@@ -58,8 +58,8 @@
       </div>
       
       <UiDialogFooter class="gap-2 sm:gap-0">
-        <UiButton variant="ghost" @click="uiStore.closeCreateSpaceModal" :disabled="isSubmitting">Cancel</UiButton>
-        <UiButton @click="handleCreate" :disabled="!name.trim() || isSubmitting">
+        <UiButton variant="ghost" :disabled="isSubmitting" @click="uiStore.closeCreateSpaceModal">Cancel</UiButton>
+        <UiButton :disabled="!name.trim() || isSubmitting" @click="handleCreate">
           <UiSpinner v-if="isSubmitting" class="mr-2 h-4 w-4" />
           Create space
         </UiButton>

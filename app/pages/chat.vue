@@ -20,8 +20,8 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
                     :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
-                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
+                    @click="() => { uiStore.memberListVisible = false; }"
                 >
                     <NuxtLink to="/chat" aria-label="Home">
                         <Icon name="solar:home-angle-bold" class="h-6 w-6" />
@@ -37,8 +37,8 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
-                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
+                    @click="() => { uiStore.memberListVisible = false; }"
                 >
                     <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
                         <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
@@ -54,8 +54,8 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
-                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
+                    @click="() => { uiStore.memberListVisible = false; }"
                 >
                     <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
                         <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
@@ -72,13 +72,13 @@
                 <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
                     <UiButton 
                         v-for="server in draggableRootSpaces" :key="server.roomId"
-                        variant="ghost" 
+                        v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(server.roomId); }"
+                        variant="ghost"
                         class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                        as-child
                         @click="() => { uiStore.memberListVisible = false; }"
                         @contextmenu.capture="uiStore.openRoomContextMenu(server.roomId)"
-                        v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(server.roomId); }"
-                        as-child
                     >
                         <NuxtLink 
                             :to="store.lastVisitedRooms.spaces[server.roomId] 
@@ -107,8 +107,8 @@
                 <UiButton 
                     variant="secondary"
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0" 
-                    @click="uiStore.openCreateSpaceModal()"
                     title="Create a space"
+                    @click="uiStore.openCreateSpaceModal()"
                 >
                     <Icon name="solar:add-circle-linear" class="h-6 w-6" />
                 </UiButton>
@@ -132,12 +132,12 @@
                     v-if="uiStore.sidebarOpen"
                     class="md:hidden absolute inset-0 z-50 bg-black/20"
                     @click="uiStore.toggleSidebar(false)"
-                ></div>
+                />
                 <div 
                     v-if="uiStore.memberListVisible"
                     class="md:hidden absolute inset-0 z-50 bg-black/20"
                     @click="uiStore.toggleMemberList()"
-                ></div>
+                />
 
                 <header class="landmark-banner shrink-0">
                     <SecurityBanner />
@@ -170,7 +170,8 @@ import { useRoute, useNuxtApp } from '#app';
 import { useMatrixStore } from '~/stores/matrix';
 import { useUIStore } from '~/stores/ui';
 import { useGameActivity } from '~/composables/useGameActivity';
-import { Room, ClientEvent, RoomEvent, EventType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import type { Room, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import { ClientEvent, RoomEvent, EventType } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import { useWebHaptics } from 'web-haptics/vue';

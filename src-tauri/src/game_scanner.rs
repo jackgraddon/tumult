@@ -127,17 +127,23 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                         for game in &watch_list {
                             for exe in &game.executables {
                                 let exe_path = std::path::Path::new(&exe.name);
-                                let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
+                                let exe_filename = exe_path
+                                    .file_name()
+                                    .unwrap_or_else(|| OsStr::new(&exe.name));
 
                                 if process_exe_name == exe_filename {
                                     let game_name_lower = game.name.to_lowercase();
                                     let exe_lower = exe_filename.to_string_lossy().to_lowercase();
-                                    let exe_name_only = exe_lower.strip_suffix(".exe").unwrap_or(&exe_lower);
+                                    let exe_name_only =
+                                        exe_lower.strip_suffix(".exe").unwrap_or(&exe_lower);
 
                                     // Robust check: window title should match game name or exe name
-                                    if fg_title_lower.contains(&game_name_lower) || fg_title_lower.contains(exe_name_only) {
+                                    if fg_title_lower.contains(&game_name_lower)
+                                        || fg_title_lower.contains(exe_name_only)
+                                    {
                                         detected_name = Some(game.name.clone());
-                                        detected_exe = Some(process_exe_name.to_string_lossy().into_owned());
+                                        detected_exe =
+                                            Some(process_exe_name.to_string_lossy().into_owned());
                                         break;
                                     }
                                 }
@@ -157,8 +163,10 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                     for exe in &game.executables {
                         // Normalize executable name: handle paths by taking only the filename
                         let exe_path = std::path::Path::new(&exe.name);
-                        let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
-                        
+                        let exe_filename = exe_path
+                            .file_name()
+                            .unwrap_or_else(|| OsStr::new(&exe.name));
+
                         let found = sys.processes_by_name(exe_filename).next().is_some();
 
                         if found {
@@ -203,7 +211,12 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 (Some(prev), Some(name)) if prev != name => {
                     // Switched games
                     let exe_str = detected_exe.as_deref().unwrap_or("unknown");
-                    log::info!("[game_scanner] Switched: {} -> {} by {}", prev, name, exe_str);
+                    log::info!(
+                        "[game_scanner] Switched: {} -> {} by {}",
+                        prev,
+                        name,
+                        exe_str
+                    );
                     let _ = app.emit(
                         "game-activity",
                         GameActivity {

@@ -8,9 +8,9 @@
           <button 
             v-for="tab in tabs" 
             :key="tab.id"
-            @click="activeTab = tab.id"
             class="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left"
             :class="activeTab === tab.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground'"
+            @click="activeTab = tab.id"
           >
             <Icon :name="tab.icon" class="h-4 w-4" />
             {{ tab.label }}
@@ -49,7 +49,7 @@
                     />
                     <label class="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 cursor-pointer rounded-full transition-opacity">
                       <Icon name="solar:camera-bold" class="h-8 w-8" />
-                      <input type="file" class="hidden" accept="image/*" @change="handleAvatarChange" />
+                      <input type="file" class="hidden" accept="image/*" @change="handleAvatarChange" >
                     </label>
                   </div>
                   <div class="flex-1 space-y-4">
@@ -66,7 +66,7 @@
                 </div>
 
                 <div class="flex justify-end pt-4">
-                  <UiButton @click="saveGeneral" :disabled="isSaving || !hasChanges">
+                  <UiButton :disabled="isSaving || !hasChanges" @click="saveGeneral">
                     <UiSpinner v-if="isSaving" class="mr-2 h-4 w-4" />
                     Save Changes
                   </UiButton>
@@ -92,10 +92,10 @@
                       <div class="text-xs text-muted-foreground truncate">{{ member.userId }}</div>
                     </div>
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <UiButton v-if="canKick(member)" variant="ghost" size="icon-sm" class="text-amber-500" @click="kickMember(member)" title="Kick">
+                      <UiButton v-if="canKick(member)" variant="ghost" size="icon-sm" class="text-amber-500" title="Kick" @click="kickMember(member)">
                         <Icon name="solar:user-minus-bold" class="h-4 w-4" />
                       </UiButton>
-                      <UiButton v-if="canBan(member)" variant="ghost" size="icon-sm" class="text-destructive" @click="banMember(member)" title="Ban">
+                      <UiButton v-if="canBan(member)" variant="ghost" size="icon-sm" class="text-destructive" title="Ban" @click="banMember(member)">
                         <Icon name="solar:forbidden-bold" class="h-4 w-4" />
                       </UiButton>
                     </div>
@@ -127,10 +127,10 @@
                     </div>
 
                     <div class="flex justify-end gap-2">
-                      <UiButton variant="destructive" size="sm" @click="removeDiscordBridge" :disabled="!hasDiscordBridge">
+                      <UiButton variant="destructive" size="sm" :disabled="!hasDiscordBridge" @click="removeDiscordBridge">
                         Remove Bridge
                       </UiButton>
-                      <UiButton size="sm" @click="saveDiscordBridge" :disabled="!canSaveDiscordBridge">
+                      <UiButton size="sm" :disabled="!canSaveDiscordBridge" @click="saveDiscordBridge">
                         {{ hasDiscordBridge ? 'Update Bridge' : 'Setup Bridge' }}
                       </UiButton>
                     </div>
@@ -187,7 +187,7 @@
                         <span class="text-muted-foreground">#</span>
                         <UiInput id="new-alias" v-model="newAlias" placeholder="my-awesome-room" />
                         <span class="text-muted-foreground">:{{ homeserverDomain }}</span>
-                        <UiButton size="sm" @click="addAlias" :disabled="!newAlias.trim()">Add</UiButton>
+                        <UiButton size="sm" :disabled="!newAlias.trim()" @click="addAlias">Add</UiButton>
                       </div>
                     </div>
                  </div>
@@ -203,7 +203,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, toRaw } from 'vue';
 import { toast } from 'vue-sonner';
-import * as sdk from 'matrix-js-sdk';
+import type * as sdk from 'matrix-js-sdk';
 
 const store = useMatrixStore();
 const uiStore = useUIStore();
