@@ -14,17 +14,25 @@ export const router = createRouter({
 });
 
 /**
- * Restoring the persisted session has to happen before the first guarded
+ * Rehydrating the persisted session has to finish before the first guarded
  * navigation resolves, or a reload bounces a signed-in user to /login.
+ *
+ * This memoizes the *attempt*, never the answer. Holding on to the result
+ * would make the guard permanently believe whatever was true at startup, so a
+ * logout could not take effect: navigation to /login would keep matching the
+ * "already signed in" branch and bounce straight back.
  */
-let restored: Promise<boolean> | null = null;
+let restoreAttempted: Promise<unknown> | null = null;
 
 router.beforeEach(async (to) => {
     // The callback route is what *creates* the session, so it must stay open.
     if (to.name === "callback") return true;
 
-    restored ??= chat.restoreSession();
-    const hasSession = (await restored) || chat.session.get() !== null;
+    restoreAttempted ??= chat.restoreSession();
+    await restoreAttempted;
+
+    // Live state, read fresh on every navigation.
+    const hasSession = chat.session.get() !== null;
 
     if (!hasSession && to.name !== "login") return { name: "login" };
     if (hasSession && to.name === "login") return { name: "home" };
