@@ -72,6 +72,21 @@ chat client should be.
   calls it for you. Getting it backwards throws only once the store has
   presence events to replay, so a cold start looks fine and the NEXT run
   breaks — do not trust a single clean first run here.
+- Closing the sync store is MANDATORY on stop: call `store.destroy()`.
+  `stopClient()` does not close it, and `deleteDatabase` blocks while any
+  connection is open. Both of the SDK's `onblocked` handlers only LOG — they
+  never resolve or reject — so a surviving connection makes the next
+  `clearStores()` hang forever, i.e. logout never returns. (`stopClient()` does
+  stop the crypto backend, so that side is covered.)
+- Only ONE MatrixClient per IndexedDB, ever: the SDK says two cause data
+  corruption and decryption failures. That means start() must collapse
+  concurrent calls AND clean up a half-built client when it throws partway —
+  a naive `if (this.client) return` guard does neither.
+- Handle `HttpApiEvent.SessionLoggedOut`: the server rejected our token and
+  refresh could not recover it. Without it the UI parks on a dead session.
+- Handle the store's `degraded` and `closed` events. On IndexedDB failure the
+  store silently becomes a MemoryStore — the app keeps working and quietly
+  stops persisting. Silence here contradicts the honest-connection-state rule.
 - Sending is optimistic: pending → sent/failed per message.
   `pendingEventOrdering` controls placement.
 - SDK mutates `Room` / `MatrixEvent` in place, events

@@ -1,6 +1,7 @@
 import {
     ClientEvent,
     createClient,
+    HttpApiEvent,
     IndexedDBStore,
     SyncState,
     type MatrixClient,
@@ -90,6 +91,13 @@ export class MatrixChatClient implements ChatClient {
     private readonly login_: OAuthLogin;
 
     private matrix: MatrixClient | null = null;
+    /**
+     * Held so stop() can close the IndexedDB connection. Dropping the reference
+     * is not enough — see stop().
+     */
+    private store: IndexedDBStore | null = null;
+    /** In-flight start(), so concurrent callers share one client. */
+    private starting: Promise<void> | null = null;
     private stored: StoredSession | null = null;
 
     private readonly sessionState = new Observable<SessionView | null>(null);
@@ -133,62 +141,114 @@ export class MatrixChatClient implements ChatClient {
         if (!this.stored) throw new Error("Cannot start without a session; log in or restore first");
         if (this.matrix) return;
 
-        const session = this.stored;
+        // Concurrent starts must share one client. The SDK is explicit that two
+        // MatrixClient instances on the same IndexedDB cause data corruption and
+        // decryption failures, and the plain `if (this.matrix)` guard above does
+        // not prevent it: both callers pass it before either assigns.
+        this.starting ??= this.bootstrap(this.stored).finally(() => {
+            this.starting = null;
+        });
+        return this.starting;
+    }
+
+    private async bootstrap(session: StoredSession): Promise<void> {
         this.connectionState.set("starting");
 
         const store = createSyncStore(session);
+        let client: MatrixClient | null = null;
 
-        const client = createClient({
-            baseUrl: session.homeserverUrl,
-            userId: session.userId,
-            deviceId: session.deviceId,
-            accessToken: session.accessToken,
-            // Supplying oauthClientId lets the SDK refresh tokens itself against
-            // MAS; without it an expired access token is simply a dead session.
-            oauthClientId: session.clientId,
-            ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
-            onTokenRefresh: (tokens) => {
-                // The old tokens are already invalid at this point, so persist
-                // synchronously rather than waiting for any other checkpoint.
-                this.persistTokens(tokens.accessToken, tokens.refreshToken);
-            },
-            store,
-        });
+        try {
+            client = createClient({
+                baseUrl: session.homeserverUrl,
+                userId: session.userId,
+                deviceId: session.deviceId,
+                accessToken: session.accessToken,
+                // Supplying oauthClientId lets the SDK refresh tokens itself against
+                // MAS; without it an expired access token is simply a dead session.
+                oauthClientId: session.clientId,
+                ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
+                onTokenRefresh: (tokens) => {
+                    // The old tokens are already invalid at this point, so persist
+                    // synchronously rather than waiting for any other checkpoint.
+                    this.persistTokens(tokens.accessToken, tokens.refreshToken);
+                },
+                store,
+            });
 
-        // Must come *after* createClient: the store only gets its `createUser`
-        // hook when it is attached to a client, and startup() needs it to
-        // rehydrate cached presence events.
-        //
-        // Getting this backwards fails only once the store has presence events
-        // to replay — so a cold start appears to work and the next run throws.
-        await store.startup();
+            // Must come *after* createClient: the store only gets its `createUser`
+            // hook when it is attached to a client, and startup() needs it to
+            // rehydrate cached presence events.
+            //
+            // Getting this backwards fails only once the store has presence events
+            // to replay — so a cold start appears to work and the next run throws.
+            await store.startup();
 
-        // Rust crypto must be up before the sync loop starts, or the first batch
-        // of encrypted events arrives with nothing able to decrypt it.
-        await client.initRustCrypto({
-            useIndexedDB: true,
-            cryptoDatabasePrefix: cryptoDatabasePrefix(session),
-        });
+            // Rust crypto must be up before the sync loop starts, or the first batch
+            // of encrypted events arrives with nothing able to decrypt it.
+            await client.initRustCrypto({
+                useIndexedDB: true,
+                cryptoDatabasePrefix: cryptoDatabasePrefix(session),
+            });
 
-        // Registered before startClient() — see toConnectionState().
-        client.on(ClientEvent.Sync, (state: SyncState, _prev: SyncState | null, data?: SyncStateData) => {
-            this.connectionState.set(toConnectionState(state));
-            if (state === SyncState.Error && data?.error) {
-                console.error("[tumult] sync error", data.error);
-            }
-        });
+            // Registered before startClient() — see toConnectionState().
+            client.on(ClientEvent.Sync, (state: SyncState, _prev: SyncState | null, data?: SyncStateData) => {
+                this.connectionState.set(toConnectionState(state));
+                if (state === SyncState.Error && data?.error) {
+                    console.error("[tumult] sync error", data.error);
+                }
+            });
 
-        this.matrix = client;
-        await client.startClient();
+            // The homeserver has rejected our token and refreshing could not
+            // recover it — revoked from another device, or the refresh token
+            // expired. Nothing local fixes this, so surface it as logged out
+            // rather than leaving the UI parked on a dead session.
+            client.on(HttpApiEvent.SessionLoggedOut, () => {
+                void this.handleSessionLoggedOut();
+            });
+
+            // IndexedDB can fail at runtime (quota, private browsing, the user
+            // clearing site data). The store does not propagate that — it
+            // silently becomes a MemoryStore — so without this the app keeps
+            // working and quietly stops persisting anything.
+            store.on("degraded", (error: Error) => {
+                console.error("[tumult] sync store degraded to memory; nothing will persist", error);
+            });
+            store.on("closed", () => {
+                console.error("[tumult] sync store closed unexpectedly");
+            });
+
+            this.matrix = client;
+            this.store = store;
+            await client.startClient();
+        } catch (error) {
+            // Leave nothing half-built. A failed start that leaves a client or an
+            // open store behind means the next attempt builds a second client on
+            // the same IndexedDB, which corrupts the crypto store.
+            client?.stopClient();
+            await store.destroy().catch(() => undefined);
+            this.matrix = null;
+            this.store = null;
+            this.connectionState.set("error");
+            throw error;
+        }
     }
 
     public async stop(): Promise<void> {
         const client = this.matrix;
+        const store = this.store;
         if (!client) return;
 
         client.stopClient();
         await client.store.save(true);
+
+        // Closing the IndexedDB connection is required, not tidiness.
+        // `deleteDatabase` blocks while any connection is open, and both of the
+        // SDK's blocked handlers only log — they never resolve or reject — so a
+        // surviving connection makes the next logout() hang forever.
+        await store?.destroy();
+
         this.matrix = null;
+        this.store = null;
         this.connectionState.set("stopped");
     }
 
@@ -235,6 +295,22 @@ export class MatrixChatClient implements ChatClient {
 
     public async send(_roomId: string, _body: string): Promise<void> {
         return notImplemented("send with local echo");
+    }
+
+    /**
+     * Drop to a clean logged-out state after the server invalidated us.
+     *
+     * Deliberately does not clear the crypto store: the token is already dead,
+     * so there is nothing to revoke, and wiping device keys is destructive
+     * enough that it should stay an explicit user action. The cost is an
+     * orphaned crypto database, since the next login mints a new device ID.
+     */
+    private async handleSessionLoggedOut(): Promise<void> {
+        await this.stop();
+        this.storage.clearSession();
+        this.stored = null;
+        this.sessionState.set(null);
+        this.roomsState.set([]);
     }
 
     private adoptSession(session: StoredSession): void {
