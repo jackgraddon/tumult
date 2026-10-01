@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // A leaf app: nothing imports its types, and Vite does the emitting.
+    // Type-checking only, so no declaration output to litter the tree.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    // Vite resolves imports here, not tsc, and the rewrite rule can't handle
+    // `.vue` specifiers. Only packages that emit their own runtime JS need it.
+    "rewriteRelativeImportExtensions": false,
+    "jsx": "preserve",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"],
+  "references": [{ "path": "../../packages/core" }]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@tumult/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "typecheck": "tsc -b --noEmit false"
+  },
+  "dependencies": {
+    "matrix-js-sdk": "^43.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
