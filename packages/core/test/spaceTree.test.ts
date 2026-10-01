@@ -84,6 +84,30 @@ describe("selectSpaceTree", () => {
         assert.equal(tree.guilds[0]?.room.id, "!a:1");
     });
 
+    it("does not drop rooms when the lowest-id promotion candidate is a childless pendant", () => {
+        // Pendant's id sorts first but has no children of its own; the real content
+        // (the P<->Q cycle and the rooms under each) hangs off P and Q. Promoting
+        // only the pendant must not make P, Q, or their rooms vanish.
+        const tree = selectSpaceTree([
+            space("!a_pendant:1", "Pendant", ["!p:1"]),
+            space("!p:1", "P", ["!q:1"]),
+            space("!q:1", "Q", ["!p:1"]),
+            room({ id: "!room-under-p:1", name: "room under P", parentSpaceIds: ["!p:1"] }),
+            room({ id: "!room-under-q:1", name: "room under Q", parentSpaceIds: ["!q:1"] }),
+        ]);
+
+        const allRoomIds = new Set<string>();
+        const visit = (node: (typeof tree.guilds)[number]): void => {
+            for (const r of node.rooms) allRoomIds.add(r.id);
+            for (const s of node.spaces) visit(s);
+        };
+        for (const g of tree.guilds) visit(g);
+
+        assert.ok(allRoomIds.has("!room-under-p:1"), "room under P must not vanish");
+        assert.ok(allRoomIds.has("!room-under-q:1"), "room under Q must not vanish");
+        assert.equal(tree.orphans.length, 0, "rooms with valid parents must not become orphans");
+    });
+
     it("caps output with maxDepth/maxNodes and counts truncation", () => {
         const rooms: RoomSummary[] = [space("!g:1", "G")];
         let parent = "!g:1";

@@ -79,8 +79,19 @@ export function selectSpaceTree(
 
     const promotedGuildIds: string[] = [];
     const unreachable = sortRooms(spaces.filter((s) => !reachable.has(s.id)));
-    const promotedSeen = new Set<string>();
-    // Group unreachable into components via undirected walk; promote lowest id per component.
+    // Group unreachable into components via undirected walk, then promote enough
+    // entry points per component that their *forward* (childrenOf) closures union
+    // to the whole component — never just the lowest id.
+    //
+    // Promotion exists so a cyclic component with no reachable entry doesn't drop
+    // its rooms. But buildNode only descends via childrenOf (parent -> child), and
+    // the lowest id in an undirected component is not necessarily a node whose
+    // downward closure covers the rest: a leaf "pendant" space (something whose
+    // only edge is *being* a child of a cycle member) can sort first and have no
+    // children of its own, in which case promoting it alone silently drops
+    // everything else in the component — no truncation flag, nothing in orphans,
+    // the rooms simply vanish. Keep promoting the lowest remaining id, walking
+    // forward from it, until the whole component is covered.
     const visited = new Set<string>();
     for (const s of unreachable) {
         if (visited.has(s.id)) continue;
@@ -101,11 +112,22 @@ export function selectSpaceTree(
                 }
             }
         }
-        component.sort();
-        const promoted = component[0] as string;
-        if (!promotedSeen.has(promoted)) {
-            promotedSeen.add(promoted);
-            promotedGuildIds.push(promoted);
+
+        const uncovered = new Set(component);
+        while (uncovered.size > 0) {
+            const entry = [...uncovered].sort()[0] as string;
+            promotedGuildIds.push(entry);
+            const forward = [entry];
+            uncovered.delete(entry);
+            while (forward.length > 0) {
+                const cur = forward.pop() as string;
+                for (const childId of childrenOf.get(cur) ?? []) {
+                    if (!uncovered.has(childId)) continue;
+                    if (byId.get(childId)?.isSpace !== true) continue;
+                    uncovered.delete(childId);
+                    forward.push(childId);
+                }
+            }
         }
     }
     promotedGuildIds.sort();
