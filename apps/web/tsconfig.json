@@ -11,8 +11,12 @@
     // `.vue` specifiers. Only packages that emit their own runtime JS need it.
     "rewriteRelativeImportExtensions": false,
     "jsx": "preserve",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@tumult/ui": ["../../packages/ui/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"],
-  "references": [{ "path": "../../packages/core" }]
+  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/theme" }]
 }

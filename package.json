@@ -13,6 +13,7 @@
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "@types/node": "^22.20.4",
     "typescript": "^5.9.3"
   }
 }

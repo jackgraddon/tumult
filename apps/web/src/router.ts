@@ -5,7 +5,9 @@ import { chat } from "./chat.ts";
 const routes: RouteRecordRaw[] = [
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },
     { path: "/auth/callback", name: "callback", component: () => import("./views/CallbackView.vue") },
-    { path: "/", name: "home", component: () => import("./views/HomeView.vue") },
+    { path: "/dms/:roomId?", name: "dms", component: () => import("./views/AppView.vue") },
+    { path: "/g/:guildId/:roomId?", name: "guild", component: () => import("./views/AppView.vue") },
+    { path: "/", redirect: "/dms" },
 ];
 
 export const router = createRouter({
@@ -35,6 +37,6 @@ router.beforeEach(async (to) => {
     const hasSession = chat.session.get() !== null;
 
     if (!hasSession && to.name !== "login") return { name: "login" };
-    if (hasSession && to.name === "login") return { name: "home" };
+    if (hasSession && to.name === "login") return { name: "dms" };
     return true;
 });

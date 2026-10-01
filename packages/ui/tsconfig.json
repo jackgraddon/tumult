@@ -1,8 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist"
-  },
-  "include": ["src/**/*.ts"]
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@tumult/core": ["../core/src/index.ts"],
+      "@tumult/core/selectors": ["../core/src/selectors/spaceTree.ts"],
+      "@tumult/core/*": ["../core/src/*"]
+    }  },
+  "include": ["src/**/*.ts", "src/**/*.vue"]
 }

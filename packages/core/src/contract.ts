@@ -45,11 +45,15 @@ export type DecryptionStatus = "ok" | "pending" | "failed";
 
 export interface MessageView {
     id: string;
+    /** Matrix event type, e.g. "m.room.message", "cc.jackg.tumult.chess.move". */
+    type: string;
     senderId: string;
     body: string;
     timestamp: number;
     status: MessageStatus;
     decryption: DecryptionStatus;
+    /** Type-specific payload as plain JSON. The registered renderer owns its shape. */
+    content: Readonly<Record<string, unknown>>;
 }
 
 export interface RoomSummary {
@@ -124,6 +128,13 @@ export interface ChatClient {
     session: Subscribable<SessionView | null>;
     connection: Subscribable<ConnectionState>;
     rooms: Subscribable<RoomSummary[]>;
+    /**
+     * Snapshot feed for one room's timeline.
+     *
+     * Must return the same `Subscribable` instance for a given `roomId` on
+     * every call, so two panes on one room share one snapshot and
+     * `Observable.subscriberCount` can drive idle-room unloading later.
+     */
     timeline(roomId: string): Subscribable<MessageView[]>;
     send(roomId: string, body: string): Promise<void>;
 }

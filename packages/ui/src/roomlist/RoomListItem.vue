@@ -1,0 +1,74 @@
+<script setup lang="ts">
+import type { RoomSummary } from "@tumult/core";
+
+import { useSelection, type RoomSelection } from "../selection.ts";
+import UnreadBadge from "../primitives/UnreadBadge.vue";
+
+const props = defineProps<{
+    room: RoomSummary;
+    selection: RoomSelection;
+}>();
+
+const sel = useSelection();
+
+function href(): string {
+    if (props.selection.view === "dms") return sel.hrefFor({ view: "dms", roomId: props.room.id });
+    return sel.hrefFor({ view: "guild", guildId: props.selection.guildId, roomId: props.room.id });
+}
+
+function pick(): void {
+    if (props.selection.view === "dms") sel.select({ view: "dms", roomId: props.room.id });
+    else sel.select({ view: "guild", guildId: props.selection.guildId, roomId: props.room.id });
+}
+
+function isActive(): boolean {
+    return sel.current.roomId === props.room.id;
+}
+</script>
+
+<template>
+    <li>
+        <a
+            class="tumult-room-item"
+            :href="href()"
+            :aria-current="isActive() ? 'page' : undefined"
+            @click.prevent="pick()"
+        >
+            <span class="tumult-room-hash" aria-hidden="true">#</span>
+            <span class="tumult-room-name">{{ room.name }}</span>
+            <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
+        </a>
+    </li>
+</template>
+
+<style scoped>
+.tumult-room-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px var(--space-2);
+    border-radius: var(--control-radius);
+    color: var(--roomlist-item-text);
+    font-size: var(--text-sm);
+    text-decoration: none;
+    min-width: 0;
+}
+.tumult-room-item:hover {
+    background: var(--roomlist-item-bg-hover);
+}
+.tumult-room-item[aria-current="page"] {
+    background: var(--roomlist-item-bg-active);
+    color: var(--roomlist-item-text-active);
+}
+.tumult-room-hash {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.tumult-room-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+</style>

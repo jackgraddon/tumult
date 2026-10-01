@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "default",
+  "tokens": {
+    "prim-indigo-3": "#5865f2",
+    "surface-base": "var(--prim-neutral-6)",
+    "surface-pane": "var(--prim-neutral-5)",
+    "surface-rail": "var(--prim-neutral-7)",
+    "text-primary": "var(--prim-neutral-1)",
+    "text-secondary": "var(--prim-neutral-2)",
+    "text-muted": "var(--prim-neutral-3)",
+    "accent": "var(--prim-indigo-3)",
+    "accent-hover": "var(--prim-indigo-4)",
+    "accent-contrast": "var(--prim-neutral-0)",
+    "border-default": "var(--prim-neutral-4)",
+    "danger": "var(--prim-red-3)",
+    "success": "var(--prim-green-3)",
+    "warning": "var(--prim-amber-3)",
+    "mention": "var(--prim-mention-3)",
+    "focus-ring": "var(--prim-indigo-3)",
+    "layout-guild-rail-width": "var(--prim-layout-rail)",
+    "layout-roomlist-width": "var(--prim-layout-roomlist)",
+    "layout-members-width": "var(--prim-layout-members)",
+    "rail-indicator": "var(--accent)",
+    "button-primary-bg": "var(--accent)",
+    "button-primary-bg-hover": "var(--accent-hover)",
+    "button-primary-text": "var(--accent-contrast)",
+    "focus-ring-color": "var(--focus-ring)",
+    "timeline-mention-bg": "var(--mention)",
+    "badge-bg": "var(--danger)",
+    "avatar-bg": "var(--accent)"
+  }
+}

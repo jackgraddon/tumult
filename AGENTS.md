@@ -136,9 +136,26 @@ chat client should be.
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite.
+  (Slice 2: the registry gates decryption/status in `TimelineRow` BEFORE
+  resolution, and is owned per-shell via provide/inject — never a singleton.)
 - Framework: Vue 3 + plain Vite (not Nuxt — Nuxt's SSR/server routes are
   unused; plain workspace expresses core/ui/theme separation). Behavior/a11y
-  via Reka UI (headless, WAI-ARIA, virtualization support).
+  via Reka UI (headless, WAI-ARIA).
+  Reka has NO general-purpose list virtualizer (only Combobox/Listbox/Tree
+  virtualize) — the timeline will need `@tanstack/vue-virtual` in slice 4.
+- Shell layout: the guild rail is CHROME, not a pane — fixed at
+  `--layout-guild-rail-width`, never collapsible (collapsing it would leave no
+  way to change guild). Room list, timeline, members are the three panes.
+  Collapsed panes keep DOM at 0-width tracks with the `inert` attribute.
+- Contract: `MessageView` carries `type` + `content` (plain-JSON payload owned
+  by the registered renderer) so game renderers never force a contract change.
+  `timeline(roomId)` returns the SAME `Subscribable` per roomId, so
+  `subscriberCount` can drive idle-room unloading later.
+- Inline `type` specifiers (`import { type X }`) are NOT erased by the SFC
+  compiler and pull the whole module into the web bundle — use whole-statement
+  `import type` for type-only imports (this kept matrix-js-sdk out of the fake
+  build). `packages/ui` ships `src` (SFCs), not `dist`; `apps/web` takes no
+  project reference to it and maps `@tumult/ui` via tsconfig paths.
 - Memory rules day one: one renderer/window, windowed room loading, capped
   in-memory events per room, unload idle rooms, virtualized message list,
   server thumbnails over full images, pause off-screen animations.
@@ -199,10 +216,14 @@ chat client should be.
 - DONE — slice 1: contract, MAS login (verified end to end against
   mas.jackg.cc: discovery → registration → PKCE → callback → session restore),
   crypto init, sync reaching `syncing`.
-- NEXT — slice 2: 3-pane shell + default theme. `packages/ui` and
-  `packages/theme` are scaffolds with their slice noted in `src/index.ts`.
-- `rooms`, `timeline()` and `send()` deliberately THROW a "lands in the X
-  slice" error rather than returning fake data. Replace them, don't paper over.
+- DONE — slice 2: 3-pane shell (guild-rail chrome + room list + timeline +
+  members) on a deterministic fake client (`@tumult/core/fake`, seed 1337),
+  JSON default theme compiled at build time (contract v1), renderer registry
+  with an app-registered demo poll, cycle-safe `selectSpaceTree`, first
+  `node --test` suites (selector + validator). Fake/real swap is one import
+  in `apps/web/src/chat.ts`. Real `rooms`/`timeline()`/`send()` still throw —
+  slice 3 replaces them, don't paper over.
+- NEXT — slice 3: guild rail + room list on real data, then DMs.
 - NOT YET DONE: no tests. Sliding sync (MSC4186) is not wired — classic
   `/sync` only, behind the abstraction. The Dockerised-Synapse integration
   tests this file calls for should land before slice 4.

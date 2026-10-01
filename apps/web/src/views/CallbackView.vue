@@ -14,7 +14,7 @@ onMounted(async () => {
         // The fragment still holds the authorization code. Drop it from history
         // before navigating so it can't be recovered from the back stack.
         window.history.replaceState(null, "", window.location.pathname);
-        await router.replace({ name: "home" });
+        await router.replace({ name: "dms" });
     } catch (cause) {
         error.value = cause instanceof Error ? cause.message : String(cause);
     }

@@ -4,19 +4,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    ".": "./src/index.ts"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["src"],
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "vue-tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tumult/core": "workspace:*",
+    "reka-ui": "^2.10.5",
+    "vue": "^3.5.43"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.1.1"
   }
 }

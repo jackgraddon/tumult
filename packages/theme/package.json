@@ -7,14 +7,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js"
+    },
+    "./dist/themes/*.css": "./dist/themes/*.css"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["dist", "themes"],
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "build": "tsc -b && node ./dist/build/compile.js",
+    "typecheck": "tsc -b",
+    "test": "node --test test/"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

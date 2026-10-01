@@ -1,0 +1,43 @@
+import type { TokenDef } from "../types.ts";
+
+const v = (name: string): string => `var(--${name})`;
+
+export const SEMANTIC_TOKENS: TokenDef[] = [
+    { name: "surface-base", tier: "semantic", kind: "color", value: v("prim-neutral-6"), description: "App background." },
+    { name: "surface-pane", tier: "semantic", kind: "color", value: v("prim-neutral-5"), description: "Pane background." },
+    { name: "surface-rail", tier: "semantic", kind: "color", value: v("prim-neutral-7"), description: "Guild rail background." },
+    { name: "surface-hover", tier: "semantic", kind: "color", value: "rgba(255, 255, 255, 0.06)", description: "Hover wash." },
+    { name: "surface-active", tier: "semantic", kind: "color", value: "rgba(255, 255, 255, 0.1)", description: "Active wash." },
+    { name: "text-primary", tier: "semantic", kind: "color", value: v("prim-neutral-1"), description: "Primary text." },
+    { name: "text-secondary", tier: "semantic", kind: "color", value: v("prim-neutral-2"), description: "Secondary text." },
+    { name: "text-muted", tier: "semantic", kind: "color", value: v("prim-neutral-3"), description: "Muted text." },
+    { name: "accent", tier: "semantic", kind: "color", value: v("prim-indigo-3"), description: "Primary accent." },
+    { name: "accent-hover", tier: "semantic", kind: "color", value: v("prim-indigo-4"), description: "Accent hover." },
+    { name: "accent-contrast", tier: "semantic", kind: "color", value: v("prim-neutral-0"), description: "Text on accent." },
+    { name: "border-default", tier: "semantic", kind: "color", value: v("prim-neutral-4"), description: "Default border." },
+    { name: "danger", tier: "semantic", kind: "color", value: v("prim-red-3"), description: "Danger." },
+    { name: "danger-hover", tier: "semantic", kind: "color", value: v("prim-red-4"), description: "Danger hover." },
+    { name: "success", tier: "semantic", kind: "color", value: v("prim-green-3"), description: "Success / online." },
+    { name: "warning", tier: "semantic", kind: "color", value: v("prim-amber-3"), description: "Warning / pending." },
+    { name: "mention", tier: "semantic", kind: "color", value: v("prim-mention-3"), description: "Mention highlight." },
+    { name: "focus-ring", tier: "semantic", kind: "color", value: v("prim-indigo-3"), description: "Focus ring." },
+    // Non-color semantics
+    { name: "space-1", tier: "semantic", kind: "spacing", value: v("prim-space-1"), description: "Semantic space 1." },
+    { name: "space-2", tier: "semantic", kind: "spacing", value: v("prim-space-2"), description: "Semantic space 2." },
+    { name: "space-3", tier: "semantic", kind: "spacing", value: v("prim-space-3"), description: "Semantic space 3." },
+    { name: "space-4", tier: "semantic", kind: "spacing", value: v("prim-space-4"), description: "Semantic space 4." },
+    { name: "radius-sm", tier: "semantic", kind: "radius", value: v("prim-radius-sm"), description: "Semantic radius sm." },
+    { name: "radius-md", tier: "semantic", kind: "radius", value: v("prim-radius-md"), description: "Semantic radius md." },
+    { name: "radius-full", tier: "semantic", kind: "radius", value: v("prim-radius-full"), description: "Semantic radius full." },
+    { name: "font-sans", tier: "semantic", kind: "typography", value: v("prim-font-sans"), description: "UI font." },
+    { name: "font-mono", tier: "semantic", kind: "typography", value: v("prim-font-mono"), description: "Mono font." },
+    { name: "text-xs", tier: "semantic", kind: "typography", value: v("prim-text-xs"), description: "12px." },
+    { name: "text-sm", tier: "semantic", kind: "typography", value: v("prim-text-sm"), description: "14px." },
+    { name: "text-md", tier: "semantic", kind: "typography", value: v("prim-text-md"), description: "16px." },
+    { name: "motion-fast", tier: "semantic", kind: "motion", value: v("prim-motion-fast"), description: "Fast motion." },
+    { name: "motion-base", tier: "semantic", kind: "motion", value: v("prim-motion-base"), description: "Base motion." },
+    { name: "motion-ease", tier: "semantic", kind: "motion", value: v("prim-motion-ease"), description: "Easing." },
+    { name: "layout-guild-rail-width", tier: "semantic", kind: "layout", value: v("prim-layout-rail"), description: "Guild rail width." },
+    { name: "layout-roomlist-width", tier: "semantic", kind: "layout", value: v("prim-layout-roomlist"), description: "Room list width." },
+    { name: "layout-members-width", tier: "semantic", kind: "layout", value: v("prim-layout-members"), description: "Members width." },
+];

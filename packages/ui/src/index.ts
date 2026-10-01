@@ -1,10 +1,28 @@
-/**
- * Vue components: headless behaviour and structure, driven entirely by theme
- * tokens. No Matrix types cross this boundary — components speak the
- * `@tumult/core` contract (`RoomSummary`, `MessageView`, ...) and nothing else.
- *
- * Lands in slice 2 onward. Behaviour and a11y come from Reka UI (headless,
- * WAI-ARIA, virtualization) rather than being hand-rolled.
- */
-
-export {};
+export { useSubscribable } from "./subscribable.ts";
+export { SelectionKey, useSelection } from "./selection.ts";
+export type { RoomSelection, SelectionContext } from "./selection.ts";
+export { TimelineRegistry, RegistryKey, useTimelineRegistry } from "./timeline/registry.ts";
+export type { RendererEntry, TimelineRendererProps } from "./timeline/registry.ts";
+export { default as TumultShell } from "./shell/TumultShell.vue";
+export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";
+export { default as GuildRail } from "./rail/GuildRail.vue";
+export { default as GuildRailItem } from "./rail/GuildRailItem.vue";
+export { default as DmsRailItem } from "./rail/DmsRailItem.vue";
+export { default as AccountTile } from "./rail/AccountTile.vue";
+export { default as RoomListPane } from "./roomlist/RoomListPane.vue";
+export { default as SpaceCategory } from "./roomlist/SpaceCategory.vue";
+export { default as RoomListItem } from "./roomlist/RoomListItem.vue";
+export { default as DmList } from "./roomlist/DmList.vue";
+export { default as TimelinePane } from "./timeline/TimelinePane.vue";
+export { default as TimelineViewport } from "./timeline/TimelineViewport.vue";
+export { default as TimelineList } from "./timeline/TimelineList.vue";
+export { default as TimelineRow } from "./timeline/TimelineRow.vue";
+export { default as MessageComposer } from "./timeline/MessageComposer.vue";
+export { default as TextMessage } from "./timeline/renderers/TextMessage.vue";
+export { default as UnknownEvent } from "./timeline/renderers/UnknownEvent.vue";
+export { default as DecryptionPlaceholder } from "./timeline/renderers/DecryptionPlaceholder.vue";
+export { default as MembersPane } from "./members/MembersPane.vue";
+export { default as MemberListItem } from "./members/MemberListItem.vue";
+export { default as Avatar } from "./primitives/Avatar.vue";
+export { default as UnreadBadge } from "./primitives/UnreadBadge.vue";
+export { default as IconButton } from "./primitives/IconButton.vue";

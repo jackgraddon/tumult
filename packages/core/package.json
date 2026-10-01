@@ -7,6 +7,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./fake": {
+      "types": "./dist/fake/index.d.ts",
+      "import": "./dist/fake/index.js"
+    },
+    "./selectors": {
+      "types": "./dist/selectors/spaceTree.d.ts",
+      "import": "./dist/selectors/spaceTree.js"
     }
   },
   "main": "./dist/index.js",
@@ -15,7 +23,8 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b --watch",
-    "typecheck": "tsc -b --noEmit false"
+    "typecheck": "tsc -b --noEmit false",
+    "test": "node --test test/"
   },
   "dependencies": {
     "matrix-js-sdk": "^43.0.0"

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "build": "vue-tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc -p tsconfig.json"
@@ -12,6 +13,8 @@
   "dependencies": {
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",
     "@tumult/core": "workspace:*",
+    "@tumult/theme": "workspace:*",
+    "@tumult/ui": "workspace:*",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
   },

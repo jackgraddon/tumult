@@ -6,3 +6,4 @@ packages:
 # without this the dev server and build can't run.
 allowBuilds:
   esbuild: true
+  vue-demi: true
