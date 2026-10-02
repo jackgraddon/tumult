@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { ChatClient, MessageView, Subscribable } from "@tumult/core";
+import { onScopeDispose, shallowRef, watch } from "vue";
+import type { ChatClient, MessageView, Subscribable, Subscription, ThreadSummary } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import TimelineViewport from "./TimelineViewport.vue";
@@ -31,6 +32,31 @@ try {
 const messages = source ? useSubscribable(source) : null;
 const session = useSubscribable(props.client.session);
 const typing = useSubscribable(props.client.typing);
+
+// rootEventId -> reply count, for the "N replies" link on root rows. Thread
+// replies live in their thread, not this timeline, so without this a root
+// row gives no hint a conversation hangs off it. Subscribed lazily: capability
+// is only known once syncing, and threads() throws before start().
+const threadReplies = shallowRef<ReadonlyMap<string, number>>(new Map());
+let threadSub: Subscription | null = null;
+watch(
+    () => props.threadsEnabled,
+    (enabled) => {
+        if (!enabled || threadSub) return;
+        try {
+            const list = props.client.threads(props.roomId);
+            const publish = (threads: readonly ThreadSummary[]): void => {
+                threadReplies.value = new Map(threads.map((t) => [t.rootEventId, t.replyCount]));
+            };
+            publish(list.get());
+            threadSub = list.subscribe(publish);
+        } catch {
+            threadSub = null;
+        }
+    },
+    { immediate: true },
+);
+onScopeDispose(() => threadSub?.unsubscribe());
 
 async function loadMore(): Promise<boolean> {
     return props.client.loadMore(props.roomId);
@@ -83,7 +109,7 @@ async function onSend(body: string): Promise<void> {
         <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
     </div>
     <template v-else>
-        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="threadsEnabled ? openThread : undefined" />
+        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="threadsEnabled ? openThread : undefined" :thread-replies="threadReplies" />
         <MessageComposer :room-id="props.roomId" :client="props.client" @send="onSend" />
     </template>
 </template>

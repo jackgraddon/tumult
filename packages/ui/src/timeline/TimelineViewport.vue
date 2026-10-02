@@ -19,6 +19,8 @@ const props = defineProps<{
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
     /** Open a thread on a message. */
     onOpenThread?: ((rootEventId: string) => void) | undefined;
+    /** rootEventId -> reply count, for the reply link on thread roots. */
+    threadReplies?: ReadonlyMap<string, number> | undefined;
 }>();
 
 interface Row {
@@ -191,6 +193,7 @@ function onScroll(): void {
                         :own-user-id="ownUserId"
                         :on-edit-message="onEditMessage"
                         :on-open-thread="onOpenThread"
+                        :thread-reply-count="threadReplies?.get((rows[v.index] as Row).message.id) ?? 0"
                     />
                 </template>
             </div>

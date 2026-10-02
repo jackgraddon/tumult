@@ -20,6 +20,8 @@ const props = defineProps<{
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
     /** Open a thread on this message. */
     onOpenThread?: ((rootEventId: string) => void) | undefined;
+    /** Replies in the thread rooted at this message; 0 when it isn't a root. */
+    threadReplyCount?: number;
 }>();
 
 /** Fixed palette; the OS picker covers the long tail. */
@@ -116,6 +118,14 @@ function cancelEdit(): void {
                 >
                     💬 thread
                 </button>
+            <button
+                v-if="onOpenThread && (threadReplyCount ?? 0) > 0"
+                type="button"
+                class="tumult-row-replies"
+                @click="onOpenThread?.(message.id)"
+            >
+                {{ threadReplyCount }} {{ threadReplyCount === 1 ? "reply" : "replies" }} ›
+            </button>
             <form v-if="editing" class="tumult-edit-form" @submit.prevent="saveEdit">
                 <input
                     v-model="draft"
@@ -251,6 +261,25 @@ function cancelEdit(): void {
 .tumult-row-edit:focus-visible {
     outline: 2px solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
+}
+.tumult-row-replies {
+    display: block;
+    margin-top: 2px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+.tumult-row-replies:hover {
+    text-decoration: underline;
+}
+.tumult-row-replies:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
 }
 .tumult-row-thread {
     display: none;
