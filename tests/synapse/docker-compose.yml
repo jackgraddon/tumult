@@ -1,0 +1,10 @@
+services:
+  synapse:
+    # Pinned: matches the MSC4186 baseline in AGENTS.md. Bump deliberately.
+    image: matrixdotorg/synapse:v1.114.0
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./data:/data
+    # homeserver.yaml is generated once by run.sh; override.yaml layers test settings.
+    command: ["run", "-c", "/data/homeserver.yaml", "-c", "/data/override.yaml"]

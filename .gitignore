@@ -17,3 +17,6 @@ dist-types/
 .DS_Store
 .vscode/
 .idea/
+
+# Local test homeserver (generated keys + sqlite db)
+tests/synapse/data/

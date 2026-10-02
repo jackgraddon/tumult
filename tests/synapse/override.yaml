@@ -1,0 +1,27 @@
+# Layered over the generated homeserver.yaml. Checked in; data/ is not.
+enable_registration: true
+enable_registration_without_verification: true
+password_config:
+  enabled: true
+report_stats: false
+# Keep the test loop fast and hermetic.
+federation_domain_whitelist: []
+url_preview_enabled: false
+# Integration tests burst registrations, logins and messages — the default
+# limiters turn the suite into a backoff lottery. Test server only.
+rc_registration:
+  per_second: 1000
+  burst_count: 1000
+rc_login:
+  address:
+    per_second: 1000
+    burst_count: 1000
+  account:
+    per_second: 1000
+    burst_count: 1000
+  failed_attempts:
+    per_second: 1000
+    burst_count: 1000
+rc_message:
+  per_second: 1000
+  burst_count: 1000
