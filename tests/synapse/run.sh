@@ -43,4 +43,4 @@ done
 curl -sf "$TEST_SYNAPSE_URL/_matrix/client/versions" > /dev/null
 
 echo "[synapse] running integration tests..."
-node --test packages/core/test-integration/
+node --test ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} packages/core/test-integration/

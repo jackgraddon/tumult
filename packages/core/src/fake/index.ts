@@ -198,7 +198,8 @@ class FakeChatClient implements ChatClient {
     public readonly security: Subscribable<SecurityStatus>;
     public readonly verification: Subscribable<VerificationState>;
     public readonly typing: Subscribable<TypingState>;
-    public readonly _threads: Subscribable<ThreadSummary[]>;
+    private readonly _threads: Observable<ThreadSummary[]>;
+    private readonly noThreads = new Observable<ThreadSummary[]>([]);
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
     private readonly threadTimelines = new Map<string, Observable<MessageView[]>>();
     private readonly rand: () => number;
@@ -331,15 +332,20 @@ class FakeChatClient implements ChatClient {
         // No-op in fake.
     }
 
-    public threads(_roomId: string): Subscribable<ThreadSummary[]> {
-        return this._threads;
+    public supportsThreads(): boolean {
+        return true;
+    }
+
+    public threads(roomId: string): Subscribable<ThreadSummary[]> {
+        // The fixture thread lives in the general room only.
+        return roomId === "!a-general:fake" ? this._threads : this.noThreads;
     }
 
     public threadTimeline(threadId: string): Subscribable<MessageView[]> {
         let obs = this.threadTimelines.get(threadId);
         if (!obs) {
             obs = new Observable<MessageView[]>([
-                msg(`${threadId}:root`, "@alice:example.com", "thread root", Date.now() - 120_000),
+                msg(threadId, "@alice:example.com", "thread root", Date.now() - 120_000),
                 msg(`${threadId}:r1`, "@bob:example.com", "first reply", Date.now() - 90_000),
                 msg(`${threadId}:r2`, "@alice:example.com", "second reply", Date.now() - 60_000),
             ]);
@@ -348,8 +354,8 @@ class FakeChatClient implements ChatClient {
         return obs;
     }
 
-    public async markThreadRead(_threadId: string): Promise<void> {
-        // No-op in fake.
+    public async markThreadRead(threadId: string): Promise<void> {
+        this._threads.update((list) => list.map((t) => (t.rootEventId === threadId ? { ...t, unreadCount: 0 } : t)));
     }
 
     public async sendReply(_roomId: string, threadId: string, body: string): Promise<void> {
@@ -359,6 +365,11 @@ class FakeChatClient implements ChatClient {
             ...cur,
             msg(`${threadId}:local-${Date.now()}`, "@demo:example.com", body, Date.now(), { status: "sent" }),
         ]);
+        if (threadId === "!a-general:fake:e0") {
+            this._threads.update((list) =>
+                list.map((t) => (t.rootEventId === threadId ? { ...t, replyCount: t.replyCount + 1, lastReplyTs: Date.now(), hasParticipated: true } : t)),
+            );
+        }
     }
 
     public async startVerification(): Promise<void> {

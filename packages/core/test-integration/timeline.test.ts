@@ -546,9 +546,10 @@ describe("timeline against real Synapse", () => {
         await sendText(alice.token, room, "thread root", `txn-u-${suffix}`);
 
         const login = async (user: { userId: string }): Promise<MatrixClient> => {
-            const client: MatrixClient = createClient({ baseUrl: BASE, threadSupport: true });
+            const client: MatrixClient = createClient({ baseUrl: BASE });
             await client.loginWithPassword(user.userId, "testtesttest");
-            await client.startClient({ initialSyncLimit: 10 });
+            // threadSupport is a START option; on createClient it's ignored.
+            await client.startClient({ initialSyncLimit: 10, threadSupport: true });
             return client;
         };
         const aliceClient = await login(alice);
@@ -567,7 +568,20 @@ describe("timeline against real Synapse", () => {
             // Bob replies in the thread.
             await threadsB.sendReply(room, rootId, "first reply");
             await waitFor("alice to see the thread", () =>
-                threadsA.threads(room).get().some((t) => t.rootEventId === rootId && t.replyCount >= 1),
+                threadsA.threads(room).get().some((t) => t.rootEventId === rootId && t.replyCount > 0),
+            );
+            // Exact: thread.length excludes the root, so one reply is 1, not 0.
+            const once = threadsA.threads(room).get().find((t) => t.rootEventId === rootId);
+            assert.equal(once?.replyCount, 1);
+            // Server semantics: authoring the ROOT counts as participating.
+            assert.equal(once?.hasParticipated, true);
+
+            await threadsB.sendReply(room, rootId, "second reply");
+            await waitFor("reply count to reach 2", () =>
+                threadsA.threads(room).get().find((t) => t.rootEventId === rootId)?.replyCount === 2,
+            );
+            await waitFor("bob to have participated", () =>
+                threadsB.threads(room).get().find((t) => t.rootEventId === rootId)?.hasParticipated === true,
             );
 
             // Alice sees the reply in the thread timeline.
@@ -576,7 +590,13 @@ describe("timeline against real Synapse", () => {
                 threadTimeline.get().some((m) => m.body === "first reply"),
             );
 
-            // Mark read clears the unread count.
+            // Bob's replies are unread for Alice until she reads the thread.
+            await waitFor("thread unread to rise", () =>
+                (threadsA.threads(room).get().find((t) => t.rootEventId === rootId)?.unreadCount ?? 0) > 0,
+            );
+            // Root first, then replies — the tracker prepends the root when the SDK hasn't.
+            assert.equal(threadTimeline.get()[0]?.id, rootId);
+
             await threadsA.markThreadRead(rootId);
             await waitFor("thread unread to clear", () =>
                 (threadsA.threads(room).get().find((t) => t.rootEventId === rootId)?.unreadCount ?? 1) === 0,

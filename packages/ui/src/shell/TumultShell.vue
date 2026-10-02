@@ -20,6 +20,7 @@ import RecoverySetupModal from "../security/RecoverySetupModal.vue";
 import RecoveryRestoreModal from "../security/RecoveryRestoreModal.vue";
 import VerificationModal from "../security/VerificationModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
+import ThreadList from "../threads/ThreadList.vue";
 
 const props = defineProps<{
     client: ChatClient;
@@ -79,15 +80,20 @@ function openVerificationModal(): void {
     verificationModal.value = true;
 }
 
-// Thread panel state
-const activeThread = ref<string | null>(null);
+// Thread slide-over: the room's thread list, or one open thread.
+type ThreadView = { mode: "list" } | { mode: "thread"; threadId: string } | null;
+const threadView = ref<ThreadView>(null);
 
 function openThread(rootEventId: string): void {
-    activeThread.value = rootEventId;
+    threadView.value = { mode: "thread", threadId: rootEventId };
+}
+
+function toggleThreadList(): void {
+    threadView.value = threadView.value ? null : { mode: "list" };
 }
 
 function closeThread(): void {
-    activeThread.value = null;
+    threadView.value = null;
 }
 
 // Auto-open for incoming requests: the other side already initiated, so the
@@ -121,12 +127,16 @@ const activeRoom = computed(() => {
 
 const activeRoomId = computed(() => activeRoom.value?.id);
 
-const threads = useSubscribable(
-    props.client.threads(activeRoomId.value ?? ""),
-);
-const messages = useSubscribable(
-    props.client.timeline(activeRoomId.value ?? ""),
-);
+// A thread belongs to one room; switching rooms closes it.
+watch(activeRoomId, () => {
+    threadView.value = null;
+});
+
+// Capability is only known once sync is up (it's probed in startClient), and
+// supportsThreads() isn't reactive — reading `connection` makes this recompute
+// as the client comes up. Thread subscriptions are taken by the slide-over
+// components, which only mount after this is true, i.e. after start().
+const threadsEnabled = computed(() => connection.value === "syncing" && props.client.supportsThreads());
 </script>
 
 <template>
@@ -166,8 +176,40 @@ const messages = useSubscribable(
                     <div class="tumult-pane-toolbar">
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')">☰</IconButton>
                         <IconButton label="Toggle members" @click="emit('toggleMembers')">👥</IconButton>
+                        <IconButton
+                            v-if="threadsEnabled && activeRoomId"
+                            label="Threads"
+                            :aria-pressed="threadView !== null"
+                            @click="toggleThreadList"
+                            >🧵</IconButton
+                        >
                     </div>
-                    <TimelinePane :client="client" :room="activeRoom" @open-thread="openThread" />
+                    <TimelinePane
+                        :client="client"
+                        :room="activeRoom"
+                        :threads-enabled="threadsEnabled"
+                        @open-thread="openThread"
+                    />
+                    <!-- Overlay, not a fourth grid track: no layout changes for the other panes. -->
+                    <div v-if="threadView && threadsEnabled && activeRoomId" class="tumult-thread-overlay">
+                        <ThreadList
+                            v-if="threadView.mode === 'list'"
+                            :key="activeRoomId"
+                            :client="client"
+                            :room-id="activeRoomId"
+                            @open="openThread"
+                            @close="closeThread"
+                        />
+                        <ThreadPanel
+                            v-else
+                            :key="threadView.threadId"
+                            :client="client"
+                            :room-id="activeRoomId"
+                            :thread-id="threadView.threadId"
+                            @back="threadView = { mode: 'list' }"
+                            @close="closeThread"
+                        />
+                    </div>
                 </div>
                 <div class="tumult-pane tumult-pane-members" :inert="!showMembers ? true : undefined">
                     <!-- Keyed: one room's subscription tears down before the next mounts. -->
@@ -188,13 +230,6 @@ const messages = useSubscribable(
             :client="client"
             :open="verificationModal"
             @close="verificationModal = false"
-        />
-        <ThreadPanel
-            v-if="activeThread"
-            :client="client"
-            :thread="threads.find((t) => t.rootEventId === activeThread) ?? { rootEventId: activeThread, replyCount: 0, lastReplyTs: 0, unreadCount: 0, hasParticipated: false }"
-            :root-message="messages.find((m) => m.id === activeThread)"
-            @close="closeThread"
         />
         </div>
     </ConfigProvider>
@@ -253,7 +288,16 @@ const messages = useSubscribable(
     visibility: hidden;
 }
 .tumult-pane-timeline {
+    position: relative;
     background: var(--timeline-bg);
+}
+.tumult-thread-overlay {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 5;
+    width: min(360px, 100%);
+    border-left: 1px solid var(--border-default);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
 }
 .tumult-pane-toolbar {
     display: flex;

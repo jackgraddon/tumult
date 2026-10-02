@@ -233,13 +233,8 @@ export class MatrixChatClient implements ChatClient {
                 cryptoCallbacks: {
                     getSecretStorageKey: ({ keys }) => Promise.resolve(serveHeldKey(this.heldSecretKey, keys)),
                 },
-                // Thread support is OFF by default — without it the SDK treats
-                // thread replies as main-timeline events and never creates
-                // Thread objects. It lives on IMatrixClientCreateOpts, not
-                // ICreateClientOpts, hence the cast.
-                threadSupport: true,
                 store,
-            } as Parameters<typeof createClient>[0]);
+            });
 
             // Must come *after* createClient: the store only gets its `createUser`
             // hook when it is attached to a client, and startup() needs it to
@@ -317,7 +312,12 @@ export class MatrixChatClient implements ChatClient {
                     void this.refreshSecurity();
                 });
             }
-            await client.startClient();
+            // Thread support is OFF by default — without it the SDK treats
+            // thread replies as main-timeline events and never creates Thread
+            // objects. It is a START option (IStartClientOpts): `supportsThreads()`
+            // reads the opts startClient() stores. Passed to createClient it is
+            // silently ignored — that cast-hidden mistake left threads dead.
+            await client.startClient({ threadSupport: true });
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
             await this.refreshSecurity();
@@ -446,6 +446,10 @@ export class MatrixChatClient implements ChatClient {
         const typing = this._typing;
         if (!typing) throw new Error("Cannot send typing before start()");
         await typing.sendTyping(roomId, isTyping);
+    }
+
+    public supportsThreads(): boolean {
+        return this._threads?.supported() ?? false;
     }
 
     public threads(roomId: string): Subscribable<ThreadSummary[]> {

@@ -8,6 +8,13 @@ import TimelineBody from "./TimelineBody.vue";
 const props = defineProps<{
     client: ChatClient;
     room: RoomSummary | undefined;
+    threadsEnabled?: boolean;
+}>();
+
+// Must be declared and re-emitted: an undeclared listener on this component
+// falls through to the root <section> as a native attribute and never fires.
+const emit = defineEmits<{
+    "open-thread": [rootEventId: string];
 }>();
 
 const typing = useSubscribable(props.client.typing);
@@ -31,7 +38,14 @@ function typingLabel(users: string[]): string {
             </p>
         </header>
         <!-- Keyed so one room's subscription is torn down before the next mounts. -->
-        <TimelineBody v-if="room" :key="room.id" :client="client" :room-id="room.id" />
+        <TimelineBody
+            v-if="room"
+            :key="room.id"
+            :client="client"
+            :room-id="room.id"
+            :threads-enabled="threadsEnabled"
+            @open-thread="(id) => emit('open-thread', id)"
+        />
         <div v-else class="tumult-timeline-empty">
             <p>Pick a channel or conversation to start reading.</p>
         </div>

@@ -8,6 +8,8 @@ import MessageComposer from "./MessageComposer.vue";
 const props = defineProps<{
     client: ChatClient;
     roomId: string;
+    /** Hide the thread affordance when the server has no thread support. */
+    threadsEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -61,11 +63,7 @@ async function editMessage(targetEventId: string, newBody: string): Promise<void
 }
 
 function openThread(rootEventId: string): void {
-    emit("open-thread", rootEventId);
-}
-
-function openThread(rootEventId: string): void {
-    // Bubbles to the shell via emit.
+    // Bubbles to the shell via TimelinePane.
     emit("open-thread", rootEventId);
 }
 
@@ -85,7 +83,7 @@ async function onSend(body: string): Promise<void> {
         <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
     </div>
     <template v-else>
-        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="openThread" />
+        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="threadsEnabled ? openThread : undefined" />
         <MessageComposer :room-id="props.roomId" :client="props.client" @send="onSend" />
     </template>
 </template>

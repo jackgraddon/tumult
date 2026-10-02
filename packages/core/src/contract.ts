@@ -239,6 +239,12 @@ export interface ChatClient {
      */
     sendTyping(roomId: string, isTyping: boolean): Promise<void>;
     /**
+     * False when the homeserver has no thread support (pre-v1.4). The UI hides
+     * thread affordances rather than offering a feature that silently degrades.
+     * Also false before `start()`, while capability is still unknown.
+     */
+    supportsThreads(): boolean;
+    /**
      * Thread list for a room. Same `Subscribable` per roomId on repeat calls.
      */
     threads(roomId: string): Subscribable<ThreadSummary[]>;

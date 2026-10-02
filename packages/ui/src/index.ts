@@ -28,3 +28,5 @@ export { default as RecoveryRestoreModal } from "./security/RecoveryRestoreModal
 export { default as Avatar } from "./primitives/Avatar.vue";
 export { default as UnreadBadge } from "./primitives/UnreadBadge.vue";
 export { default as IconButton } from "./primitives/IconButton.vue";
+export { default as ThreadPanel } from "./threads/ThreadPanel.vue";
+export { default as ThreadList } from "./threads/ThreadList.vue";

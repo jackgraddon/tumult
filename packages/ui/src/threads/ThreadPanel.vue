@@ -1,52 +1,67 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { ChatClient, MessageView, ThreadSummary } from "@tumult/core";
+import { computed, onMounted, watch } from "vue";
+import type { ChatClient } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import TimelineViewport from "../timeline/TimelineViewport.vue";
 import MessageComposer from "../timeline/MessageComposer.vue";
 
+// Mounted only after start() and keyed by threadId by the shell, so these
+// subscriptions are taken once per thread and torn down on switch.
 const props = defineProps<{
     client: ChatClient;
-    thread: ThreadSummary;
-    rootMessage: MessageView | undefined;
+    roomId: string;
+    threadId: string;
 }>();
 
 const emit = defineEmits<{
     close: [];
+    back: [];
 }>();
 
-const timeline = useSubscribable(props.client.threadTimeline(props.thread.rootEventId));
+const timeline = useSubscribable(props.client.threadTimeline(props.threadId));
+const session = useSubscribable(props.client.session);
+
+// The tracker puts the root first; everything after it is a reply.
+const root = computed(() => timeline.value.find((m) => m.id === props.threadId));
+const replyCount = computed(() => timeline.value.filter((m) => m.id !== props.threadId).length);
 
 async function loadMore(): Promise<boolean> {
-    // Thread timelines are short; no pagination for now.
+    // Live timeline only for now; long threads need getThreadTimeline paging.
     return false;
 }
 
+function markRead(): void {
+    props.client.markThreadRead(props.threadId).catch((error: unknown) => {
+        console.error("[tumult] thread read receipt failed", error);
+    });
+}
+
+// Viewing the thread is reading it: on open, and whenever replies arrive.
+onMounted(markRead);
+watch(() => timeline.value.length, markRead);
+
 async function onSend(body: string): Promise<void> {
     try {
-        await props.client.sendReply(props.thread.rootEventId, body);
+        await props.client.sendReply(props.roomId, props.threadId, body);
     } catch (error) {
         console.error("[tumult] thread reply failed", error);
     }
 }
-
-const replyCount = computed(() => timeline.value.length);
 </script>
 
 <template>
     <aside class="tumult-thread-panel" aria-label="Thread">
         <header class="tumult-thread-header">
+            <button type="button" class="tumult-thread-btn" aria-label="All threads" @click="emit('back')">‹</button>
             <div class="tumult-thread-header-text">
                 <h2>Thread</h2>
-                <p v-if="rootMessage" class="tumult-thread-root">{{ rootMessage.body }}</p>
+                <p v-if="root" class="tumult-thread-root">{{ root.body }}</p>
             </div>
-            <button type="button" class="tumult-thread-close" aria-label="Close thread" @click="emit('close')">
-                ✕
-            </button>
+            <button type="button" class="tumult-thread-btn" aria-label="Close thread" @click="emit('close')">✕</button>
         </header>
         <div class="tumult-thread-meta">{{ replyCount }} {{ replyCount === 1 ? "reply" : "replies" }}</div>
-        <TimelineViewport :messages="timeline" :load-more="loadMore" />
+        <TimelineViewport :messages="timeline" :load-more="loadMore" :own-user-id="session?.userId" />
         <MessageComposer @send="onSend" />
     </aside>
 </template>
@@ -57,19 +72,18 @@ const replyCount = computed(() => timeline.value.length);
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    width: 320px;
-    border-left: 1px solid var(--border-default);
+    height: 100%;
     background: var(--surface-pane);
 }
 .tumult-thread-header {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--border-default);
 }
 .tumult-thread-header-text {
+    flex: 1;
     min-width: 0;
 }
 .tumult-thread-header h2 {
@@ -84,7 +98,7 @@ const replyCount = computed(() => timeline.value.length);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.tumult-thread-close {
+.tumult-thread-btn {
     padding: 2px var(--space-1);
     border: none;
     border-radius: var(--radius-sm);
@@ -92,7 +106,7 @@ const replyCount = computed(() => timeline.value.length);
     color: var(--text-muted);
     cursor: pointer;
 }
-.tumult-thread-close:hover {
+.tumult-thread-btn:hover {
     background: var(--roomlist-item-bg-hover);
     color: var(--text-primary);
 }

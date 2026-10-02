@@ -324,7 +324,24 @@ chat client should be.
   indicator in the timeline header, composer sends/clears typing on
   draft input (15s throttle). Stub unit tests plus a Synapse round-trip
   (type → other side sees → send clears).
-- NEXT — slice 12: TBD (threads is the remaining large slice).
+- DONE — slice 12: threads — `ThreadTracker` (per-room `ThreadSummary`
+  lists, cached thread timelines with the root prepended, `sendReply`,
+  threaded `markThreadRead`, `supportsThreads()` capability gate), a
+  `ThreadList` + `ThreadPanel` slide-over overlaying the timeline pane (no
+  grid change), the per-message thread affordance, room switch closes it.
+  Thread unreads need no folding: `getUnreadNotificationCount` already sums
+  them. Stub tests plus a Synapse round-trip (reply → exact count → second
+  reply → participation → unread rises → mark read clears).
+- VERIFIED v43 thread traps (each one shipped broken before):
+  `threadSupport` is a `startClient()` option (IStartClientOpts) — on
+  `createClient` it's silently ignored and NO `Thread` objects exist; a cast
+  hid the type error. Thread events fire on the `Room`, never the client.
+  Use the `ThreadEvent` enum — the VALUES are `"Thread.update"` etc., not
+  the member names. `thread.length` already excludes the root. Participation
+  counts authoring the root (server semantics).
+- Stubs that emit hand-typed event-name strings will agree with the code's
+  mistakes. Dispatch through SDK enums in stubs, and keep a Synapse
+  round-trip for anything event-driven.
 - FIX — redaction rows: `m.room.redaction` events rendered as "Unsupported
   event" fallback rows; the filter now drops them (the target already
   tombstones via `mapEvent`). Found a deeper bug underneath: `sameTimeline`
