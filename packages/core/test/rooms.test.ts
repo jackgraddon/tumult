@@ -7,6 +7,7 @@ import { sendTextMessage } from "../src/rooms/send.ts";
 
 interface StubEvent {
     getStateKey(): string | undefined;
+    getContent(): Record<string, unknown>;
 }
 
 interface StubRoom {
@@ -15,6 +16,8 @@ interface StubRoom {
     membership: string;
     space: boolean;
     children: string[];
+    /** Children whose m.space.child was emptied (removed from the space). */
+    removedChildren?: string[];
     topic?: string;
     avatarMxc?: string;
     unreadTotal: number;
@@ -22,7 +25,10 @@ interface StubRoom {
 }
 
 function stubRoom(r: StubRoom): Record<string, unknown> {
-    const childEvents: StubEvent[] = r.children.map((id) => ({ getStateKey: () => id }));
+    const childEvents: StubEvent[] = [
+        ...r.children.map((id) => ({ getStateKey: () => id, getContent: () => ({ via: ["x"] }) })),
+        ...(r.removedChildren ?? []).map((id) => ({ getStateKey: () => id, getContent: () => ({}) })),
+    ];
     return {
         roomId: r.roomId,
         name: r.name,
@@ -144,6 +150,16 @@ describe("snapshotRooms", () => {
         );
         assert.equal(rooms[0]?.topic, null);
         assert.equal(rooms[0]?.avatarUrl, null);
+    });
+
+    it("ignores m.space.child events emptied by removal (no via)", () => {
+        const rooms = snapshotRooms(
+            stubClient([
+                { roomId: GUILD, name: "Guild", membership: "join", space: true, children: [], removedChildren: [GENERAL], unreadTotal: 0, unreadHighlight: 0 },
+                { roomId: GENERAL, name: "general", membership: "join", space: false, children: [], unreadTotal: 0, unreadHighlight: 0 },
+            ]),
+        );
+        assert.deepEqual(rooms.find((r) => r.id === GENERAL)?.parentSpaceIds, []);
     });
 });
 

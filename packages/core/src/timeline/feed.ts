@@ -167,8 +167,7 @@ export class TimelineFeed {
         const feed = this.feeds.get(roomId);
         const room = feed?.room ?? this.matrix.getRoom(roomId) ?? undefined;
         if (!room) return;
-        const events = room.getLiveTimeline().getEvents();
-        const latest = events[events.length - 1];
+        const latest = latestReceiptable(room.getLiveTimeline().getEvents());
         const latestId = latest?.getId();
         if (!latest || !latestId) return;
         if (feed && feed.lastReceiptSent === latestId) return;
@@ -268,16 +267,13 @@ export class TimelineFeed {
         // rows — and so do edit events, whose content already lives on the
         // target. Game and custom events are non-state, so they pass through
         // untouched.
-        const isEditEvent = (event: MatrixEvent): boolean =>
-            event.getType() === EventType.RoomMessage &&
-            event.getRelation()?.rel_type === RelationType.Replace;
         const next = events
             .filter(
                 (event) =>
                     event.getStateKey() == null &&
                     event.getType() !== EventType.Reaction &&
                     event.getType() !== EventType.RoomRedaction &&
-                    !isEditEvent(event),
+                    !isAggregatedRelation(event),
             )
             .map((event: MatrixEvent) => {
                 const message = mapEvent(event as unknown as MappableEvent);
@@ -308,6 +304,33 @@ export class TimelineFeed {
         if (sameTimeline(next, feed.obs.get())) return;
         feed.obs.set(next);
     }
+}
+
+/**
+ * Reactions and edits render on their target, never as rows. Decide by the
+ * WIRE relation: `m.relates_to` stays cleartext on encrypted events, but
+ * `getType()` reads `m.room.encrypted` until decryption — so a type-based
+ * filter leaks still-encrypted (or undecryptable) reactions and edits into the
+ * timeline as "waiting for keys" / "unable to decrypt" rows.
+ * Exported for tests.
+ */
+export function isAggregatedRelation(event: Pick<MatrixEvent, "getRelation">): boolean {
+    const relType = event.getRelation()?.rel_type;
+    return relType === RelationType.Annotation || relType === RelationType.Replace;
+}
+
+/**
+ * Newest event a read receipt may point at. The SDK throws "Cannot set read
+ * receipt to a pending event" on local echoes, and the live tail is usually
+ * our own echo right after sending — so skip anything not yet acknowledged.
+ * Exported for tests.
+ */
+export function latestReceiptable<E extends Pick<MatrixEvent, "getId" | "status">>(events: readonly E[]): E | undefined {
+    for (let i = events.length - 1; i >= 0; i--) {
+        const event = events[i];
+        if (event && event.status == null && event.getId()) return event;
+    }
+    return undefined;
 }
 
 /** Matrix-level decrypted-event hook: any late key upgrades some feed. */

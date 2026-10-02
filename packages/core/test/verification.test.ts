@@ -257,3 +257,36 @@ describe("VerificationManager publishing", () => {
         manager.detachAll();
     });
 });
+
+describe("verifier binding", () => {
+    it("binds ShowSas even when the request jumps Requested -> Started", () => {
+        type L = (...a: unknown[]) => void;
+        const reqListeners = new Set<L>();
+        const verifierListeners = new Map<string, Set<L>>();
+        let emoji: [string, string][] | null = null;
+        const verifier = {
+            on: (e: string, fn: L) => verifierListeners.set(e, (verifierListeners.get(e) ?? new Set()).add(fn)),
+            removeListener: (e: string, fn: L) => verifierListeners.get(e)?.delete(fn),
+            getShowSasCallbacks: () => (emoji ? { sas: { emoji } } : null),
+        };
+        const request = stubRequest({
+            phase: 2,
+            verifier: null,
+            on: (_e: string, fn: L) => reqListeners.add(fn),
+            removeListener: (_e: string, fn: L) => reqListeners.delete(fn),
+        }) as unknown as { phase: number; verifier: unknown };
+        const matrix = { on: () => undefined, removeListener: () => undefined } as unknown as MatrixClient;
+        const manager = new VerificationManager(matrix, {} as CryptoApi);
+        (manager as unknown as { track(r: unknown): void }).track(request);
+
+        // Other side starts straight away: Requested -> Started, no Ready edge.
+        request.phase = 4;
+        request.verifier = verifier;
+        for (const fn of reqListeners) fn();
+        assert.equal(verifierListeners.get("show_sas")?.size ?? [...verifierListeners.values()][0]?.size, 1);
+
+        emoji = [["🐶", "dog"]];
+        for (const set of verifierListeners.values()) for (const fn of set) fn();
+        assert.deepEqual(manager.state.requests[0]?.sasEmoji, emoji);
+    });
+});

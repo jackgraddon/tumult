@@ -339,6 +339,23 @@ chat client should be.
   Use the `ThreadEvent` enum — the VALUES are `"Thread.update"` etc., not
   the member names. `thread.length` already excludes the root. Participation
   counts authoring the root (server semantics).
+- AUDIT (post-slice-12), each verified against v43 source and fixed:
+  read receipts must skip pending local echoes (`sendReadReceipt` throws
+  "Cannot set read receipt to a pending event", and the tail is usually our
+  own echo); reaction/edit rows are hidden by WIRE relation (`getRelation()`
+  reads cleartext `m.relates_to`, `getType()` says `m.room.encrypted` until
+  decryption); an `m.space.child` with no `via` is a REMOVED link, not a
+  live one; the client's typing feed must subscribe to the tracker (it was
+  published once, so the indicator never showed in-app); verifier
+  listeners bind by verifier identity (a request can jump Requested →
+  Started); thread timelines need `RoomEvent.LocalEchoUpdated` and
+  `MatrixEventEvent.Decrypted` too; a failed `start()` detaches trackers.
+- OPEN: avatars use unauthenticated `/_matrix/media/v3/thumbnail` URLs.
+  matrix.jackg.cc advertises v1.11 (authenticated media); Synapse ≥1.120
+  404s new uploads on the old endpoints. Fix needs `useAuthentication` +
+  fetch-with-token → blob URLs, since `<img>` can't send Authorization.
+- Root rows show "N replies ›" from `threads(roomId)`, joined in the UI by
+  root event id — no contract change.
 - Stubs that emit hand-typed event-name strings will agree with the code's
   mistakes. Dispatch through SDK enums in stubs, and keep a Synapse
   round-trip for anything event-driven.

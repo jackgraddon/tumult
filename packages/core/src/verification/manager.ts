@@ -16,21 +16,21 @@ interface TrackedRequest {
     onVerifierChange: () => void;
     onShowSasEvent: (sas: { sas: { emoji?: [string, string][]; decimal?: [number, number, number] } }) => void;
     onCancel: () => void;
+    /** Verifier the listeners are bound to, so a new one is bound exactly once. */
+    boundVerifier: Verifier | null;
 }
 
-function phaseToView(phase: number): VerificationRequestView["phase"] {
+function phaseToView(phase: VerificationPhase): VerificationRequestView["phase"] {
     switch (phase) {
-        case 1:
-            return "unsent";
-        case 2:
+        case VerificationPhase.Requested:
             return "requested";
-        case 3:
+        case VerificationPhase.Ready:
             return "ready";
-        case 4:
+        case VerificationPhase.Started:
             return "started";
-        case 5:
+        case VerificationPhase.Cancelled:
             return "cancelled";
-        case 6:
+        case VerificationPhase.Done:
             return "done";
         default:
             return "unsent";
@@ -223,7 +223,7 @@ export class VerificationManager {
         for (const [id, tracked] of this.requests) {
             tracked.request.removeListener(VerificationRequestEvent.Change, tracked.onChange);
             tracked.request.removeListener(VerificationRequestEvent.Change, tracked.onVerifierChange);
-            const verifier = tracked.request.verifier;
+            const verifier = tracked.boundVerifier;
             if (verifier) {
                 verifier.removeListener(VerifierEvent.ShowSas, tracked.onShowSasEvent);
                 verifier.removeListener(VerifierEvent.Cancel, tracked.onCancel);
@@ -243,13 +243,9 @@ export class VerificationManager {
             onVerifierChange: () => this.updateView(id),
             onShowSasEvent: () => this.updateView(id),
             onCancel: () => this.updateView(id),
+            boundVerifier: null,
         };
         req.on(VerificationRequestEvent.Change, tracked.onChange);
-        const verifier = req.verifier;
-        if (verifier) {
-            verifier.on(VerifierEvent.Cancel, tracked.onCancel);
-            verifier.on(VerifierEvent.ShowSas, tracked.onShowSasEvent);
-        }
         this.requests.set(id, tracked);
         this.updateView(id);
         console.debug(`[tumult] verification tracking ${id} (phase=${tracked.view.phase})`);
@@ -264,16 +260,21 @@ export class VerificationManager {
             console.debug(`[tumult] verification ${id}: ${before} -> ${tracked.view.phase}`);
         }
 
-        // Re-bind verifier listeners when a new verifier appears (phase
-        // transitions from Ready → Started create one).
+        // Bind by verifier IDENTITY, not by phase transition: a request can
+        // jump Requested -> Started (the other side starts right after our
+        // ready), skipping the Ready -> Started edge the old check waited for,
+        // and then ShowSas was never heard — no emoji on screen.
         const verifier = tracked.request.verifier;
-        if (verifier) {
-            // Only bind if this is a new verifier to avoid the leak
-            const isNewVerifier = tracked.view.phase === "started" && before === "ready";
-            if (isNewVerifier) {
-                verifier.on(VerifierEvent.Cancel, tracked.onCancel);
-                verifier.on(VerifierEvent.ShowSas, tracked.onShowSasEvent);
+        if (verifier && verifier !== tracked.boundVerifier) {
+            if (tracked.boundVerifier) {
+                tracked.boundVerifier.removeListener(VerifierEvent.Cancel, tracked.onCancel);
+                tracked.boundVerifier.removeListener(VerifierEvent.ShowSas, tracked.onShowSasEvent);
             }
+            verifier.on(VerifierEvent.Cancel, tracked.onCancel);
+            verifier.on(VerifierEvent.ShowSas, tracked.onShowSasEvent);
+            tracked.boundVerifier = verifier;
+            // ShowSas may already have fired before we bound: re-read now.
+            tracked.view = toRequestView(tracked.request);
         }
         this.onUpdate();
     }

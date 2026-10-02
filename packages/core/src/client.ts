@@ -298,6 +298,10 @@ export class MatrixChatClient implements ChatClient {
                 this.publishVerification();
             }
             this._typing = new TypingTracker(client);
+            // The tracker owns its own Observable; without this subscription
+            // the contract's `typing` feed is published once and never again,
+            // so "X is typing…" never appears in the app.
+            this._typing.subscribe(() => this.publishTyping());
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             // Key backup state can move at any time (another device rotates
@@ -327,6 +331,16 @@ export class MatrixChatClient implements ChatClient {
             // the same IndexedDB, which corrupts the crypto store.
             client?.stopClient();
             await store.destroy().catch(() => undefined);
+            // Trackers built before the failure hold listeners on the dead
+            // client; a retry would otherwise stack a second set.
+            this.timelines?.detachAll();
+            this.removeDecryptedHook?.();
+            this._verification?.detachAll();
+            this._verification = null;
+            this._typing?.detachAll();
+            this._typing = null;
+            this._threads?.detachAll();
+            this._threads = null;
             this.matrix = null;
             this.store = null;
             this.timelines = null;

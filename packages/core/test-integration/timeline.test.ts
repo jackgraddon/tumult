@@ -598,6 +598,16 @@ describe("timeline against real Synapse", () => {
             assert.equal(threadTimeline.get()[0]?.id, rootId);
 
             await threadsA.markThreadRead(rootId);
+
+            // Own reply: the echo must flip sending -> sent inside the thread
+            // timeline (a room LocalEchoUpdated, not a thread event), and an
+            // immediate read on a pending tail must not throw.
+            const ownSend = threadsA.sendReply(room, rootId, "alice in thread");
+            await threadsA.markThreadRead(rootId);
+            await ownSend;
+            await waitFor("own thread reply to settle as sent", () =>
+                threadTimeline.get().some((m) => m.body === "alice in thread" && m.status === "sent"),
+            );
             await waitFor("thread unread to clear", () =>
                 (threadsA.threads(room).get().find((t) => t.rootEventId === rootId)?.unreadCount ?? 1) === 0,
             );

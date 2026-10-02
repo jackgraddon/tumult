@@ -1,7 +1,9 @@
 import {
     ClientEvent,
     FeatureSupport,
+    MatrixEventEvent,
     MsgType,
+    RoomEvent,
     Thread,
     ThreadEvent,
     type MatrixClient,
@@ -12,6 +14,7 @@ import {
 import type { MessageView, Subscribable, ThreadSummary } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { mapEvent, type MappableEvent } from "../timeline/map.ts";
+import { latestReceiptable } from "../timeline/feed.ts";
 
 /**
  * Thread lifecycle events. These fire on the `Room` (which re-emits them from
@@ -38,6 +41,10 @@ export class ThreadTracker {
     private readonly attached = new Map<string, Room>();
     private readonly onRoomThreadEvent: (thread?: Thread) => void;
     private readonly onSync: () => void;
+    /** Own reply echo flips sending → sent/failed: a room event, not a thread one. */
+    private readonly onLocalEcho: (event: MatrixEvent) => void;
+    /** Encrypted replies decrypt later; the client re-emits this per event. */
+    private readonly onDecrypted: (event: MatrixEvent) => void;
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
     public constructor(matrix: MatrixClient) {
@@ -51,7 +58,14 @@ export class ThreadTracker {
             for (const roomId of this.threadLists.keys()) this.attach(roomId);
             this.rebuildAll();
         };
+        const onThreadEventOf = (event: MatrixEvent): void => {
+            const rootId = event.threadRootId;
+            if (rootId && this.threadTimelines.has(rootId)) this.rebuildTimeline(rootId);
+        };
+        this.onLocalEcho = onThreadEventOf;
+        this.onDecrypted = onThreadEventOf;
         this.matrix.on(ClientEvent.Sync, this.onSync);
+        this.matrix.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     }
 
     /** False when the server lacks thread support (pre-v1.4, no MSC3440). */
@@ -89,16 +103,18 @@ export class ThreadTracker {
     public async markThreadRead(threadId: string): Promise<void> {
         const thread = this.findThread(threadId);
         if (!thread) return;
-        const events = thread.liveTimeline.getEvents();
-        const latest = events[events.length - 1];
-        // The SDK reads `threadRootId` off the event and sends a threaded receipt.
+        // Skip our own pending echo (the SDK throws on those). The SDK reads
+        // `threadRootId` off the event and sends a threaded receipt.
+        const latest = latestReceiptable(thread.liveTimeline.getEvents());
         if (latest) await this.matrix.sendReadReceipt(latest);
     }
 
     public detachAll(): void {
         this.matrix.removeListener(ClientEvent.Sync, this.onSync);
+        this.matrix.removeListener(MatrixEventEvent.Decrypted, this.onDecrypted);
         for (const room of this.attached.values()) {
             for (const event of ROOM_THREAD_EVENTS) room.removeListener(event, this.onRoomThreadEvent);
+            room.removeListener(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
         }
         this.attached.clear();
         this.threadLists.clear();
@@ -110,6 +126,7 @@ export class ThreadTracker {
         const room = this.matrix.getRoom(roomId);
         if (!room) return;
         for (const event of ROOM_THREAD_EVENTS) room.on(event, this.onRoomThreadEvent);
+        room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
         this.attached.set(roomId, room);
     }
 

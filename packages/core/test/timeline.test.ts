@@ -77,3 +77,24 @@ describe("mapEvent", () => {
         assert.equal(failed.decryption, "failed");
     });
 });
+
+import { isAggregatedRelation, latestReceiptable } from "../src/timeline/feed.ts";
+
+describe("audit regressions", () => {
+    it("latestReceiptable skips our pending local echo", () => {
+        const ev = (id: string, status: EventStatus | null) => ({ getId: () => id, status });
+        const picked = latestReceiptable([ev("$a", null), ev("$b", null), ev("~echo", EventStatus.SENDING)]);
+        assert.equal(picked?.getId(), "$b");
+        assert.equal(latestReceiptable([ev("~echo", EventStatus.SENDING)]), undefined);
+    });
+
+    it("isAggregatedRelation hides still-encrypted reactions and edits by wire relation", () => {
+        const rel = (rel_type: string | undefined) => ({
+            getRelation: () => (rel_type ? { rel_type, event_id: "$t" } : null),
+        });
+        assert.equal(isAggregatedRelation(rel("m.annotation") as never), true);
+        assert.equal(isAggregatedRelation(rel("m.replace") as never), true);
+        assert.equal(isAggregatedRelation(rel("m.thread") as never), false);
+        assert.equal(isAggregatedRelation(rel(undefined) as never), false);
+    });
+});

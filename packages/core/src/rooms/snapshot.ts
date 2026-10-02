@@ -20,7 +20,7 @@ export function snapshotRooms(client: MatrixClient): RoomSummary[] {
     const parentsByRoomId = new Map<string, Set<string>>();
     for (const room of joined) {
         if (!room.isSpaceRoom()) continue;
-        let children: { getStateKey(): string | undefined }[];
+        let children: { getStateKey(): string | undefined; getContent(): Record<string, unknown> }[];
         try {
             children = room.currentState.getStateEvents(SPACE_CHILD);
         } catch {
@@ -29,6 +29,11 @@ export function snapshotRooms(client: MatrixClient): RoomSummary[] {
         for (const event of children) {
             const childId = event.getStateKey();
             if (!childId) continue;
+            // Removing a child doesn't delete the state event — it replaces it
+            // with empty content. Per spec only a non-empty `via` makes it a
+            // live link; without this check removed rooms stay nested forever.
+            const via = event.getContent()?.["via"];
+            if (!Array.isArray(via) || via.length === 0) continue;
             let parents = parentsByRoomId.get(childId);
             if (!parents) {
                 parents = new Set();
