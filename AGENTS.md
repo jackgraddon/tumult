@@ -156,6 +156,10 @@ chat client should be.
   `import type` for type-only imports (this kept matrix-js-sdk out of the fake
   build). `packages/ui` ships `src` (SFCs), not `dist`; `apps/web` takes no
   project reference to it and maps `@tumult/ui` via tsconfig paths.
+- `CryptoApi`, `CryptoEvent` and `decodeRecoveryKey` are NOT exported from the
+  `matrix-js-sdk` package root — import them deep
+  (`matrix-js-sdk/lib/crypto-api`, `…/CryptoEvent`, `…/recovery-key`). There is
+  no `exports` map blocking deep imports.
 - Memory rules day one: one renderer/window, windowed room loading, capped
   in-memory events per room, unload idle rooms, virtualized message list,
   server thumbnails over full images, pause off-screen animations.
@@ -223,7 +227,117 @@ chat client should be.
   `node --test` suites (selector + validator). Fake/real swap is one import
   in `apps/web/src/chat.ts`. Real `rooms`/`timeline()`/`send()` still throw —
   slice 3 replaces them, don't paper over.
-- NEXT — slice 3: guild rail + room list on real data, then DMs.
+- DONE — slice 3 (rooms half): real `rooms` feed — `snapshotRooms()` maps
+  joined rooms (space links via `m.space.child`, 48px server-thumbnail
+  avatars, Total/Highlight unreads), refreshed on every `ClientEvent.Sync`,
+  DMs fall out of the orphan rule with no extra code. `apps/web` points at
+  the real client. `send()` still throws — slice 5 replaces it, don't paper
+  over. (The shell catches those throws and renders explicit "lands in slice
+  N" placeholders, so a selected room can't zombie-crash later patches; core
+  still throws honestly.)
+- DONE — slice 4: real `timeline(roomId)` — pure `mapEvent()` (body
+  fallback, redaction tombstone, local-echo statuses, pending/ok/failed via
+  `clearEvent` since `isEncrypted()` stays true post-decryption), self-driving
+  `TimelineFeed` (cached Observable per room, lazy per-room listeners, Sync +
+  Decrypted backstops, `loadMore()` with concurrent-call collapse, 500-event
+  cap), `@tanstack/vue-virtual` timeline with top-edge pagination and
+  scroll-preserved prepends. Placeholders dissolve automatically now that
+  `timeline()` resolves; composer stays disabled until slice 5.
+- NEXT — slice 5: send with local echo.
+- DONE — slice 5: send with local echo — `sendTextMessage()` helper
+  (`m.text` via `MsgType.Text`) wired through `MatrixChatClient.send()`;
+  the SDK owns the echo lifecycle (chronological ordering is its default, so
+  no client option needed) and the feed maps every transition. Composer
+  enabled with a logged-not-thrown error path; failed echoes show the
+  existing "not sent" flag (retry is a follow-up). Covered by stub unit tests
+  plus a gated-`fetch` integration test proving `sending → sent`.
+- NEXT — slice 6: encryption polish (verification, key backup / recovery).
+- NEXT — slice 6: encryption polish (verification, key backup / recovery).
+- DONE — slice 6 (backup + recovery, no SAS): `SecurityStatus` feed
+  (cross-signing/backup-trust/secret-storage, refreshed on crypto events),
+  backup auto-enabled at start, raw-key 4S setup returning the recovery key
+  once, paste-to-restore that rebuilds timelines. Banner + two Reka Dialogs
+  in the shell plus an account-menu entry. No crypto in Node, so verification
+  is manual against matrix.jackg.cc.
+- FIX — restore speaks 4S now: setup shows the secret-storage key, so restore
+  unlocks via `getSecretStorageKey` callback + `loadSessionBackupPrivateKey-
+  FromSecretStorage` (direct backup-key store kept as fallback for backups
+  made elsewhere). Every failure maps to a friendly message; raw SDK strings
+  never reach the modal. The held key lives only for the restore call.
+- FIX — restore also verifies the device: after the backup half, when 4S
+  holds cross-signing keys the device lacks, `bootstrapCrossSigning({})`
+  imports them and self-signs (the SDK's own recovery path). Skipped
+  honestly when 4S has no keys or the device already has them — the
+  identity-rotating branch is never taken. `restoreBackup()` resolves
+  `true` when verification happened; the modal says so.
+- FIX — the held key must span BOTH halves: the backup unlock and the
+  cross-signing import both read from 4S via `getSecretStorageKey`. An
+  early `finally` cleared it before `bootstrapCrossSigning` ran, so the
+  import silently failed (decryption worked, verification didn't). One
+  `finally` at the end of the whole restore now clears it.
+- DONE — slice 7: SAS verification — interactive emoji verification for
+  own-user and own-device flows. `VerificationManager` tracks active
+  requests, SAS emoji/decimal display with confirm/mismatch/cancel,
+  incoming/outgoing request handling. `verification: Subscribable<VerificationState>` feed
+  in contract, modal in shell with account-menu entry. No crypto in Node
+  for SAS flow, verified manually against matrix.jackg.cc.
+- FIX — SAS hardening: `Verifier.verify()` calls `accept()` internally, so the
+  manual `accept()` before `startVerification()` double-accepted (phase-2
+  error, then phase-5 on retry) — removed from both paths. `getDevices()`
+  before `startVerification()` populates the device cache (fixes "other
+  device is unknown"). Modal auto-opens on incoming requests with an
+  accept/decline state; account menu lists own devices with verification
+  status. Deep SDK value imports need `.js` extensions for Node strip-mode.
+- FIX — SAS ordering: `requestOwnUserVerification()` broadcasts to all own
+  devices, so no `otherDeviceId` exists until the receiver sends ready —
+  starting SAS immediately threw "other device is unknown" despite delivery.
+  `startVerification()` now waits for Ready (120s, cancellable); the manual
+  initiator-side `accept()` is gone entirely (receivers never send ready);
+  incoming accepts only while Requested. Covered by stub-emitter gating tests.
+- NEXT — slice 8: TBD.
+- DONE — slice 8: reactions — `m.reaction` annotations aggregated in
+  `TimelineFeed` (grouped counts + own flag, redacted excluded, no
+  annotation rows), `toggleReaction()` (send vs redact routing) through
+  `MatrixChatClient`, chips + Reka Popover palette on `TimelineRow` with a
+  `+` affordance on hover. `MessageView.reactions` is additive; renderers
+  untouched. Covered by stub unit tests plus a Synapse round-trip
+  (react → count 2 → toggle off → other's remains).
+- NEXT — slice 9: TBD (read receipts pair well — same row-decoration area).
+- DONE — slice 9: read receipts — per-message `readBy` (latest-read-per-user
+  markers via `getUsersReadUpTo`, self excluded, `m.read` + `m.read.private`),
+  reader avatar stacks on `TimelineRow`, `markRead()` (latest-tail receipt,
+  per-room throttled) fired when the live tail is visible. Viewing a room
+  now clears its unread badge on the next sync — badges verified end to end
+  in the harness (read → others see reader → own unread 0).
+- NEXT — slice 10: TBD.
+- DONE — slice 10: message edits — `m.replace` relations aggregated in
+  `TimelineFeed` (latest-wins, sender-must-match, never over tombstones, no
+  edit rows), `edit()` (`m.new_content` via `sendMessage`) through
+  `MatrixChatClient`, pencil affordance on own sent messages with inline
+  editor (Enter saves, Escape cancels) plus an "(edited)" marker.
+  `MessageView.edited` is additive; the `sameTimeline` body comparison from
+  the redaction fix covers republication. Stub unit tests plus a Synapse
+  round-trip (edit → flag, second wins, wrong-sender ignored).
+- DONE — slice 11: typing indicators — `TypingTracker` (per-room typing
+  user lists from `member.typing`, self excluded, `RoomMember.typing` +
+  sync backstop), `typing: Subscribable<TypingState>` feed, "X is typing…"
+  indicator in the timeline header, composer sends/clears typing on
+  draft input (15s throttle). Stub unit tests plus a Synapse round-trip
+  (type → other side sees → send clears).
+- NEXT — slice 12: TBD (threads is the remaining large slice).
+- FIX — redaction rows: `m.room.redaction` events rendered as "Unsupported
+  event" fallback rows; the filter now drops them (the target already
+  tombstones via `mapEvent`). Found a deeper bug underneath: `sameTimeline`
+  compared id/status/decryption only, so a body-only change (redaction
+  tombstone) was discarded as unchanged and never published. Body + type
+  are compared now (also future-proofs edits). Plus a Synapse quirk for the
+  test: `.../redact/{event}/{txn}` 405s on this version, txn-less works.
+- DONE — first integration harness: `tests/synapse/` (pinned Synapse in
+  Docker, generated config + checked-in override) with a `node --test` suite
+  driving two password-authed SDK clients (space, parent links, unread,
+  selector — green). Raw `MatrixClient`, no crypto: rooms are unencrypted.
+- NEXT — slice 3 (DMs polish) then slice 4: timeline read + history
+  pagination.
 - NOT YET DONE: no tests. Sliding sync (MSC4186) is not wired — classic
   `/sync` only, behind the abstraction. The Dockerised-Synapse integration
   tests this file calls for should land before slice 4.

@@ -6,11 +6,14 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "typecheck": "vue-tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@tanstack/vue-virtual": "^3.13.39",
     "@tumult/core": "workspace:*",
     "reka-ui": "^2.10.5",
     "vue": "^3.5.43"

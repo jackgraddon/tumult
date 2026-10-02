@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import {
     DropdownMenuContent,
     DropdownMenuItem,
@@ -6,21 +7,34 @@ import {
     DropdownMenuRoot,
     DropdownMenuTrigger,
 } from "reka-ui";
-import type { SessionView } from "@tumult/core";
+import type { ChatClient, DeviceView, SessionView } from "@tumult/core";
 
 import Avatar from "../primitives/Avatar.vue";
 
 defineProps<{
     session: SessionView | null;
+    client: ChatClient;
 }>();
 
 const emit = defineEmits<{
     signOut: [];
+    security: [];
+    verify: [];
 }>();
-</script>
+
+const devices = ref<DeviceView[] | null>(null);
+
+async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
+    if (!open) return;
+    try {
+        devices.value = await client.listDevices();
+    } catch {
+        devices.value = null;
+    }
+}</script>
 
 <template>
-    <DropdownMenuRoot>
+    <DropdownMenuRoot @update:open="(open) => onOpenChange(open, client)">
         <DropdownMenuTrigger as-child>
             <button type="button" class="tumult-account" :aria-label="session ? `Account: ${session.userId}` : 'Account'">
                 <Avatar :label="session?.userId ?? '?'" size="sm" />
@@ -31,9 +45,28 @@ const emit = defineEmits<{
                 <DropdownMenuItem class="tumult-menu-id" disabled :text-value="session?.userId ?? ''">
                     {{ session?.userId ?? "Signed out" }}
                 </DropdownMenuItem>
-                <DropdownMenuItem class="tumult-menu-item" text-value="sign out" @select="emit('signOut')">
-                    Sign out
-                </DropdownMenuItem>
+                <div v-if="devices" class="tumult-menu-devices" role="group" aria-label="Devices">
+                    <ul>
+                        <li
+                            v-for="d in devices"
+                            :key="d.id"
+                            class="tumult-menu-device"
+                            :title="d.verified ? 'Verified' : 'Unverified'"
+                        >
+                            <span aria-hidden="true">{{ d.verified ? "🛡️" : "⚠️" }}</span>
+                            <span class="tumult-menu-device-name">{{ d.displayName ?? d.id }}{{ d.isCurrent ? " (this device)" : "" }}</span>
+                        </li>
+                    </ul>
+                </div>
+<DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
+                Security…
+            </DropdownMenuItem>
+            <DropdownMenuItem class="tumult-menu-item" text-value="verify" @select="emit('verify')">
+                Verify this device…
+            </DropdownMenuItem>
+            <DropdownMenuItem class="tumult-menu-item" text-value="sign out" @select="emit('signOut')">
+                Sign out
+            </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenuPortal>
     </DropdownMenuRoot>
@@ -71,6 +104,33 @@ const emit = defineEmits<{
     font-size: var(--text-xs);
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.tumult-menu-devices {
+    max-height: 160px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+    margin: 4px 0;
+    padding: 4px 0;
+}
+.tumult-menu-devices ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.tumult-menu-device {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px 8px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+.tumult-menu-device-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .tumult-menu-item {
     padding: 6px 8px;

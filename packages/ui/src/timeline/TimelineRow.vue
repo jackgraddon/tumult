@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from "reka-ui";
 import type { MessageView } from "@tumult/core";
 
 import { useTimelineRegistry } from "./registry.ts";
@@ -11,13 +12,58 @@ const props = defineProps<{
     message: MessageView;
     /** True when the previous row shares sender+day: compact continuation. */
     grouped: boolean;
+    /** Toggle our reaction; absent while the client can't react (fake-safe). */
+    onToggleReaction?: ((targetEventId: string, emoji: string) => void) | undefined;
+    /** Our user id; the edit affordance shows only on our sent messages. */
+    ownUserId?: (string | null) | undefined;
+    /** Save an edit; absent while the client can't edit. */
+    onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
+    /** Open a thread on this message. */
+    onOpenThread?: ((rootEventId: string) => void) | undefined;
 }>();
+
+/** Fixed palette; the OS picker covers the long tail. */
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "👀", "🚀"];
 
 const registry = useTimelineRegistry();
 const renderer = computed(() => registry.resolve(props.message, UnknownEvent));
 const time = computed(() =>
     new Date(props.message.timestamp).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" }),
 );
+
+function toggle(emoji: string): void {
+    props.onToggleReaction?.(props.message.id, emoji);
+}
+
+const editable = computed(
+    () =>
+        props.onEditMessage !== undefined &&
+        props.ownUserId !== undefined &&
+        props.ownUserId !== null &&
+        props.message.senderId === props.ownUserId &&
+        props.message.decryption === "ok" &&
+        props.message.status === "sent",
+);
+
+const editing = ref(false);
+const draft = ref("");
+
+function startEdit(): void {
+    draft.value = props.message.body;
+    editing.value = true;
+}
+
+function saveEdit(): void {
+    const body = draft.value.trim();
+    editing.value = false;
+    if (body.length > 0 && body !== props.message.body) {
+        props.onEditMessage?.(props.message.id, body);
+    }
+}
+
+function cancelEdit(): void {
+    editing.value = false;
+}
 </script>
 
 <template>
@@ -33,6 +79,8 @@ const time = computed(() =>
         :data-decryption="message.decryption"
     >
         <Avatar v-if="!grouped" :label="message.senderId" size="sm" class="tumult-row-avatar" />
+        <!-- Gutter keeps grouped bodies aligned under the text above without a second avatar. -->
+        <span v-else class="tumult-row-gutter" aria-hidden="true" />
         <div class="tumult-row-body">
             <div v-if="!grouped" class="tumult-row-header">
                 <span class="tumult-row-sender">{{ message.senderId }}</span>
@@ -43,12 +91,97 @@ const time = computed(() =>
                 <span v-else-if="message.status === 'failed'" class="tumult-row-flag tumult-row-flag-failed">
                     not sent
                 </span>
+                <span v-if="message.edited" class="tumult-row-flag" title="Edited">(edited)</span>
             </div>
             <DecryptionPlaceholder
                 v-if="message.decryption === 'pending' || message.decryption === 'failed'"
                 :message="message"
             />
-            <component :is="renderer" v-else :message="message" />
+            <component :is="renderer" v-else-if="!editing" :message="message" />
+                <button
+                    v-if="editable && !editing"
+                    type="button"
+                    class="tumult-row-edit"
+                    aria-label="Edit message"
+                    @click="startEdit"
+                >
+                    ✎ edit
+                </button>
+                <button
+                    v-if="onOpenThread && message.decryption === 'ok'"
+                    type="button"
+                    class="tumult-row-thread"
+                    aria-label="Reply in thread"
+                    @click="onOpenThread?.(message.id)"
+                >
+                    💬 thread
+                </button>
+            <form v-if="editing" class="tumult-edit-form" @submit.prevent="saveEdit">
+                <input
+                    v-model="draft"
+                    class="tumult-edit-input"
+                    type="text"
+                    aria-label="Edit message"
+                    @keydown.escape="cancelEdit"
+                />
+                <button type="submit" class="tumult-edit-save" :disabled="draft.trim().length === 0">
+                    Save
+                </button>
+                <button type="button" class="tumult-edit-cancel" @click="cancelEdit">Cancel</button>
+            </form>
+            <div
+                v-if="message.decryption === 'ok' && (message.reactions.length > 0 || onToggleReaction)"
+                class="tumult-reactions"
+            >
+                <button
+                    v-for="reaction in message.reactions"
+                    :key="reaction.emoji"
+                    type="button"
+                    class="tumult-reaction-chip"
+                    :data-own="reaction.ownReacted ? 'true' : 'false'"
+                    :aria-label="`${reaction.emoji}: ${reaction.count}, ${reaction.ownReacted ? 'including you. Activate to remove.' : 'activate to add yours.'}`"
+                    :disabled="!onToggleReaction"
+                    @click="toggle(reaction.emoji)"
+                >
+                    <span aria-hidden="true">{{ reaction.emoji }}</span>
+                    <span class="tumult-reaction-count">{{ reaction.count }}</span>
+                </button>
+                <PopoverRoot v-if="onToggleReaction">
+                    <PopoverTrigger as-child>
+                        <button type="button" class="tumult-reaction-add" aria-label="Add reaction">+</button>
+                    </PopoverTrigger>
+                    <PopoverPortal>
+                        <PopoverContent class="tumult-reaction-popover" side="top" align="start">
+                            <button
+                                v-for="emoji in QUICK_REACTIONS"
+                                :key="emoji"
+                                type="button"
+                                class="tumult-reaction-pick"
+                                :aria-label="`React with ${emoji}`"
+                                @click="toggle(emoji)"
+                            >
+                                {{ emoji }}
+                            </button>
+                        </PopoverContent>
+                    </PopoverPortal>
+                </PopoverRoot>
+            </div>
+            <div
+                v-if="message.decryption === 'ok' && message.readBy.length > 0"
+                class="tumult-readers"
+                :title="`Read by ${message.readBy.join(', ')}`"
+            >
+                <Avatar
+                    v-for="userId in message.readBy.slice(0, 4)"
+                    :key="userId"
+                    :label="userId"
+                    size="sm"
+                    class="tumult-reader-avatar"
+                />
+                <span v-if="message.readBy.length > 4" class="tumult-reader-more">
+                    +{{ message.readBy.length - 4 }}
+                </span>
+            </div>
         </div>
     </div>
 </template>
@@ -67,6 +200,11 @@ const time = computed(() =>
     background: var(--roomlist-item-bg-hover);
 }
 .tumult-row-avatar {
+    margin-top: 2px;
+}
+.tumult-row-gutter {
+    flex-shrink: 0;
+    width: 24px;
     margin-top: 2px;
 }
 .tumult-row-body {
@@ -95,5 +233,173 @@ const time = computed(() =>
 }
 .tumult-row-flag-failed {
     color: var(--danger);
+}
+.tumult-row-edit {
+    display: none;
+    align-items: center;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+.tumult-row:hover .tumult-row-edit,
+.tumult-row-edit:focus-visible {
+    display: inline-flex;
+}
+.tumult-row-edit:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    border-radius: var(--radius-sm);
+}
+.tumult-row-thread {
+    display: none;
+    align-items: center;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+.tumult-row:hover .tumult-row-thread,
+.tumult-row-thread:focus-visible {
+    display: inline-flex;
+}
+.tumult-row-thread:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    border-radius: var(--radius-sm);
+}
+.tumult-edit-form {
+    display: flex;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+.tumult-edit-input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--text-sm);
+}
+.tumult-edit-input:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: -1px;
+}
+.tumult-edit-save,
+.tumult-edit-cancel {
+    padding: 4px var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+.tumult-edit-save {
+    border: none;
+    background: var(--button-primary-bg);
+    color: var(--button-primary-text);
+    font-weight: 600;
+}
+.tumult-edit-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.tumult-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+.tumult-reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-full);
+    background: var(--surface-pane);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+.tumult-reaction-chip[data-own="true"] {
+    border-color: var(--accent);
+    background: var(--surface-active);
+}
+.tumult-reaction-chip:disabled {
+    cursor: default;
+}
+.tumult-reaction-chip:focus-visible,
+.tumult-reaction-add:focus-visible,
+.tumult-reaction-pick:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 1px;
+}
+.tumult-reaction-count {
+    font-weight: 600;
+}
+.tumult-reaction-add {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: 1;
+    cursor: pointer;
+}
+.tumult-row:hover .tumult-reaction-add,
+.tumult-reaction-add:focus-visible {
+    display: inline-flex;
+}
+.tumult-reaction-pick {
+    padding: 4px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 20px;
+    cursor: pointer;
+}
+.tumult-reaction-pick:hover {
+    background: var(--roomlist-item-bg-hover);
+}
+.tumult-readers {
+    display: flex;
+    align-items: center;
+    margin-top: var(--space-1);
+}
+.tumult-reader-avatar {
+    border: 2px solid var(--timeline-bg);
+    margin-left: -8px;
+}
+.tumult-reader-avatar:first-child {
+    margin-left: 0;
+}
+.tumult-reader-more {
+    margin-left: 2px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+</style>
+
+<style>
+.tumult-reaction-popover {
+    display: flex;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 </style>

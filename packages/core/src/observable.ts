@@ -11,8 +11,13 @@ import type { Subscribable, Subscription } from "./contract.ts";
  */
 export class Observable<T> implements Subscribable<T> {
     private listeners = new Set<(value: T) => void>();
+    private value: T;
 
-    public constructor(private value: T) {}
+    // No parameter properties: Node's type-stripping (used by node --test)
+    // only supports erasable syntax.
+    public constructor(value: T) {
+        this.value = value;
+    }
 
     public get(): T {
         return this.value;

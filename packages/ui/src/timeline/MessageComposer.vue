@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
+import type { ChatClient } from "@tumult/core";
 
 const props = defineProps<{
     disabled?: boolean;
+    /** Shown as the input placeholder when disabled for an unimplemented slice. */
+    sendDisabledReason?: string;
+    roomId?: string;
+    client?: ChatClient;
 }>();
 
 const emit = defineEmits<{
@@ -10,12 +15,41 @@ const emit = defineEmits<{
 }>();
 
 const draft = ref("");
+let typingSent = false;
+let typingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearTyping(): void {
+    if (typingTimer) {
+        clearTimeout(typingTimer);
+        typingTimer = null;
+    }
+    if (typingSent && props.client && props.roomId) {
+        typingSent = false;
+        void props.client.sendTyping(props.roomId, false).catch(() => undefined);
+    }
+}
+
+// Report typing while the draft is non-empty; clear on empty/blur/send.
+watch(draft, (value) => {
+    if (props.disabled || !props.client || !props.roomId) return;
+    if (value.trim().length > 0) {
+        if (!typingSent) {
+            typingSent = true;
+            void props.client.sendTyping(props.roomId, true).catch(() => undefined);
+        }
+        if (typingTimer) clearTimeout(typingTimer);
+        typingTimer = setTimeout(clearTyping, 15_000);
+    } else {
+        clearTyping();
+    }
+});
 
 function submit(): void {
     const body = draft.value.trim();
     if (!body || props.disabled) return;
     emit("send", body);
     draft.value = "";
+    clearTyping();
 }
 </script>
 
@@ -27,7 +61,7 @@ function submit(): void {
             v-model="draft"
             class="tumult-composer-input"
             type="text"
-            placeholder="Send a message"
+            :placeholder="sendDisabledReason ?? 'Send a message'"
             autocomplete="off"
             :disabled="disabled"
         />

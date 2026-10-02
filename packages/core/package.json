@@ -24,7 +24,8 @@
     "build": "tsc -b",
     "dev": "tsc -b --watch",
     "typecheck": "tsc -b --noEmit false",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "test:integration": "node --test test-integration/"
   },
   "dependencies": {
     "matrix-js-sdk": "^43.0.0"

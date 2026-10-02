@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from "reka-ui";
-import type { SessionView, SpaceTree } from "@tumult/core";
+import type { ChatClient, SessionView, SpaceTree } from "@tumult/core";
 
 import GuildRailItem from "./GuildRailItem.vue";
 import DmsRailItem from "./DmsRailItem.vue";
@@ -9,10 +9,13 @@ import AccountTile from "./AccountTile.vue";
 defineProps<{
     tree: SpaceTree;
     session: SessionView | null;
+    client: ChatClient;
 }>();
 
 const emit = defineEmits<{
     signOut: [];
+    security: [];
+    verify: [];
 }>();
 </script>
 
@@ -38,7 +41,7 @@ const emit = defineEmits<{
                 <ScrollAreaThumb class="tumult-scrollthumb" />
             </ScrollAreaScrollbar>
         </ScrollAreaRoot>
-        <AccountTile :session="session" @sign-out="emit('signOut')" />
+        <AccountTile :session="session" :client="client" @sign-out="emit('signOut')" @security="emit('security')" @verify="emit('verify')" />
     </nav>
 </template>
 

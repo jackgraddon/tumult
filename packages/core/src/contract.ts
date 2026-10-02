@@ -54,6 +54,24 @@ export interface MessageView {
     decryption: DecryptionStatus;
     /** Type-specific payload as plain JSON. The registered renderer owns its shape. */
     content: Readonly<Record<string, unknown>>;
+    /** True when an `m.replace` edit superseded this message's body. */
+    edited: boolean;
+    /** Aggregated `m.reaction` annotations on this message. Never null. */
+    reactions: ReactionView[];
+    /**
+     * Users who have read at least this far, for whom this is the deepest
+     * held message — i.e. each reader appears on exactly one row, the
+     * Discord-style "seen" marker. Includes ourselves once our receipt
+     * lands. Never null.
+     */
+    readBy: string[];
+}
+
+/** One grouped emoji annotation: count across senders, flag for our own. */
+export interface ReactionView {
+    emoji: string;
+    count: number;
+    ownReacted: boolean;
 }
 
 export interface RoomSummary {
@@ -78,6 +96,61 @@ export interface SessionView {
      */
     deviceId: string;
     homeserverUrl: string;
+}
+
+/**
+ * Encryption health of this device, as the UI needs it.
+ *
+ * `backupEnabled` means a key backup exists on the server and the engine is
+ * running; `backupTrusted` means this device holds the backup decryption key.
+ * A fresh device typically reads `{ enabled: true, trusted: false }` — the
+ * recovery-key prompt state.
+ */
+export interface SecurityStatus {
+    crossSigningReady: boolean;
+    backupEnabled: boolean;
+    backupTrusted: boolean;
+    secretStorageReady: boolean;
+}
+
+/** One SAS verification request, as the UI needs it. */
+export interface VerificationRequestView {
+    id: string;
+    initiatedByMe: boolean;
+    otherUserId: string;
+    otherDeviceId: string | undefined;
+    isSelfVerification: boolean;
+    phase: "unsent" | "requested" | "ready" | "started" | "cancelled" | "done";
+    sasEmoji: [string, string][] | null;
+    sasDecimal: [number, number, number] | null;
+}
+
+export interface VerificationState {
+    requests: VerificationRequestView[];
+}
+
+/** Per-room typing state: user ids currently typing, sorted. */
+export interface TypingState {
+    /** roomId → typing user ids (self excluded). */
+    rooms: Record<string, string[]>;
+}
+
+/** One thread in a room, as the UI needs it. */
+export interface ThreadSummary {
+    rootEventId: string;
+    replyCount: number;
+    lastReplyTs: number;
+    unreadCount: number;
+    hasParticipated: boolean;
+}
+
+/** One of this account's devices, as the account menu needs it. */
+export interface DeviceView {
+    id: string;
+    displayName: string | null;
+    lastSeenTs: number | null;
+    isCurrent: boolean;
+    verified: boolean;
 }
 
 export interface LoginParams {
@@ -128,6 +201,9 @@ export interface ChatClient {
     session: Subscribable<SessionView | null>;
     connection: Subscribable<ConnectionState>;
     rooms: Subscribable<RoomSummary[]>;
+    security: Subscribable<SecurityStatus>;
+    verification: Subscribable<VerificationState>;
+    typing: Subscribable<TypingState>;
     /**
      * Snapshot feed for one room's timeline.
      *
@@ -136,5 +212,77 @@ export interface ChatClient {
      * `Observable.subscriberCount` can drive idle-room unloading later.
      */
     timeline(roomId: string): Subscribable<MessageView[]>;
+    /**
+     * Paginate one page of history backwards into `timeline(roomId)`.
+     *
+     * Resolves `true` when the page added events (more may exist), `false`
+     * when the start of history — or a gap the client won't fill — is
+     * reached. Concurrent calls for one room collapse into a single request.
+     */
+    loadMore(roomId: string): Promise<boolean>;
     send(roomId: string, body: string): Promise<void>;
+    /**
+     * Toggle our `emoji` reaction on a message: sends `m.reaction` when we
+     * haven't reacted, redacts our reaction when we have. The feed maps the
+     * result; the returned promise only signals the request finished.
+     */
+    toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void>;
+    /**
+     * Replace our message's body via `m.replace`. Only our own messages can
+     * be edited; the feed applies the latest edit from the sender.
+     */
+    edit(roomId: string, targetEventId: string, newBody: string): Promise<void>;
+    /**
+     * Send or clear our typing notification. `isTyping: false` clears it.
+     * The server auto-expires after ~20s; callers should re-send or clear
+     * on blur/send.
+     */
+    sendTyping(roomId: string, isTyping: boolean): Promise<void>;
+    /**
+     * Thread list for a room. Same `Subscribable` per roomId on repeat calls.
+     */
+    threads(roomId: string): Subscribable<ThreadSummary[]>;
+    /**
+     * Timeline for one thread. Same `Subscribable` per threadId on repeat calls.
+     */
+    threadTimeline(threadId: string): Subscribable<MessageView[]>;
+    /** Send a reply into a thread (the SDK adds the thread relation). */
+    sendReply(roomId: string, threadId: string, body: string): Promise<void>;
+    /** Mark a thread as read up to its latest event. */
+    markThreadRead(threadId: string): Promise<void>;
+    /**
+     * Send a read receipt for the latest held event in a room. Called when
+     * the user is viewing the live tail; throttled per room so re-renders
+     * don't spam the server. This is what clears our unread badge.
+     */
+    markRead(roomId: string): Promise<void>;
+    /**
+     * Set up secret storage plus a fresh key backup, returning the encoded
+     * recovery key. Display it to the user exactly once — it is never
+     * retrievable again.
+     */
+    setupRecovery(): Promise<string>;
+    /**
+     * Restore the key backup from a recovery key the user pastes in, then
+     * decrypt what it unlocks. Rejects when the key is malformed or does
+     * not match this account's backup; changes nothing on failure.
+     * Resolves `true` when the device also became verified.
+     */
+    restoreBackup(recoveryKey: string): Promise<boolean>;
+    /**
+     * Start an interactive SAS verification of this user (own devices).
+     * Resolves when the request has been sent; the UI tracks progress
+     * through the `verification` feed.
+     */
+    startVerification(): Promise<void>;
+    /** Accept an incoming verification request. */
+    acceptVerification(id: string): Promise<void>;
+    /** Decline an incoming verification request. */
+    declineVerification(id: string): Promise<void>;
+    /** Confirm the SAS emoji/decimal match. */
+    confirmSas(id: string): Promise<void>;
+    /** Report the SAS does not match (cancels with m.mismatched_sas). */
+    mismatchSas(id: string): Promise<void>;
+    /** This account's devices with verification status, current device first. */
+    listDevices(): Promise<DeviceView[]>;
 }

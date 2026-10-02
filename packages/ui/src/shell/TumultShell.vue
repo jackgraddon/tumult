@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide } from "vue";
+import { computed, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
@@ -15,6 +15,11 @@ import DmList from "../roomlist/DmList.vue";
 import TimelinePane from "../timeline/TimelinePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
+import SecurityBanner from "../security/SecurityBanner.vue";
+import RecoverySetupModal from "../security/RecoverySetupModal.vue";
+import RecoveryRestoreModal from "../security/RecoveryRestoreModal.vue";
+import VerificationModal from "../security/VerificationModal.vue";
+import ThreadPanel from "../threads/ThreadPanel.vue";
 
 const props = defineProps<{
     client: ChatClient;
@@ -55,6 +60,47 @@ defineExpose({ registry, hrefFor });
 const rooms = useSubscribable(props.client.rooms);
 const connection = useSubscribable(props.client.connection);
 const session = useSubscribable(props.client.session);
+const security = useSubscribable(props.client.security);
+const verification = useSubscribable(props.client.verification);
+const typing = useSubscribable(props.client.typing);
+
+// Recovery modal routing: banner buttons pick directly; the account menu
+// picks whichever flow the current status calls for.
+const securityModal = ref<"setup" | "restore" | null>(null);
+
+function openSecurityModal(): void {
+    securityModal.value = !security.value.backupEnabled ? "setup" : "restore";
+}
+
+// Verification modal state
+const verificationModal = ref(false);
+
+function openVerificationModal(): void {
+    verificationModal.value = true;
+}
+
+// Thread panel state
+const activeThread = ref<string | null>(null);
+
+function openThread(rootEventId: string): void {
+    activeThread.value = rootEventId;
+}
+
+function closeThread(): void {
+    activeThread.value = null;
+}
+
+// Auto-open for incoming requests: the other side already initiated, so the
+// user must see the accept/decline prompt without hunting for it.
+watch(
+    () => verification.value.requests,
+    (requests) => {
+        if (!verificationModal.value && requests.some((r) => !r.initiatedByMe && r.phase !== "done" && r.phase !== "cancelled")) {
+            verificationModal.value = true;
+        }
+    },
+    { deep: true },
+);
 
 const tree = computed<SpaceTree>(() => selectSpaceTree(rooms.value));
 const guildsById = computed(() => new Map(tree.value.guilds.map((g) => [g.room.id, g])));
@@ -74,18 +120,37 @@ const activeRoom = computed(() => {
 });
 
 const activeRoomId = computed(() => activeRoom.value?.id);
+
+const threads = useSubscribable(
+    props.client.threads(activeRoomId.value ?? ""),
+);
+const messages = useSubscribable(
+    props.client.timeline(activeRoomId.value ?? ""),
+);
 </script>
 
 <template>
     <ConfigProvider>
         <div class="tumult-shell">
             <ConnectionBanner :connection="connection" />
+            <SecurityBanner
+                :status="security"
+                @setup="securityModal = 'setup'"
+                @restore="securityModal = 'restore'"
+            />
             <div
                 class="tumult-shell-grid"
                 :data-roomlist="showRoomList ? 'open' : 'closed'"
                 :data-members="showMembers ? 'open' : 'closed'"
             >
-                <GuildRail :tree="tree" :session="session" @sign-out="emit('signOut')" />
+                <GuildRail
+                    :tree="tree"
+                    :session="session"
+                    :client="client"
+                    @sign-out="emit('signOut')"
+                    @security="openSecurityModal()"
+                    @verify="openVerificationModal()"
+                />
                 <div class="tumult-pane tumult-pane-roomlist" :inert="!showRoomList ? true : undefined">
                     <RoomListPane
                         v-if="selection.view === 'guild'"
@@ -102,13 +167,35 @@ const activeRoomId = computed(() => activeRoom.value?.id);
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')">☰</IconButton>
                         <IconButton label="Toggle members" @click="emit('toggleMembers')">👥</IconButton>
                     </div>
-                    <TimelinePane :client="client" :room="activeRoom" />
+                    <TimelinePane :client="client" :room="activeRoom" @open-thread="openThread" />
                 </div>
                 <div class="tumult-pane tumult-pane-members" :inert="!showMembers ? true : undefined">
                     <!-- Keyed: one room's subscription tears down before the next mounts. -->
                     <MembersPane :key="activeRoomId ?? 'none'" :client="client" :room-id="activeRoomId" />
                 </div>
             </div>
+<RecoverySetupModal
+            :client="client"
+            :open="securityModal === 'setup'"
+            @close="securityModal = null"
+        />
+        <RecoveryRestoreModal
+            :client="client"
+            :open="securityModal === 'restore'"
+            @close="securityModal = null"
+        />
+        <VerificationModal
+            :client="client"
+            :open="verificationModal"
+            @close="verificationModal = false"
+        />
+        <ThreadPanel
+            v-if="activeThread"
+            :client="client"
+            :thread="threads.find((t) => t.rootEventId === activeThread) ?? { rootEventId: activeThread, replyCount: 0, lastReplyTs: 0, unreadCount: 0, hasParticipated: false }"
+            :root-message="messages.find((m) => m.id === activeThread)"
+            @close="closeThread"
+        />
         </div>
     </ConfigProvider>
 </template>

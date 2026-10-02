@@ -7,18 +7,36 @@ import {
     type MatrixClient,
     type SyncStateData,
 } from "matrix-js-sdk";
+import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
+import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
     ChatClient,
     CompleteLoginParams,
     ConnectionState,
+    DeviceView,
     LoginParams,
     MessageView,
     RoomSummary,
+    SecurityStatus,
     SessionView,
     Subscribable,
+    ThreadSummary,
+    TypingState,
+    VerificationState,
 } from "./contract.ts";
 import { Observable } from "./observable.ts";
+import { querySecurityStatus } from "./crypto/security.ts";
+import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
+import { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
+import { sendTextMessage } from "./rooms/send.ts";
+import { sendEditMessage } from "./rooms/edits.ts";
+import { toggleReaction } from "./rooms/reactions.ts";
+import { TypingTracker } from "./typing/tracker.ts";
+import { ThreadTracker } from "./threads/tracker.ts";
+import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
+import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
 
@@ -82,10 +100,6 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
     });
 }
 
-function notImplemented(slice: string): never {
-    throw new Error(`Not implemented yet — lands in the "${slice}" slice`);
-}
-
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -99,10 +113,33 @@ export class MatrixChatClient implements ChatClient {
     /** In-flight start(), so concurrent callers share one client. */
     private starting: Promise<void> | null = null;
     private stored: StoredSession | null = null;
+    /** Per-room timeline feeds, alive while the sync loop runs. */
+    private timelines: TimelineFeed | null = null;
+    private removeDecryptedHook: (() => void) | null = null;
+    /** Active SAS verification requests, alive while the sync loop runs. */
+    private _verification: VerificationManager | null = null;
+    /** Per-room typing state, alive while the sync loop runs. */
+    private _typing: TypingTracker | null = null;
+    /** Thread tracking, alive while the sync loop runs. */
+    private _threads: ThreadTracker | null = null;
+    /**
+     * Pasted recovery key, held ONLY for the duration of a restoreBackup()
+     * call so the SDK's secret-storage requests can use it. Cleared in a
+     * `finally` — never retained, never persisted.
+     */
+    private heldSecretKey: Uint8Array<ArrayBuffer> | null = null;
 
     private readonly sessionState = new Observable<SessionView | null>(null);
     private readonly connectionState = new Observable<ConnectionState>("stopped");
     private readonly roomsState = new Observable<RoomSummary[]>([]);
+    private readonly securityState = new Observable<SecurityStatus>({
+        crossSigningReady: false,
+        backupEnabled: false,
+        backupTrusted: false,
+        secretStorageReady: false,
+    });
+    private readonly verificationState = new Observable<VerificationState>({ requests: [] });
+    private readonly typingState = new Observable<TypingState>({ rooms: {} });
 
     public constructor(options: ChatClientOptions) {
         this.storage = options.storage ?? AuthStorage.browser();
@@ -119,6 +156,18 @@ export class MatrixChatClient implements ChatClient {
 
     public get rooms(): Subscribable<RoomSummary[]> {
         return this.roomsState;
+    }
+
+    public get security(): Subscribable<SecurityStatus> {
+        return this.securityState;
+    }
+
+    public get verification(): Subscribable<VerificationState> {
+        return this.verificationState;
+    }
+
+    public get typing(): Subscribable<TypingState> {
+        return this.typingState;
     }
 
     public async login(params: LoginParams): Promise<void> {
@@ -172,8 +221,25 @@ export class MatrixChatClient implements ChatClient {
                     // synchronously rather than waiting for any other checkpoint.
                     this.persistTokens(tokens.accessToken, tokens.refreshToken);
                 },
+                // Local echoes join the live timeline in send order, so the
+                // feed renders `sending` states. This is the SDK default
+                // (`PendingEventOrdering.Chronological`); `detached` would hide
+                // echoes until the server echo arrives, so don't set it.
+                //
+                // `getSecretStorageKey` serves a user-pasted recovery key back
+                // to the SDK during restoreBackup() only — see heldSecretKey.
+                // Outside a restore it returns null (fresh setup has nothing
+                // cached yet, and we never retain keys).
+                cryptoCallbacks: {
+                    getSecretStorageKey: ({ keys }) => Promise.resolve(serveHeldKey(this.heldSecretKey, keys)),
+                },
+                // Thread support is OFF by default — without it the SDK treats
+                // thread replies as main-timeline events and never creates
+                // Thread objects. It lives on IMatrixClientCreateOpts, not
+                // ICreateClientOpts, hence the cast.
+                threadSupport: true,
                 store,
-            });
+            } as Parameters<typeof createClient>[0]);
 
             // Must come *after* createClient: the store only gets its `createUser`
             // hook when it is attached to a client, and startup() needs it to
@@ -196,6 +262,14 @@ export class MatrixChatClient implements ChatClient {
                 if (state === SyncState.Error && data?.error) {
                     console.error("[tumult] sync error", data.error);
                 }
+                // The room list is a snapshot over the sync loop: every batch
+                // can join/leave/rename rooms, change hierarchy, or move unread
+                // counts (receipts ride the same loop). Recompute wholesale —
+                // the Sync event is the one invalidation signal that covers all
+                // of them without per-room listener bookkeeping.
+                //
+                // Timelines self-drive off the same loop inside TimelineFeed.
+                this.refreshRooms();
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -219,7 +293,34 @@ export class MatrixChatClient implements ChatClient {
 
             this.matrix = client;
             this.store = store;
+            this.timelines = new TimelineFeed(client);
+            this.removeDecryptedHook = onDecryptedRebuild(client, this.timelines);
+            const crypto = client.getCrypto();
+            if (crypto) {
+                const verification = new VerificationManager(client, crypto);
+                verification.setOnUpdate(() => this.publishVerification());
+                this._verification = verification;
+                this.publishVerification();
+            }
+            this._typing = new TypingTracker(client);
+            this.publishTyping();
+            this._threads = new ThreadTracker(client);
+            // Key backup state can move at any time (another device rotates
+            // keys, a backup completes). These three cover it; the snapshot
+            // recomputes wholesale on each.
+            for (const event of [
+                CryptoEvent.KeyBackupStatus,
+                CryptoEvent.KeysChanged,
+                CryptoEvent.DevicesUpdated,
+            ]) {
+                client.on(event, () => {
+                    void this.refreshSecurity();
+                });
+            }
             await client.startClient();
+            // Enabling is silent and best-effort: a backup failure must never
+            // break login. Runs inside the snapshot query below.
+            await this.refreshSecurity();
         } catch (error) {
             // Leave nothing half-built. A failed start that leaves a client or an
             // open store behind means the next attempt builds a second client on
@@ -228,6 +329,8 @@ export class MatrixChatClient implements ChatClient {
             await store.destroy().catch(() => undefined);
             this.matrix = null;
             this.store = null;
+            this.timelines = null;
+            this.removeDecryptedHook = null;
             this.connectionState.set("error");
             throw error;
         }
@@ -247,9 +350,26 @@ export class MatrixChatClient implements ChatClient {
         // surviving connection makes the next logout() hang forever.
         await store?.destroy();
 
+        this.timelines?.detachAll();
+        this.timelines = null;
+        this._verification?.detachAll();
+        this._verification = null;
+        this._typing?.detachAll();
+        this._typing = null;
+        this._threads?.detachAll();
+        this._threads = null;
+        this.publishTyping();
+        this.removeDecryptedHook?.();
+        this.removeDecryptedHook = null;
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
+        this.securityState.set({
+            crossSigningReady: false,
+            backupEnabled: false,
+            backupTrusted: false,
+            secretStorageReady: false,
+        });
     }
 
     public async logout(): Promise<void> {
@@ -289,12 +409,224 @@ export class MatrixChatClient implements ChatClient {
         this.roomsState.set([]);
     }
 
-    public timeline(_roomId: string): Subscribable<MessageView[]> {
-        return notImplemented("timeline read + history pagination");
+    public timeline(roomId: string): Subscribable<MessageView[]> {
+        const timelines = this.timelines;
+        if (!timelines) throw new Error("Cannot read timeline before start()");
+        return timelines.timeline(roomId);
     }
 
-    public async send(_roomId: string, _body: string): Promise<void> {
-        return notImplemented("send with local echo");
+    public async loadMore(roomId: string): Promise<boolean> {
+        const timelines = this.timelines;
+        if (!timelines) throw new Error("Cannot paginate before start()");
+        return timelines.loadMore(roomId);
+    }
+
+    public async send(roomId: string, body: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot send before start()");
+        // Optimistic by construction: the SDK inserts a local echo (mapped to
+        // `sending` by the feed) and replaces it with the server echo on ack.
+        // Throws on failure; the echo flips to `failed` in-timeline.
+        await sendTextMessage(client, roomId, body);
+    }
+
+    public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot react before start()");
+        await toggleReaction(client, roomId, targetEventId, emoji);
+    }
+
+    public async edit(roomId: string, targetEventId: string, newBody: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot edit before start()");
+        await sendEditMessage(client, roomId, targetEventId, newBody);
+    }
+
+    public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {
+        const typing = this._typing;
+        if (!typing) throw new Error("Cannot send typing before start()");
+        await typing.sendTyping(roomId, isTyping);
+    }
+
+    public threads(roomId: string): Subscribable<ThreadSummary[]> {
+        const threads = this._threads;
+        if (!threads) throw new Error("Cannot read threads before start()");
+        return threads.threads(roomId);
+    }
+
+    public threadTimeline(threadId: string): Subscribable<MessageView[]> {
+        const threads = this._threads;
+        if (!threads) throw new Error("Cannot read threads before start()");
+        return threads.threadTimeline(threadId);
+    }
+
+    public async sendReply(roomId: string, threadId: string, body: string): Promise<void> {
+        const threads = this._threads;
+        if (!threads) throw new Error("Cannot reply before start()");
+        await threads.sendReply(roomId, threadId, body);
+    }
+
+    public async markThreadRead(threadId: string): Promise<void> {
+        const threads = this._threads;
+        if (!threads) throw new Error("Cannot mark thread read before start()");
+        await threads.markThreadRead(threadId);
+    }
+
+    public async markRead(roomId: string): Promise<void> {
+        const timelines = this.timelines;
+        if (!timelines) throw new Error("Cannot mark read before start()");
+        await timelines.markRead(roomId);
+    }
+
+    public async setupRecovery(): Promise<string> {
+        const crypto = this.requireCrypto();
+        // Raw random key, not passphrase-derived: MAS accounts may have no
+        // password, so password-based 4S is not a safe assumption.
+        let encoded: string | undefined;
+        await crypto.bootstrapSecretStorage({
+            createSecretStorageKey: async () => {
+                const generated = await crypto.createRecoveryKeyFromPassphrase();
+                encoded = generated.encodedPrivateKey;
+                return generated;
+            },
+            setupNewKeyBackup: true,
+        });
+        await this.refreshSecurity();
+        // Empty when secret storage already existed: the account keeps its
+        // old key and there is nothing new to save. Never null — callers
+        // distinguish "show this once" from "already set up".
+        return encoded ?? "";
+    }
+
+    public async restoreBackup(recoveryKey: string): Promise<boolean> {        const crypto = this.requireCrypto();
+        let decoded: Uint8Array<ArrayBuffer>;
+        try {
+            decoded = decodeRecoveryKey(recoveryKey.trim());
+        } catch {
+            throw new Error("That recovery key doesn't look valid. Check for typos and try again.");
+        }
+        // The pasted key must stay stashed for BOTH halves: the backup unlock
+        // (loadSessionBackupPrivateKeyFromSecretStorage) and the verification
+        // half (bootstrapCrossSigning reads cross-signing keys from 4S).
+        // Both go through getSecretStorageKey → serveHeldKey. Cleared in the
+        // finally below — never retained past this call.
+        this.heldSecretKey = decoded;
+        try {
+            // Primary path: the pasted key opens secret storage (this is what
+            // setupRecovery() shows). The backup key comes from 4S, never from
+            // the pasted bytes directly — the two keys are different.
+            let unlocked = false;
+            try {
+                await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+                unlocked = true;
+            } catch {
+                unlocked = false;
+            }
+            if (!unlocked) {
+                // Fallback: the pasted key IS the backup decryption key
+                // (backups made outside Tumult never entered secret storage).
+                const check = await crypto.checkKeyBackupAndEnable().catch(() => null);
+                if (!check) {
+                    throw new Error(
+                        "Couldn't unlock secret storage with that key, and this account " +
+                            "has no key backup to try it against directly.",
+                    );
+                }
+                try {
+                    await crypto.storeSessionBackupPrivateKey(decoded, check.backupInfo.version);
+                } catch {
+                    throw new Error("That recovery key doesn't match this account's backup.");
+                }
+            }
+            try {
+                await crypto.restoreKeyBackup();
+            } catch (cause) {
+                console.error("[tumult] key backup restore failed", cause);
+                throw new Error(restoreFailureMessage(cause));
+            }
+            // Verification half: the same pasted key unlocks 4S, which also
+            // holds the cross-signing private keys. Importing them and
+            // self-signing this device is what flips "Unverified" → verified
+            // in other clients' session lists. Only when 4S has keys the
+            // device lacks — otherwise bootstrapCrossSigning would rotate
+            // the identity, which we never do here.
+            let verified = false;
+            try {
+                const status = await crypto.getCrossSigningStatus();
+                if (shouldVerifyDevice(status)) {
+                    await crypto.bootstrapCrossSigning({});
+                    verified = true;
+                }
+            } catch (cause) {
+                // Verification is best-effort: the backup already restored, and
+                // the device can still be verified later via SAS.
+                console.error("[tumult] cross-signing import failed", cause);
+            }
+            await this.refreshSecurity();
+            // Newly arrived keys upgrade `pending` timelines in place.
+            this.timelines?.rebuildAll();
+            return verified;
+        } finally {
+            this.heldSecretKey = null;
+        }
+    }
+
+    public async startVerification(): Promise<void> {
+        const verification = this._verification;
+        if (!verification) throw new Error("Verification isn't ready yet; wait for sync to start.");
+        await verification.startVerification();
+    }
+
+    public async acceptVerification(id: string): Promise<void> {
+        const verification = this._verification;
+        if (!verification) throw new Error("Verification isn't ready yet; wait for sync to start.");
+        await verification.acceptVerification(id);
+    }
+
+    public async declineVerification(id: string): Promise<void> {
+        const verification = this._verification;
+        if (!verification) throw new Error("Verification isn't ready yet; wait for sync to start.");
+        await verification.declineVerification(id);
+    }
+
+    public async confirmSas(id: string): Promise<void> {
+        const verification = this._verification;
+        if (!verification) throw new Error("Verification isn't ready yet; wait for sync to start.");
+        await verification.confirmSas(id);
+    }
+
+    public async mismatchSas(id: string): Promise<void> {
+        const verification = this._verification;
+        if (!verification) throw new Error("Verification isn't ready yet; wait for sync to start.");
+        await verification.mismatchSas(id);
+    }
+
+    public async listDevices(): Promise<DeviceView[]> {
+        const client = this.matrix;
+        const session = this.stored;
+        if (!client || !session) throw new Error("Cannot list devices before start()");
+        const { devices } = await client.getDevices();
+        const crypto = client.getCrypto();
+        const out: DeviceView[] = [];
+        for (const d of devices) {
+            let verified = false;
+            if (crypto) {
+                try {
+                    verified = (await crypto.getDeviceVerificationStatus(session.userId, d.device_id))?.isVerified() ?? false;
+                } catch {
+                    verified = false;
+                }
+            }
+            out.push({
+                id: d.device_id,
+                displayName: d.display_name ?? null,
+                lastSeenTs: d.last_seen_ts ?? null,
+                isCurrent: d.device_id === session.deviceId,
+                verified,
+            });
+        }
+        out.sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.id.localeCompare(b.id));
+        return out;
     }
 
     /**
@@ -311,6 +643,24 @@ export class MatrixChatClient implements ChatClient {
         this.stored = null;
         this.sessionState.set(null);
         this.roomsState.set([]);
+    }
+
+    /**
+     * Recompute the room list from the SDK and publish it. Never throws:
+     * a snapshot failure must not take down the sync listener.
+     */
+    private refreshRooms(): void {
+        const client = this.matrix;
+        if (!client) return;
+        try {
+            const next = snapshotRooms(client);
+            if (sameRoomSummaries(next, this.roomsState.get())) return;
+            const spaces = next.filter((r) => r.isSpace).length;
+            console.debug(`[tumult] rooms snapshot: ${next.length} joined (${spaces} spaces)`);
+            this.roomsState.set(next);
+        } catch (error) {
+            console.error("[tumult] room snapshot failed", error);
+        }
     }
 
     private adoptSession(session: StoredSession): void {
@@ -330,6 +680,36 @@ export class MatrixChatClient implements ChatClient {
             ...(refreshToken ? { refreshToken } : {}),
         };
         this.storage.saveSession(this.stored);
+    }
+
+    /**
+     * Recompute the security snapshot. Never throws: crypto queries must not
+     * take down event listeners.
+     */
+    private async refreshSecurity(): Promise<void> {
+        const crypto = this.matrix?.getCrypto();
+        if (!crypto) return;
+        try {
+            this.securityState.set(await querySecurityStatus(crypto));
+        } catch (error) {
+            console.error("[tumult] security snapshot failed", error);
+        }
+    }
+
+    private requireCrypto(): CryptoApi {
+        const crypto = this.matrix?.getCrypto();
+        if (!crypto) throw new Error("Encryption isn't ready yet; wait for sync to start.");
+        return crypto;
+    }
+
+    /** Publish the manager's current snapshot into the verification feed. */
+    private publishVerification(): void {
+        this.verificationState.set(this._verification?.state ?? { requests: [] });
+    }
+
+    /** Publish the tracker's current snapshot into the typing feed. */
+    private publishTyping(): void {
+        this.typingState.set(this._typing?.snapshot ?? { rooms: {} });
     }
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from "reka-ui";
-import type { ChatClient } from "@tumult/core";
+import type { ChatClient, MessageView, Subscribable } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import MemberListItem from "./MemberListItem.vue";
@@ -20,14 +20,21 @@ interface Member {
 
 // Subscribed once per mount; the parent keys on roomId so a room switch
 // remounts instead of leaking the old subscription.
-const messages = useSubscribable(
-    props.roomId ? props.client.timeline(props.roomId) : { get: () => [], subscribe: () => ({ unsubscribe: () => {} }) },
-);
+//
+// `timeline()` still throws until slice 4 — catch it and render an explicit
+// placeholder rather than a zombie vnode (see TimelineBody).
+let source: Subscribable<MessageView[]> | null = null;
+try {
+    source = props.roomId ? props.client.timeline(props.roomId) : null;
+} catch {
+    source = null;
+}
+const messages = source ? useSubscribable(source) : null;
 
 /** Flat static list for the slice: distinct senders, no sections. */
 const members = computed<Member[]>(() => {
     const seen = new Map<string, Member>();
-    for (const m of messages.value) {
+    for (const m of messages?.value ?? []) {
         if (!seen.has(m.senderId)) {
             seen.set(m.senderId, { id: m.senderId, displayName: m.senderId, presence: "online" });
         }
@@ -38,8 +45,11 @@ const members = computed<Member[]>(() => {
 
 <template>
     <aside class="tumult-members" aria-label="Members">
-        <h2 class="tumult-members-title">Members — {{ members.length }}</h2>
-        <ScrollAreaRoot class="tumult-members-scroll">
+        <h2 class="tumult-members-title">Members — {{ messages ? members.length : "…" }}</h2>
+        <p v-if="!messages" class="tumult-members-todo" role="status">
+            Member loading rides on timeline read (slice 4).
+        </p>
+        <ScrollAreaRoot v-else class="tumult-members-scroll">
             <ScrollAreaViewport class="tumult-members-viewport">
                 <ul class="tumult-members-list">
                     <MemberListItem
@@ -75,6 +85,12 @@ const members = computed<Member[]>(() => {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+.tumult-members-todo {
+    margin: 0;
+    padding: var(--space-3);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
 }
 .tumult-members-scroll {
     flex: 1;

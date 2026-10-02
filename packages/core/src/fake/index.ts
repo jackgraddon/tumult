@@ -1,10 +1,15 @@
 import type {
     ChatClient,
     ConnectionState,
+    DeviceView,
     MessageView,
     RoomSummary,
+    SecurityStatus,
     SessionView,
     Subscribable,
+    ThreadSummary,
+    TypingState,
+    VerificationState,
 } from "../contract.ts";
 import { Observable } from "../observable.ts";
 
@@ -52,6 +57,9 @@ function msg(
         status: "sent",
         decryption: "ok",
         content: { msgtype: "m.text", body },
+        reactions: [],
+        readBy: [],
+        edited: false,
         ...extra,
     };
 }
@@ -157,6 +165,15 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
 
     // Deterministic showcase events appended at the end.
     out.push(
+        msg(`${roomId}:reacted`, "@alice:example.com", "react to this", now - 7200_000, {
+            reactions: [
+                { emoji: "👍", count: 2, ownReacted: true },
+                { emoji: "❤️", count: 1, ownReacted: false },
+            ],
+            readBy: ["@bob:example.com", "@carol:example.com"],
+        }),
+        // Redacted upstream: the redaction event itself never renders, only this tombstone.
+        msg(`${roomId}:deleted`, "@bob:example.com", "Message deleted.", now - 7000_000),
         msg(`${roomId}:poll`, "@alice:example.com", "Lunch poll", now - 3600_000, {
             type: "cc.jackg.tumult.demo.poll",
             content: { question: "Lunch?", options: ["ramen", "tacos", "salad"] },
@@ -178,7 +195,12 @@ class FakeChatClient implements ChatClient {
     public readonly session: Subscribable<SessionView | null>;
     public readonly connection: Subscribable<ConnectionState>;
     public readonly rooms: Subscribable<RoomSummary[]>;
+    public readonly security: Subscribable<SecurityStatus>;
+    public readonly verification: Subscribable<VerificationState>;
+    public readonly typing: Subscribable<TypingState>;
+    public readonly _threads: Subscribable<ThreadSummary[]>;
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
+    private readonly threadTimelines = new Map<string, Observable<MessageView[]>>();
     private readonly rand: () => number;
 
     public constructor(seed: number) {
@@ -191,6 +213,23 @@ class FakeChatClient implements ChatClient {
         });
         this.connection = new Observable<ConnectionState>("syncing");
         this.rooms = new Observable<RoomSummary[]>(buildRooms());
+        // Fake device is fully healthy: the security banner stays hidden.
+        this.security = new Observable<SecurityStatus>({
+            crossSigningReady: true,
+            backupEnabled: true,
+            backupTrusted: true,
+            secretStorageReady: true,
+        });
+        // No verification requests in fake mode.
+        this.verification = new Observable<VerificationState>({ requests: [] });
+        // Alice is typing in the general room.
+        this.typing = new Observable<TypingState>({
+            rooms: { "!a-general:fake": ["@alice:example.com"] },
+        });
+        // One thread in the general room.
+        this._threads = new Observable<ThreadSummary[]>([
+            { rootEventId: "!a-general:fake:e0", replyCount: 2, lastReplyTs: Date.now() - 60_000, unreadCount: 1, hasParticipated: false },
+        ]);
 
         for (const r of this.rooms.get()) {
             if (r.isSpace) continue;
@@ -239,6 +278,114 @@ class FakeChatClient implements ChatClient {
             this.timelines.set(roomId, obs);
         }
         return obs;
+    }
+
+    public async loadMore(_roomId: string): Promise<boolean> {
+        // Fake timelines are complete in memory: already at the start.
+        return false;
+    }
+
+    public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return;
+        const own = "@demo:example.com";
+        const existing = obs
+            .get()
+            .find((m) => m.id === targetEventId)
+            ?.reactions.find((r) => r.emoji === emoji && r.ownReacted);
+        obs.update((cur) =>
+            cur.map((m) => {
+                if (m.id !== targetEventId) return m;
+                const reactions = m.reactions.filter((r) => !(r.emoji === emoji && r.ownReacted));
+                if (!existing) {
+                    const prior = m.reactions.find((r) => r.emoji === emoji);
+                    reactions.push({ emoji, count: (prior?.count ?? 0) + 1, ownReacted: true });
+                }
+                return { ...m, reactions: reactions.sort((a, b) => (a.emoji < b.emoji ? -1 : 1)) };
+            }),
+        );
+    }
+
+    public async setupRecovery(): Promise<string> {
+        return "EsT fake fake fake fake fake fake fake fake fake fake fake fake";
+    }
+
+    public async restoreBackup(_recoveryKey: string): Promise<boolean> {
+        // Already healthy; nothing to restore.
+        return true;
+    }
+
+    public async markRead(_roomId: string): Promise<void> {
+        // Fake rooms are always fully read.
+    }
+
+    public async edit(roomId: string, targetEventId: string, newBody: string): Promise<void> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return;
+        obs.update((cur) =>
+            cur.map((m) => (m.id === targetEventId ? { ...m, body: newBody, edited: true } : m)),
+        );
+    }
+
+    public async sendTyping(_roomId: string, _isTyping: boolean): Promise<void> {
+        // No-op in fake.
+    }
+
+    public threads(_roomId: string): Subscribable<ThreadSummary[]> {
+        return this._threads;
+    }
+
+    public threadTimeline(threadId: string): Subscribable<MessageView[]> {
+        let obs = this.threadTimelines.get(threadId);
+        if (!obs) {
+            obs = new Observable<MessageView[]>([
+                msg(`${threadId}:root`, "@alice:example.com", "thread root", Date.now() - 120_000),
+                msg(`${threadId}:r1`, "@bob:example.com", "first reply", Date.now() - 90_000),
+                msg(`${threadId}:r2`, "@alice:example.com", "second reply", Date.now() - 60_000),
+            ]);
+            this.threadTimelines.set(threadId, obs);
+        }
+        return obs;
+    }
+
+    public async markThreadRead(_threadId: string): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async sendReply(_roomId: string, threadId: string, body: string): Promise<void> {
+        const obs = this.threadTimelines.get(threadId);
+        if (!obs) return;
+        obs.update((cur) => [
+            ...cur,
+            msg(`${threadId}:local-${Date.now()}`, "@demo:example.com", body, Date.now(), { status: "sent" }),
+        ]);
+    }
+
+    public async startVerification(): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async acceptVerification(_id: string): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async declineVerification(_id: string): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async confirmSas(_id: string): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async mismatchSas(_id: string): Promise<void> {
+        // No-op in fake.
+    }
+
+    public async listDevices(): Promise<DeviceView[]> {
+        return [
+            { id: "FAKEDEVICE", displayName: "Fake browser", lastSeenTs: Date.now(), isCurrent: true, verified: true },
+            { id: "FAKEPHONE", displayName: "Fake phone", lastSeenTs: null, isCurrent: false, verified: false },
+        ];
     }
 
     public async send(roomId: string, body: string): Promise<void> {

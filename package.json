@@ -10,7 +10,8 @@
     "dev": "pnpm --filter @tumult/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "test:integration": "tests/synapse/run.sh"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
