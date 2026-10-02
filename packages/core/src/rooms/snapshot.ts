@@ -1,0 +1,99 @@
+import { NotificationCountType, type MatrixClient } from "matrix-js-sdk";
+
+import type { RoomSummary } from "../contract.ts";
+
+const SPACE_CHILD = "m.space.child";
+const ROOM_TOPIC = "m.room.topic";
+
+/**
+ * Map the SDK's joined rooms onto contract snapshots.
+ *
+ * Parent links come from `m.space.child` state events in space rooms: room R
+ * lists parent S for every space S carrying such an event keyed by R. Unknown
+ * or dangling parents are left in — `selectSpaceTree` sanitises them.
+ *
+ * Avatars resolve to 48px server thumbnails, never full images.
+ */
+export function snapshotRooms(client: MatrixClient): RoomSummary[] {
+    const joined = client.getRooms().filter((room) => room.getMyMembership() === "join");
+
+    const parentsByRoomId = new Map<string, Set<string>>();
+    for (const room of joined) {
+        if (!room.isSpaceRoom()) continue;
+        let children: { getStateKey(): string | undefined }[];
+        try {
+            children = room.currentState.getStateEvents(SPACE_CHILD);
+        } catch {
+            continue;
+        }
+        for (const event of children) {
+            const childId = event.getStateKey();
+            if (!childId) continue;
+            let parents = parentsByRoomId.get(childId);
+            if (!parents) {
+                parents = new Set();
+                parentsByRoomId.set(childId, parents);
+            }
+            parents.add(room.roomId);
+        }
+    }
+
+    return joined.map((room) => ({
+        id: room.roomId,
+        name: room.name,
+        topic: readTopic(room),
+        avatarUrl: readAvatar(client, room),
+        isSpace: room.isSpaceRoom(),
+        parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
+        unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total),
+        highlightCount: room.getUnreadNotificationCount(NotificationCountType.Highlight),
+    }));
+}
+
+/**
+ * Shallow equality over published snapshots. The sync loop fires on every
+ * batch (including idle polls), and most batches change nothing — publishing
+ * a fresh array each time would re-render the whole shell for no reason.
+ */
+export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSummary[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((room, i) => {
+        const other = b[i];
+        return (
+            other !== undefined &&
+            room.id === other.id &&
+            room.name === other.name &&
+            room.topic === other.topic &&
+            room.avatarUrl === other.avatarUrl &&
+            room.isSpace === other.isSpace &&
+            room.unreadCount === other.unreadCount &&
+            room.highlightCount === other.highlightCount &&
+            room.parentSpaceIds.length === other.parentSpaceIds.length &&
+            room.parentSpaceIds.every((p, j) => p === other.parentSpaceIds[j])
+        );
+    });
+}
+function readTopic(room: { currentState: { getStateEvents(t: string, k: string): unknown } }): string | null {
+    try {
+        const event = room.currentState.getStateEvents(ROOM_TOPIC, "") as {
+            getContent(): Record<string, unknown>;
+        } | null;
+        const topic = event?.getContent()?.["topic"];
+        return typeof topic === "string" && topic.length > 0 ? topic : null;
+    } catch {
+        return null;
+    }
+}
+
+function readAvatar(
+    client: MatrixClient,
+    room: { getMxcAvatarUrl(): string | null },
+): string | null {
+    const mxc = room.getMxcAvatarUrl();
+    if (!mxc) return null;
+    try {
+        return client.mxcUrlToHttp(mxc, 48, 48, "crop") ?? null;
+    } catch {
+        return null;
+    }
+}
