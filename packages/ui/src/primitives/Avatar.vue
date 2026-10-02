@@ -8,10 +8,10 @@ const props = defineProps<{
     /** `mxc://` URI (resolved via the shell's media resolver) or a loadable URL. */
     src?: string | null | undefined;
     label: string;
-    size?: "sm" | "md" | "lg";
+    size?: "xs" | "sm" | "md" | "lg";
 }>();
 
-const PX = { sm: 24, md: 32, lg: 48 } as const;
+const PX = { xs: 16, sm: 24, md: 32, lg: 48 } as const;
 const resolveMedia = useMediaResolver();
 
 // `mxc://` can't go in an <img>: authenticated media needs the access token,
@@ -71,6 +71,12 @@ function initials(label: string): string {
     font-weight: 600;
     overflow: hidden;
     user-select: none;
+}
+.tumult-avatar[data-size="xs"] {
+    width: 16px;
+    height: 16px;
+    font-size: 8px;
+    border-radius: var(--radius-sm);
 }
 .tumult-avatar[data-size="sm"] {
     width: 24px;

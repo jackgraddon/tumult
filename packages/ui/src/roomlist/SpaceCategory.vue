@@ -6,6 +6,7 @@ import type { SpaceNode } from "@tumult/core";
 import type { RoomSelection } from "../selection.ts";
 import RoomListItem from "./RoomListItem.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
+import Avatar from "../primitives/Avatar.vue";
 
 defineProps<{
     node: SpaceNode;
@@ -27,6 +28,9 @@ const open = ref(true);
     <CollapsibleRoot v-else v-model:open="open" class="tumult-category">
         <CollapsibleTrigger class="tumult-category-trigger">
             <span class="tumult-category-caret" :data-open="open ? 'true' : 'false'" aria-hidden="true">▸</span>
+            <!-- Only when the space has an icon: an initials tile on every
+                 category would be noise next to the caret. -->
+            <Avatar v-if="node.room.avatarUrl" :src="node.room.avatarUrl" :label="node.room.name" size="xs" aria-hidden="true" />
             <span class="tumult-category-name">{{ node.room.name.toUpperCase() }}</span>
             <UnreadBadge :count="node.aggregateUnread" :highlight="node.aggregateHighlight > 0" />
         </CollapsibleTrigger>
