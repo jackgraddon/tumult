@@ -3,6 +3,7 @@ import type { RoomSummary } from "@tumult/core";
 
 import { useSelection, type RoomSelection } from "../selection.ts";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
+import Avatar from "../primitives/Avatar.vue";
 
 const props = defineProps<{
     room: RoomSummary;
@@ -34,7 +35,9 @@ function isActive(): boolean {
             :aria-current="isActive() ? 'page' : undefined"
             @click.prevent="pick()"
         >
-            <span class="tumult-room-hash" aria-hidden="true">#</span>
+            <!-- DMs are people, not channels: show their face, not a hash. -->
+            <Avatar v-if="selection.view === 'dms'" :label="room.name" :src="room.avatarUrl" size="sm" />
+            <span v-else class="tumult-room-hash" aria-hidden="true">#</span>
             <span class="tumult-room-name">{{ room.name }}</span>
             <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
         </a>

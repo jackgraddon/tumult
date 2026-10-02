@@ -15,6 +15,7 @@ const props = defineProps<{
 interface Member {
     id: string;
     displayName: string;
+    avatarUrl: string | null;
     presence: "online" | "offline";
 }
 
@@ -35,11 +36,17 @@ const messages = source ? useSubscribable(source) : null;
 const members = computed<Member[]>(() => {
     const seen = new Map<string, Member>();
     for (const m of messages?.value ?? []) {
-        if (!seen.has(m.senderId)) {
-            seen.set(m.senderId, { id: m.senderId, displayName: m.senderId, presence: "online" });
-        }
+        // Later messages overwrite earlier: newest profile wins.
+        seen.set(m.senderId, {
+            id: m.senderId,
+            displayName: m.senderName,
+            avatarUrl: m.senderAvatarUrl,
+            presence: "online",
+        });
     }
-    return [...seen.values()].sort((a, b) => a.displayName.localeCompare("en"));
+    // (Was `a.displayName.localeCompare("en")` — compared every name to the
+    // string "en", so the list was effectively unsorted.)
+    return [...seen.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, "en"));
 });
 </script>
 
@@ -57,6 +64,7 @@ const members = computed<Member[]>(() => {
                         :key="m.id"
                         :id="m.id"
                         :display-name="m.displayName"
+                        :avatar-url="m.avatarUrl"
                         :presence="m.presence"
                     />
                 </ul>

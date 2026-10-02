@@ -22,6 +22,8 @@ const props = defineProps<{
     onOpenThread?: ((rootEventId: string) => void) | undefined;
     /** Replies in the thread rooted at this message; 0 when it isn't a root. */
     threadReplyCount?: number;
+    /** userId -> profile, from senders in view; readers who haven't spoken show initials. */
+    profiles?: ReadonlyMap<string, { name: string; avatarUrl: string | null }> | undefined;
 }>();
 
 /** Fixed palette; the OS picker covers the long tail. */
@@ -80,12 +82,18 @@ function cancelEdit(): void {
         :data-status="message.status"
         :data-decryption="message.decryption"
     >
-        <Avatar v-if="!grouped" :label="message.senderId" size="sm" class="tumult-row-avatar" />
+        <Avatar
+            v-if="!grouped"
+            :label="message.senderName"
+            :src="message.senderAvatarUrl"
+            size="sm"
+            class="tumult-row-avatar"
+        />
         <!-- Gutter keeps grouped bodies aligned under the text above without a second avatar. -->
         <span v-else class="tumult-row-gutter" aria-hidden="true" />
         <div class="tumult-row-body">
             <div v-if="!grouped" class="tumult-row-header">
-                <span class="tumult-row-sender">{{ message.senderId }}</span>
+                <span class="tumult-row-sender" :title="message.senderId">{{ message.senderName }}</span>
                 <time class="tumult-row-time" :dateTime="new Date(message.timestamp).toISOString()">
                     {{ time }}
                 </time>
@@ -179,12 +187,13 @@ function cancelEdit(): void {
             <div
                 v-if="message.decryption === 'ok' && message.readBy.length > 0"
                 class="tumult-readers"
-                :title="`Read by ${message.readBy.join(', ')}`"
+                :title="`Read by ${message.readBy.map((u) => profiles?.get(u)?.name ?? u).join(', ')}`"
             >
                 <Avatar
                     v-for="userId in message.readBy.slice(0, 4)"
                     :key="userId"
-                    :label="userId"
+                    :label="profiles?.get(userId)?.name ?? userId"
+                    :src="profiles?.get(userId)?.avatarUrl"
                     size="sm"
                     class="tumult-reader-avatar"
                 />

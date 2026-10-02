@@ -7,6 +7,8 @@ export interface MappableEvent {
     getId(): string | undefined;
     getType(): string;
     getSender(): string | undefined;
+    /** Member state at this event; absent for stubs and some local echoes. */
+    sender?: { name?: string; getMxcAvatarUrl(): string | undefined | null } | null;
     getTs(): number;
     getContent(): Record<string, unknown>;
     isEncrypted(): boolean;
@@ -48,6 +50,10 @@ function toBody(event: MappableEvent, content: Record<string, unknown>): string 
     return `[${event.getType()}]`;
 }
 
+function mxcOrNull(url: string | null | undefined): string | null {
+    return typeof url === "string" && url.startsWith("mxc://") ? url : null;
+}
+
 /**
  * Map one SDK event onto a contract snapshot. Pure: safe to call on every
  * invalidation signal and cheap enough to recompute whole timelines.
@@ -58,6 +64,8 @@ export function mapEvent(event: MappableEvent): MessageView {
         id: event.getId() ?? `local:${event.getTs()}:${Math.random().toString(36).slice(2)}`,
         type: event.getType(),
         senderId: event.getSender() ?? "",
+        senderName: event.sender?.name || event.getSender() || "",
+        senderAvatarUrl: mxcOrNull(event.sender?.getMxcAvatarUrl()),
         body: toBody(event, content),
         timestamp: event.getTs(),
         status: toStatus(event.status),

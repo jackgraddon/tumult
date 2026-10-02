@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import Avatar from "../primitives/Avatar.vue";
+
 defineProps<{
     id: string;
     displayName: string;
+    avatarUrl?: string | null;
     presence?: "online" | "offline";
 }>();
 </script>
@@ -13,7 +16,8 @@ defineProps<{
             :data-online="presence === 'online' ? 'true' : 'false'"
             aria-hidden="true"
         />
-        <span class="tumult-member-name">{{ displayName }}</span>
+        <Avatar :label="displayName" :src="avatarUrl" size="sm" />
+        <span class="tumult-member-name" :title="id">{{ displayName }}</span>
     </li>
 </template>
 

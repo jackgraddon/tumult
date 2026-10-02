@@ -52,6 +52,8 @@ function msg(
         id,
         type: "m.room.message",
         senderId,
+        senderName: senderId.slice(1).split(":")[0] ?? senderId,
+        senderAvatarUrl: null,
         body,
         timestamp,
         status: "sent",

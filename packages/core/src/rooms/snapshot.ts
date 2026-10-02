@@ -92,7 +92,12 @@ function readTopic(room: { currentState: { getStateEvents(t: string, k: string):
     }
 }
 
-function readAvatar(room: { getMxcAvatarUrl(): string | null }): string | null {
-    const mxc = room.getMxcAvatarUrl();
+function readAvatar(room: {
+    getMxcAvatarUrl(): string | null;
+    getAvatarFallbackMember?(): { getMxcAvatarUrl(): string | undefined } | undefined;
+}): string | null {
+    // DMs usually have no room avatar; the SDK's fallback member is the one
+    // other person in a 1:1, whose avatar is what every client shows.
+    const mxc = room.getMxcAvatarUrl() ?? room.getAvatarFallbackMember?.()?.getMxcAvatarUrl() ?? null;
     return mxc && mxc.startsWith("mxc://") ? mxc : null;
 }

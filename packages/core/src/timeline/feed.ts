@@ -44,6 +44,9 @@ export function sameTimeline(a: readonly MessageView[], b: readonly MessageView[
             m.body === o.body &&
             m.type === o.type &&
             m.edited === o.edited &&
+            // Profile changes republish too (rename, new avatar).
+            m.senderName === o.senderName &&
+            m.senderAvatarUrl === o.senderAvatarUrl &&
             sameReactions(m.reactions, o.reactions) &&
             sameReaders(m.readBy, o.readBy)
         );

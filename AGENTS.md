@@ -359,6 +359,12 @@ chat client should be.
   the legacy `mxcUrlToHttp` URL. `Avatar` resolves `mxc://` itself via the
   shell-provided `MediaKey`, initials until then. Synapse round-trip proves
   the blob path AND that the endpoint 401s without a token.
+- Avatars everywhere: `MessageView.senderName` / `senderAvatarUrl` (mxc)
+  come from `event.sender` (member state AT that event, so history keeps
+  old names); DM rooms with no avatar borrow `getAvatarFallbackMember()`'s.
+  Readers/members reuse sender profiles from the loaded window. The `<img>`
+  MUST be sized to its box (`object-fit: cover`): Synapse snaps thumbnails
+  to configured sizes, and an unsized image renders cropped and zoomed.
 - Root rows show "N replies ›" from `threads(roomId)`, joined in the UI by
   root event id — no contract change.
 - Stubs that emit hand-typed event-name strings will agree with the code's

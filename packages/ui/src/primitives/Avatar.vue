@@ -53,7 +53,7 @@ function initials(label: string): string {
 
 <template>
     <AvatarRoot class="tumult-avatar" :data-size="size ?? 'md'" :aria-label="label">
-        <AvatarImage v-if="resolved" :src="resolved" :alt="label" />
+        <AvatarImage v-if="resolved" class="tumult-avatar-img" :src="resolved" :alt="label" />
         <AvatarFallback class="tumult-avatar-fallback" aria-hidden="true">{{ initials(label) }}</AvatarFallback>
     </AvatarRoot>
 </template>
@@ -85,6 +85,15 @@ function initials(label: string): string {
     height: 48px;
     font-size: var(--text-sm);
     border-radius: var(--control-radius);
+}
+.tumult-avatar-img {
+    /* The server's thumbnail is rarely exactly the box size (Synapse snaps to
+       its configured sizes), so size it to the box or it renders at natural
+       size and the box crops a zoomed-in corner. */
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 .tumult-avatar-fallback {
     display: inline-flex;

@@ -165,6 +165,14 @@ function onScroll(): void {
  * scrollTop, overflow-anchor and the virtualizer on the real scroll container,
  * all of which a wrapped viewport would hide.
  */
+
+// Sender profiles seen in this window, newest wins, so read-receipt avatars
+// can show real faces without a separate member lookup.
+const profiles = computed(() => {
+    const out = new Map<string, { name: string; avatarUrl: string | null }>();
+    for (const m of props.messages) out.set(m.senderId, { name: m.senderName, avatarUrl: m.senderAvatarUrl });
+    return out;
+});
 </script>
 
 <template>
@@ -193,6 +201,7 @@ function onScroll(): void {
                         :own-user-id="ownUserId"
                         :on-edit-message="onEditMessage"
                         :on-open-thread="onOpenThread"
+                        :profiles="profiles"
                         :thread-reply-count="threadReplies?.get((rows[v.index] as Row).message.id) ?? 0"
                     />
                 </template>

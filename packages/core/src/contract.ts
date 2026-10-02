@@ -48,6 +48,13 @@ export interface MessageView {
     /** Matrix event type, e.g. "m.room.message", "cc.jackg.tumult.chess.move". */
     type: string;
     senderId: string;
+    /**
+     * Sender's display name as of this event (member state at the time),
+     * falling back to the user id. Never empty.
+     */
+    senderName: string;
+    /** Sender's avatar as an `mxc://` URI — resolve via `resolveMedia()`. */
+    senderAvatarUrl: string | null;
     body: string;
     timestamp: number;
     status: MessageStatus;

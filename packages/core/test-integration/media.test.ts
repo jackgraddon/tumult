@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { createClient } from "matrix-js-sdk";
 
 import { MediaResolver } from "../src/media/resolver.ts";
+import { TimelineFeed } from "../src/timeline/feed.ts";
+import { snapshotRooms } from "../src/rooms/snapshot.ts";
 
 const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://localhost:8008";
 
@@ -62,6 +64,55 @@ describe("media against real Synapse", () => {
             }
         } finally {
             resolver.dispose();
+        }
+    });
+
+    it("carries sender profiles on messages and a DM's fallback avatar", { timeout: 120000 }, async () => {
+        const sfx = Date.now().toString(36);
+        const alice = await register(`upa-${sfx}`);
+        const bob = await register(`upb-${sfx}`);
+        const call = async (method: string, path: string, token: string, body?: unknown) => {
+            const res = await fetch(`${BASE}${path}`, {
+                method,
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            assert.ok(res.ok, `${method} ${path} -> ${res.status} ${await res.clone().text()}`);
+            return (await res.json()) as Record<string, string>;
+        };
+        const up = await fetch(`${BASE}/_matrix/media/v3/upload?filename=b.png`, {
+            method: "POST",
+            headers: { "Content-Type": "image/png", Authorization: `Bearer ${bob.token}` },
+            body: PNG,
+        });
+        const bobAvatar = ((await up.json()) as Record<string, string>)["content_uri"] as string;
+        const enc = encodeURIComponent;
+        await call("PUT", `/_matrix/client/v3/profile/${enc(bob.userId)}/displayname`, bob.token, { displayname: "Bob Builder" });
+        await call("PUT", `/_matrix/client/v3/profile/${enc(bob.userId)}/avatar_url`, bob.token, { avatar_url: bobAvatar });
+
+        // A 1:1 with no room avatar: the DM should borrow Bob's.
+        const room = (await call("POST", "/_matrix/client/v3/createRoom", alice.token, { is_direct: true, invite: [bob.userId] }))["room_id"] as string;
+        await call("POST", `/_matrix/client/v3/join/${enc(room)}`, bob.token, {});
+        await call("PUT", `/_matrix/client/v3/rooms/${enc(room)}/send/m.room.message/t${sfx}`, bob.token, { msgtype: "m.text", body: "hi from bob" });
+
+        const client = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
+        await client.startClient({ initialSyncLimit: 10 });
+        const feed = new TimelineFeed(client);
+        try {
+            const timeline = feed.timeline(room);
+            const deadline = Date.now() + 60000;
+            while (!timeline.get().some((m) => m.body === "hi from bob") && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 300));
+            }
+            const msg = timeline.get().find((m) => m.body === "hi from bob");
+            assert.equal(msg?.senderName, "Bob Builder");
+            assert.equal(msg?.senderAvatarUrl, bobAvatar);
+
+            const summary = snapshotRooms(client).find((r) => r.id === room);
+            assert.equal(summary?.avatarUrl, bobAvatar);
+        } finally {
+            feed.detachAll();
+            client.stopClient();
         }
     });
 });

@@ -27,6 +27,9 @@ describe("mapEvent", () => {
             id: "$abc:localhost",
             type: "m.room.message",
             senderId: "@alice:localhost",
+            // No member state on the stub: name falls back to the id.
+            senderName: "@alice:localhost",
+            senderAvatarUrl: null,
             body: "hello",
             timestamp: 1700000000000,
             status: "sent",
@@ -36,6 +39,14 @@ describe("mapEvent", () => {
             readBy: [],
             edited: false,
         });
+    });
+
+    it("carries the sender's display name and mxc avatar from member state", () => {
+        const m = mapEvent(stub({ sender: { name: "Alice", getMxcAvatarUrl: () => "mxc://hs/alice" } }));
+        assert.equal(m.senderName, "Alice");
+        assert.equal(m.senderAvatarUrl, "mxc://hs/alice");
+        const http = mapEvent(stub({ sender: { name: "A", getMxcAvatarUrl: () => "https://x/a.png" } }));
+        assert.equal(http.senderAvatarUrl, null);
     });
 
     it("labels non-text events honestly", () => {
