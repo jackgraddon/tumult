@@ -5,6 +5,7 @@ import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection } from "../selection.ts";
+import { MediaKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
@@ -55,6 +56,7 @@ provide(SelectionKey, {
 const registry = new TimelineRegistry();
 registry.register("m.room.message", { component: TextMessage, priority: 0 });
 provide(RegistryKey, registry);
+provide(MediaKey, (uri: string, size: number) => props.client.resolveMedia(uri, size));
 
 defineExpose({ registry, hrefFor });
 

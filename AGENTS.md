@@ -350,10 +350,15 @@ chat client should be.
   listeners bind by verifier identity (a request can jump Requested →
   Started); thread timelines need `RoomEvent.LocalEchoUpdated` and
   `MatrixEventEvent.Decrypted` too; a failed `start()` detaches trackers.
-- OPEN: avatars use unauthenticated `/_matrix/media/v3/thumbnail` URLs.
-  matrix.jackg.cc advertises v1.11 (authenticated media); Synapse ≥1.120
-  404s new uploads on the old endpoints. Fix needs `useAuthentication` +
-  fetch-with-token → blob URLs, since `<img>` can't send Authorization.
+- DONE — authenticated media: `RoomSummary.avatarUrl` is now the raw
+  `mxc://` URI; `client.resolveMedia(uri, size)` (MediaResolver) fetches
+  `/_matrix/client/v1/media/thumbnail` through `client.http.authedRequest`
+  with `rawResponseBody` — SDK token refresh included, unlike a bare fetch —
+  and returns a `blob:` URL (2x, capped 256px, one promise per image,
+  failures evicted, all revoked on stop). Servers without v1.11 fall back to
+  the legacy `mxcUrlToHttp` URL. `Avatar` resolves `mxc://` itself via the
+  shell-provided `MediaKey`, initials until then. Synapse round-trip proves
+  the blob path AND that the endpoint 401s without a token.
 - Root rows show "N replies ›" from `threads(roomId)`, joined in the UI by
   root event id — no contract change.
 - Stubs that emit hand-typed event-name strings will agree with the code's

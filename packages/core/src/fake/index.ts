@@ -332,6 +332,11 @@ class FakeChatClient implements ChatClient {
         // No-op in fake.
     }
 
+    public async resolveMedia(uri: string, _size: number): Promise<string> {
+        // Fixtures carry loadable URLs (or none); nothing to authenticate.
+        return uri;
+    }
+
     public supportsThreads(): boolean {
         return true;
     }

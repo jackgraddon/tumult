@@ -12,7 +12,9 @@ const ROOM_TOPIC = "m.room.topic";
  * lists parent S for every space S carrying such an event keyed by R. Unknown
  * or dangling parents are left in — `selectSpaceTree` sanitises them.
  *
- * Avatars resolve to 48px server thumbnails, never full images.
+ * Avatars are published as `mxc://` URIs; the UI resolves them through
+ * `resolveMedia()` (authenticated media needs the access token, which a
+ * plain URL in an `<img>` can't carry).
  */
 export function snapshotRooms(client: MatrixClient): RoomSummary[] {
     const joined = client.getRooms().filter((room) => room.getMyMembership() === "join");
@@ -47,7 +49,7 @@ export function snapshotRooms(client: MatrixClient): RoomSummary[] {
         id: room.roomId,
         name: room.name,
         topic: readTopic(room),
-        avatarUrl: readAvatar(client, room),
+        avatarUrl: readAvatar(room),
         isSpace: room.isSpaceRoom(),
         parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
         unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total),
@@ -90,15 +92,7 @@ function readTopic(room: { currentState: { getStateEvents(t: string, k: string):
     }
 }
 
-function readAvatar(
-    client: MatrixClient,
-    room: { getMxcAvatarUrl(): string | null },
-): string | null {
+function readAvatar(room: { getMxcAvatarUrl(): string | null }): string | null {
     const mxc = room.getMxcAvatarUrl();
-    if (!mxc) return null;
-    try {
-        return client.mxcUrlToHttp(mxc, 48, 48, "crop") ?? null;
-    } catch {
-        return null;
-    }
+    return mxc && mxc.startsWith("mxc://") ? mxc : null;
 }

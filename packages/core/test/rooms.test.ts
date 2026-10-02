@@ -83,7 +83,8 @@ describe("snapshotRooms", () => {
             id: GENERAL,
             name: "general",
             topic: "hello",
-            avatarUrl: "https://cdn.example/x.png",
+            // Published as mxc: resolution (with the access token) is the UI's job.
+            avatarUrl: "mxc://x/y",
             isSpace: false,
             parentSpaceIds: [],
             unreadCount: 5,

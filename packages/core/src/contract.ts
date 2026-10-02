@@ -78,6 +78,10 @@ export interface RoomSummary {
     id: string;
     name: string;
     topic: string | null;
+    /**
+     * Usually an `mxc://` URI — NOT directly loadable: pass it through
+     * `resolveMedia()`. May also be an already-loadable URL (fixtures).
+     */
     avatarUrl: string | null;
     /** True for Matrix spaces, which render as guilds/categories rather than channels. */
     isSpace: boolean;
@@ -244,6 +248,13 @@ export interface ChatClient {
      * Also false before `start()`, while capability is still unknown.
      */
     supportsThreads(): boolean;
+    /**
+     * Resolve an `mxc://` URI to a URL an `<img>` can load, at `size` CSS px
+     * (fetched at 2x). Authenticated media needs the access token, so this is
+     * typically a `blob:` URL. Non-mxc URLs resolve to themselves. Rejects on
+     * failure — render a fallback. Shared per image; cheap to call per render.
+     */
+    resolveMedia(uri: string, size: number): Promise<string>;
     /**
      * Thread list for a room. Same `Subscribable` per roomId on repeat calls.
      */

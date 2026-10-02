@@ -35,6 +35,7 @@ import { sendEditMessage } from "./rooms/edits.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
+import { MediaResolver } from "./media/resolver.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
@@ -122,6 +123,8 @@ export class MatrixChatClient implements ChatClient {
     private _typing: TypingTracker | null = null;
     /** Thread tracking, alive while the sync loop runs. */
     private _threads: ThreadTracker | null = null;
+    /** Authenticated-media fetches as blob URLs, alive while the sync loop runs. */
+    private _media: MediaResolver | null = null;
     /**
      * Pasted recovery key, held ONLY for the duration of a restoreBackup()
      * call so the SDK's secret-storage requests can use it. Cleared in a
@@ -304,6 +307,7 @@ export class MatrixChatClient implements ChatClient {
             this._typing.subscribe(() => this.publishTyping());
             this.publishTyping();
             this._threads = new ThreadTracker(client);
+            this._media = new MediaResolver(client);
             // Key backup state can move at any time (another device rotates
             // keys, a backup completes). These three cover it; the snapshot
             // recomputes wholesale on each.
@@ -341,6 +345,8 @@ export class MatrixChatClient implements ChatClient {
             this._typing = null;
             this._threads?.detachAll();
             this._threads = null;
+            this._media?.dispose();
+            this._media = null;
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -372,6 +378,8 @@ export class MatrixChatClient implements ChatClient {
         this._typing = null;
         this._threads?.detachAll();
         this._threads = null;
+        this._media?.dispose();
+        this._media = null;
         this.publishTyping();
         this.removeDecryptedHook?.();
         this.removeDecryptedHook = null;
@@ -460,6 +468,12 @@ export class MatrixChatClient implements ChatClient {
         const typing = this._typing;
         if (!typing) throw new Error("Cannot send typing before start()");
         await typing.sendTyping(roomId, isTyping);
+    }
+
+    public async resolveMedia(uri: string, size: number): Promise<string> {
+        const media = this._media;
+        if (!media) throw new Error("Cannot resolve media before start()");
+        return media.resolve(uri, size * 2);
     }
 
     public supportsThreads(): boolean {

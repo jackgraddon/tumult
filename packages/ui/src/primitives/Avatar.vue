@@ -1,11 +1,48 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { AvatarFallback, AvatarImage, AvatarRoot } from "reka-ui";
 
-defineProps<{
+import { useMediaResolver } from "../media.ts";
+
+const props = defineProps<{
+    /** `mxc://` URI (resolved via the shell's media resolver) or a loadable URL. */
     src?: string | null | undefined;
     label: string;
     size?: "sm" | "md" | "lg";
 }>();
+
+const PX = { sm: 24, md: 32, lg: 48 } as const;
+const resolveMedia = useMediaResolver();
+
+// `mxc://` can't go in an <img>: authenticated media needs the access token,
+// so the shell fetches it and hands back a blob: URL. Until then — or if it
+// fails — Reka's fallback shows initials.
+const resolved = ref<string | null>(null);
+watch(
+    () => [props.src, props.size] as const,
+    ([src, size], _old, onCleanup) => {
+        let stale = false;
+        onCleanup(() => {
+            stale = true;
+        });
+        resolved.value = null;
+        if (!src) return;
+        if (!src.startsWith("mxc://")) {
+            resolved.value = src;
+            return;
+        }
+        if (!resolveMedia) return;
+        resolveMedia(src, PX[size ?? "md"]).then(
+            (url) => {
+                if (!stale) resolved.value = url;
+            },
+            () => {
+                // Leave the initials fallback in place.
+            },
+        );
+    },
+    { immediate: true },
+);
 
 function initials(label: string): string {
     const words = label.trim().split(/\s+/);
@@ -16,7 +53,7 @@ function initials(label: string): string {
 
 <template>
     <AvatarRoot class="tumult-avatar" :data-size="size ?? 'md'" :aria-label="label">
-        <AvatarImage v-if="src" :src="src" :alt="label" />
+        <AvatarImage v-if="resolved" :src="resolved" :alt="label" />
         <AvatarFallback class="tumult-avatar-fallback" aria-hidden="true">{{ initials(label) }}</AvatarFallback>
     </AvatarRoot>
 </template>
