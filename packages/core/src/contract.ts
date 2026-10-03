@@ -146,6 +146,15 @@ export interface TypingState {
     rooms: Record<string, string[]>;
 }
 
+/** Browser notification permission state. */
+export type NotificationPermission = "default" | "denied" | "granted";
+
+/** Whether the browser supports notifications and the current permission. */
+export interface NotificationState {
+    permission: NotificationPermission;
+    supported: boolean;
+}
+
 /** One thread in a room, as the UI needs it. */
 export interface ThreadSummary {
     rootEventId: string;
@@ -176,6 +185,29 @@ export interface CompleteLoginParams {
      * than pre-parsed query params.
      */
     callbackUrl: string;
+}
+
+/**
+ * The `file` descriptor on an encrypted `m.room.message` media event.
+ * Plain JSON — no SDK types.
+ */
+export interface EncryptedAttachment {
+    /** `mxc://` URI of the ciphertext. */
+    url: string;
+    /** JWK for the AES-CTR key. */
+    key: {
+        alg: string;
+        key_ops: string[];
+        kty: string;
+        k: string;
+        ext: boolean;
+    };
+    /** Base64 (unpadded) 16-byte initial counter block. */
+    iv: string;
+    /** Ciphertext hashes, keyed by algorithm name (`sha256`). */
+    hashes: Record<string, string>;
+    /** Version string (currently `"v2"`). */
+    v: string;
 }
 
 export interface ChatClient {
@@ -215,6 +247,7 @@ export interface ChatClient {
     security: Subscribable<SecurityStatus>;
     verification: Subscribable<VerificationState>;
     typing: Subscribable<TypingState>;
+    notifications: Subscribable<NotificationState>;
     /**
      * Snapshot feed for one room's timeline.
      *
@@ -232,6 +265,15 @@ export interface ChatClient {
      */
     loadMore(roomId: string): Promise<boolean>;
     send(roomId: string, body: string): Promise<void>;
+    /**
+     * Upload and send a media file (image, video, audio, or generic file).
+     *
+     * The file is uploaded to the homeserver first, then an `m.room.message`
+     * is sent with the resulting `mxc://` URI. The SDK owns the local echo
+     * lifecycle; the feed maps every transition. `body` is an optional caption
+     * — when omitted, the filename is used.
+     */
+    sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void>;
     /**
      * Toggle our `emoji` reaction on a message: sends `m.reaction` when we
      * haven't reacted, redacts our reaction when we have. The feed maps the
@@ -262,6 +304,20 @@ export interface ChatClient {
      * failure — render a fallback. Shared per image; cheap to call per render.
      */
     resolveMedia(uri: string, size: number): Promise<string>;
+    /**
+     * Resolve an encrypted attachment (the `file` descriptor on an encrypted
+     * `m.room.message`) to a URL an `<img>` can load — fetches the ciphertext
+     * and decrypts it. Typically a `blob:` URL. Rejects on failure.
+     */
+    resolveEncryptedMedia(file: EncryptedAttachment): Promise<string>;
+    /**
+     * Request browser notification permission from the user.
+     *
+     * Resolves to the resulting permission (`"granted"`, `"denied"`, or
+     * `"default"` if the prompt was dismissed). No-op returning `"denied"`
+     * when the Notification API is unsupported.
+     */
+    requestNotificationPermission(): Promise<NotificationPermission>;
     /**
      * Thread list for a room. Same `Subscribable` per roomId on repeat calls.
      */

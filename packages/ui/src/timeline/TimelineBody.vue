@@ -102,6 +102,14 @@ async function onSend(body: string): Promise<void> {
         console.error("[tumult] send failed", error);
     }
 }
+
+async function onSendFile(file: File): Promise<void> {
+    try {
+        await props.client.sendMediaMessage(props.roomId, file);
+    } catch (error) {
+        console.error("[tumult] media send failed", error);
+    }
+}
 </script>
 
 <template>
@@ -110,7 +118,7 @@ async function onSend(body: string): Promise<void> {
     </div>
     <template v-else>
         <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="threadsEnabled ? openThread : undefined" :thread-replies="threadReplies" />
-        <MessageComposer :room-id="props.roomId" :client="props.client" @send="onSend" />
+        <MessageComposer :room-id="props.roomId" :client="props.client" @send="onSend" @send-file="onSendFile" />
     </template>
 </template>
 

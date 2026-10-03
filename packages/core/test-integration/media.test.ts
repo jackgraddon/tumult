@@ -5,6 +5,7 @@ import { createClient } from "matrix-js-sdk";
 import { MediaResolver } from "../src/media/resolver.ts";
 import { TimelineFeed } from "../src/timeline/feed.ts";
 import { snapshotRooms } from "../src/rooms/snapshot.ts";
+import { sendMediaMessage } from "../src/rooms/media.ts";
 
 const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://localhost:8008";
 
@@ -110,6 +111,45 @@ describe("media against real Synapse", () => {
 
             const summary = snapshotRooms(client).find((r) => r.id === room);
             assert.equal(summary?.avatarUrl, bobAvatar);
+        } finally {
+            feed.detachAll();
+            client.stopClient();
+        }
+    });
+
+    it("sends an image message with upload and local echo", { timeout: 120000 }, async () => {
+        const sfx = Date.now().toString(36);
+        const alice = await register(`sma-${sfx}`);
+        const bob = await register(`smb-${sfx}`);
+        const roomRes = await fetch(`${BASE}/_matrix/client/v3/createRoom`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${alice.token}` },
+            body: JSON.stringify({ invite: [bob.userId] }),
+        });
+        const room = ((await roomRes.json()) as Record<string, string>)["room_id"] as string;
+        await fetch(`${BASE}/_matrix/client/v3/join/${encodeURIComponent(room)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${bob.token}` },
+            body: "{}",
+        });
+
+        const client = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
+        await client.startClient({ initialSyncLimit: 10 });
+        const feed = new TimelineFeed(client);
+        try {
+            const file = new File([PNG], "test.png", { type: "image/png" });
+            await sendMediaMessage(client, room, file, "test image");
+
+            const timeline = feed.timeline(room);
+            const deadline = Date.now() + 60_000;
+            while (!timeline.get().some((m) => m.content["url"]?.startsWith("mxc://")) && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 300));
+            }
+            const msg = timeline.get().find((m) => m.content["url"]?.startsWith("mxc://"));
+            assert.ok(msg, "media message should appear in the timeline");
+            assert.equal(msg?.content["msgtype"], "m.image");
+            assert.equal(msg?.content["body"], "test image");
+            assert.equal(msg?.status, "sent");
         } finally {
             feed.detachAll();
             client.stopClient();

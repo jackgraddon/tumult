@@ -16,8 +16,11 @@ import type {
     CompleteLoginParams,
     ConnectionState,
     DeviceView,
+    EncryptedAttachment,
     LoginParams,
     MessageView,
+    NotificationPermission,
+    NotificationState,
     RoomSummary,
     SecurityStatus,
     SessionView,
@@ -31,11 +34,13 @@ import { querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { sendTextMessage } from "./rooms/send.ts";
+import { sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
 import { MediaResolver } from "./media/resolver.ts";
+import { NotificationTracker } from "./notifications/tracker.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
@@ -125,6 +130,8 @@ export class MatrixChatClient implements ChatClient {
     private _threads: ThreadTracker | null = null;
     /** Authenticated-media fetches as blob URLs, alive while the sync loop runs. */
     private _media: MediaResolver | null = null;
+    /** Browser notification firing, alive while the sync loop runs. */
+    private _notifications: NotificationTracker | null = null;
     /**
      * Pasted recovery key, held ONLY for the duration of a restoreBackup()
      * call so the SDK's secret-storage requests can use it. Cleared in a
@@ -143,6 +150,10 @@ export class MatrixChatClient implements ChatClient {
     });
     private readonly verificationState = new Observable<VerificationState>({ requests: [] });
     private readonly typingState = new Observable<TypingState>({ rooms: {} });
+    private readonly notificationsState = new Observable<NotificationState>({
+        permission: "default",
+        supported: typeof Notification !== "undefined",
+    });
 
     public constructor(options: ChatClientOptions) {
         this.storage = options.storage ?? AuthStorage.browser();
@@ -171,6 +182,10 @@ export class MatrixChatClient implements ChatClient {
 
     public get typing(): Subscribable<TypingState> {
         return this.typingState;
+    }
+
+    public get notifications(): Subscribable<NotificationState> {
+        return this.notificationsState;
     }
 
     public async login(params: LoginParams): Promise<void> {
@@ -308,6 +323,9 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._media = new MediaResolver(client);
+            this._notifications = new NotificationTracker(client);
+            this._notifications.subscribe(() => this.publishNotifications());
+            this.publishNotifications();
             // Key backup state can move at any time (another device rotates
             // keys, a backup completes). These three cover it; the snapshot
             // recomputes wholesale on each.
@@ -347,6 +365,8 @@ export class MatrixChatClient implements ChatClient {
             this._threads = null;
             this._media?.dispose();
             this._media = null;
+            this._notifications?.detachAll();
+            this._notifications = null;
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -380,6 +400,8 @@ export class MatrixChatClient implements ChatClient {
         this._threads = null;
         this._media?.dispose();
         this._media = null;
+        this._notifications?.detachAll();
+        this._notifications = null;
         this.publishTyping();
         this.removeDecryptedHook?.();
         this.removeDecryptedHook = null;
@@ -452,6 +474,12 @@ export class MatrixChatClient implements ChatClient {
         await sendTextMessage(client, roomId, body);
     }
 
+    public async sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot send before start()");
+        await sendMediaMessage(client, roomId, file, body);
+    }
+
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
         const client = this.matrix;
         if (!client) throw new Error("Cannot react before start()");
@@ -474,6 +502,18 @@ export class MatrixChatClient implements ChatClient {
         const media = this._media;
         if (!media) throw new Error("Cannot resolve media before start()");
         return media.resolve(uri, size * 2);
+    }
+
+    public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
+        const media = this._media;
+        if (!media) throw new Error("Cannot resolve media before start()");
+        return media.resolveEncrypted(file);
+    }
+
+    public async requestNotificationPermission(): Promise<NotificationPermission> {
+        const notifications = this._notifications;
+        if (!notifications) throw new Error("Cannot request permission before start()");
+        return notifications.requestPermission();
     }
 
     public supportsThreads(): boolean {
@@ -742,6 +782,11 @@ export class MatrixChatClient implements ChatClient {
     /** Publish the tracker's current snapshot into the typing feed. */
     private publishTyping(): void {
         this.typingState.set(this._typing?.snapshot ?? { rooms: {} });
+    }
+
+    /** Publish the tracker's current snapshot into the notifications feed. */
+    private publishNotifications(): void {
+        this.notificationsState.set(this._notifications?.snapshot ?? { permission: "default", supported: false });
     }
 }
 

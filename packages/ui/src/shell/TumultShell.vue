@@ -5,10 +5,11 @@ import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection } from "../selection.ts";
-import { MediaKey } from "../media.ts";
+import { MediaKey, EncryptedMediaKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
+import MediaMessage from "../timeline/renderers/MediaMessage.vue";
 import ConnectionBanner from "./ConnectionBanner.vue";
 import GuildRail from "../rail/GuildRail.vue";
 import RoomListPane from "../roomlist/RoomListPane.vue";
@@ -54,9 +55,16 @@ provide(SelectionKey, {
 // One registry per shell. Default text renderer; apps register their own
 // (e.g. the demo poll) on top via the exposed instance.
 const registry = new TimelineRegistry();
+const mediaTypes = new Set(["m.image", "m.video", "m.audio", "m.file"]);
+registry.register("m.room.message", {
+    component: MediaMessage,
+    priority: 10,
+    match: (m) => typeof m.content["msgtype"] === "string" && mediaTypes.has(m.content["msgtype"]),
+});
 registry.register("m.room.message", { component: TextMessage, priority: 0 });
 provide(RegistryKey, registry);
 provide(MediaKey, (uri: string, size: number) => props.client.resolveMedia(uri, size));
+provide(EncryptedMediaKey, (file) => props.client.resolveEncryptedMedia(file));
 
 defineExpose({ registry, hrefFor });
 

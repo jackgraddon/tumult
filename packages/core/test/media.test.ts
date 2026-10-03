@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import type { MatrixClient } from "matrix-js-sdk";
 
 import { MediaResolver, parseMxc } from "../src/media/resolver.ts";
+import { decryptAttachment } from "../src/media/attachment.ts";
+import { sendMediaMessage } from "../src/rooms/media.ts";
+import type { EncryptedAttachment } from "../src/contract.ts";
 
 interface Call {
     path: string;
@@ -48,7 +51,7 @@ describe("MediaResolver", () => {
         assert.equal(calls[0]?.path, "/thumbnail/hs/id");
         assert.equal(calls[0]?.opts["prefix"], "/_matrix/client/v1/media");
         assert.equal(calls[0]?.opts["rawResponseBody"], true);
-        assert.deepEqual(calls[0]?.query, { width: "96", height: "96", method: "crop" });
+        assert.deepEqual(calls[0]?.query, { width: "96", height: "96", method: "scale" });
         resolver.dispose();
     });
 
@@ -71,7 +74,154 @@ describe("MediaResolver", () => {
         const { matrix, calls } = stub();
         const resolver = new MediaResolver(matrix);
         await resolver.resolve("mxc://hs/id", 10_000);
-        assert.equal(calls[0]?.query["width"], "256");
+        assert.equal(calls[0]?.query["width"], "1024");
         resolver.dispose();
+    });
+});
+
+describe("sendMediaMessage", () => {
+    function stubMatrix() {
+        const calls: unknown[][] = [];
+        const matrix = {
+            uploadContent: async (file: File | Blob) => {
+                calls.push(["upload", file]);
+                return { content_uri: "mxc://hs/uploaded" };
+            },
+            sendMessage: async (...args: unknown[]) => {
+                calls.push(["send", ...args]);
+                return { event_id: "$sent:x" };
+            },
+        } as unknown as MatrixClient;
+        return { matrix, calls };
+    }
+
+    it("uploads then sends an image message", async () => {
+        const { matrix, calls } = stubMatrix();
+        const file = new File(["png"], "photo.png", { type: "image/png" });
+        await sendMediaMessage(matrix, "!r:x", file);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0]?.[0], "upload");
+        const send = calls[1] as [string, string, Record<string, unknown>];
+        assert.equal(send[1], "!r:x");
+        assert.deepEqual(send[2], {
+            msgtype: "m.image",
+            body: "photo.png",
+            url: "mxc://hs/uploaded",
+            info: { mimetype: "image/png", size: 3 },
+        });
+    });
+
+    it("uses the provided caption as body", async () => {
+        const { matrix, calls } = stubMatrix();
+        const file = new File(["png"], "photo.png", { type: "image/png" });
+        await sendMediaMessage(matrix, "!r:x", file, "look at this");
+        const send = calls[1] as [string, string, Record<string, unknown>];
+        assert.equal(send[2]?.["body"], "look at this");
+    });
+
+    it("maps video, audio and generic files to the right msgtype", async () => {
+        const { matrix, calls } = stubMatrix();
+        await sendMediaMessage(matrix, "!r:x", new File(["v"], "clip.mp4", { type: "video/mp4" }));
+        await sendMediaMessage(matrix, "!r:x", new File(["a"], "song.mp3", { type: "audio/mpeg" }));
+        await sendMediaMessage(matrix, "!r:x", new File(["d"], "doc.pdf", { type: "application/pdf" }));
+        const sends = calls.filter((c) => c[0] === "send") as [string, string, Record<string, unknown>][];
+        assert.equal(sends[0]?.[2]?.["msgtype"], "m.video");
+        assert.equal(sends[1]?.[2]?.["msgtype"], "m.audio");
+        assert.equal(sends[2]?.[2]?.["msgtype"], "m.file");
+    });
+
+    it("handles Blob (no filename) with a default name", async () => {
+        const { matrix, calls } = stubMatrix();
+        const blob = new Blob(["data"], { type: "image/png" });
+        await sendMediaMessage(matrix, "!r:x", blob);
+        const send = calls[1] as [string, string, Record<string, unknown>];
+        assert.equal(send[2]?.["body"], "file");
+        assert.equal(send[2]?.["msgtype"], "m.image");
+    });
+
+    it("propagates upload failures", async () => {
+        const matrix = {
+            uploadContent: async () => {
+                throw new Error("M_TOO_LARGE");
+            },
+        } as unknown as MatrixClient;
+        await assert.rejects(
+            () => sendMediaMessage(matrix, "!r:x", new File(["x"], "big.png", { type: "image/png" })),
+            /M_TOO_LARGE/,
+        );
+    });
+
+    it("propagates send failures", async () => {
+        const matrix = {
+            uploadContent: async () => ({ content_uri: "mxc://hs/x" }),
+            sendMessage: async () => {
+                throw new Error("M_FORBIDDEN");
+            },
+        } as unknown as MatrixClient;
+        await assert.rejects(
+            () => sendMediaMessage(matrix, "!r:x", new File(["x"], "a.png", { type: "image/png" })),
+            /M_FORBIDDEN/,
+        );
+    });
+});
+
+describe("decryptAttachment", () => {
+    // Unpadded base64 (standard alphabet) — matches the wire format.
+    function toUnpaddedBase64(bytes: Uint8Array): string {
+        let binary = "";
+        for (const b of bytes) binary += String.fromCharCode(b);
+        return btoa(binary).replace(/=+$/, "");
+    }
+
+    async function encryptFixture(plaintext: string) {
+        const keyBytes = crypto.getRandomValues(new Uint8Array(32));
+        const encryptKey = await crypto.subtle.importKey(
+            "raw", keyBytes, { name: "AES-CTR" }, false, ["encrypt"],
+        );
+        const jwk = await crypto.subtle.exportKey("jwk", await crypto.subtle.importKey(
+            "raw", keyBytes, { name: "AES-CTR" }, true, ["encrypt", "decrypt"],
+        ));
+        const iv = crypto.getRandomValues(new Uint8Array(16));
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: "AES-CTR", counter: iv.buffer as ArrayBuffer, length: 64 },
+            encryptKey,
+            new TextEncoder().encode(plaintext),
+        );
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
+        const file: EncryptedAttachment = {
+            url: "mxc://hs/abc",
+            key: jwk as unknown as EncryptedAttachment["key"],
+            iv: toUnpaddedBase64(iv),
+            hashes: { sha256: toUnpaddedBase64(digest) },
+            v: "v2",
+        };
+        return { file, ciphertext };
+    }
+
+    it("decrypts ciphertext and verifies an unpadded base64 hash", async () => {
+        const { file, ciphertext } = await encryptFixture("hello attachment");
+        const plaintext = await decryptAttachment(file, ciphertext);
+        assert.equal(new TextDecoder().decode(plaintext), "hello attachment");
+    });
+
+    it("accepts url-safe base64 hashes too", async () => {
+        const { file, ciphertext } = await encryptFixture("url safe");
+        // Convert the standard-alphabet hash to url-safe (may swap +/ chars).
+        file.hashes["sha256"] = file.hashes["sha256"]!.replace(/\+/g, "-").replace(/\//g, "_");
+        const plaintext = await decryptAttachment(file, ciphertext);
+        assert.equal(new TextDecoder().decode(plaintext), "url safe");
+    });
+
+    it("rejects when the ciphertext hash does not match", async () => {
+        const { file, ciphertext } = await encryptFixture("tampered");
+        file.hashes["sha256"] = toUnpaddedBase64(new Uint8Array(32).fill(0));
+        await assert.rejects(() => decryptAttachment(file, ciphertext), /hash mismatch/);
+    });
+
+    it("decrypts without a hash when hashes is empty", async () => {
+        const { file, ciphertext } = await encryptFixture("no hash");
+        file.hashes = {};
+        const plaintext = await decryptAttachment(file, ciphertext);
+        assert.equal(new TextDecoder().decode(plaintext), "no hash");
     });
 });

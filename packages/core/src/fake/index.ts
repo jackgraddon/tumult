@@ -2,7 +2,10 @@ import type {
     ChatClient,
     ConnectionState,
     DeviceView,
+    EncryptedAttachment,
     MessageView,
+    NotificationPermission,
+    NotificationState,
     RoomSummary,
     SecurityStatus,
     SessionView,
@@ -200,6 +203,7 @@ class FakeChatClient implements ChatClient {
     public readonly security: Subscribable<SecurityStatus>;
     public readonly verification: Subscribable<VerificationState>;
     public readonly typing: Subscribable<TypingState>;
+    public readonly notifications: Subscribable<NotificationState>;
     private readonly _threads: Observable<ThreadSummary[]>;
     private readonly noThreads = new Observable<ThreadSummary[]>([]);
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
@@ -228,6 +232,11 @@ class FakeChatClient implements ChatClient {
         // Alice is typing in the general room.
         this.typing = new Observable<TypingState>({
             rooms: { "!a-general:fake": ["@alice:example.com"] },
+        });
+        // Fake client reports permission granted but unsupported (no real Notification API).
+        this.notifications = new Observable<NotificationState>({
+            permission: "granted",
+            supported: false,
         });
         // One thread in the general room.
         this._threads = new Observable<ThreadSummary[]>([
@@ -339,6 +348,16 @@ class FakeChatClient implements ChatClient {
         return uri;
     }
 
+    public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
+        // Fake client doesn't encrypt; return the plain URL.
+        return file.url;
+    }
+
+    public async requestNotificationPermission(): Promise<NotificationPermission> {
+        // Fake client reports granted but unsupported (no real Notification API).
+        return "granted";
+    }
+
     public supportsThreads(): boolean {
         return true;
     }
@@ -415,6 +434,39 @@ class FakeChatClient implements ChatClient {
             body,
             Date.now(),
             { status: "sending" },
+        );
+        obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+        setTimeout(() => {
+            obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
+        }, 300);
+    }
+
+    public async sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return;
+        const name = file instanceof File ? file.name : "file";
+        const msgtype = file.type.startsWith("image/")
+            ? "m.image"
+            : file.type.startsWith("video/")
+              ? "m.video"
+              : file.type.startsWith("audio/")
+                ? "m.audio"
+                : "m.file";
+        const echo: MessageView = msg(
+            `${roomId}:local-${Date.now()}`,
+            "@demo:example.com",
+            body ?? name,
+            Date.now(),
+            {
+                status: "sending",
+                type: "m.room.message",
+                content: {
+                    msgtype,
+                    body: body ?? name,
+                    url: `mxc://fake/${Date.now().toString(36)}`,
+                    info: { mimetype: file.type, size: file.size },
+                },
+            },
         );
         obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
         setTimeout(() => {

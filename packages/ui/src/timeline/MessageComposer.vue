@@ -12,9 +12,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     send: [body: string];
+    sendFile: [file: File];
 }>();
 
 const draft = ref("");
+const fileInput = ref<HTMLInputElement | null>(null);
 let typingSent = false;
 let typingTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -51,11 +53,43 @@ function submit(): void {
     draft.value = "";
     clearTyping();
 }
+
+function openFilePicker(): void {
+    if (props.disabled) return;
+    fileInput.value?.click();
+}
+
+function onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file && !props.disabled) {
+        emit("sendFile", file);
+    }
+    // Reset so picking the same file again fires the change event.
+    input.value = "";
+}
 </script>
 
 <template>
     <form class="tumult-composer" @submit.prevent="submit">
         <label class="tumult-composer-label" for="tumult-composer-input">Message</label>
+        <button
+            class="tumult-composer-attach"
+            type="button"
+            title="Attach a file"
+            :disabled="disabled"
+            @click="openFilePicker"
+        >
+            +
+        </button>
+        <input
+            ref="fileInput"
+            class="tumult-composer-file"
+            type="file"
+            tabindex="-1"
+            aria-hidden="true"
+            @change="onFileSelected"
+        />
         <input
             id="tumult-composer-input"
             v-model="draft"
@@ -85,6 +119,33 @@ function submit(): void {
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
+}
+.tumult-composer-file {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+.tumult-composer-attach {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    align-self: center;
+    border: 1px solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-md);
+    line-height: 1;
+    cursor: pointer;
+}
+.tumult-composer-attach:hover:not(:disabled) {
+    background: var(--surface-hover, var(--surface-base));
+}
+.tumult-composer-attach:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 .tumult-composer-input {
     flex: 1;

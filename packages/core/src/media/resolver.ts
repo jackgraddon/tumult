@@ -1,7 +1,9 @@
 import { Method, type MatrixClient } from "matrix-js-sdk";
 
+import { decryptAttachment, type EncryptedAttachment } from "./attachment.ts";
+
 /** Thumbnails are requested at 2x for HiDPI, capped so a typo can't pull a full image. */
-const MAX_THUMBNAIL = 256;
+const MAX_THUMBNAIL = 1024;
 
 /** Parse `mxc://server/mediaId`. Exported for tests. */
 export function parseMxc(uri: string): { server: string; mediaId: string } | null {
@@ -56,6 +58,23 @@ export class MediaResolver {
         return pending;
     }
 
+    /**
+     * Fetch and decrypt an encrypted attachment (the `file` descriptor on an
+     * encrypted `m.room.message`). Returns a `blob:` URL of the plaintext.
+     */
+    public resolveEncrypted(file: EncryptedAttachment): Promise<string> {
+        const key = `enc:${file.url}`;
+        let pending = this.cache.get(key);
+        if (!pending) {
+            pending = this.loadEncrypted(file).catch((error: unknown) => {
+                this.cache.delete(key);
+                throw error;
+            });
+            this.cache.set(key, pending);
+        }
+        return pending;
+    }
+
     public dispose(): void {
         this.disposed = true;
         for (const url of this.objectUrls) URL.revokeObjectURL(url);
@@ -69,7 +88,7 @@ export class MediaResolver {
 
         this.authenticated ??= this.matrix.isVersionSupported("v1.11").catch(() => false);
         if (!(await this.authenticated)) {
-            const legacy = this.matrix.mxcUrlToHttp(uri, px, px, "crop");
+            const legacy = this.matrix.mxcUrlToHttp(uri, px, px, "scale");
             if (!legacy) throw new Error(`Cannot resolve ${uri}`);
             return legacy;
         }
@@ -77,13 +96,43 @@ export class MediaResolver {
         const blob = await this.matrix.http.authedRequest<Blob>(
             Method.Get,
             `/thumbnail/${encodeURIComponent(parsed.server)}/${encodeURIComponent(parsed.mediaId)}`,
-            { width: String(px), height: String(px), method: "crop" },
+            { width: String(px), height: String(px), method: "scale" },
             undefined,
             { prefix: "/_matrix/client/v1/media", rawResponseBody: true },
         );
         // Stopped while this was in flight: don't mint a URL nothing will revoke.
         if (this.disposed) throw new Error("Media resolver disposed");
         const url = URL.createObjectURL(blob);
+        this.objectUrls.add(url);
+        return url;
+    }
+
+    private async loadEncrypted(file: EncryptedAttachment): Promise<string> {
+        const parsed = parseMxc(file.url);
+        if (!parsed) throw new Error(`Not a valid mxc URI: ${file.url}`);
+
+        this.authenticated ??= this.matrix.isVersionSupported("v1.11").catch(() => false);
+        let ciphertext: ArrayBuffer;
+        if (await this.authenticated) {
+            const blob = await this.matrix.http.authedRequest<Blob>(
+                Method.Get,
+                `/download/${encodeURIComponent(parsed.server)}/${encodeURIComponent(parsed.mediaId)}`,
+                undefined,
+                undefined,
+                { prefix: "/_matrix/client/v1/media", rawResponseBody: true },
+            );
+            ciphertext = await blob.arrayBuffer();
+        } else {
+            const legacy = this.matrix.mxcUrlToHttp(file.url, undefined, undefined, undefined, false, true, true);
+            if (!legacy) throw new Error(`Cannot resolve ${file.url}`);
+            const response = await fetch(legacy);
+            if (!response.ok) throw new Error(`Failed to fetch ${file.url}: ${response.status}`);
+            ciphertext = await response.arrayBuffer();
+        }
+
+        if (this.disposed) throw new Error("Media resolver disposed");
+        const plaintext = await decryptAttachment(file, ciphertext);
+        const url = URL.createObjectURL(new Blob([plaintext]));
         this.objectUrls.add(url);
         return url;
     }
