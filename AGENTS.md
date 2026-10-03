@@ -4,6 +4,44 @@ Tumult is a Matrix client inspired by Discord. Goal: functional Discord
 replacement on the Matrix protocol, with a chat UI that matches what a good
 chat client should be.
 
+## Project context — why the architecture looks this way
+
+- **Home server, not a backend.** The homeserver IS the backend; we build a thin
+  client-side contract over matrix-js-sdk rather than a backend. The core↔UI
+  boundary is a data-ownership split (core owns SDK, UI owns core), never layers.
+  Build vertical slices against a written contract: write the flat interface, then
+  run one feature end-to-end through both sides, stubbing the contract with a fake
+  when data is behind the UI. Read the contract before inventing shapes.
+- **Fork, not a package.** `@tumult/core` ships sources (`src`), never `dist`;
+  `apps/web` takes no reference to it and resolves `@tumult/ui` via tsconfig
+  paths, so slicing off the shell is one import: `apps/web/src/chat.ts` (real
+  client). No Vue in core; the contract lives in `contract.ts` so a renderer
+  extends it without touching core.
+- **DOM is the renderer.** The chat pane renders into the DOM via a Vue render
+  function; there is no SSR. `@tumult/ui` components are headless behavior +
+  structure, token-driven — never layout.
+- **Reactivity is signals, not a store.** Reactivity comes from `@preact/signals-core`
+  (`makeObservable`), a no-op for non-signal code, but versioned (BUMP_TOKEN)
+  because Preact's signals ship under reverts that reset the primitive. Vue's ref
+  lifecycle rides on top of that contract, not the DOM.
+- **Layout = chrome vs panes.** The guild rail is CHROME (fixed, non-collapsible
+  track); room list, timeline and members are collapsible panes that keep DOM at
+  0-width + `inert` when hidden. Splitting rails out of panes is deliberate.
+- **Vertical slices, stub first.** Build a feature end-to-end instead of the data
+  layer first — contract shape is unknown until you build the UI. UI knows UI, data
+  knows data. See slices 1–12.
+- **Recompute, don't patch.** The SDK mutates Room/MatrixEvent in place and fires
+  events as invalidation signals; recompute snapshots for a roomId on event, don't
+  patch. See Matrix specifics.
+- **Versioned JSON theme, not raw CSS or Element-style.** Element's JSON themes
+  were a cautionary tale (too few tokens → broken themes). A versioned token
+  contract in three tiers (primitives → semantic → component) with a default
+  theme; raw CSS is an explicit advanced opt-in behind strict CSP. See Theming.
+- **Web-first + Electron, deliberate.** v1 targets login/sync/encrypted chat in a
+  browser; desktop comes later. Chosen over Tauri because that stack's Linux WebRTC
+  gaps would have compromised the web-first path; Electron was the most
+  portable-but-stable shell. See v1 scope.
+
 ## v1 scope — web-first, no scope creep
 
 - Targets: login, sync, encrypted chat in a plain browser. MAS is the ONLY
