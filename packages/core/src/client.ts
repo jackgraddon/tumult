@@ -21,9 +21,11 @@ import type {
     DeviceView,
     EncryptedAttachment,
     LoginParams,
+    MemberView,
     MessageView,
     NotificationPermission,
     NotificationState,
+    ProfileView,
     RoomSummary,
     SearchPage,
     SecurityStatus,
@@ -44,6 +46,7 @@ import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
+import { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 import {
     createChannel,
     createDm,
@@ -55,6 +58,7 @@ import {
 } from "./rooms/lifecycle.ts";
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
+import { MembersTracker } from "./rooms/members.ts";
 import { MediaResolver } from "./media/resolver.ts";
 import { NotificationTracker } from "./notifications/tracker.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
@@ -144,6 +148,8 @@ export class MatrixChatClient implements ChatClient {
     private _typing: TypingTracker | null = null;
     /** Thread tracking, alive while the sync loop runs. */
     private _threads: ThreadTracker | null = null;
+    /** Per-room member rosters, alive while the sync loop runs. */
+    private _members: MembersTracker | null = null;
     /** Authenticated-media fetches as blob URLs, alive while the sync loop runs. */
     private _media: MediaResolver | null = null;
     /** Browser notification firing, alive while the sync loop runs. */
@@ -170,6 +176,7 @@ export class MatrixChatClient implements ChatClient {
         permission: "default",
         supported: typeof Notification !== "undefined",
     });
+    private readonly profileState = new Observable<ProfileView | null>(null);
 
     public constructor(options: ChatClientOptions) {
         this.storage = options.storage ?? AuthStorage.browser();
@@ -202,6 +209,10 @@ export class MatrixChatClient implements ChatClient {
 
     public get notifications(): Subscribable<NotificationState> {
         return this.notificationsState;
+    }
+
+    public get profile(): Subscribable<ProfileView | null> {
+        return this.profileState;
     }
 
     public async login(params: LoginParams): Promise<void> {
@@ -338,6 +349,11 @@ export class MatrixChatClient implements ChatClient {
             this._typing.subscribe(() => this.publishTyping());
             this.publishTyping();
             this._threads = new ThreadTracker(client);
+            this._members = new MembersTracker(client);
+            // Profile is a plain HTTP read, independent of the sync loop:
+            // seed the feed now rather than waiting for the first batch. A
+            // failure publishes the localpart fallback (below) instead.
+            void this.refreshProfile();
             this._media = new MediaResolver(client);
             this._notifications = new NotificationTracker(client);
             this._notifications.subscribe(() => this.publishNotifications());
@@ -359,7 +375,14 @@ export class MatrixChatClient implements ChatClient {
             // objects. It is a START option (IStartClientOpts): `supportsThreads()`
             // reads the opts startClient() stores. Passed to createClient it is
             // silently ignored — that cast-hidden mistake left threads dead.
-            await client.startClient({ threadSupport: true });
+            //
+            // Lazy member loading is the same class of option: on startClient()
+            // it shrinks every sync to the members who actually speak (the
+            // point — a 10k-member room must not ship its roster every poll);
+            // on createClient it is silently ignored. The roster then arrives
+            // partial until loadMembers() fetches the full list, which is why
+            // MembersTracker never claims a partial snapshot is complete.
+            await client.startClient({ threadSupport: true, lazyLoadMembers: true });
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
             await this.refreshSecurity();
@@ -379,6 +402,8 @@ export class MatrixChatClient implements ChatClient {
             this._typing = null;
             this._threads?.detachAll();
             this._threads = null;
+            this._members?.detachAll();
+            this._members = null;
             this._media?.dispose();
             this._media = null;
             this._notifications?.detachAll();
@@ -414,6 +439,8 @@ export class MatrixChatClient implements ChatClient {
         this._typing = null;
         this._threads?.detachAll();
         this._threads = null;
+        this._members?.detachAll();
+        this._members = null;
         this._media?.dispose();
         this._media = null;
         this._notifications?.detachAll();
@@ -466,6 +493,7 @@ export class MatrixChatClient implements ChatClient {
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
+        this.profileState.set(null);
         this.roomsState.set([]);
     }
 
@@ -566,6 +594,32 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) throw new Error("Cannot search users before start()");
         return searchUserDirectory(client, term, opts?.limit);
+    }
+
+    public members(roomId: string): Subscribable<MemberView[]> {
+        const members = this._members;
+        if (!members) throw new Error("Cannot read members before start()");
+        return members.members(roomId);
+    }
+
+    public async loadMembers(roomId: string): Promise<void> {
+        const members = this._members;
+        if (!members) throw new Error("Cannot load members before start()");
+        await members.loadMembers(roomId);
+    }
+
+    public async setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot set profile before start()");
+        try {
+            await writeProfile(client, params);
+        } catch (error) {
+            // A half-applied change (name landed, upload failed) must show
+            // what the server actually stored — refresh first, then rethrow.
+            await this.refreshProfile();
+            throw error;
+        }
+        await this.refreshProfile();
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {
@@ -790,6 +844,7 @@ export class MatrixChatClient implements ChatClient {
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
+        this.profileState.set(null);
         this.roomsState.set([]);
     }
 
@@ -841,6 +896,22 @@ export class MatrixChatClient implements ChatClient {
             this.securityState.set(await querySecurityStatus(crypto));
         } catch (error) {
             console.error("[tumult] security snapshot failed", error);
+        }
+    }
+
+    /**
+     * Publish our profile. Never throws: an offline start still gets a
+     * readable fallback (the mxid localpart), which is just restating the id
+     * we already show — not a name the server ever claimed.
+     */
+    private async refreshProfile(): Promise<void> {
+        const client = this.matrix;
+        const userId = client?.getUserId();
+        if (!client || !userId) return;
+        try {
+            this.profileState.set(await readProfile(client));
+        } catch {
+            this.profileState.set({ userId, displayName: fallbackName(userId), avatarUrl: null });
         }
     }
 

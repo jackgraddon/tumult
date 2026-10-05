@@ -9,10 +9,14 @@ export type {
     DeviceView,
     EncryptedAttachment,
     LoginParams,
+    Membership,
     MessageStatus,
     MessageView,
+    MemberView,
     NotificationPermission,
     NotificationState,
+    PresenceState,
+    ProfileView,
     ReactionView,
     ReplyView,
     RoomSummary,
@@ -34,10 +38,12 @@ export { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 export { sendTextMessage } from "./rooms/send.ts";
 export { sendMediaMessage } from "./rooms/media.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
+export { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 export { collectEdits, sendEditMessage } from "./rooms/edits.ts";
 export type { EditRecord } from "./rooms/edits.ts";
 export { TypingTracker } from "./typing/tracker.ts";
 export { ThreadTracker } from "./threads/tracker.ts";
+export { MembersTracker } from "./rooms/members.ts";
 export { NotificationTracker } from "./notifications/tracker.ts";
 export { querySecurityStatus, toSecurityStatus } from "./crypto/security.ts";
 export { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";

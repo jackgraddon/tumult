@@ -26,6 +26,7 @@ const emit = defineEmits<{
     signOut: [];
     security: [];
     verify: [];
+    profile: [];
     createSpace: [];
     join: [];
 }>();
@@ -78,6 +79,7 @@ const emit = defineEmits<{
             @sign-out="emit('signOut')"
             @security="emit('security')"
             @verify="emit('verify')"
+            @profile="emit('profile')"
         />
     </nav>
 </template>

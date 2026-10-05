@@ -6,9 +6,11 @@ import type {
     CreateSpaceParams,
     DeviceView,
     EncryptedAttachment,
+    MemberView,
     MessageView,
     NotificationPermission,
     NotificationState,
+    ProfileView,
     RoomSummary,
     SearchPage,
     SecurityStatus,
@@ -20,6 +22,7 @@ import type {
     VerificationState,
 } from "../contract.ts";
 import { Observable } from "../observable.ts";
+import { fallbackName } from "../rooms/profile.ts";
 
 /** In-memory cap: dropping the head must not break scroll anchoring. */
 export const FAKE_TIMELINE_CAP = 500;
@@ -36,6 +39,8 @@ function mulberry32(seed: number): () => number {
 }
 
 const SENDERS = ["@alice:example.com", "@bob:example.com", "@carol:example.com", "@dave:example.com"];
+const DM_NAMES = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy"];
+const SELF_ID = "@demo:example.com";
 const BODIES = [
     "hey, did anyone see the new build?",
     "shipping the shell today, theme tokens and all",
@@ -144,8 +149,7 @@ function buildRooms(): RoomSummary[] {
     chan("!dangling:fake", "dangling", ["!missing:fake"]);
 
     // 10 orphans = DMs tab.
-    const dmNames = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy"];
-    dmNames.forEach((n, i) => {
+    DM_NAMES.forEach((n, i) => {
         chan(`!dm-${i}:fake`, n, [], i === 0 ? 105 : i, i === 1 ? 2 : 0);
     });
 
@@ -225,6 +229,64 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
     return out.length > FAKE_TIMELINE_CAP ? out.slice(out.length - FAKE_TIMELINE_CAP) : out;
 }
 
+/**
+ * Mirror the core ordering guarantee: power level desc, then display name,
+ * then userId — a stable order so keyed lists don't thrash between snapshots.
+ */
+function sortMembers(members: MemberView[]): MemberView[] {
+    return members.sort(
+        (a, b) =>
+            b.powerLevel - a.powerLevel ||
+            a.displayName.localeCompare(b.displayName, "en") ||
+            a.userId.localeCompare(b.userId, "en"),
+    );
+}
+
+function member(
+    userId: string,
+    displayName: string,
+    powerLevel: number,
+    membership: MemberView["membership"],
+    presence: MemberView["presence"],
+    lastActiveTs: number | null,
+): MemberView {
+    return { userId, displayName, avatarUrl: null, membership, powerLevel, isSelf: false, presence, lastActiveTs };
+}
+
+/**
+ * Roster fixture per room. Rich rooms exercise every section the UI groups
+ * by (admin / moderator / member / invite) and every presence state
+ * (online / offline / unknown); DM rooms are just the two participants. The
+ * self row tracks the profile so a rename shows up in the roster too.
+ */
+function buildRoster(roomId: string, self: MemberView): MemberView[] {
+    const now = Date.now();
+    const dm = /^!dm-(\d+):fake$/.exec(roomId);
+    if (dm) {
+        const i = Number(dm[1]);
+        const name = DM_NAMES[i] ?? `person-${i}`;
+        const partner = SENDERS[i] ?? `@${name.toLowerCase()}:example.com`;
+        return sortMembers([
+            self,
+            member(
+                partner,
+                name,
+                0,
+                "join",
+                i % 2 === 0 ? "online" : "offline",
+                i % 2 === 0 ? now - 45_000 : now - 5 * 3_600_000,
+            ),
+        ]);
+    }
+    return sortMembers([
+        self,
+        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000),
+        member("@bob:example.com", "Bob", 50, "join", "offline", now - 3 * 3_600_000),
+        member("@carol:example.com", "Carol", 0, "join", "unknown", null),
+        member("@erin:example.com", "Erin", 0, "invite", "unknown", null),
+    ]);
+}
+
 class FakeChatClient implements ChatClient {
     public readonly session: Subscribable<SessionView | null>;
     public readonly connection: Subscribable<ConnectionState>;
@@ -233,10 +295,13 @@ class FakeChatClient implements ChatClient {
     public readonly verification: Subscribable<VerificationState>;
     public readonly typing: Subscribable<TypingState>;
     public readonly notifications: Subscribable<NotificationState>;
+    public readonly profile: Subscribable<ProfileView | null>;
     private readonly _threads: Observable<ThreadSummary[]>;
     private readonly noThreads = new Observable<ThreadSummary[]>([]);
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
     private readonly threadTimelines = new Map<string, Observable<MessageView[]>>();
+    private readonly memberFeeds = new Map<string, Observable<MemberView[]>>();
+    private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
 
     public constructor(seed: number) {
@@ -271,6 +336,16 @@ class FakeChatClient implements ChatClient {
         this._threads = new Observable<ThreadSummary[]>([
             { rootEventId: "!a-general:fake:e0", replyCount: 2, lastReplyTs: Date.now() - 60_000, unreadCount: 1, hasParticipated: false },
         ]);
+        this.profile = new Observable<ProfileView | null>({
+            userId: SELF_ID,
+            displayName: "Demo",
+            avatarUrl: null,
+        });
+
+        for (const r of this.rooms.get()) {
+            this.rosters.set(r.id, buildRoster(r.id, this.selfMember()));
+        }
+
         for (const r of this.rooms.get()) {
             if (r.isSpace) continue;
             const timeline = buildTimeline(r.id, this.rand, now);
@@ -301,6 +376,7 @@ class FakeChatClient implements ChatClient {
 
     public async logout(): Promise<void> {
         (this.session as Observable<SessionView | null>).set(null);
+        (this.profile as Observable<ProfileView | null>).set(null);
     }
 
     public async start(): Promise<void> {
@@ -347,9 +423,15 @@ class FakeChatClient implements ChatClient {
     // ones just need to be unique and recognisable in the tree.
     private nextCreated = 1;
 
-    private pushRoom(summary: RoomSummary): string {
+    private pushRoom(summary: RoomSummary, extraMemberId?: string): string {
         (this.rooms as Observable<RoomSummary[]>).update((cur) => [...cur, summary]);
         this.timelines.set(summary.id, new Observable<MessageView[]>([]));
+        const roster = buildRoster(summary.id, this.selfMember());
+        if (extraMemberId) {
+            roster.push(member(extraMemberId, fallbackName(extraMemberId), 0, "join", "unknown", null));
+            sortMembers(roster);
+        }
+        this.rosters.set(summary.id, roster);
         return summary.id;
     }
 
@@ -398,7 +480,7 @@ class FakeChatClient implements ChatClient {
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
-        });
+        }, params.userId);
     }
 
     public async joinRoom(idOrAlias: string): Promise<string> {
@@ -427,9 +509,13 @@ class FakeChatClient implements ChatClient {
         this.threadTimelines.delete(roomId);
     }
 
-    public async invite(_roomId: string, _userId: string): Promise<void> {
-        // Resolves; the fake carries no membership state yet — the members
-        // pane is timeline-derived until slice 21 wires real rosters.
+    public async invite(roomId: string, userId: string): Promise<void> {
+        const roster = this.rosters.get(roomId);
+        if (!roster) return;
+        if (roster.some((m) => m.userId === userId)) return;
+        roster.push(member(userId, fallbackName(userId), 0, "invite", "unknown", null));
+        sortMembers(roster);
+        this.publishMembers(roomId);
     }
 
     public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {
@@ -586,6 +672,76 @@ class FakeChatClient implements ChatClient {
             { id: "FAKEDEVICE", displayName: "Fake browser", lastSeenTs: Date.now(), isCurrent: true, verified: true },
             { id: "FAKEPHONE", displayName: "Fake phone", lastSeenTs: null, isCurrent: false, verified: false },
         ];
+    }
+
+    public members(roomId: string): Subscribable<MemberView[]> {
+        let feed = this.memberFeeds.get(roomId);
+        if (!feed) {
+            feed = new Observable<MemberView[]>([...this.rosterFor(roomId)]);
+            this.memberFeeds.set(roomId, feed);
+        }
+        return feed;
+    }
+
+    public async loadMembers(roomId: string): Promise<void> {
+        if (!this.rooms.get().some((r) => r.id === roomId)) {
+            throw new Error(`Cannot load members for unknown room ${roomId}`);
+        }
+        // Fake rosters are complete in memory: nothing to fetch, but publish
+        // anyway so the UI's loading → ready transition runs the same path.
+        this.publishMembers(roomId);
+    }
+
+    public async setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {
+        const current = this.profile.get() ?? {
+            userId: SELF_ID,
+            displayName: fallbackName(SELF_ID),
+            avatarUrl: null,
+        };
+        const next: ProfileView = { ...current };
+        if (params.displayName !== undefined) {
+            const trimmed = params.displayName.trim();
+            // Empty clears to the localpart — same as the server echoing an
+            // empty displayname back through readProfile()'s fallback.
+            next.displayName = trimmed.length > 0 ? trimmed : fallbackName(current.userId);
+        }
+        if (params.avatar !== undefined) {
+            next.avatarUrl = params.avatar === null ? null : URL.createObjectURL(params.avatar);
+        }
+        (this.profile as Observable<ProfileView | null>).set(next);
+        // The self row in every roster follows the profile, the way a real
+        // m.room.member rename does once the server echoes it.
+        for (const [roomId, roster] of this.rosters) {
+            if (!roster.some((m) => m.isSelf)) continue;
+            this.rosters.set(
+                roomId,
+                sortMembers(roster.map((m) => (m.isSelf ? { ...m, displayName: next.displayName, avatarUrl: next.avatarUrl } : m))),
+            );
+            this.publishMembers(roomId);
+        }
+    }
+
+    private selfMember(): MemberView {
+        const profile = this.profile.get();
+        return {
+            userId: SELF_ID,
+            displayName: profile?.displayName ?? fallbackName(SELF_ID),
+            avatarUrl: profile?.avatarUrl ?? null,
+            membership: "join",
+            powerLevel: 100,
+            isSelf: true,
+            presence: "online",
+            lastActiveTs: Date.now(),
+        };
+    }
+
+    /** Unknown rooms are empty — same honest rule as the real tracker. */
+    private rosterFor(roomId: string): MemberView[] {
+        return this.rosters.get(roomId) ?? [];
+    }
+
+    private publishMembers(roomId: string): void {
+        this.memberFeeds.get(roomId)?.set([...this.rosterFor(roomId)]);
     }
 
     public async send(roomId: string, body: string, replyToEventId?: string): Promise<void> {

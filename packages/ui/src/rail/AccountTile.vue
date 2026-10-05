@@ -10,8 +10,9 @@ import {
 import type { ChatClient, DeviceView, SessionView } from "@tumult/core";
 
 import Avatar from "../primitives/Avatar.vue";
+import { useSubscribable } from "../subscribable.ts";
 
-defineProps<{
+const props = defineProps<{
     session: SessionView | null;
     client: ChatClient;
 }>();
@@ -20,7 +21,12 @@ const emit = defineEmits<{
     signOut: [];
     security: [];
     verify: [];
+    profile: [];
 }>();
+
+// Unlike members(), the profile feed always exists (it's a plain field, not
+// bootstrapped in start()), so reading it before start() is safe.
+const profile = useSubscribable(props.client.profile);
 
 const devices = ref<DeviceView[] | null>(null);
 
@@ -37,13 +43,16 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     <DropdownMenuRoot @update:open="(open) => onOpenChange(open, client)">
         <DropdownMenuTrigger as-child>
             <button type="button" class="tumult-account" :aria-label="session ? `Account: ${session.userId}` : 'Account'">
-                <Avatar :label="session?.userId ?? '?'" size="sm" />
+                <Avatar :label="profile?.displayName ?? session?.userId ?? '?'" :src="profile?.avatarUrl" size="sm" />
             </button>
         </DropdownMenuTrigger>
         <DropdownMenuPortal>
             <DropdownMenuContent class="tumult-menu" side="top" align="start">
                 <DropdownMenuItem class="tumult-menu-id" disabled :text-value="session?.userId ?? ''">
-                    {{ session?.userId ?? "Signed out" }}
+                    <span v-if="profile && profile.displayName !== profile.userId" class="tumult-menu-name">
+                        {{ profile.displayName }}
+                    </span>
+                    <span>{{ session?.userId ?? "Signed out" }}</span>
                 </DropdownMenuItem>
                 <div v-if="devices" class="tumult-menu-devices" role="group" aria-label="Devices">
                     <ul>
@@ -58,7 +67,10 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
                         </li>
                     </ul>
                 </div>
-<DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
+<DropdownMenuItem class="tumult-menu-item" text-value="edit profile" @select="emit('profile')">
+                Edit profile…
+            </DropdownMenuItem>
+            <DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
                 Security…
             </DropdownMenuItem>
             <DropdownMenuItem class="tumult-menu-item" text-value="verify" @select="emit('verify')">
@@ -104,6 +116,12 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     font-size: var(--text-xs);
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.tumult-menu-name {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 600;
 }
 .tumult-menu-devices {
     max-height: 160px;

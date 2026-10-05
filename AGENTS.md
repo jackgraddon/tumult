@@ -518,7 +518,51 @@ chat client should be.
   (Teleport defaults to `body`), and `DialogContent` unmounts on close, so
   every dialog resets its refs in an `open` watcher AND the parent drives
   `open` off the `RoomAction` union.
-- NEXT — slice 21: TBD.
+- DONE — slice 21: members, presence & profiles — contract: `Membership`,
+  `PresenceState`, `MemberView` (userId/displayName/avatarUrl/membership/
+  powerLevel/isSelf/presence/lastActiveTs), `ProfileView`, a `profile:
+  Subscribable<ProfileView | null>` feed plus `members(roomId)` /
+  `loadMembers(roomId)` / `setProfile({ displayName?, avatar? })` (only join
+  and invite are rostered — leave/ban are slice 22 surface). Core:
+  `rooms/members.ts` (`MembersTracker`: per-room cached Observable, power-
+  desc/name/userId order, `loadMembersIfNeeded`, presence committed only on a
+  non-cached `ClientEvent.Sync`) and `rooms/profile.ts` (`fallbackName` /
+  `readProfile` / `writeProfile`, `null` avatar clears via `setAvatarUrl("")`).
+  UI: `MembersPane` virtualized with section headers (Admins ≥100 / Moderators
+  ≥50 / Members / Invited), honest "Loading members…" + Retry on failure,
+  `MemberListItem` presence dot (green / grey / hollow-unknown + last-seen
+  tooltip, "Invited" badge), `ProfileDialog` on `RoomDialog` chrome (display
+  name + file-upload avatar with blob preview, Remove/Undo) opened from the
+  account menu, profile avatar/name in `AccountTile`. Covered by
+  `test/members.test.ts` + `test/profile.test.ts` (17 new, 205 unit) plus a
+  Synapse round-trip (`test-integration/members.test.ts`: lazy roster +
+  `loadMembers` + joined-member rename rebuild, live presence turn-on,
+  write/read profile with mxc avatar, roster-vs-`getMembers` after a join) —
+  27 integration total. Presence IS enabled on the dev Synapse (probed, no
+  `override.yaml` change).
+- VERIFIED slice-21 traps: `lazyLoadMembers` is a `startClient()` option (on
+  `createClient` it's silently ignored; guests force it off) — the first sync
+  ships a partial roster and `room.loadMembersIfNeeded()` is the only route to
+  completeness; `getMembers()` returns the partial state before it, and the
+  in-flight `membersPromise` CLEARS on rejection, so a failed load must
+  surface + retry, not swallow. Presence must be committed-on-next-Sync, not
+  on receipt: `IndexedDBStore.startup()` and the cached first-sync replay call
+  `setPresenceEvent()` with a fresh `lastPresenceTs`, so trusting it would
+  republish a days-old "online" on every boot — queue live presence, drop it
+  when `data.fromCache`, publish after the next real Sync (self is always
+  `online`). The SDK re-emits `RoomMemberEvent.Name/Typing/PowerLevel/
+  Membership` on the CLIENT with `(event, member)` args and NO roomId — read
+  `member.roomId`. A profile rename lands as an `m.room.member` Name event
+  only for users who JOINED: renaming an invite-only user never propagates on
+  Synapse (the integration test renames a joined member). `profile` is a
+  plain field that exists before `start()`, while `members()`/`loadMembers()`
+  throw before it — the account tile subscribes unguarded, the pane guards.
+  The members pane virtualizes like the timeline (plain overflow scroller,
+  header rows as virtual items, `as Row` casts — vue-tsc does not narrow
+  `rows[v.index]` across `v-if`), and `MemberListItem` takes the whole
+  `MemberView` so each virtual row casts once.
+- NEXT — slice 22: TBD (moderation — kick/ban/unban/power-level edits +
+  badges against the slice-21 member feed).
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.

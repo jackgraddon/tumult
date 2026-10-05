@@ -260,6 +260,53 @@ export interface DeviceView {
     verified: boolean;
 }
 
+/**
+ * Membership of a room, as the members pane shows it. Only `join` and `invite`
+ * are ever published — left/banned/kicked members belong to slice 22's
+ * moderation surface, not the roster.
+ */
+export type Membership = "join" | "invite" | "leave" | "ban" | "knock";
+
+/**
+ * Presence of a room member.
+ *
+ * `"unknown"` is a real state, not a placeholder: presence only exists once the
+ * server has sent that user's `m.presence` *this session*. Presence restored
+ * from the store's cache is deliberately not trusted (it can be days old and
+ * still say `"online"`), so a member stays `"unknown"` until the server tells
+ * us otherwise. Never invent `"online"`.
+ */
+export type PresenceState = "online" | "offline" | "unknown";
+
+/** One member of a room, as the members pane needs it. */
+export interface MemberView {
+    userId: string;
+    /** Plain display name (never disambiguated); the localpart when unnamed. */
+    displayName: string;
+    /** Usually an `mxc://` URI — pass through `resolveMedia()`. */
+    avatarUrl: string | null;
+    /** `join` or `invite` only. */
+    membership: Membership;
+    /** From the room's power levels — drives admin/mod grouping and ordering. */
+    powerLevel: number;
+    isSelf: boolean;
+    presence: PresenceState;
+    /**
+     * Approximate last-activity time (ms since epoch) derived from live
+     * presence, `null` when presence is unknown. A moment ago for `online`.
+     */
+    lastActiveTs: number | null;
+}
+
+/** Our own profile, as the account menu and edit dialog need it. */
+export interface ProfileView {
+    userId: string;
+    /** Plain display name; the localpart while unnamed. */
+    displayName: string;
+    /** Usually an `mxc://` URI — pass through `resolveMedia()`. */
+    avatarUrl: string | null;
+}
+
 export interface LoginParams {
     /** Base URL of the homeserver, e.g. `https://matrix.example.com`. */
     homeserverUrl: string;
@@ -335,6 +382,11 @@ export interface ChatClient {
     verification: Subscribable<VerificationState>;
     typing: Subscribable<TypingState>;
     notifications: Subscribable<NotificationState>;
+    /**
+     * Our own profile, published once `start()` boots and after every
+     * successful `setProfile()`. `null` before there is a session.
+     */
+    profile: Subscribable<ProfileView | null>;
     /**
      * Snapshot feed for one room's timeline.
      *
@@ -491,6 +543,32 @@ export interface ChatClient {
      * directory itself only matches what the server indexes.
      */
     searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]>;
+    /**
+     * Member roster for one room. Same `Subscribable` per roomId on repeat
+     * calls (same rule as `timeline`). Ordered by power level descending,
+     * then display name; only `join` and `invite` members appear.
+     *
+     * Under lazy loading the first snapshot can be partial — it holds whoever
+     * came through sync until `loadMembers(roomId)` resolves.
+     */
+    members(roomId: string): Subscribable<MemberView[]>;
+    /**
+     * Fetch a room's full membership list the first time its members pane
+     * opens. Resolves once `members(roomId)` holds the complete roster.
+     * Rejects when the homeserver refuses — the feed keeps whatever it
+     * already had, so the UI must surface the failure rather than present a
+     * partial roster as complete. Concurrent calls for one room collapse.
+     */
+    loadMembers(roomId: string): Promise<void>;
+    /**
+     * Update our own profile: a `displayName` through the profile endpoint
+     * (empty string clears it), and/or an `avatar` uploaded to the media
+     * repository (`null` clears the avatar). Then re-reads the profile so the
+     * `profile` feed reflects what the server stored. Rejects on failure and
+     * refreshes the feed from the server, so a half-applied change (name
+     * landed, upload failed) is shown honestly.
+     */
+    setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void>;
     /**
      * Set up secret storage plus a fresh key backup, returning the encoded
      * recovery key. Display it to the user exactly once — it is never

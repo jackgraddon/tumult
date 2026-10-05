@@ -30,6 +30,7 @@ import JoinRoomDialog from "../rooms/JoinRoomDialog.vue";
 import CreateDmDialog from "../rooms/CreateDmDialog.vue";
 import InviteDialog from "../rooms/InviteDialog.vue";
 import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
+import ProfileDialog from "../rooms/ProfileDialog.vue";
 
 const props = defineProps<{
     client: ChatClient;
@@ -96,6 +97,9 @@ const verificationModal = ref(false);
 function openVerificationModal(): void {
     verificationModal.value = true;
 }
+
+// Profile edit dialog: the account menu's "Edit profile…" entry opens it.
+const profileModal = ref(false);
 
 // Thread slide-over: the room's thread list, or one open thread.
 type ThreadView = { mode: "list" } | { mode: "thread"; threadId: string } | null;
@@ -316,6 +320,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     @sign-out="emit('signOut')"
                     @security="openSecurityModal()"
                     @verify="openVerificationModal()"
+                    @profile="profileModal = true"
                     @create-space="roomAction = { kind: 'create-space' }"
                     @join="roomAction = { kind: 'join' }"
                 />
@@ -399,6 +404,11 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :client="client"
             :open="verificationModal"
             @close="verificationModal = false"
+        />
+        <ProfileDialog
+            :client="client"
+            :open="profileModal"
+            @close="profileModal = false"
         />
         <CreateSpaceDialog
             :client="client"
