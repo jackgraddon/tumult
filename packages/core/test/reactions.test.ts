@@ -135,9 +135,11 @@ describe("sameTimeline", () => {
             status: "sent",
             decryption: "ok",
             content: {},
+            reply: null,
             reactions: [],
             readBy: [],
             edited: false,
+            redacted: false,
             ...over,
         };
     }
@@ -146,6 +148,10 @@ describe("sameTimeline", () => {
         assert.equal(sameTimeline([view()], [view()]), true);
         assert.equal(sameTimeline([view()], [view({ body: "Message deleted." })]), false);
         assert.equal(sameTimeline([view()], [view({ type: "m.sticker" })]), false);
+        // Same picture before/after a redaction that changed nothing else —
+        // without the flag the row would never repaint.
+        assert.equal(sameTimeline([view({ redacted: true })], [view({ redacted: true })]), true);
+        assert.equal(sameTimeline([view()], [view({ redacted: true })]), false);
     });
 
     it("treats reader changes as different", () => {

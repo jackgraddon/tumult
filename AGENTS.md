@@ -419,11 +419,69 @@ chat client should be.
   Docker, generated config + checked-in override) with a `node --test` suite
   driving two password-authed SDK clients (space, parent links, unread,
   selector — green). Raw `MatrixClient`, no crypto: rooms are unencrypted.
-- NEXT — slice 3 (DMs polish) then slice 4: timeline read + history
-  pagination.
-- NOT YET DONE: no tests. Sliding sync (MSC4186) is not wired — classic
-  `/sync` only, behind the abstraction. The Dockerised-Synapse integration
-  tests this file calls for should land before slice 4.
+- Sliding sync (MSC4186) is not wired — classic `/sync` only, behind the
+  abstraction.
+- `pnpm test`/`test:integration` in core use `node --test "test/**/*.test.ts"`
+  globs: `node --test <dir>` broke on Node 25 (treats the dir as a module).
+- DONE — slice 18: inline quoted replies — `MessageView.reply: ReplyView |
+  null` (additive) and `send(roomId, body, replyToEventId?)`. Send builds the
+  spec fallback (`> <@mxid> quoted lines` + blank line + reply) via
+  `room.findEventById`, attaches `m.relates_to.m.in_reply_to` AND
+  `m.mentions.user_ids` (spec: replying mentions the target). Read:
+  `mapEvent` extracts the relation and strips the fallback (spec algorithm,
+  only when a relation says it IS a reply), then the feed's
+  `applyReplyQuotes` overwrites the quote from the loaded target
+  (post-edit, redaction-aware) — after edits, before the cap; threaded
+  rebuilds call it too. UI: ↩ reply affordance on sent decrypted rows →
+  quote strip in the composer (✕ cancels, TimelineBody owns the state, room
+  switch clears it via the pane's `:key`) + compact quote block above the
+  renderer. Stub unit tests (`test/replies.test.ts`) plus a Synapse
+  round-trip: wire shape + fallback + mention, foreign-client reply strip,
+  quote enrichment.
+- VERIFIED reply traps: `getRelation()` returns null for plain replies —
+  `isRelation()` requires `rel_type`, a bare reply has none; read
+  `m.relates_to.m.in_reply_to.event_id` directly. EVERY thread message
+  carries `m.in_reply_to` (`addThreadRelationIfNeeded` falls back with
+  `is_falling_back: true` for unthreaded clients) — rendering those as quotes
+  would quote the previous message on every thread row, so only bare replies
+  or `is_falling_back: false` count. Read relations from `getContent()`
+  (decrypted on E2EE); quote enrichment must run AFTER edits apply so quotes
+  track edited bodies.
+- DONE — slice 19: message completeness — delete/redact (`redact()` →
+  `redactEvent()`; the redaction row never renders, the target tombstones on
+  the next rebuild with `MessageView.redacted`), the read marker (`markRead()`
+  now writes `m.fully_read` alongside the receipt via `setRoomReadMarkers`,
+  surfaced as `RoomSummary.fullyReadEventId` → "New messages" divider anchored
+  mid-history in the fake), server-side search (`search()` →
+  `searchRoomHistory()`: room-scoped, recent-first, `next_batch` pages,
+  `SearchPage` — the SDK helper has no batch input, so it's raw
+  `matrix.search` + `processRoomEventsSearch`), and search navigation
+  (`jumpTo()` → bounded scrollback walk → `focusRequest` flash; 🔍
+  `SearchPanel` slide-over in the timeline header with honest
+  out-of-window failure). Covered by `test/messages.test.ts` (stub routing,
+  fake parity, marker throttle/fallback, jump bound + concurrent collapse) plus
+  a Synapse round-trip (`test-integration/messages.test.ts`: wire tombstone +
+  other-side row, marker account data → snapshot, 12-hit paged search with no
+  repeats, jump-to-oldest then exhaustion-false).
+- VERIFIED slice-19 traps: there is NO `sendReadMarker` — the API is
+  `setRoomReadMarkers(roomId, rmEventId, rrEvent)` (it throws on pending
+  events, hence `latestReceiptable` first), and `WritableAccountDataEvents`
+  EXCLUDES `m.fully_read`, so `setAccountData` can't set the marker. The spec
+  search body has NO `page_size` — page size lives in `filter.limit` (Synapse
+  defaults 10) — and `IEventSearchOpts` has no batch input, so pagination is
+  raw `matrix.search({ body, next_batch })` (query string) +
+  `processRoomEventsSearch` on a fresh accumulator. Server search matches
+  cleartext only: encrypted rooms return nothing (v1 non-goal, not an error).
+  `getEventTimeline` needs `timelineSupport: true` (we don't set it), so
+  `jumpTo` is a bounded `loadMore()` loop (12 pages ≤ the 500-event cap) that
+  resolves `false` at the cap — callers must not scroll on `false`. A body-only
+  change must republish: `sameTimeline` compares body AND `redacted` (a flag
+  change with an identical body would otherwise never repaint). Deep SDK VALUE
+  imports need the `.js` extension for Node strip-mode — tsc and Vite forgive
+  extensionless deep imports, only `node --test` catches it (this bit
+  `matrix-js-sdk/lib/@types/search`).
+- NEXT — slice 20: room lifecycle (create space/channel, join by alias,
+  DM-create, leave, invite) — decided with the user after slice 19.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.

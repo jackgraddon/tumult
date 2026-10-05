@@ -11,7 +11,7 @@ import {
     type SyncState,
 } from "matrix-js-sdk";
 
-import type { MessageView, ReactionView, Subscribable } from "../contract.ts";
+import type { MessageView, ReactionView, ReplyView, Subscribable } from "../contract.ts";
 import { collectEdits } from "../rooms/edits.ts";
 import { Observable } from "../observable.ts";
 import { mapEvent, type MappableEvent } from "./map.ts";
@@ -19,6 +19,8 @@ import { mapEvent, type MappableEvent } from "./map.ts";
 /** In-memory cap per room: the head drops, scroll anchoring must not break. */
 export const TIMELINE_CAP = 500;
 const PAGINATION_LIMIT = 50;
+/** Jump bound: enough pages to walk the whole cap (plus slack), never unbounded. */
+const JUMP_MAX_PAGES = 12;
 
 interface RoomFeed {
     obs: Observable<MessageView[]>;
@@ -44,13 +46,28 @@ export function sameTimeline(a: readonly MessageView[], b: readonly MessageView[
             m.body === o.body &&
             m.type === o.type &&
             m.edited === o.edited &&
+            m.redacted === o.redacted &&
             // Profile changes republish too (rename, new avatar).
             m.senderName === o.senderName &&
             m.senderAvatarUrl === o.senderAvatarUrl &&
+            // Quote enrichment (target loaded → authoritative sender/body)
+            // must republish: without this the fallback quote never upgrades.
+            sameReply(m.reply, o.reply) &&
             sameReactions(m.reactions, o.reactions) &&
             sameReaders(m.readBy, o.readBy)
         );
     });
+}
+
+function sameReply(a: ReplyView | null, b: ReplyView | null): boolean {
+    if (a === b) return true;
+    if (a === null || b === null) return false;
+    return (
+        a.eventId === b.eventId &&
+        a.senderId === b.senderId &&
+        a.senderName === b.senderName &&
+        a.body === b.body
+    );
 }
 
 function sameReactions(a: readonly ReactionView[], b: readonly ReactionView[]): boolean {
@@ -84,6 +101,35 @@ export function assignLatestReaders(
         out.set(id, [...fresh].sort());
     }
     return out;
+}
+
+/**
+ * Resolve each reply quote against the messages in view. When the replied-to
+ * event is loaded its sender and body are authoritative — post-edit,
+ * redaction-aware — while the reply's own fallback text goes stale the moment
+ * the target is edited. A target outside the window (history not yet
+ * paginated in) keeps the fallback quote, as does one that is still
+ * encrypted: the fallback was built from the plaintext BEFORE encryption, so
+ * it is better than the target's `[m.room.encrypted]` placeholder.
+ *
+ * Mutates the freshly mapped snapshots in place: they are rebuilt from
+ * scratch on every invalidation. Run AFTER edits apply and BEFORE the cap.
+ * Exported for tests.
+ */
+export function applyReplyQuotes(messages: readonly MessageView[]): void {
+    const byId = new Map(messages.map((m) => [m.id, m]));
+    for (const message of messages) {
+        const reply = message.reply;
+        if (!reply) continue;
+        const target = byId.get(reply.eventId);
+        if (!target || target.decryption !== "ok") continue;
+        message.reply = {
+            eventId: reply.eventId,
+            senderId: target.senderId,
+            senderName: target.senderName,
+            body: target.body,
+        };
+    }
 }
 
 /** Aggregate non-redacted `m.reaction` annotations by target event id. Exported for tests. */
@@ -162,9 +208,11 @@ export class TimelineFeed {
     }
 
     /**
-     * Send a read receipt for the latest held event. Throttled per room: a
-     * repeat call with nothing new resolves without touching the server.
-     * This is what clears our unread badge on the next sync.
+     * Send a read receipt for the latest held event, and set the room's
+     * `m.fully_read` marker to the same point (the divider's anchor).
+     * Throttled per room: a repeat call with nothing new resolves without
+     * touching the server. This is what clears our unread badge on the next
+     * sync.
      */
     public async markRead(roomId: string): Promise<void> {
         const feed = this.feeds.get(roomId);
@@ -174,7 +222,16 @@ export class TimelineFeed {
         const latestId = latest?.getId();
         if (!latest || !latestId) return;
         if (feed && feed.lastReceiptSent === latestId) return;
-        await this.matrix.sendReadReceipt(latest);
+        try {
+            // One request writes both halves: m.fully_read (marker) and
+            // m.read (receipt), with the SDK's own local receipt echo.
+            await this.matrix.setRoomReadMarkers(roomId, latestId, latest);
+        } catch (error) {
+            // Keep the slice-9 guarantee if the marker endpoint refuses
+            // (very old homeserver, or a race the guard didn't catch).
+            console.error("[tumult] read marker failed; receipt only", error);
+            await this.matrix.sendReadReceipt(latest);
+        }
         if (feed) feed.lastReceiptSent = latestId;
     }
 
@@ -201,6 +258,27 @@ export class TimelineFeed {
             }
         })();
         return feed.paginating;
+    }
+
+    /**
+     * Page history backwards until `eventId` sits in the loaded snapshot, or
+     * the bound runs out. The window only ever holds `TIMELINE_CAP` events,
+     * so targets further back than that can't render — they resolve `false`
+     * after ~cap-plus-a-few pages. Callers must not scroll on `false`.
+     */
+    public async jumpTo(roomId: string, eventId: string): Promise<boolean> {
+        // Building the feed first catches "already loaded" without spending
+        // a page (attach() snapshots whatever the SDK timeline already holds).
+        this.feeds.get(roomId) ?? this.create(roomId);
+        const held = (): boolean =>
+            this.feeds.get(roomId)?.obs.get().some((m) => m.id === eventId) ?? false;
+        if (held()) return true;
+        for (let page = 0; page < JUMP_MAX_PAGES; page++) {
+            const more = await this.loadMore(roomId);
+            if (held()) return true;
+            if (!more) return false;
+        }
+        return false;
     }
 
     public detachAll(): void {
@@ -302,10 +380,13 @@ export class TimelineFeed {
                     message.edited = true;
                 }
                 return message;
-            })
-            .slice(-TIMELINE_CAP);
-        if (sameTimeline(next, feed.obs.get())) return;
-        feed.obs.set(next);
+            });
+        // After edits (quotes must reflect the edited body) but before the
+        // cap (a quote may target history about to fall out of the window).
+        applyReplyQuotes(next);
+        const capped = next.slice(-TIMELINE_CAP);
+        if (sameTimeline(capped, feed.obs.get())) return;
+        feed.obs.set(capped);
     }
 }
 

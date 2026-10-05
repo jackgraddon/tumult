@@ -35,9 +35,11 @@ describe("mapEvent", () => {
             status: "sent",
             decryption: "ok",
             content: { msgtype: "m.text", body: "hello" },
+            reply: null,
             reactions: [],
             readBy: [],
             edited: false,
+            redacted: false,
         });
     });
 

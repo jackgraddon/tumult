@@ -63,6 +63,21 @@ export interface MessageView {
     content: Readonly<Record<string, unknown>>;
     /** True when an `m.replace` edit superseded this message's body. */
     edited: boolean;
+    /**
+     * True once a redaction tombstoned this message: the body reads
+     * "Message deleted." and edit/delete affordances must hide.
+     */
+    redacted: boolean;
+    /**
+     * A compact quote of the message this one replies to (`m.in_reply_to`),
+     * or `null` when it isn't a reply.
+     *
+     * The quoted sender/body come from the replied-to event when it is in the
+     * loaded window (post-edit, redaction-aware) and from parsing the reply's
+     * own fallback text otherwise, so a quote renders before the history
+     * around it has been paginated in. `body` never contains the `> ` prefix.
+     */
+    reply: ReplyView | null;
     /** Aggregated `m.reaction` annotations on this message. Never null. */
     reactions: ReactionView[];
     /**
@@ -74,11 +89,40 @@ export interface MessageView {
     readBy: string[];
 }
 
+/** One quoted target of an inline reply. */
+export interface ReplyView {
+    /** Event id of the replied-to message. */
+    eventId: string;
+    /** Sender of the quoted message; `""` when neither event nor fallback knows it. */
+    senderId: string;
+    /** Quoted sender's display name; falls back to `senderId`, `""` when unknown. */
+    senderName: string;
+    /** Quoted text with any `> ` reply fallback stripped; `""` when unknown. */
+    body: string;
+}
+
 /** One grouped emoji annotation: count across senders, flag for our own. */
 export interface ReactionView {
     emoji: string;
     count: number;
     ownReacted: boolean;
+}
+
+/**
+ * One page of server-side room search results.
+ *
+ * Hits are ordinary `MessageView`s: same shapes, same `resolveMedia`, same
+ * renderer registry. Encrypted hits carry `decryption: "pending"` — the
+ * server can't search ciphertext, so an encrypted room simply matches
+ * nothing (client-side search over decrypted history is a v1 non-goal).
+ */
+export interface SearchPage {
+    /** Matches for this page, most recent first (server ordering). */
+    hits: MessageView[];
+    /** Opaque cursor for the next page; `null` when this is the last one. */
+    nextBatch: string | null;
+    /** Total matches the server knows about across all pages. */
+    total: number;
 }
 
 export interface RoomSummary {
@@ -96,6 +140,13 @@ export interface RoomSummary {
     parentSpaceIds: string[];
     unreadCount: number;
     highlightCount: number;
+    /**
+     * The `m.fully_read` marker for this room — the event before which the
+     * user has read everything — or `null` when never set. Drives the
+     * "New messages" divider in the timeline. Comes from room account data,
+     * so it changes on sync, not on our own sends.
+     */
+    fullyReadEventId: string | null;
 }
 
 /** The signed-in identity. `null` when logged out. */
@@ -264,7 +315,12 @@ export interface ChatClient {
      * reached. Concurrent calls for one room collapse into a single request.
      */
     loadMore(roomId: string): Promise<boolean>;
-    send(roomId: string, body: string): Promise<void>;
+    /**
+     * Send one plaintext message. `replyToEventId`, when given, makes it a
+     * rich reply: `m.relates_to.m.in_reply_to` on the wire plus a `> `-quoted
+     * fallback body for clients that don't understand relations.
+     */
+    send(roomId: string, body: string, replyToEventId?: string): Promise<void>;
     /**
      * Upload and send a media file (image, video, audio, or generic file).
      *
@@ -331,11 +387,36 @@ export interface ChatClient {
     /** Mark a thread as read up to its latest event. */
     markThreadRead(threadId: string): Promise<void>;
     /**
-     * Send a read receipt for the latest held event in a room. Called when
-     * the user is viewing the live tail; throttled per room so re-renders
-     * don't spam the server. This is what clears our unread badge.
+     * Send a read receipt for the latest held event in a room, and set the
+     * `m.fully_read` marker to the same point. Called when the user is
+     * viewing the live tail; throttled per room so re-renders don't spam the
+     * server. This is what clears our unread badge AND positions the
+     * "New messages" divider.
      */
     markRead(roomId: string): Promise<void>;
+    /**
+     * Redact (delete) an event: our own messages, or anything our power
+     * levels allow. The target tombstones ("Message deleted.") when the
+     * redaction lands on the next sync — the redaction event itself never
+     * renders. Rejects when the server refuses; the row keeps its content.
+     */
+    redact(roomId: string, eventId: string, reason?: string): Promise<void>;
+    /**
+     * Server-side search over one room's history, most recent match first.
+     *
+     * `opts.nextBatch` (from a previous page's `nextBatch`) fetches the
+     * following page. Encrypted events are invisible to the server, so
+     * encrypted rooms effectively return no hits — honest, not an error.
+     * Rejects when the homeserver has search disabled.
+     */
+    search(roomId: string, term: string, opts?: { nextBatch?: string }): Promise<SearchPage>;
+    /**
+     * Make sure `eventId` is in `timeline(roomId)` by paginating history
+     * backwards, bounded (the UI jumps to it afterwards). Resolves `false`
+     * when the event is older than the bound or gone (redacted-and-purged,
+     * never-joined history) — callers must not scroll on `false`.
+     */
+    jumpTo(roomId: string, eventId: string): Promise<boolean>;
     /**
      * Set up secret storage plus a fresh key backup, returning the encoded
      * recovery key. Display it to the user exactly once — it is never

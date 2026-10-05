@@ -14,7 +14,7 @@ import {
 import type { MessageView, Subscribable, ThreadSummary } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { mapEvent, type MappableEvent } from "../timeline/map.ts";
-import { latestReceiptable } from "../timeline/feed.ts";
+import { applyReplyQuotes, latestReceiptable } from "../timeline/feed.ts";
 
 /**
  * Thread lifecycle events. These fire on the `Room` (which re-emits them from
@@ -181,11 +181,13 @@ export class ThreadTracker {
         const events: MatrixEvent[] = thread ? [...thread.liveTimeline.getEvents()] : [];
         // The SDK only adds the root to the live timeline in some paths.
         if (root && !events.some((e) => e.getId() === root.getId())) events.unshift(root);
-        obs.set(
-            events
-                .filter((event) => event.getStateKey() == null)
-                .map((event) => mapEvent(event as unknown as MappableEvent)),
-        );
+        const mapped = events
+            .filter((event) => event.getStateKey() == null)
+            .map((event) => mapEvent(event as unknown as MappableEvent));
+        // Same quote resolution as the room feed: a reply in a thread still
+        // quotes its target with the target's current body.
+        applyReplyQuotes(mapped);
+        obs.set(mapped);
     }
 }
 

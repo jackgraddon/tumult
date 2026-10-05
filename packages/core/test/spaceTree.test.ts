@@ -12,6 +12,7 @@ function room(partial: Partial<RoomSummary> & { id: string; name: string }): Roo
         parentSpaceIds: [],
         unreadCount: 0,
         highlightCount: 0,
+        fullyReadEventId: null,
         ...partial,
     };
 }

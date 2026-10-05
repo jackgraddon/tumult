@@ -4,6 +4,7 @@ import type { RoomSummary } from "../contract.ts";
 
 const SPACE_CHILD = "m.space.child";
 const ROOM_TOPIC = "m.room.topic";
+const ROOM_FULLY_READ = "m.fully_read";
 
 /**
  * Map the SDK's joined rooms onto contract snapshots.
@@ -54,6 +55,7 @@ export function snapshotRooms(client: MatrixClient): RoomSummary[] {
         parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
         unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total),
         highlightCount: room.getUnreadNotificationCount(NotificationCountType.Highlight),
+        fullyReadEventId: readFullyRead(room),
     }));
 }
 
@@ -75,11 +77,24 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
             room.isSpace === other.isSpace &&
             room.unreadCount === other.unreadCount &&
             room.highlightCount === other.highlightCount &&
+            // Account data, not send state: republish when the marker moves,
+            // or the "New messages" divider sits on a stale row.
+            room.fullyReadEventId === other.fullyReadEventId &&
             room.parentSpaceIds.length === other.parentSpaceIds.length &&
             room.parentSpaceIds.every((p, j) => p === other.parentSpaceIds[j])
         );
     });
 }
+/** The `m.fully_read` room account data, or `null` when never set. */
+function readFullyRead(room: { getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined }): string | null {
+    try {
+        const eventId = room.getAccountData(ROOM_FULLY_READ)?.getContent()?.["event_id"];
+        return typeof eventId === "string" && eventId.length > 0 ? eventId : null;
+    } catch {
+        return null;
+    }
+}
+
 function readTopic(room: { currentState: { getStateEvents(t: string, k: string): unknown } }): string | null {
     try {
         const event = room.currentState.getStateEvents(ROOM_TOPIC, "") as {

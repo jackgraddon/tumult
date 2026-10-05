@@ -22,6 +22,8 @@ interface StubRoom {
     avatarMxc?: string;
     unreadTotal: number;
     unreadHighlight: number;
+    /** The room's m.fully_read account data, when set. */
+    fullyRead?: string;
 }
 
 function stubRoom(r: StubRoom): Record<string, unknown> {
@@ -48,6 +50,10 @@ function stubRoom(r: StubRoom): Record<string, unknown> {
         getMxcAvatarUrl: () => r.avatarMxc ?? null,
         getUnreadNotificationCount: (kind?: string) =>
             kind === "highlight" ? r.unreadHighlight : r.unreadTotal,
+        getAccountData: (type: string) =>
+            type === "m.fully_read" && r.fullyRead
+                ? { getContent: () => ({ event_id: r.fullyRead }) }
+                : undefined,
     };
 }
 
@@ -75,6 +81,7 @@ describe("snapshotRooms", () => {
                     avatarMxc: "mxc://x/y",
                     unreadTotal: 5,
                     unreadHighlight: 1,
+                    fullyRead: "$read:x",
                 },
             ]),
         );
@@ -89,6 +96,7 @@ describe("snapshotRooms", () => {
             parentSpaceIds: [],
             unreadCount: 5,
             highlightCount: 1,
+            fullyReadEventId: "$read:x",
         });
     });
 
@@ -174,16 +182,19 @@ describe("sameRoomSummaries", () => {
         parentSpaceIds: ["!g:x"],
         unreadCount: 1,
         highlightCount: 0,
+        fullyReadEventId: null,
     };
     it("is true for identical snapshots", () => {
         assert.equal(sameRoomSummaries([a], [{ ...a }]), true);
         assert.equal(sameRoomSummaries([], []), true);
     });
-    it("is false on length, unread, parent or name change", () => {
+    it("is false on length, unread, parent, name or marker change", () => {
         assert.equal(sameRoomSummaries([a], []), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, unreadCount: 2 }]), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, parentSpaceIds: [] }]), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, name: "random" }]), false);
+        // The divider anchor is account data: republish when it moves.
+        assert.equal(sameRoomSummaries([a], [{ ...a, fullyReadEventId: "$x:x" }]), false);
     });
 });
 

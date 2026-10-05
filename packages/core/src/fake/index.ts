@@ -7,6 +7,7 @@ import type {
     NotificationPermission,
     NotificationState,
     RoomSummary,
+    SearchPage,
     SecurityStatus,
     SessionView,
     Subscribable,
@@ -65,6 +66,8 @@ function msg(
         reactions: [],
         readBy: [],
         edited: false,
+        redacted: false,
+        reply: null,
         ...extra,
     };
 }
@@ -81,6 +84,7 @@ function buildRooms(): RoomSummary[] {
             parentSpaceIds: parents,
             unreadCount: unread,
             highlightCount: highlight,
+            fullyReadEventId: null,
         });
     };
     const chan = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0): void => {
@@ -93,6 +97,7 @@ function buildRooms(): RoomSummary[] {
             parentSpaceIds: parents,
             unreadCount: unread,
             highlightCount: highlight,
+            fullyReadEventId: null,
         });
     };
 
@@ -140,6 +145,11 @@ function buildRooms(): RoomSummary[] {
         chan(`!dm-${i}:fake`, n, [], i === 0 ? 105 : i, i === 1 ? 2 : 0);
     });
 
+    // Marker sits mid-history in general so the "New messages" divider demos
+    // out of the box; fake markRead is a no-op, so it never advances.
+    const general = rooms.find((r) => r.id === "!a-general:fake");
+    if (general) general.fullyReadEventId = "!a-general:fake:e18";
+
     return rooms;
 }
 
@@ -154,6 +164,8 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
     const start = now - 2 * day;
     for (let i = 0; i < count; i++) {
         const t = start + Math.floor((i / count) * 2 * day);
+        // One inline reply per room so the quote block ships with the fake.
+        const quoted = i === 12 ? out[5] : undefined;
         out.push(
             msg(
                 `${roomId}:e${i}`,
@@ -163,6 +175,16 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
                 {
                     status: pick(statuses),
                     decryption: pick(decryptions),
+                    ...(quoted
+                        ? {
+                              reply: {
+                                  eventId: quoted.id,
+                                  senderId: quoted.senderId,
+                                  senderName: quoted.senderName,
+                                  body: quoted.body,
+                              },
+                          }
+                        : {}),
                 },
             ),
         );
@@ -178,7 +200,10 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
             readBy: ["@bob:example.com", "@carol:example.com"],
         }),
         // Redacted upstream: the redaction event itself never renders, only this tombstone.
-        msg(`${roomId}:deleted`, "@bob:example.com", "Message deleted.", now - 7000_000),
+        msg(`${roomId}:deleted`, "@bob:example.com", "Message deleted.", now - 7000_000, {
+            redacted: true,
+            content: {},
+        }),
         msg(`${roomId}:poll`, "@alice:example.com", "Lunch poll", now - 3600_000, {
             type: "cc.jackg.tumult.demo.poll",
             content: { question: "Lunch?", options: ["ramen", "tacos", "salad"] },
@@ -297,6 +322,24 @@ class FakeChatClient implements ChatClient {
         return false;
     }
 
+    public async search(roomId: string, term: string, opts?: { nextBatch?: string }): Promise<SearchPage> {
+        const trimmed = term.trim().toLowerCase();
+        if (trimmed.length === 0) return { hits: [], nextBatch: null, total: 0 };
+        const held = this.timelines.get(roomId)?.get() ?? [];
+        // Recent-first, substring match — Synapse-without-Seshat behavior.
+        const all = held.filter((m) => m.body.toLowerCase().includes(trimmed)).reverse();
+        const offset = Number.parseInt(opts?.nextBatch ?? "0", 10) || 0;
+        const PAGE_SIZE = 5;
+        const hits = all.slice(offset, offset + PAGE_SIZE);
+        const next = offset + PAGE_SIZE < all.length ? String(offset + PAGE_SIZE) : null;
+        return { hits, nextBatch: next, total: all.length };
+    }
+
+    public async jumpTo(roomId: string, eventId: string): Promise<boolean> {
+        // Fixtures are fully loaded: present in the window or gone for good.
+        return this.timelines.get(roomId)?.get().some((m) => m.id === eventId) ?? false;
+    }
+
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
         const obs = this.timelines.get(roomId);
         if (!obs) return;
@@ -336,6 +379,21 @@ class FakeChatClient implements ChatClient {
         if (!obs) return;
         obs.update((cur) =>
             cur.map((m) => (m.id === targetEventId ? { ...m, body: newBody, edited: true } : m)),
+        );
+    }
+
+    public async redact(roomId: string, eventId: string, _reason?: string): Promise<void> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return;
+        // Mirrors mapEvent on a redacted event: body tombstones, reply/edits
+        // vanish, content strips. Reactions survive (a plain redaction doesn't
+        // cascade to relations — same as the real feed).
+        obs.update((cur) =>
+            cur.map((m) =>
+                m.id === eventId
+                    ? { ...m, body: "Message deleted.", reply: null, edited: false, redacted: true, content: {} }
+                    : m,
+            ),
         );
     }
 
@@ -425,15 +483,28 @@ class FakeChatClient implements ChatClient {
         ];
     }
 
-    public async send(roomId: string, body: string): Promise<void> {
+    public async send(roomId: string, body: string, replyToEventId?: string): Promise<void> {
         const obs = this.timelines.get(roomId);
         if (!obs) return;
+        // Quote from the fixture timeline when the target is loaded — the
+        // real client does the same via `room.findEventById`.
+        const target = replyToEventId ? obs.get().find((m) => m.id === replyToEventId) : undefined;
         const echo: MessageView = msg(
             `${roomId}:local-${Date.now()}`,
             "@demo:example.com",
             body,
             Date.now(),
-            { status: "sending" },
+            {
+                status: "sending",
+                reply: replyToEventId
+                    ? {
+                          eventId: replyToEventId,
+                          senderId: target?.senderId ?? "",
+                          senderName: target?.senderName ?? "",
+                          body: target?.body ?? "",
+                      }
+                    : null,
+            },
         );
         obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
         setTimeout(() => {

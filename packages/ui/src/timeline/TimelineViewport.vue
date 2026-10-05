@@ -17,8 +17,16 @@ const props = defineProps<{
     ownUserId?: (string | null) | undefined;
     /** Save an edit; absent while the client can't edit. */
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
+    /** Redact (delete) a message; absent while the client can't redact. */
+    onRedactMessage?: ((targetEventId: string) => void) | undefined;
+    /** The room's `m.fully_read` marker; drives the "New messages" divider. */
+    fullyReadEventId?: string | null | undefined;
+    /** Search hit jump: center this event id and flash it briefly. */
+    focusRequest?: { id: string; nonce: number } | null | undefined;
     /** Open a thread on a message. */
     onOpenThread?: ((rootEventId: string) => void) | undefined;
+    /** Start an inline reply to a message. */
+    onReply?: ((message: MessageView) => void) | undefined;
     /** rootEventId -> reply count, for the reply link on thread roots. */
     threadReplies?: ReadonlyMap<string, number> | undefined;
 }>();
@@ -28,6 +36,8 @@ interface Row {
     message: MessageView;
     grouped: boolean;
     dayLabel: string | null;
+    /** True when the message directly follows the fully-read marker. */
+    unreadBefore: boolean;
 }
 
 function dayLabel(ts: number): string {
@@ -43,7 +53,10 @@ const rows = computed<Row[]>(() => {
     const out: Row[] = [];
     let prevDayKey = "";
     let prevSender = "";
-    for (const m of props.messages) {
+    const marker = props.fullyReadEventId;
+    for (let i = 0; i < props.messages.length; i++) {
+        const m = props.messages[i];
+        if (!m) continue;
         const dayKey = new Date(m.timestamp).toDateString();
         const newDay = dayKey !== prevDayKey;
         out.push({
@@ -51,6 +64,9 @@ const rows = computed<Row[]>(() => {
             message: m,
             grouped: !newDay && m.senderId === prevSender && m.decryption === "ok",
             dayLabel: newDay ? dayLabel(m.timestamp) : null,
+            // The divider sits on the first message NEWER than the marker —
+            // i.e. the row right after the marker itself.
+            unreadBefore: marker != null && props.messages[i - 1]?.id === marker,
         });
         prevDayKey = dayKey;
         prevSender = m.senderId;
@@ -66,7 +82,13 @@ let scrollQueued = false;
 const virtualizerOptions = computed(() => ({
     count: rows.value.length,
     getScrollElement: () => scroller.value,
-    estimateSize: (index: number) => (rows.value[index]?.dayLabel ? 40 : 68),
+    estimateSize: (index: number) => {
+        const row = rows.value[index];
+        // Unmeasured estimate only: the divider's real height lands in
+        // measureElement, but start close so prepends don't jump.
+        if (row?.unreadBefore) return row.dayLabel ? 64 : 92;
+        return row?.dayLabel ? 40 : 68;
+    },
     overscan: 10,
 }));
 const virtualizer = useVirtualizer(virtualizerOptions);
@@ -109,6 +131,27 @@ watch(
             props.onReadLatest?.();
         }
         void nextTick(() => void fillIfShort());
+    },
+);
+
+// Search jump: center the hit once its row exists (jumpTo already paged it
+// into the window), then pulse it so the eye doesn't hunt for the row.
+const flashEventId = ref<string | null>(null);
+let flashTimer: number | undefined;
+watch(
+    () => props.focusRequest,
+    (request) => {
+        if (!request) return;
+        void nextTick(() => {
+            const index = rows.value.findIndex((r) => r.message.id === request.id);
+            if (index < 0) return;
+            virtualizer.value.scrollToIndex(index, { align: "center" });
+            flashEventId.value = request.id;
+            window.clearTimeout(flashTimer);
+            flashTimer = window.setTimeout(() => {
+                flashEventId.value = null;
+            }, 2400);
+        });
     },
 );
 
@@ -185,11 +228,15 @@ const profiles = computed(() => {
                 v-for="v in virtualizer.getVirtualItems()"
                 :key="rows[v.index]?.key ?? v.index"
                 :data-index="v.index"
+                :data-flash="flashEventId && rows[v.index]?.message.id === flashEventId ? 'on' : undefined"
                 :ref="measure"
                 class="tumult-virtual-row"
                 :style="{ transform: `translateY(${v.start}px)` }"
             >
                 <template v-if="rows[v.index] as Row | undefined">
+                    <div v-if="rows[v.index]?.unreadBefore" class="tumult-unread" role="separator">
+                        <span>New messages</span>
+                    </div>
                     <div v-if="rows[v.index]?.dayLabel" class="tumult-day" role="separator">
                         <span>{{ rows[v.index]?.dayLabel }}</span>
                     </div>
@@ -200,7 +247,9 @@ const profiles = computed(() => {
                         :on-toggle-reaction="onToggleReaction"
                         :own-user-id="ownUserId"
                         :on-edit-message="onEditMessage"
+                        :on-redact-message="onRedactMessage"
                         :on-open-thread="onOpenThread"
+                        :on-reply="onReply"
                         :profiles="profiles"
                         :thread-reply-count="threadReplies?.get((rows[v.index] as Row).message.id) ?? 0"
                     />
@@ -231,6 +280,27 @@ const profiles = computed(() => {
     left: 0;
     width: 100%;
 }
+.tumult-virtual-row[data-flash="on"] {
+    animation: tumult-flash 2.4s ease-out;
+}
+@keyframes tumult-flash {
+    0%,
+    35% {
+        background: var(--timeline-mention-bg);
+    }
+    100% {
+        background: transparent;
+    }
+}
+/* Motion-minimal systems: static tint instead of a pulse. */
+@media (prefers-reduced-motion: reduce) {
+    .tumult-virtual-row[data-flash="on"] {
+        animation: none;
+        background: var(--timeline-mention-bg);
+        outline: 2px solid var(--focus-ring-color);
+        outline-offset: -2px;
+    }
+}
 .tumult-day {
     display: flex;
     align-items: center;
@@ -247,6 +317,21 @@ const profiles = computed(() => {
     content: "";
     flex: 1;
     border-top: 1px solid var(--border-default);
+}
+.tumult-unread {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    color: var(--timeline-unread-divider);
+    font-size: var(--text-xs);
+    font-weight: 700;
+}
+.tumult-unread::before,
+.tumult-unread::after {
+    content: "";
+    flex: 1;
+    border-top: 2px solid var(--timeline-unread-divider);
 }
 .tumult-history-loading {
     position: sticky;

@@ -18,8 +18,12 @@ const props = defineProps<{
     ownUserId?: (string | null) | undefined;
     /** Save an edit; absent while the client can't edit. */
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
+    /** Redact (delete) this message; absent while the client can't redact. */
+    onRedactMessage?: ((targetEventId: string) => void) | undefined;
     /** Open a thread on this message. */
     onOpenThread?: ((rootEventId: string) => void) | undefined;
+    /** Start an inline reply to this message. */
+    onReply?: ((message: MessageView) => void) | undefined;
     /** Replies in the thread rooted at this message; 0 when it isn't a root. */
     threadReplyCount?: number;
     /** userId -> profile, from senders in view; readers who haven't spoken show initials. */
@@ -34,6 +38,19 @@ const renderer = computed(() => registry.resolve(props.message, UnknownEvent));
 const time = computed(() =>
     new Date(props.message.timestamp).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" }),
 );
+// No target info at all (unloaded history, client without fallback): still
+// show the block so the row reads as a reply, just without the quote.
+const quoteSender = computed(
+    () => props.message.reply?.senderName || props.message.reply?.senderId || "Original message",
+);
+
+/** Reply only to messages with a real server id — echoes don't resolve. */
+const replyable = computed(
+    () =>
+        props.onReply !== undefined &&
+        props.message.decryption === "ok" &&
+        props.message.status === "sent",
+);
 
 function toggle(emoji: string): void {
     props.onToggleReaction?.(props.message.id, emoji);
@@ -46,7 +63,20 @@ const editable = computed(
         props.ownUserId !== null &&
         props.message.senderId === props.ownUserId &&
         props.message.decryption === "ok" &&
-        props.message.status === "sent",
+        props.message.status === "sent" &&
+        !props.message.redacted,
+);
+
+/** Same gate as editing: our own live messages only — tombstones can't re-die. */
+const redactable = computed(
+    () =>
+        props.onRedactMessage !== undefined &&
+        props.ownUserId !== undefined &&
+        props.ownUserId !== null &&
+        props.message.senderId === props.ownUserId &&
+        props.message.decryption === "ok" &&
+        props.message.status === "sent" &&
+        !props.message.redacted,
 );
 
 const editing = ref(false);
@@ -103,6 +133,15 @@ function cancelEdit(): void {
                 </span>
                 <span v-if="message.edited" class="tumult-row-flag" title="Edited">(edited)</span>
             </div>
+            <!-- Quote sits above the body; gated to decrypted rows like the renderer. -->
+            <blockquote
+                v-if="message.reply && message.decryption === 'ok'"
+                class="tumult-row-quote"
+                :title="message.reply.eventId"
+            >
+                <span class="tumult-row-quote-sender">{{ quoteSender }}</span>
+                <span v-if="message.reply.body" class="tumult-row-quote-body">{{ message.reply.body }}</span>
+            </blockquote>
             <DecryptionPlaceholder
                 v-if="message.decryption === 'pending' || message.decryption === 'failed'"
                 :message="message"
@@ -116,6 +155,24 @@ function cancelEdit(): void {
                     @click="startEdit"
                 >
                     ✎ edit
+                </button>
+                <button
+                    v-if="redactable && !editing"
+                    type="button"
+                    class="tumult-row-delete"
+                    aria-label="Delete message"
+                    @click="onRedactMessage?.(message.id)"
+                >
+                    🗑 delete
+                </button>
+                <button
+                    v-if="replyable && !editing"
+                    type="button"
+                    class="tumult-row-reply"
+                    aria-label="Reply to message"
+                    @click="onReply?.(message)"
+                >
+                    ↩ reply
                 </button>
                 <button
                     v-if="onOpenThread && message.decryption === 'ok'"
@@ -253,7 +310,8 @@ function cancelEdit(): void {
 .tumult-row-flag-failed {
     color: var(--danger);
 }
-.tumult-row-edit {
+.tumult-row-edit,
+.tumult-row-delete {
     display: none;
     align-items: center;
     padding: 0 2px;
@@ -264,10 +322,13 @@ function cancelEdit(): void {
     cursor: pointer;
 }
 .tumult-row:hover .tumult-row-edit,
-.tumult-row-edit:focus-visible {
+.tumult-row:hover .tumult-row-delete,
+.tumult-row-edit:focus-visible,
+.tumult-row-delete:focus-visible {
     display: inline-flex;
 }
-.tumult-row-edit:focus-visible {
+.tumult-row-edit:focus-visible,
+.tumult-row-delete:focus-visible {
     outline: 2px solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
@@ -307,6 +368,48 @@ function cancelEdit(): void {
 .tumult-row-thread:focus-visible {
     outline: 2px solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
+}
+.tumult-row-reply {
+    display: none;
+    align-items: center;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+.tumult-row:hover .tumult-row-reply,
+.tumult-row-reply:focus-visible {
+    display: inline-flex;
+}
+.tumult-row-reply:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    border-radius: var(--radius-sm);
+}
+.tumult-row-quote {
+    margin: 0 0 var(--space-1);
+    padding: 2px var(--space-2);
+    border-left: 3px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    min-width: 0;
+}
+.tumult-row-quote-sender {
+    display: block;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-row-quote-body {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 .tumult-edit-form {
     display: flex;

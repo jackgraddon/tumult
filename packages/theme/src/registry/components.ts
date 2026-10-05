@@ -17,6 +17,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "roomlist-item-text-active", tier: "component", kind: "color", value: v("text-primary"), description: "Active room text." },
     { name: "timeline-bg", tier: "component", kind: "color", value: v("surface-base"), description: "Timeline background." },
     { name: "timeline-day-divider", tier: "component", kind: "color", value: v("text-muted"), description: "Day divider text." },
+    { name: "timeline-unread-divider", tier: "component", kind: "color", value: v("danger"), description: "Unread 'New messages' divider." },
     { name: "timeline-mention-bg", tier: "component", kind: "color", value: v("mention"), description: "Mention highlight." },
     { name: "composer-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Composer background." },
     { name: "button-primary-bg", tier: "component", kind: "color", value: v("accent"), description: "Primary button." },

@@ -11,6 +11,10 @@ const props = defineProps<{
     roomId: string;
     /** Hide the thread affordance when the server has no thread support. */
     threadsEnabled?: boolean;
+    /** The room's `m.fully_read` marker; drives the "New messages" divider. */
+    fullyReadEventId?: string | null | undefined;
+    /** Search result jump: scroll the viewport to this id (nonce = repeat-safe). */
+    focusRequest?: { id: string; nonce: number } | null | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -88,16 +92,44 @@ async function editMessage(targetEventId: string, newBody: string): Promise<void
     }
 }
 
+async function redactMessage(targetEventId: string): Promise<void> {
+    // No confirm dialog (matches edit's immediacy): the request is one
+    // redaction, the tombstone lands on the next sync. Failure logs — the
+    // message stays intact, which is its own honest feedback.
+    try {
+        await props.client.redact(props.roomId, targetEventId);
+    } catch (error) {
+        console.error("[tumult] redact failed", error);
+    }
+}
+
 function openThread(rootEventId: string): void {
     // Bubbles to the shell via TimelinePane.
     emit("open-thread", rootEventId);
 }
 
+// Inline reply target. Owned here (not the composer): the row sets it, the
+// send clears it. TimelineBody is keyed per room by TimelinePane, so a room
+// switch can never carry a target across.
+const replyTo = shallowRef<MessageView | null>(null);
+
+function startReply(message: MessageView): void {
+    replyTo.value = message;
+}
+
+function cancelReply(): void {
+    replyTo.value = null;
+}
+
 async function onSend(body: string): Promise<void> {
+    // Clear the context with the send attempt: the composer moves on, and a
+    // failure still surfaces in-timeline via the `failed` flag.
+    const target = replyTo.value;
+    replyTo.value = null;
     // Failure is already visible in-timeline via the `failed` flag; log
     // instead of leaving an unhandled rejection.
     try {
-        await props.client.send(props.roomId, body);
+        await props.client.send(props.roomId, body, target?.id);
     } catch (error) {
         console.error("[tumult] send failed", error);
     }
@@ -117,8 +149,15 @@ async function onSendFile(file: File): Promise<void> {
         <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
     </div>
     <template v-else>
-        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-open-thread="threadsEnabled ? openThread : undefined" :thread-replies="threadReplies" />
-        <MessageComposer :room-id="props.roomId" :client="props.client" @send="onSend" @send-file="onSendFile" />
+        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
+        <MessageComposer
+            :room-id="props.roomId"
+            :client="props.client"
+            :reply-to="replyTo"
+            @send="onSend"
+            @send-file="onSendFile"
+            @cancel-reply="cancelReply"
+        />
     </template>
 </template>
 

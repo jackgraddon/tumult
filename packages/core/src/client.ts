@@ -22,6 +22,7 @@ import type {
     NotificationPermission,
     NotificationState,
     RoomSummary,
+    SearchPage,
     SecurityStatus,
     SessionView,
     Subscribable,
@@ -36,6 +37,8 @@ import { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { sendTextMessage } from "./rooms/send.ts";
 import { sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
+import { redactEvent } from "./rooms/redact.ts";
+import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
@@ -465,13 +468,13 @@ export class MatrixChatClient implements ChatClient {
         return timelines.loadMore(roomId);
     }
 
-    public async send(roomId: string, body: string): Promise<void> {
+    public async send(roomId: string, body: string, replyToEventId?: string): Promise<void> {
         const client = this.matrix;
         if (!client) throw new Error("Cannot send before start()");
         // Optimistic by construction: the SDK inserts a local echo (mapped to
         // `sending` by the feed) and replaces it with the server echo on ack.
         // Throws on failure; the echo flips to `failed` in-timeline.
-        await sendTextMessage(client, roomId, body);
+        await sendTextMessage(client, roomId, body, replyToEventId);
     }
 
     public async sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void> {
@@ -490,6 +493,24 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) throw new Error("Cannot edit before start()");
         await sendEditMessage(client, roomId, targetEventId, newBody);
+    }
+
+    public async redact(roomId: string, eventId: string, reason?: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot redact before start()");
+        await redactEvent(client, roomId, eventId, reason);
+    }
+
+    public async search(roomId: string, term: string, opts?: { nextBatch?: string }): Promise<SearchPage> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot search before start()");
+        return searchRoomHistory(client, roomId, term, opts?.nextBatch);
+    }
+
+    public async jumpTo(roomId: string, eventId: string): Promise<boolean> {
+        const timelines = this.timelines;
+        if (!timelines) throw new Error("Cannot jump before start()");
+        return timelines.jumpTo(roomId, eventId);
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {

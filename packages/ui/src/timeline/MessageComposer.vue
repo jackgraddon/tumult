@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import type { ChatClient } from "@tumult/core";
+import type { ChatClient, MessageView } from "@tumult/core";
 
 const props = defineProps<{
     disabled?: boolean;
@@ -8,11 +8,14 @@ const props = defineProps<{
     sendDisabledReason?: string;
     roomId?: string;
     client?: ChatClient;
+    /** Message being replied to; shows the quote strip until sent or cancelled. */
+    replyTo?: MessageView | null;
 }>();
 
 const emit = defineEmits<{
     send: [body: string];
     sendFile: [file: File];
+    cancelReply: [];
 }>();
 
 const draft = ref("");
@@ -71,47 +74,114 @@ function onFileSelected(event: Event): void {
 </script>
 
 <template>
-    <form class="tumult-composer" @submit.prevent="submit">
-        <label class="tumult-composer-label" for="tumult-composer-input">Message</label>
-        <button
-            class="tumult-composer-attach"
-            type="button"
-            title="Attach a file"
-            :disabled="disabled"
-            @click="openFilePicker"
-        >
-            +
-        </button>
-        <input
-            ref="fileInput"
-            class="tumult-composer-file"
-            type="file"
-            tabindex="-1"
-            aria-hidden="true"
-            @change="onFileSelected"
-        />
-        <input
-            id="tumult-composer-input"
-            v-model="draft"
-            class="tumult-composer-input"
-            type="text"
-            :placeholder="sendDisabledReason ?? 'Send a message'"
-            autocomplete="off"
-            :disabled="disabled"
-        />
-        <button class="tumult-composer-send" type="submit" :disabled="disabled || draft.trim().length === 0">
-            Send
-        </button>
-    </form>
+    <!-- Root is a column wrapper so the reply strip sits above the input row. -->
+    <div class="tumult-composer">
+        <div v-if="replyTo" class="tumult-composer-reply" role="status">
+            <div class="tumult-composer-reply-text">
+                <span class="tumult-composer-reply-name" :title="replyTo.senderId">
+                    Replying to {{ replyTo.senderName }}
+                </span>
+                <span class="tumult-composer-reply-body">{{ replyTo.body }}</span>
+            </div>
+            <button
+                type="button"
+                class="tumult-composer-reply-cancel"
+                aria-label="Cancel reply"
+                @click="emit('cancelReply')"
+            >
+                ×
+            </button>
+        </div>
+        <form class="tumult-composer-row" @submit.prevent="submit">
+            <label class="tumult-composer-label" for="tumult-composer-input">Message</label>
+            <button
+                class="tumult-composer-attach"
+                type="button"
+                title="Attach a file"
+                :disabled="disabled"
+                @click="openFilePicker"
+            >
+                +
+            </button>
+            <input
+                ref="fileInput"
+                class="tumult-composer-file"
+                type="file"
+                tabindex="-1"
+                aria-hidden="true"
+                @change="onFileSelected"
+            />
+            <input
+                id="tumult-composer-input"
+                v-model="draft"
+                class="tumult-composer-input"
+                type="text"
+                :placeholder="sendDisabledReason ?? 'Send a message'"
+                autocomplete="off"
+                :disabled="disabled"
+            />
+            <button class="tumult-composer-send" type="submit" :disabled="disabled || draft.trim().length === 0">
+                Send
+            </button>
+        </form>
+    </div>
 </template>
 
 <style scoped>
 .tumult-composer {
     display: flex;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    flex-direction: column;
     background: var(--composer-bg);
     border-top: 1px solid var(--border-default);
+}
+.tumult-composer-row {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+}
+.tumult-composer-reply {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin: var(--space-2) var(--space-3) 0;
+    padding: var(--space-1) var(--space-2);
+    border-left: 3px solid var(--accent);
+    background: var(--surface-pane, var(--surface-base));
+}
+.tumult-composer-reply-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.tumult-composer-reply-name {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+.tumult-composer-reply-body {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-composer-reply-cancel {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-md);
+    line-height: 1;
+    cursor: pointer;
+}
+.tumult-composer-reply-cancel:hover {
+    color: var(--text-primary);
+}
+.tumult-composer-reply-cancel:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    border-radius: var(--radius-sm);
 }
 .tumult-composer-label {
     position: absolute;
