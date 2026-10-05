@@ -5,11 +5,16 @@ import type { ChatClient, MessageView, Subscribable } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import MemberListItem from "./MemberListItem.vue";
+import IconButton from "../primitives/IconButton.vue";
 
 const props = defineProps<{
     client: ChatClient;
     /** Undefined while nothing is selected: renders an empty static list. */
     roomId: string | undefined;
+}>();
+
+const emit = defineEmits<{
+    invite: [];
 }>();
 
 interface Member {
@@ -52,7 +57,12 @@ const members = computed<Member[]>(() => {
 
 <template>
     <aside class="tumult-members" aria-label="Members">
-        <h2 class="tumult-members-title">Members — {{ messages ? members.length : "…" }}</h2>
+        <h2 class="tumult-members-title">
+            <span>Members — {{ messages ? members.length : "…" }}</span>
+            <IconButton v-if="roomId" label="Invite people" @click="emit('invite')">
+                <span aria-hidden="true">＋</span>
+            </IconButton>
+        </h2>
         <p v-if="!messages" class="tumult-members-todo" role="status">
             Member loading rides on timeline read (slice 4).
         </p>
@@ -86,8 +96,12 @@ const members = computed<Member[]>(() => {
     color: var(--text-secondary);
 }
 .tumult-members-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     margin: 0;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--border-default);
     font-size: var(--text-xs);
     font-weight: 700;

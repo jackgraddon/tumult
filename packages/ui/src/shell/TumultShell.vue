@@ -5,6 +5,7 @@ import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection } from "../selection.ts";
+import { ActionsKey, type LeaveTarget } from "../actions.ts";
 import { MediaKey, EncryptedMediaKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
@@ -23,6 +24,12 @@ import RecoveryRestoreModal from "../security/RecoveryRestoreModal.vue";
 import VerificationModal from "../security/VerificationModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
 import ThreadList from "../threads/ThreadList.vue";
+import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
+import CreateChannelDialog from "../rooms/CreateChannelDialog.vue";
+import JoinRoomDialog from "../rooms/JoinRoomDialog.vue";
+import CreateDmDialog from "../rooms/CreateDmDialog.vue";
+import InviteDialog from "../rooms/InviteDialog.vue";
+import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
 
 const props = defineProps<{
     client: ChatClient;
@@ -137,6 +144,145 @@ const activeRoom = computed(() => {
 
 const activeRoomId = computed(() => activeRoom.value?.id);
 
+type RoomAction =
+    | { kind: "create-space" }
+    | { kind: "create-channel"; spaceId: string; spaceName: string }
+    | { kind: "join" }
+    | { kind: "create-dm" }
+    | { kind: "invite" }
+    | { kind: "leave"; target: LeaveTarget }
+    | null;
+
+const roomAction = ref<RoomAction>(null);
+
+provide(ActionsKey, {
+    requestLeave(target) {
+        roomAction.value = { kind: "leave", target };
+    },
+});
+
+const channelSpaceId = computed(() =>
+    roomAction.value?.kind === "create-channel" ? roomAction.value.spaceId : "",
+);
+const channelSpaceName = computed(() =>
+    roomAction.value?.kind === "create-channel" ? roomAction.value.spaceName : "",
+);
+const leaveTarget = computed<LeaveTarget | null>(() =>
+    roomAction.value?.kind === "leave" ? roomAction.value.target : null,
+);
+const inviteRoomId = computed(() => activeRoomId.value ?? "");
+
+function openCreateChannel(): void {
+    // The header shows exactly `activeGuild` (with its own fallback), so
+    // create targets what the user is looking at, not the raw guildId.
+    const guild = activeGuild.value;
+    if (!guild) return;
+    roomAction.value = { kind: "create-channel", spaceId: guild.room.id, spaceName: guild.room.name };
+}
+
+// Creators resolve the roomId BEFORE the room lands in `rooms`, so selecting
+// it immediately would land on a stale pane. Wait for presence, then navigate.
+function waitForRoom(roomId: string, timeoutMs = 5000): Promise<boolean> {
+    if (roomsById.value.has(roomId)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        let settled = false;
+        let stop: (() => void) | undefined;
+        const timer = setTimeout(() => settle(false), timeoutMs);
+        function settle(value: boolean): void {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            stop?.();
+            resolve(value);
+        }
+        stop = watch(roomsById, (map) => {
+            if (map.has(roomId)) settle(true);
+        });
+    });
+}
+
+function onSpaceCreated(roomId: string): void {
+    roomAction.value = null;
+    void waitForRoom(roomId).then(() => emit("select", { view: "guild", guildId: roomId }));
+}
+
+function onChannelCreated(roomId: string): void {
+    const spaceId = channelSpaceId.value;
+    roomAction.value = null;
+    void waitForRoom(roomId).then(() => emit("select", { view: "guild", guildId: spaceId, roomId }));
+}
+
+function onDmCreated(roomId: string): void {
+    roomAction.value = null;
+    void waitForRoom(roomId).then(() => emit("select", { view: "dms", roomId }));
+}
+
+/** Walk parent spaces to the rail-level guild a room hangs under. */
+function topSpaceId(roomId: string): string | undefined {
+    const seen = new Set<string>([roomId]);
+    let current = roomsById.value.get(roomId);
+    if (!current) return undefined;
+    let top = current.isSpace ? current.id : undefined;
+    while (current) {
+        const parent = current.parentSpaceIds.find(
+            (id) => !seen.has(id) && roomsById.value.get(id)?.isSpace === true,
+        );
+        if (parent === undefined) break;
+        seen.add(parent);
+        top = parent;
+        current = roomsById.value.get(parent);
+    }
+    return top;
+}
+
+function onRoomJoined(roomId: string): void {
+    roomAction.value = null;
+    void waitForRoom(roomId).then(() => {
+        const room = roomsById.value.get(roomId);
+        if (!room) {
+            // Timed out: pick the least wrong target and let the cleanup
+            // watcher revert it if the room never shows up.
+            emit("select", { view: "dms", roomId });
+            return;
+        }
+        const guild = topSpaceId(roomId);
+        if (room.isSpace) emit("select", { view: "guild", guildId: guild ?? roomId });
+        else if (guild !== undefined) emit("select", { view: "guild", guildId: guild, roomId });
+        else emit("select", { view: "dms", roomId });
+    });
+}
+
+function onRoomLeft(leftId: string): void {
+    roomAction.value = null;
+    const sel = props.selection;
+    if (sel.view === "guild" && sel.guildId === leftId) {
+        emit("select", { view: "dms" });
+        return;
+    }
+    if (sel.roomId === leftId) {
+        emit("select", sel.guildId !== undefined ? { view: "guild", guildId: sel.guildId } : { view: "dms" });
+    }
+}
+
+// A selection must never point at a room we no longer see. Fires only while
+// synced: mid-reconnect `rooms` is incomplete and would wipe deep links.
+watch([rooms, connection], () => {
+    if (connection.value !== "syncing") return;
+    const sel = props.selection;
+    if (sel.view === "guild" && sel.guildId !== undefined && !roomsById.value.has(sel.guildId)) {
+        emit("select", { view: "dms" });
+        return;
+    }
+    if (sel.roomId !== undefined && !roomsById.value.has(sel.roomId)) {
+        emit(
+            "select",
+            sel.view === "guild" && sel.guildId !== undefined
+                ? { view: "guild", guildId: sel.guildId }
+                : { view: "dms" },
+        );
+    }
+});
+
 // A thread belongs to one room; switching rooms closes it.
 watch(activeRoomId, () => {
     threadView.value = null;
@@ -170,15 +316,23 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     @sign-out="emit('signOut')"
                     @security="openSecurityModal()"
                     @verify="openVerificationModal()"
+                    @create-space="roomAction = { kind: 'create-space' }"
+                    @join="roomAction = { kind: 'join' }"
                 />
                 <div class="tumult-pane tumult-pane-roomlist" :inert="!showRoomList ? true : undefined">
                     <RoomListPane
                         v-if="selection.view === 'guild'"
                         :guild="activeGuild"
                         :selection="selection"
+                        @create-channel="openCreateChannel()"
                     />
                     <div v-else class="tumult-roomlist-pane">
-                        <header class="tumult-roomlist-header"><h2>Direct Messages</h2></header>
+                        <header class="tumult-roomlist-header tumult-roomlist-header-row">
+                            <h2>Direct Messages</h2>
+                            <IconButton label="New message" @click="roomAction = { kind: 'create-dm' }">
+                                <span aria-hidden="true">＋</span>
+                            </IconButton>
+                        </header>
                         <DmList :rooms="tree.orphans" />
                     </div>
                 </div>
@@ -223,7 +377,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 </div>
                 <div class="tumult-pane tumult-pane-members" :inert="!showMembers ? true : undefined">
                     <!-- Keyed: one room's subscription tears down before the next mounts. -->
-                    <MembersPane :key="activeRoomId ?? 'none'" :client="client" :room-id="activeRoomId" />
+                    <MembersPane
+                        :key="activeRoomId ?? 'none'"
+                        :client="client"
+                        :room-id="activeRoomId"
+                        @invite="roomAction = { kind: 'invite' }"
+                    />
                 </div>
             </div>
 <RecoverySetupModal
@@ -240,6 +399,45 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :client="client"
             :open="verificationModal"
             @close="verificationModal = false"
+        />
+        <CreateSpaceDialog
+            :client="client"
+            :open="roomAction?.kind === 'create-space'"
+            @close="roomAction = null"
+            @created="onSpaceCreated"
+        />
+        <CreateChannelDialog
+            :client="client"
+            :open="roomAction?.kind === 'create-channel'"
+            :space-id="channelSpaceId"
+            :space-name="channelSpaceName"
+            @close="roomAction = null"
+            @created="onChannelCreated"
+        />
+        <JoinRoomDialog
+            :client="client"
+            :open="roomAction?.kind === 'join'"
+            @close="roomAction = null"
+            @created="onRoomJoined"
+        />
+        <CreateDmDialog
+            :client="client"
+            :open="roomAction?.kind === 'create-dm'"
+            @close="roomAction = null"
+            @created="onDmCreated"
+        />
+        <InviteDialog
+            :client="client"
+            :open="roomAction?.kind === 'invite'"
+            :room-id="inviteRoomId"
+            @close="roomAction = null"
+        />
+        <LeaveConfirmDialog
+            :client="client"
+            :open="roomAction?.kind === 'leave'"
+            :target="leaveTarget"
+            @close="roomAction = null"
+            @left="onRoomLeft"
         />
         </div>
     </ConfigProvider>
@@ -325,6 +523,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 .tumult-roomlist-header {
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--border-default);
+}
+.tumult-roomlist-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
 }
 .tumult-roomlist-header h2 {
     margin: 0;

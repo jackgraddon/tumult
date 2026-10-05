@@ -15,6 +15,9 @@ import type {
     ChatClient,
     CompleteLoginParams,
     ConnectionState,
+    CreateChannelParams,
+    CreateDmParams,
+    CreateSpaceParams,
     DeviceView,
     EncryptedAttachment,
     LoginParams,
@@ -28,6 +31,7 @@ import type {
     Subscribable,
     ThreadSummary,
     TypingState,
+    UserSearchResult,
     VerificationState,
 } from "./contract.ts";
 import { Observable } from "./observable.ts";
@@ -40,6 +44,15 @@ import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
+import {
+    createChannel,
+    createDm,
+    createSpace,
+    inviteToRoom,
+    joinRoom,
+    leaveRoom,
+    searchUserDirectory,
+} from "./rooms/lifecycle.ts";
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
 import { MediaResolver } from "./media/resolver.ts";
@@ -511,6 +524,48 @@ export class MatrixChatClient implements ChatClient {
         const timelines = this.timelines;
         if (!timelines) throw new Error("Cannot jump before start()");
         return timelines.jumpTo(roomId, eventId);
+    }
+
+    public async createSpace(params: CreateSpaceParams): Promise<string> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot create a space before start()");
+        return createSpace(client, params);
+    }
+
+    public async createChannel(spaceId: string, params: CreateChannelParams): Promise<string> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot create a channel before start()");
+        return createChannel(client, spaceId, params);
+    }
+
+    public async createDm(params: CreateDmParams): Promise<string> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot create a DM before start()");
+        return createDm(client, params);
+    }
+
+    public async joinRoom(idOrAlias: string): Promise<string> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot join a room before start()");
+        return joinRoom(client, idOrAlias);
+    }
+
+    public async leave(roomId: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot leave a room before start()");
+        await leaveRoom(client, roomId);
+    }
+
+    public async invite(roomId: string, userId: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot invite before start()");
+        await inviteToRoom(client, roomId, userId);
+    }
+
+    public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot search users before start()");
+        return searchUserDirectory(client, term, opts?.limit);
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {

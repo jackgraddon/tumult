@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from "reka-ui";
+import {
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuPortal,
+    DropdownMenuRoot,
+    DropdownMenuTrigger,
+    ScrollAreaRoot,
+    ScrollAreaScrollbar,
+    ScrollAreaThumb,
+    ScrollAreaViewport,
+} from "reka-ui";
 import type { ChatClient, SessionView, SpaceTree } from "@tumult/core";
 
 import GuildRailItem from "./GuildRailItem.vue";
@@ -16,6 +26,8 @@ const emit = defineEmits<{
     signOut: [];
     security: [];
     verify: [];
+    createSpace: [];
+    join: [];
 }>();
 </script>
 
@@ -26,6 +38,25 @@ const emit = defineEmits<{
                 <ul class="tumult-rail-list">
                     <DmsRailItem :unread="tree.orphans.reduce((n, r) => n + r.unreadCount, 0)" />
                     <li class="tumult-rail-sep" aria-hidden="true" />
+                    <li class="tumult-rail-add">
+                        <DropdownMenuRoot>
+                            <DropdownMenuTrigger as-child>
+                                <button type="button" class="tumult-rail-add-button" aria-label="Add a server">
+                                    <span aria-hidden="true">+</span>
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuPortal>
+                                <DropdownMenuContent class="tumult-menu" side="right" align="start">
+                                    <DropdownMenuItem class="tumult-menu-item" text-value="create space" @select="emit('createSpace')">
+                                        Create a space
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="tumult-menu-item" text-value="join room" @select="emit('join')">
+                                        Join a room
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenuPortal>
+                        </DropdownMenuRoot>
+                    </li>
                     <GuildRailItem
                         v-for="guild in tree.guilds"
                         :key="guild.room.id"
@@ -41,7 +72,13 @@ const emit = defineEmits<{
                 <ScrollAreaThumb class="tumult-scrollthumb" />
             </ScrollAreaScrollbar>
         </ScrollAreaRoot>
-        <AccountTile :session="session" :client="client" @sign-out="emit('signOut')" @security="emit('security')" @verify="emit('verify')" />
+        <AccountTile
+            :session="session"
+            :client="client"
+            @sign-out="emit('signOut')"
+            @security="emit('security')"
+            @verify="emit('verify')"
+        />
     </nav>
 </template>
 
@@ -75,6 +112,34 @@ const emit = defineEmits<{
     height: 1px;
     margin: var(--space-2) var(--space-3);
     background: var(--border-default);
+}
+.tumult-rail-add {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+}
+.tumult-rail-add-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--border-default);
+    border-radius: 50%;
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.tumult-rail-add-button:hover {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--button-primary-text);
+}
+.tumult-rail-add-button:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
 }
 .tumult-scrollbar {
     width: 6px;

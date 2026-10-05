@@ -2,6 +2,9 @@ export type {
     ChatClient,
     CompleteLoginParams,
     ConnectionState,
+    CreateChannelParams,
+    CreateDmParams,
+    CreateSpaceParams,
     DecryptionStatus,
     DeviceView,
     EncryptedAttachment,
@@ -20,6 +23,7 @@ export type {
     Subscription,
     ThreadSummary,
     TypingState,
+    UserSearchResult,
     VerificationRequestView,
     VerificationState,
 } from "./contract.ts";

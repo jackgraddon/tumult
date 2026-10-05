@@ -5,10 +5,15 @@ import type { SpaceNode } from "@tumult/core";
 import type { RoomSelection } from "../selection.ts";
 import SpaceCategory from "./SpaceCategory.vue";
 import RoomListItem from "./RoomListItem.vue";
+import IconButton from "../primitives/IconButton.vue";
 
 defineProps<{
     guild: SpaceNode | undefined;
     selection: RoomSelection;
+}>();
+
+const emit = defineEmits<{
+    createChannel: [];
 }>();
 </script>
 
@@ -16,6 +21,9 @@ defineProps<{
     <div class="tumult-roomlist-pane">
         <header class="tumult-roomlist-header">
             <h2>{{ guild?.room.name ?? "Messages" }}</h2>
+            <IconButton v-if="guild" label="Create a channel" @click="emit('createChannel')">
+                <span aria-hidden="true">＋</span>
+            </IconButton>
         </header>
         <ScrollAreaRoot class="tumult-roomlist-scroll">
             <ScrollAreaViewport class="tumult-roomlist-viewport">
@@ -51,10 +59,16 @@ defineProps<{
     color: var(--roomlist-item-text);
 }
 .tumult-roomlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--border-default);
 }
 .tumult-roomlist-header h2 {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     font-size: var(--text-sm);
     overflow: hidden;

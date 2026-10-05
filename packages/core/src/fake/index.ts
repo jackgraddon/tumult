@@ -1,6 +1,9 @@
 import type {
     ChatClient,
     ConnectionState,
+    CreateChannelParams,
+    CreateDmParams,
+    CreateSpaceParams,
     DeviceView,
     EncryptedAttachment,
     MessageView,
@@ -13,6 +16,7 @@ import type {
     Subscribable,
     ThreadSummary,
     TypingState,
+    UserSearchResult,
     VerificationState,
 } from "../contract.ts";
 import { Observable } from "../observable.ts";
@@ -267,7 +271,6 @@ class FakeChatClient implements ChatClient {
         this._threads = new Observable<ThreadSummary[]>([
             { rootEventId: "!a-general:fake:e0", replyCount: 2, lastReplyTs: Date.now() - 60_000, unreadCount: 1, hasParticipated: false },
         ]);
-
         for (const r of this.rooms.get()) {
             if (r.isSpace) continue;
             const timeline = buildTimeline(r.id, this.rand, now);
@@ -338,6 +341,108 @@ class FakeChatClient implements ChatClient {
     public async jumpTo(roomId: string, eventId: string): Promise<boolean> {
         // Fixtures are fully loaded: present in the window or gone for good.
         return this.timelines.get(roomId)?.get().some((m) => m.id === eventId) ?? false;
+    }
+
+    // Monotonic id source for created rooms: fixtures use readable ids, new
+    // ones just need to be unique and recognisable in the tree.
+    private nextCreated = 1;
+
+    private pushRoom(summary: RoomSummary): string {
+        (this.rooms as Observable<RoomSummary[]>).update((cur) => [...cur, summary]);
+        this.timelines.set(summary.id, new Observable<MessageView[]>([]));
+        return summary.id;
+    }
+
+    public async createSpace(params: CreateSpaceParams): Promise<string> {
+        return this.pushRoom({
+            id: `!created-${this.nextCreated++}:fake`,
+            name: params.name,
+            topic: params.topic ?? null,
+            avatarUrl: null,
+            isSpace: true,
+            parentSpaceIds: [],
+            unreadCount: 0,
+            highlightCount: 0,
+            fullyReadEventId: null,
+        });
+    }
+
+    public async createChannel(spaceId: string, params: CreateChannelParams): Promise<string> {
+        // visibility/alias/encrypted don't surface in snapshots: the tree only
+        // cares about the parent link the fake writes below.
+        return this.pushRoom({
+            id: `!created-${this.nextCreated++}:fake`,
+            name: params.name,
+            topic: params.topic ?? null,
+            avatarUrl: null,
+            isSpace: false,
+            // The fake writes the same parent link the real one does, so the
+            // channel lands under its guild in selectSpaceTree immediately.
+            parentSpaceIds: [spaceId],
+            unreadCount: 0,
+            highlightCount: 0,
+            fullyReadEventId: null,
+        });
+    }
+
+    public async createDm(params: CreateDmParams): Promise<string> {
+        // encrypted isn't tracked by the fake (nothing decrypts in it).
+        const id = `!created-${this.nextCreated++}:fake`;
+        return this.pushRoom({
+            id,
+            name: params.userId.slice(1).split(":")[0] ?? params.userId,
+            topic: null,
+            avatarUrl: null,
+            isSpace: false,
+            parentSpaceIds: [],
+            unreadCount: 0,
+            highlightCount: 0,
+            fullyReadEventId: null,
+        });
+    }
+
+    public async joinRoom(idOrAlias: string): Promise<string> {
+        const existing = (this.rooms as Observable<RoomSummary[]>)
+            .get()
+            .find((r) => r.id === idOrAlias);
+        if (existing) return existing.id;
+        // Unknown id/alias: fake can't know the real room's parents, so it
+        // lands as an orphan (DMs tab) — same honest rule as the real feed.
+        return this.pushRoom({
+            id: idOrAlias.startsWith("!") ? idOrAlias : `!created-${this.nextCreated++}:fake`,
+            name: idOrAlias.replace(/^#/, "").split(":")[0] ?? idOrAlias,
+            topic: null,
+            avatarUrl: null,
+            isSpace: false,
+            parentSpaceIds: [],
+            unreadCount: 0,
+            highlightCount: 0,
+            fullyReadEventId: null,
+        });
+    }
+
+    public async leave(roomId: string): Promise<void> {
+        (this.rooms as Observable<RoomSummary[]>).update((cur) => cur.filter((r) => r.id !== roomId));
+        this.timelines.delete(roomId);
+        this.threadTimelines.delete(roomId);
+    }
+
+    public async invite(_roomId: string, _userId: string): Promise<void> {
+        // Resolves; the fake carries no membership state yet — the members
+        // pane is timeline-derived until slice 21 wires real rosters.
+    }
+
+    public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {
+        const trimmed = term.trim().toLowerCase();
+        if (trimmed.length === 0) return [];
+        const all = SENDERS.map((userId) => ({
+            userId,
+            displayName: userId.slice(1).split(":")[0] ?? userId,
+            avatarUrl: null,
+        })).filter(
+            (u) => u.userId.toLowerCase().includes(trimmed) || u.displayName.toLowerCase().includes(trimmed),
+        );
+        return all.slice(0, opts?.limit ?? 10);
     }
 
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {

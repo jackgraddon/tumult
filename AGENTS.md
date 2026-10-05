@@ -480,8 +480,45 @@ chat client should be.
   imports need the `.js` extension for Node strip-mode — tsc and Vite forgive
   extensionless deep imports, only `node --test` catches it (this bit
   `matrix-js-sdk/lib/@types/search`).
-- NEXT — slice 20: room lifecycle (create space/channel, join by alias,
-  DM-create, leave, invite) — decided with the user after slice 19.
+- DONE — slice 20: room lifecycle — contract + core: `createSpace(params)`,
+  `createChannel(spaceId, params)` (visibility / `aliasLocalpart` / `encrypted`),
+  `createDm(params)`, `joinRoom(idOrAlias)`, `leave()`, `invite()`,
+  `searchUsers()` + their param/result types, in `rooms/lifecycle.ts` (writes
+  the `m.space.child` link BOTH ways so `snapshotRooms` sees the parent) with
+  fake parity. UI: one shared `RoomDialog` (Reka dialog + `<form>` + actions
+  row, and it owns a full unscoped copy of the `.tumult-dialog*` chrome so
+  rooms dialogs are self-contained), `UserPicker` (250 ms debounce, sequence
+  race guard, exact-mxid fast path that skips search), six dialogs
+  (space/channel/join/dm/invite/leave), a "+" `DropdownMenu` on the guild rail
+  (Create space / Join), "+" in the room-list header (create channel in the
+  selected guild) and the DMs header (new message), an Invite button in the
+  members pane, and a right-click `ContextMenu` → confirm on room rows and
+  guild tiles. `TumultShell` owns a `RoomAction` union + `useActions()` provide
+  (list items can't reach the shell), `waitForRoom()` before navigating to a
+  fresh room, `topSpaceId()` to pick the rail-level guild for joins, and a
+  `[rooms, connection]` watcher that reverts a selection whose room/space
+  vanished. Covered by `test/lifecycle.test.ts` (188 unit) plus a Synapse
+  round-trip (`test-integration/lifecycle.test.ts`, 23: space + child links
+  both directions, join by alias, dm creation, leave, invite, directory
+  search).
+- VERIFIED slice-20 traps: creators resolve the roomId BEFORE the room is in
+  the `rooms` feed — selecting immediately renders the previous pane, so the
+  shell waits for presence (5 s, resolves regardless) and the cleanup watcher
+  is the backstop for anything that slips through. An `m.space.child` with no
+  `via` is a REMOVED link, not a live one — that's the same trap as the audit;
+  lifecycle must write `{ via: [domain] }` on child AND parent. Synapse's
+  user directory needs `search_all_users` enabled and only returns people you
+  share a room with, so the picker's raw `@user:server` fallback is load-
+  bearing, not a nicety. `m.direct` account data IS writable (`setAccountData`
+  — only `m.fully_read` is excluded). Spaces never encrypt: the checkbox only
+  appears on channels/DMs. Two nested `as-child` triggers on ONE element break
+  attribute merging — the context-menu trigger wraps the inner `<a>` inside
+  the `<li>`, while the tooltip trigger stays on the `<li>`. Reka roots render
+  slot only (safe inside `<ul>`/`<li>`), but their content needs a portal
+  (Teleport defaults to `body`), and `DialogContent` unmounts on close, so
+  every dialog resets its refs in an `open` watcher AND the parent drives
+  `open` off the `RoomAction` union.
+- NEXT — slice 21: TBD.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.

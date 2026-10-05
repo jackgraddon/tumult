@@ -125,6 +125,42 @@ export interface SearchPage {
     total: number;
 }
 
+/** Parameters for creating a top-level space (a guild on the rail). */
+export interface CreateSpaceParams {
+    name: string;
+    topic?: string;
+}
+
+/**
+ * Parameters for creating a channel inside a space.
+ *
+ * `visibility` defaults to private. `aliasLocalpart` only applies to public
+ * rooms — it is the localpart of `#alias:server`, which is what `joinRoom`
+ * later resolves. `encrypted` defaults to false; spaces never encrypt (they
+ * don't host messages).
+ */
+export interface CreateChannelParams {
+    name: string;
+    topic?: string;
+    visibility?: "private" | "public";
+    aliasLocalpart?: string;
+    encrypted?: boolean;
+}
+
+/** Parameters for creating a 1:1 direct-message room. */
+export interface CreateDmParams {
+    userId: string;
+    encrypted?: boolean;
+}
+
+/** One user-directory hit, as the DM/invite pickers need it. */
+export interface UserSearchResult {
+    userId: string;
+    displayName: string;
+    /** Usually an `mxc://` URI — pass through `resolveMedia()`. */
+    avatarUrl: string | null;
+}
+
 export interface RoomSummary {
     id: string;
     name: string;
@@ -417,6 +453,44 @@ export interface ChatClient {
      * never-joined history) — callers must not scroll on `false`.
      */
     jumpTo(roomId: string, eventId: string): Promise<boolean>;
+    /**
+     * Create a top-level space (renders as a guild on the rail). Resolves to
+     * the new room id once the server has it; it lands in `rooms` on a later
+     * sync — the UI waits for the feed before selecting it.
+     */
+    createSpace(params: CreateSpaceParams): Promise<string>;
+    /**
+     * Create a channel under `spaceId` and link it (`m.space.child` on the
+     * space, `m.space.parent` on the channel). Public channels take an
+     * `aliasLocalpart` so others can `joinRoom("#alias:server")`. Resolves to
+     * the new room id; it lands in `rooms` on a later sync.
+     */
+    createChannel(spaceId: string, params: CreateChannelParams): Promise<string>;
+    /**
+     * Create a private 1:1 room with `userId`, inviting them and recording it
+     * in `m.direct`. Resolves to the new room id; lands in `rooms` on a later
+     * sync (as an orphan, i.e. in the DMs tab).
+     */
+    createDm(params: CreateDmParams): Promise<string>;
+    /**
+     * Join a room by id or `#alias:server`. Also accepts an invite to a room
+     * we're not in yet. Resolves to the room id; it lands in `rooms` on a
+     * later sync.
+     */
+    joinRoom(idOrAlias: string): Promise<string>;
+    /**
+     * Leave a room we're in (or reject an invite). The room leaves `rooms` on
+     * a later sync; the UI must clear a selection that points at it.
+     */
+    leave(roomId: string): Promise<void>;
+    /** Invite `userId` to `roomId`. Rejects when the server refuses. */
+    invite(roomId: string, userId: string): Promise<void>;
+    /**
+     * User-directory search over ids, display names and domains. Accepts a
+     * raw `@user:server` id too (the UI shows both kinds of input), but the
+     * directory itself only matches what the server indexes.
+     */
+    searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]>;
     /**
      * Set up secret storage plus a fresh key backup, returning the encoded
      * recovery key. Display it to the user exactly once — it is never

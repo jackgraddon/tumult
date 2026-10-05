@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from "reka-ui";
+import {
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuPortal,
+    ContextMenuRoot,
+    ContextMenuTrigger,
+    TooltipContent,
+    TooltipPortal,
+    TooltipProvider,
+    TooltipRoot,
+    TooltipTrigger,
+} from "reka-ui";
 
 import { useSelection } from "../selection.ts";
+import { useActions } from "../actions.ts";
 import Avatar from "../primitives/Avatar.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 
-defineProps<{
+const props = defineProps<{
     guildId: string;
     name: string;
     avatarUrl?: string | null;
@@ -14,6 +26,11 @@ defineProps<{
 }>();
 
 const selection = useSelection();
+const actions = useActions();
+
+function requestLeave(): void {
+    actions.requestLeave({ id: props.guildId, name: props.name, isSpace: true });
+}
 </script>
 
 <template>
@@ -22,26 +39,37 @@ const selection = useSelection();
         <TooltipRoot>
             <TooltipTrigger as-child>
                 <li>
-                    <a
-                        class="tumult-guild-item"
-                        :href="selection.hrefFor({ view: 'guild', guildId })"
-                        :aria-current="
-                            selection.current.view === 'guild' && selection.current.guildId === guildId
-                                ? 'page'
-                                : undefined
-                        "
-                        :aria-label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
-                        @click.prevent="selection.select({ view: 'guild', guildId })"
-                    >
-                        <span
-                            class="tumult-guild-pill"
-                            :data-active="
-                                selection.current.view === 'guild' && selection.current.guildId === guildId
-                            "
-                        />
-                        <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
-                        <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
-                    </a>
+                    <ContextMenuRoot>
+                        <ContextMenuTrigger as-child>
+                            <a
+                                class="tumult-guild-item"
+                                :href="selection.hrefFor({ view: 'guild', guildId })"
+                                :aria-current="
+                                    selection.current.view === 'guild' && selection.current.guildId === guildId
+                                        ? 'page'
+                                        : undefined
+                                "
+                                :aria-label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
+                                @click.prevent="selection.select({ view: 'guild', guildId })"
+                            >
+                                <span
+                                    class="tumult-guild-pill"
+                                    :data-active="
+                                        selection.current.view === 'guild' && selection.current.guildId === guildId
+                                    "
+                                />
+                                <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
+                                <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
+                            </a>
+                        </ContextMenuTrigger>
+                        <ContextMenuPortal>
+                            <ContextMenuContent class="tumult-menu">
+                                <ContextMenuItem class="tumult-menu-item" text-value="leave" @select="requestLeave">
+                                    Leave
+                                </ContextMenuItem>
+                            </ContextMenuContent>
+                        </ContextMenuPortal>
+                    </ContextMenuRoot>
                 </li>
             </TooltipTrigger>
             <TooltipPortal>

@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import type { RoomSummary } from "@tumult/core";
+import {
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuPortal,
+    ContextMenuRoot,
+    ContextMenuTrigger,
+} from "reka-ui";
 
 import { useSelection, type RoomSelection } from "../selection.ts";
+import { useActions } from "../actions.ts";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 import Avatar from "../primitives/Avatar.vue";
 
@@ -11,6 +19,7 @@ const props = defineProps<{
 }>();
 
 const sel = useSelection();
+const actions = useActions();
 
 function href(): string {
     if (props.selection.view === "dms") return sel.hrefFor({ view: "dms", roomId: props.room.id });
@@ -25,22 +34,37 @@ function pick(): void {
 function isActive(): boolean {
     return sel.current.roomId === props.room.id;
 }
+
+function requestLeave(): void {
+    actions.requestLeave({ id: props.room.id, name: props.room.name, isSpace: false });
+}
 </script>
 
 <template>
     <li>
-        <a
-            class="tumult-room-item"
-            :href="href()"
-            :aria-current="isActive() ? 'page' : undefined"
-            @click.prevent="pick()"
-        >
-            <!-- DMs are people, not channels: show their face, not a hash. -->
-            <Avatar v-if="selection.view === 'dms'" :label="room.name" :src="room.avatarUrl" size="sm" />
-            <span v-else class="tumult-room-hash" aria-hidden="true">#</span>
-            <span class="tumult-room-name">{{ room.name }}</span>
-            <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
-        </a>
+        <ContextMenuRoot>
+            <ContextMenuTrigger as-child>
+                <a
+                    class="tumult-room-item"
+                    :href="href()"
+                    :aria-current="isActive() ? 'page' : undefined"
+                    @click.prevent="pick()"
+                >
+                    <!-- DMs are people, not channels: show their face, not a hash. -->
+                    <Avatar v-if="selection.view === 'dms'" :label="room.name" :src="room.avatarUrl" size="sm" />
+                    <span v-else class="tumult-room-hash" aria-hidden="true">#</span>
+                    <span class="tumult-room-name">{{ room.name }}</span>
+                    <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
+                </a>
+            </ContextMenuTrigger>
+            <ContextMenuPortal>
+                <ContextMenuContent class="tumult-menu">
+                    <ContextMenuItem class="tumult-menu-item" text-value="leave" @select="requestLeave">
+                        Leave
+                    </ContextMenuItem>
+                </ContextMenuContent>
+            </ContextMenuPortal>
+        </ContextMenuRoot>
     </li>
 </template>
 
