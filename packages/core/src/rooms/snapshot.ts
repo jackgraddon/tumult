@@ -1,6 +1,7 @@
 import { NotificationCountType, type MatrixClient } from "matrix-js-sdk";
 
 import type { RoomSummary } from "../contract.ts";
+import type { UnreadCounts } from "./unread.ts";
 
 const SPACE_CHILD = "m.space.child";
 const ROOM_TOPIC = "m.room.topic";
@@ -16,8 +17,14 @@ const ROOM_FULLY_READ = "m.fully_read";
  * Avatars are published as `mxc://` URIs; the UI resolves them through
  * `resolveMedia()` (authenticated media needs the access token, which a
  * plain URL in an `<img>` can't carry).
+ *
+ * `unreadOverride` supplies client-side unread counts for sliding-sync mode
+ * (Synapse sends none); when absent the SDK's server-computed counts are used.
  */
-export function snapshotRooms(client: MatrixClient): RoomSummary[] {
+export function snapshotRooms(
+    client: MatrixClient,
+    unreadOverride?: (roomId: string) => UnreadCounts | null,
+): RoomSummary[] {
     const joined = client.getRooms().filter((room) => room.getMyMembership() === "join");
 
     const parentsByRoomId = new Map<string, Set<string>>();
@@ -46,17 +53,20 @@ export function snapshotRooms(client: MatrixClient): RoomSummary[] {
         }
     }
 
-    return joined.map((room) => ({
-        id: room.roomId,
-        name: room.name,
-        topic: readTopic(room),
-        avatarUrl: readAvatar(room),
-        isSpace: room.isSpaceRoom(),
-        parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
-        unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total),
-        highlightCount: room.getUnreadNotificationCount(NotificationCountType.Highlight),
-        fullyReadEventId: readFullyRead(room),
-    }));
+    return joined.map((room) => {
+        const override = unreadOverride?.(room.roomId) ?? null;
+        return {
+            id: room.roomId,
+            name: room.name,
+            topic: readTopic(room),
+            avatarUrl: readAvatar(room),
+            isSpace: room.isSpaceRoom(),
+            parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
+            unreadCount: override?.total ?? room.getUnreadNotificationCount(NotificationCountType.Total),
+            highlightCount: override?.highlight ?? room.getUnreadNotificationCount(NotificationCountType.Highlight),
+            fullyReadEventId: readFullyRead(room),
+        };
+    });
 }
 
 /**

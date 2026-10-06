@@ -5,6 +5,7 @@ import {
     type MatrixEvent,
     type Room,
     type RoomMember,
+    type User,
     type SyncState,
     type SyncStateData,
 } from "matrix-js-sdk";
@@ -13,10 +14,15 @@ import type { MemberView, PresenceState, Subscribable } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { fallbackName } from "./profile.ts";
 
+/** A single presence entry fetched from the REST poller. */
+export interface PresenceInput {
+    /** A `user:server` id. */
+    userId: string;
+}
+
 /**
- * Memberships worth showing in a members pane. Everything else (`leave`,
- * `ban`, `knock`) is moderation surface (slice 22) — a roster is "who is in
- * the room", not a history of who left.
+ * Map a live presence value. Unknown/unexpected values stay `unknown` —
+ * never guess `offline` from a value we don't understand.
  */
 function isRostered(membership: string | undefined): boolean {
     return membership === "join" || membership === "invite";
@@ -191,6 +197,24 @@ export class MembersTracker {
         this.feeds.clear();
         this.livePresence.clear();
         this.pendingPresence.clear();
+    }
+
+    /**
+     * Sliding sync carries no presence in its sync envelope, so inject it here
+     * from the REST poll: mark the user live (so `presenceOf` no longer says
+     * `unknown`) and rebuild the rosters. The poller already fetched each
+     * `User`'s live status via `client.getUser()`, so no separate presence
+     * event is set — the trigger is each poll (not every sync), the sink is
+     * the REST response.
+     */
+    public applyPollPresence(presence: Array<PresenceInput>): boolean {
+        if (!presence.length) return false;
+        for (const { userId } of presence) {
+            if (!userId) continue;
+            this.livePresence.add(userId);
+        }
+        this.rebuildAll();
+        return true;
     }
 
     private rebuild(roomId: string): void {

@@ -61,10 +61,13 @@ import { ThreadTracker } from "./threads/tracker.ts";
 import { MembersTracker } from "./rooms/members.ts";
 import { MediaResolver } from "./media/resolver.ts";
 import { NotificationTracker } from "./notifications/tracker.ts";
+import { PresencePoller } from "./rooms/presence.ts";
+import { UnreadTracker } from "./rooms/unread.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
+import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SyncModeOption } from "./sync/sliding.ts";
 
 export interface ChatClientOptions {
     /** Identity this app presents to the IdP during dynamic registration. */
@@ -72,6 +75,15 @@ export interface ChatClientOptions {
     storage?: AuthStorage;
     /** Overridable so tests can assert on the redirect instead of navigating. */
     navigator?: AuthNavigator;
+    /**
+     * Sync loop selection. `auto` (default) prefers Simplified Sliding Sync
+     * (MSC4186) when the homeserver advertises it, else classic `/sync`.
+     * `classic` forces `/sync`; `sliding` forces MSC4186 (falling back to
+     * classic if the server turns out not to speak it). A future UI setting
+     * would persist a choice here and apply it at startup — the mode is read
+     * once, in `start()`.
+     */
+    syncMode?: SyncModeOption;
 }
 
 /**
@@ -129,6 +141,9 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
+    private readonly syncModeOption: SyncModeOption;
+    /** Sync loop actually running; set in bootstrap before startClient. */
+    private activeSyncMode: ActiveSyncMode = "classic";
 
     private matrix: MatrixClient | null = null;
     /**
@@ -154,6 +169,10 @@ export class MatrixChatClient implements ChatClient {
     private _media: MediaResolver | null = null;
     /** Browser notification firing, alive while the sync loop runs. */
     private _notifications: NotificationTracker | null = null;
+    /** Client-side unread counts (sliding sync only — Synapse sends none). */
+    private _unread: UnreadTracker | null = null;
+    /** Presence REST poller (sliding sync only — no presence extension). */
+    private _presence: PresencePoller | null = null;
     /**
      * Pasted recovery key, held ONLY for the duration of a restoreBackup()
      * call so the SDK's secret-storage requests can use it. Cleared in a
@@ -181,6 +200,7 @@ export class MatrixChatClient implements ChatClient {
     public constructor(options: ChatClientOptions) {
         this.storage = options.storage ?? AuthStorage.browser();
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
+        this.syncModeOption = options.syncMode ?? "auto";
     }
 
     public get session(): Subscribable<SessionView | null> {
@@ -350,6 +370,14 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._members = new MembersTracker(client);
+            this._unread = new UnreadTracker(client, () => this.refreshRooms());
+            // SSS carries no presence; the poller is the only source and hands
+            // each value straight to the members tracker.
+            this._presence = new PresencePoller(
+                client,
+                (presence) => this._members?.applyPollPresence(presence),
+            );
+            this._presence.start();
             // Profile is a plain HTTP read, independent of the sync loop:
             // seed the feed now rather than waiting for the first batch. A
             // failure publishes the localpart fallback (below) instead.
@@ -382,7 +410,22 @@ export class MatrixChatClient implements ChatClient {
             // on createClient it is silently ignored. The roster then arrives
             // partial until loadMembers() fetches the full list, which is why
             // MembersTracker never claims a partial snapshot is complete.
-            await client.startClient({ threadSupport: true, lazyLoadMembers: true });
+            //
+            // `slidingSync` is a START option too, and the one that selects the
+            // sync loop: the SDK swaps to SlidingSyncSdk only when the instance
+            // is passed here. `syncMode` resolves to a concrete loop (detecting
+            // MSC4186 unless forced classic) so the trackers below know which
+            // sync-driven features need a fallback (presence, unread counts).
+            const slidingSync =
+                (this.syncModeOption === "classic" ? false : await detectSlidingSync(client))
+                    ? buildSlidingSync(client)
+                    : null;
+            this.activeSyncMode = slidingSync ? "sliding" : "classic";
+            await client.startClient({
+                threadSupport: true,
+                lazyLoadMembers: true,
+                ...(slidingSync ? { slidingSync } : {}),
+            });
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
             await this.refreshSecurity();
@@ -418,7 +461,11 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public async stop(): Promise<void> {
+        // SSS carries no presence; the poller must stop before the client does
+        // or it will keep firing against a torn-down store.
+        this._presence?.detachAll();
         const client = this.matrix;
+
         const store = this.store;
         if (!client) return;
 
@@ -856,7 +903,13 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) return;
         try {
-            const next = snapshotRooms(client);
+            // Sliding sync sends no unread counts (Synapse hardcodes them to 0),
+            // so the tracker recomputes them here, before the snapshot reads them.
+            this._unread?.update();
+            const next = snapshotRooms(
+                client,
+                this._unread ? (roomId) => this._unread!.getUnread(roomId) : undefined,
+            );
             if (sameRoomSummaries(next, this.roomsState.get())) return;
             const spaces = next.filter((r) => r.isSpace).length;
             console.debug(`[tumult] rooms snapshot: ${next.length} joined (${spaces} spaces)`);

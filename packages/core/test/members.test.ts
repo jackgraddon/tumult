@@ -324,4 +324,26 @@ describe("MembersTracker", () => {
         matrix.emit(ClientEvent.Sync, SyncState.Syncing, SyncState.Syncing);
         assert.equal(feed.get(), before, "detached listeners rebuild nothing");
     });
+
+    it("applyPollPresence marks a user live and rebuilds — the SSS poll path", () => {
+        const alice = member("@alice:localhost", { powerLevel: 0, rawDisplayName: "Alice" });
+        const roomA = room("!a", [member(selfId, { powerLevel: 100 }), alice]);
+        const matrix = stubMatrix([roomA]);
+        matrix.users.set("@alice:localhost", { presence: "online", lastActiveAgo: 1000 });
+        const tracker = new MembersTracker(matrix);
+        const feed = tracker.members("!a");
+        assert.equal(feed.get().find((m) => m.userId === "@alice:localhost")?.presence, "unknown");
+
+        // The REST poll only hands back the id; the tracker marks it live and
+        // the already-populated User (getPresence() populated it) is read.
+        assert.equal(tracker.applyPollPresence([{ userId: "@alice:localhost" }]), true);
+        const after = feed.get().find((m) => m.userId === "@alice:localhost");
+        assert.equal(after?.presence, "online");
+        assert.ok(after?.lastActiveTs !== null, "live activity time surfaces");
+
+        assert.equal(tracker.applyPollPresence([]), false, "empty payload rebuilds nothing");
+        const before = feed.get();
+        tracker.applyPollPresence([{ userId: "@carol:localhost" }]);
+        assert.notEqual(feed.get(), before, "a new live user still rebuilds");
+    });
 });

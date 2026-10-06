@@ -252,6 +252,11 @@ chat client should be.
   handles the order.
 - Dev homeserver is `matrix.jackg.cc`, auth at `mas.jackg.cc`. Set
   `VITE_CLIENT_URI` in `apps/web/.env.local` (gitignored, see `.env.example`).
+- Work with **relative paths** only — base everything off the working directory
+  (`$WORKDIR`, normally `/var/home/jack/Documents/Git/tumult`) and reference
+  paths as `packages/core/src/client.ts`, `AGENTS.md`, etc. Never use absolute
+  paths (e.g. `/var/home/jack/Documents/Git/tumult/...`). Use `workdir` to
+  change directory; stay relative inside commands.
 
 ## Where the build is
 
@@ -561,8 +566,31 @@ chat client should be.
   header rows as virtual items, `as Row` casts — vue-tsc does not narrow
   `rows[v.index]` across `v-if`), and `MemberListItem` takes the whole
   `MemberView` so each virtual row casts once.
-- NEXT — slice 22: TBD (moderation — kick/ban/unban/power-level edits +
-  badges against the slice-21 member feed).
+- NEXT — slice 22: Simplified Sliding Sync (MSC4186) — see Potential next
+  slices for what follows it.
+
+## Potential next slices
+
+- Slice 23: moderation — settled scope: presets + custom power-level editor
+  (Member 0 / Moderator 50 / Admin 100 presets + 0–100 number field); banned
+  users in a "Banned" section at the bottom of the members pane (only when
+  non-empty) with Unban in the row context menu. Contract: `RoomPowerLevelsView`
+  + `powerLevels(roomId)` / `banned(roomId)` / `kick|ban|unban|setPowerLevel`;
+  core `rooms/moderation.ts` + `PowerLevelsTracker` against the slice-21 member
+  feed.
+- Failed-send retry (slice-5 follow-up: retry affordance on failed echoes).
+- Idle-room unloading via `subscriberCount` (TimelineFeed already returns the
+  same Subscribable per roomId).
+- SSS follow-ups (after slice 22): window growth + subscribe-to-open-room with
+  a richer `timeline_limit`; native SSS presence replacing the REST poll (the
+  js-sdk has no presence extension yet — "not possible in sliding sync yet");
+  SSS warm-boot persistence (the SSS path never calls `setSyncToken`, so cold
+  boot does a fresh initial sync and offline boot has no rooms).
+- Game/custom event renderers (post-v1-UI; registered renderers namespaced
+  under our domain, no timeline rewrite).
+- Code-splitting (973 kB chunk).
+- Parked v1 non-goals: push notifications, voice/video, multi-account,
+  encrypted search, Electron desktop, Flatpak.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.
