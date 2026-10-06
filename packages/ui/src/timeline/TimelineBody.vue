@@ -103,6 +103,17 @@ async function redactMessage(targetEventId: string): Promise<void> {
     }
 }
 
+async function retrySend(eventId: string): Promise<void> {
+    // Re-sends the pending echo through the SDK's own backoff scheduler;
+    // the map republishes sending → sent/failed. Failure logs (the row
+    // keeps its "not sent" flag — nothing silently changes).
+    try {
+        await props.client.retry(props.roomId, eventId);
+    } catch (error) {
+        console.error("[tumult] send retry failed", error);
+    }
+}
+
 function openThread(rootEventId: string): void {
     // Bubbles to the shell via TimelinePane.
     emit("open-thread", rootEventId);
@@ -149,7 +160,7 @@ async function onSendFile(file: File): Promise<void> {
         <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
     </div>
     <template v-else>
-        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
+        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :on-retry-send="retrySend" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
         <MessageComposer
             :room-id="props.roomId"
             :client="props.client"

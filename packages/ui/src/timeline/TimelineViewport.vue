@@ -19,6 +19,8 @@ const props = defineProps<{
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
     /** Redact (delete) a message; absent while the client can't redact. */
     onRedactMessage?: ((targetEventId: string) => void) | undefined;
+    /** Retry a failed send; absent while the client can't retry. */
+    onRetrySend?: ((eventId: string) => void) | undefined;
     /** The room's `m.fully_read` marker; drives the "New messages" divider. */
     fullyReadEventId?: string | null | undefined;
     /** Search hit jump: center this event id and flash it briefly. */
@@ -248,6 +250,7 @@ const profiles = computed(() => {
                         :own-user-id="ownUserId"
                         :on-edit-message="onEditMessage"
                         :on-redact-message="onRedactMessage"
+                        :on-retry-send="onRetrySend"
                         :on-open-thread="onOpenThread"
                         :on-reply="onReply"
                         :profiles="profiles"

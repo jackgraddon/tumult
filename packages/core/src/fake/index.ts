@@ -805,6 +805,23 @@ class FakeChatClient implements ChatClient {
             obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
         }, 300);
     }
+
+    public async retry(roomId: string, eventId: string): Promise<void> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return;
+        const failed = obs.get().find((m) => m.id === eventId && m.status === "failed");
+        if (!failed) return;
+        // Mirror the SDK: the pending echo goes back to SENDING and settles
+        // SENT (the fixture's failure never repeats on retry — deterministic).
+        obs.update((cur) =>
+            cur.map((m) => (m.id === eventId ? { ...m, status: "sending" as const } : m)),
+        );
+        setTimeout(() => {
+            obs.update((cur) =>
+                cur.map((m) => (m.id === eventId ? { ...m, status: "sent" as const } : m)),
+            );
+        }, 300);
+    }
 }
 
 export function createFakeChatClient(options: FakeOptions = {}): ChatClient {

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { MatrixClient } from "matrix-js-sdk";
 
 import { sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
-import { sendTextMessage } from "../src/rooms/send.ts";
+import { retryTextMessage, sendTextMessage } from "../src/rooms/send.ts";
+import { createFakeChatClient } from "../src/fake/index.ts";
 
 interface StubEvent {
     getStateKey(): string | undefined;
@@ -218,5 +219,65 @@ describe("sendTextMessage", () => {
             },
         } as unknown as MatrixClient;
         await assert.rejects(() => sendTextMessage(matrix, "!r:x", "nope"), /M_FORBIDDEN/);
+    });
+});
+
+describe("retryTextMessage", () => {
+    it("re-sends the pending echo via resendEvent(event, room)", async () => {
+        const event = { getId: () => "$failed:x" };
+        const room = { getPendingEvents: () => [event] };
+        const resends: unknown[][] = [];
+        const matrix = {
+            getRoom: (id: string) => (id === "!r:x" ? room : null),
+            resendEvent: (...args: unknown[]) => {
+                resends.push(args);
+            },
+        } as unknown as MatrixClient;
+        await retryTextMessage(matrix, "!r:x", "$failed:x");
+        assert.equal(resends.length, 1, "resendEvent called exactly once");
+        assert.equal(resends[0]?.[0], event, "the failed event is re-sent");
+        assert.equal(resends[0]?.[1], room, "the room is passed through");
+    });
+
+    it("rejects when the room is unknown", async () => {
+        const matrix = { getRoom: () => null } as unknown as MatrixClient;
+        await assert.rejects(() => retryTextMessage(matrix, "!gone:x", "$e:x"), /No such room/);
+    });
+
+    it("rejects when the event is not a pending echo", async () => {
+        const matrix = {
+            getRoom: () => ({ getPendingEvents: () => [] }),
+        } as unknown as MatrixClient;
+        await assert.rejects(() => retryTextMessage(matrix, "!r:x", "$e:x"), /No failed event/);
+    });
+});
+
+describe("fake client retry", () => {
+    it("flips a failed fixture message back to sending → sent", async () => {
+        const client = createFakeChatClient();
+        const room = client.rooms.get().find((r) => {
+            const timeline = client.timeline(r.id).get();
+            return timeline.some((m) => m.status === "failed");
+        });
+        assert.ok(room, "fixture must ship at least one failed message");
+        const failed = client.timeline(room.id).get().find((m) => m.status === "failed");
+        assert.ok(failed, "the failed message is found");
+        await client.retry(room.id, failed.id);
+        const inFlight = client.timeline(room.id).get().find((m) => m.id === failed.id);
+        assert.equal(inFlight?.status, "sending", "retry republishes SENDING immediately");
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const settled = client.timeline(room.id).get().find((m) => m.id === failed.id);
+        assert.equal(settled?.status, "sent", "the fixture settles SENT on retry");
+    });
+
+    it("is a no-op for messages that are not failed", async () => {
+        const client = createFakeChatClient();
+        // Spaces have no timeline; pick a real room.
+        const room = client.rooms.get().find((r) => !r.isSpace);
+        assert.ok(room, "fixture has a non-space room");
+        const sent = client.timeline(room.id).get().find((m) => m.status === "sent");
+        assert.ok(sent, "fixture has a sent message");
+        await client.retry(room.id, sent.id);
+        assert.equal(client.timeline(room.id).get().find((m) => m.id === sent.id)?.status, "sent");
     });
 });

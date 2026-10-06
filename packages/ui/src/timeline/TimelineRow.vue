@@ -20,6 +20,8 @@ const props = defineProps<{
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
     /** Redact (delete) this message; absent while the client can't redact. */
     onRedactMessage?: ((targetEventId: string) => void) | undefined;
+    /** Retry a failed send; absent while the client can't retry. */
+    onRetrySend?: ((eventId: string) => void) | undefined;
     /** Open a thread on this message. */
     onOpenThread?: ((rootEventId: string) => void) | undefined;
     /** Start an inline reply to this message. */
@@ -131,6 +133,15 @@ function cancelEdit(): void {
                 <span v-else-if="message.status === 'failed'" class="tumult-row-flag tumult-row-flag-failed">
                     not sent
                 </span>
+                <button
+                    v-if="message.status === 'failed' && onRetrySend"
+                    type="button"
+                    class="tumult-row-flag tumult-row-flag-retry"
+                    aria-label="Try sending again"
+                    @click="onRetrySend(message.id)"
+                >
+                    try again
+                </button>
                 <span v-if="message.edited" class="tumult-row-flag" title="Edited">(edited)</span>
             </div>
             <!-- Quote sits above the body; gated to decrypted rows like the renderer. -->
@@ -309,6 +320,21 @@ function cancelEdit(): void {
 }
 .tumult-row-flag-failed {
     color: var(--danger);
+}
+.tumult-row-flag-retry {
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.tumult-row-flag-retry:hover {
+    color: var(--danger);
+}
+.tumult-row-flag-retry:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm, 3px);
 }
 .tumult-row-edit,
 .tumult-row-delete {

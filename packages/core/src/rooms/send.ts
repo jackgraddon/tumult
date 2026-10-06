@@ -59,3 +59,26 @@ export async function sendTextMessage(
     } as RoomMessageEventContent;
     await matrix.sendMessage(roomId, content);
 }
+
+/**
+ * Retry a failed plaintext send. The failed send is a pending event the SDK
+ * left in `NOT_SENT` after its scheduler gave up — `resendEvent` re-sends that
+ * event directly, and its content (body, reply relation, mention) is already
+ * correct. The SDK's own backoff scheduler then retries it again, so this
+ * respects the SDK's cycle instead of duplicating a send. The echo transition
+ * (SENDING → SENT/failed) republishes through the feed.
+ */
+export function retryTextMessage(
+    matrix: MatrixClient,
+    roomId: string,
+    eventId: string,
+): Promise<void> {
+    const room = matrix.getRoom(roomId);
+    if (!room) return Promise.reject(new Error(`No such room ${roomId}`));
+    const failed = room.getPendingEvents().find((e) => e.getId() === eventId);
+    if (!failed) return Promise.reject(new Error(`No failed event ${eventId}`));
+    // `resendEvent` returns void in SDK v43 — the echo transition (SENDING →
+    // SENT/failed) republishes through the feed, not this promise.
+    matrix.resendEvent(failed, room);
+    return Promise.resolve();
+}

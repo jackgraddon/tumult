@@ -40,7 +40,7 @@ import { Observable } from "./observable.ts";
 import { querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
-import { sendTextMessage } from "./rooms/send.ts";
+import { sendTextMessage, retryTextMessage } from "./rooms/send.ts";
 import { sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
@@ -563,6 +563,19 @@ export class MatrixChatClient implements ChatClient {
         // `sending` by the feed) and replaces it with the server echo on ack.
         // Throws on failure; the echo flips to `failed` in-timeline.
         await sendTextMessage(client, roomId, body, replyToEventId);
+    }
+
+    /**
+     * Retry a previously failed send. `roomId` and `eventId` locate the
+     * pending event the SDK left in `NOT_SENT`; the SDK re-sends it (and its
+     * embedded body/relation), republishing on the SENDING→SENT/failed
+     * transition. Resolves once the network request settled — not on a
+     * subsequent failure, which the map still surfaces.
+     */
+    public async retry(roomId: string, eventId: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot retry before start()");
+        await retryTextMessage(client, roomId, eventId);
     }
 
     public async sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void> {

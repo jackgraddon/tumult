@@ -410,6 +410,12 @@ export interface ChatClient {
      */
     send(roomId: string, body: string, replyToEventId?: string): Promise<void>;
     /**
+     * Retry a failed send — the pending event the SDK left in `NOT_SENT`.
+     * Resolves once the re-sent request settles; the map still surfaces a
+     * subsequent failure through the `failed` status.
+     */
+    retry(roomId: string, eventId: string): Promise<void>;
+    /**
      * Upload and send a media file (image, video, audio, or generic file).
      *
      * The file is uploaded to the homeserver first, then an `m.room.message`
