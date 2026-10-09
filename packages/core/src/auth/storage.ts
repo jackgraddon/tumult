@@ -62,8 +62,12 @@ export class AuthStorage {
         this.store.setItem(SESSION_KEY, JSON.stringify(session));
     }
 
-    public clearSession(): void {
-        this.store.removeItem(SESSION_KEY);
+    public getItem<T>(key: string): T | null {
+        return this.read<T>(key);
+    }
+
+    public setItem<T>(key: string, value: T): void {
+        this.store.setItem(key, JSON.stringify(value));
     }
 
     /**

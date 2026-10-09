@@ -27,15 +27,23 @@ export class PresencePoller {
     private readonly matrix: MatrixClient;
     private readonly feed: (presence: Array<PresenceInput>) => void;
     private readonly tickMs: number;
+    /** Optional callback to prioritize specific users (e.g. those in visible rooms). */
+    private readonly getPriorityUserIds?: () => string[];
     private readonly pollers = new Map<string, Promise<void>>();
     private timer: ReturnType<typeof setTimeout> | undefined;
     private stopped = false;
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
-    public constructor(matrix: MatrixClient, feed: (presence: Array<PresenceInput>) => void, tickMs = TICK_MS) {
+    public constructor(
+        matrix: MatrixClient,
+        feed: (presence: Array<PresenceInput>) => void,
+        tickMs = TICK_MS,
+        getPriorityUserIds?: () => string[],
+    ) {
         this.matrix = matrix;
         this.feed = feed;
         this.tickMs = tickMs;
+        this.getPriorityUserIds = getPriorityUserIds;
     }
 
     public start(): void {
@@ -68,8 +76,17 @@ export class PresencePoller {
     }
 
     public tick(): void {
-        for (const member of this.allMembers()) {
-            void this.poll(member.userId);
+        const priorityIds = this.getPriorityUserIds?.();
+        if (priorityIds) {
+            // High priority poll: only poll priority users
+            for (const userId of priorityIds) {
+                void this.poll(userId);
+            }
+        } else {
+            // Regular poll: poll everyone
+            for (const member of this.allMembers()) {
+                void this.poll(member.userId);
+            }
         }
     }
 

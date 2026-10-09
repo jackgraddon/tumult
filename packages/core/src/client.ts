@@ -173,6 +173,14 @@ export class MatrixChatClient implements ChatClient {
     private _unread: UnreadTracker | null = null;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
+    /** Simplified Sliding Sync instance. */
+    private _slidingSync: any | null = null;
+    /** Simplified Sliding Sync range manager. */
+    private _rangeManager: any | null = null;
+    /** Simplified Sliding Sync instance. */
+    private _slidingSync: any | null = null;
+    /** Simplified Sliding Sync range manager. */
+    private _rangeManager: any | null = null;
     /**
      * Pasted recovery key, held ONLY for the duration of a restoreBackup()
      * call so the SDK's secret-storage requests can use it. Cleared in a
@@ -330,6 +338,13 @@ export class MatrixChatClient implements ChatClient {
                 //
                 // Timelines self-drive off the same loop inside TimelineFeed.
                 this.refreshRooms();
+
+                if (this.activeSyncMode === "sliding" && this._rangeManager) {
+                    const end = this._rangeManager.currentEnd;
+                    if (end !== -1) {
+                        this.storage.setItem("lastSssEnd", end);
+                    }
+                }
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -420,7 +435,33 @@ export class MatrixChatClient implements ChatClient {
                 (this.syncModeOption === "classic" ? false : await detectSlidingSync(client))
                     ? buildSlidingSync(client)
                     : null;
+            
+            if (slidingSync) {
+                this._slidingSync = slidingSync.sync;
+                this._rangeManager = slidingSync.manager;
+                
+                const lastEnd = this.storage.getItem<number>("lastSssEnd");
+                if (lastEnd !== undefined && lastEnd !== null) {
+                    this._rangeManager.addRange("initial", 0, lastEnd);
+                } else {
+                    this._rangeManager.addRange("initial", 0, 999);
+                }
+            }
+
             this.activeSyncMode = slidingSync ? "sliding" : "classic";
+            
+            if (slidingSync) {
+                this._slidingSync = slidingSync.sync;
+                this._rangeManager = slidingSync.manager;
+                
+                const lastEnd = this.storage.getItem<number>("lastSssEnd");
+                if (lastEnd !== undefined && lastEnd !== null) {
+                    this._rangeManager.addRange("initial", 0, lastEnd);
+                } else {
+                    this._rangeManager.addRange("initial", 0, 999);
+                }
+            }
+
             await client.startClient({
                 threadSupport: true,
                 lazyLoadMembers: true,
@@ -511,6 +552,7 @@ export class MatrixChatClient implements ChatClient {
         await this.stop();
 
         if (session) {
+            this.storage.removeItem("lastSssEnd");
             try {
                 await this.login_.revoke(session);
             } catch (error) {

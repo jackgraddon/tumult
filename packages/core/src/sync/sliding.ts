@@ -1,5 +1,6 @@
 import type { MatrixClient } from "matrix-js-sdk";
 import { MSC3575_STATE_KEY_ME, MSC3575_WILDCARD, SlidingSync } from "matrix-js-sdk/lib/sliding-sync.js";
+import { SlidingSyncRangeManager, type SlidingSyncRangeConfig } from "./range-manager.js";
 
 /**
  * Simplified Sliding Sync (MSC4186) — the sync mode this client prefers
@@ -22,7 +23,7 @@ import { MSC3575_STATE_KEY_ME, MSC3575_WILDCARD, SlidingSync } from "matrix-js-s
 export type SyncModeOption = "auto" | "classic" | "sliding";
 
 /** The sync loop actually running after detection/override. */
-export type ActiveSyncMode = "classic" | "sliding";
+export type { SlidingSync, SlidingSyncRangeManager };
 
 const SSS_FEATURE = "org.matrix.simplified_msc3575";
 
@@ -72,22 +73,23 @@ export async function detectSlidingSync(client: MatrixClient): Promise<boolean> 
  * the first sync is no heavier than the loop it replaces; `loadMore()` walks
  * the rest via `prev_batch`.
  */
-export function buildSlidingSync(client: MatrixClient): SlidingSync {
-    return new SlidingSync(
+export function buildSlidingSync(client: MatrixClient): { sync: SlidingSync; manager: SlidingSyncRangeManager } {
+    const baseConfig: Required<SlidingSyncRangeConfig> = {
+        timeline_limit: 20,
+        required_state: REQUIRED_STATE,
+        filters: {},
+        ranges: [],
+    };
+
+    const manager = new SlidingSyncRangeManager(client, baseConfig);
+
+    const sync = new SlidingSync(
         client.baseUrl,
-        new Map([
-            [
-                "all",
-                {
-                    ranges: [[0, 999]],
-                    timeline_limit: 20,
-                    required_state: REQUIRED_STATE,
-                    filters: {},
-                },
-            ],
-        ]),
-        { required_state: REQUIRED_STATE, timeline_limit: 20 },
+        manager.syncMap,
+        baseConfig,
         client,
         30_000,
     );
+
+    return { sync, manager };
 }

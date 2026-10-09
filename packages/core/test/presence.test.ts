@@ -112,12 +112,16 @@ describe("PresencePoller", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
     })
 
-    it("detach_all stops the scheduler and clears in-flight polls", () => {
+    it("only polls priority users when getPriorityUserIds is provided", async () => {
         const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
-        const m = matrixWith([room("!a", [alice])])
-        const poller = new PresencePoller(m, () => { }, 20)
-        poller.start()
-        poller.detachAll()
-        assert.equal(true, true)
+        const bob = { userId: "@bob:localhost", membership: "join" } as unknown as RoomMember
+        const m = matrixWith([room("!a", [alice, bob])])
+        const feed: Array<PresenceInput> = []
+        // Only prioritize Alice
+        const poller = new PresencePoller(m, (p) => { feed.push(...p) }, 30000, () => ["@alice:localhost"])
+        poller.tick()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        const ids = feed.map((x) => x.userId)
+        assert.deepEqual(ids, ["@alice:localhost"], "only priority user was polled")
     })
 })

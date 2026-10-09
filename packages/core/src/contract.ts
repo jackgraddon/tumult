@@ -510,7 +510,16 @@ export interface ChatClient {
      * when the event is older than the bound or gone (redacted-and-purged,
      * never-joined history) — callers must not scroll on `false`.
      */
-    jumpTo(roomId: string, eventId: string): Promise<boolean>;
+    /**
+     * Set the currently selected room.
+     */
+    setRoomSelection(roomId: string | null): void;
+    /**
+     * Load the next block of rooms in the ring (paginating the room list).
+     * Resolves `false` if no more rooms exist to load.
+     */
+    loadMoreRooms(): Promise<boolean>;
+
     /**
      * Create a top-level space (renders as a guild on the rail). Resolves to
      * the new room id once the server has it; it lands in `rooms` on a later
@@ -602,6 +611,11 @@ export interface ChatClient {
     confirmSas(id: string): Promise<void>;
     /** Report the SAS does not match (cancels with m.mismatched_sas). */
     mismatchSas(id: string): Promise<void>;
+    /**
+     * Load the next block of rooms in the ring (paginating the room list).
+     * Resolves `false` if no more rooms exist to load.
+     */
+    loadMoreRooms(): Promise<boolean>;
     /** This account's devices with verification status, current device first. */
     listDevices(): Promise<DeviceView[]>;
 }
