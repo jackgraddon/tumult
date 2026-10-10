@@ -3,9 +3,16 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import type { RoomSummary } from "@tumult/core";
 
 import RoomListItem from "./RoomListItem.vue";
+import LoadMoreRooms from "./LoadMoreRooms.vue";
 
 defineProps<{
     rooms: readonly RoomSummary[];
+    /** Sliding-sync window still has rooms behind it. */
+    hasMore: boolean;
+}>();
+
+const emit = defineEmits<{
+    loadMore: [];
 }>();
 
 const DMS_SELECTION = { view: "dms" as const };
@@ -17,6 +24,7 @@ const DMS_SELECTION = { view: "dms" as const };
             <ul class="tumult-dmlist">
                 <RoomListItem v-for="room in rooms" :key="room.id" :room="room" :selection="DMS_SELECTION" />
             </ul>
+            <LoadMoreRooms :has-more="hasMore" @load-more="emit('loadMore')" />
         </ScrollAreaViewport>
         <ScrollAreaScrollbar orientation="vertical" class="tumult-scrollbar">
             <ScrollAreaThumb class="tumult-scrollthumb" />

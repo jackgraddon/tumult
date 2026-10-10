@@ -585,6 +585,13 @@ chat client should be.
     members poll EVERY tick, everyone else on a slow cadence (every 5th tick)
     after a warm-up tick that polls everyone — previously the WIP never polled
     non-priority users at all.
+  - Trackers are gated on the resolved mode: `UnreadTracker` + `PresencePoller`
+    are built only under sliding sync, with the mode resolved BEFORE they are
+    constructed (`activeSyncMode` is what the gating reads). Under classic
+    `/sync` the SDK already ships exact unread counts with highlights and
+    sync-carried presence; running the fallbacks there would override server
+    truth with a timeline lower bound (and `highlight: 0`) and fire redundant
+    presence REST polls.
   - Contract: `setRoomSelection` + `loadMoreRooms` + `hasMoreRooms` (window
     still has rooms behind it, from SSS `joinedCount`; false under classic and
     the fake) added, with fake parity. A shared `LoadMoreRooms` button renders

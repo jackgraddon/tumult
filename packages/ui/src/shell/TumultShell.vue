@@ -15,7 +15,6 @@ import ConnectionBanner from "./ConnectionBanner.vue";
 import GuildRail from "../rail/GuildRail.vue";
 import RoomListPane from "../roomlist/RoomListPane.vue";
 import DmList from "../roomlist/DmList.vue";
-import LoadMoreRooms from "../roomlist/LoadMoreRooms.vue";
 import TimelinePane from "../timeline/TimelinePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
@@ -363,8 +362,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                                 <span aria-hidden="true">＋</span>
                             </IconButton>
                         </header>
-                        <DmList :rooms="tree.orphans" />
-                        <LoadMoreRooms :has-more="moreRooms" @load-more="loadMoreRooms" />
+                        <DmList :rooms="tree.orphans" :has-more="moreRooms" @load-more="loadMoreRooms" />
                     </div>
                 </div>
                 <div class="tumult-pane tumult-pane-timeline">

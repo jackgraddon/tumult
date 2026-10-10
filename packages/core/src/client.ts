@@ -383,18 +383,30 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._members = new MembersTracker(client);
-            this._unread = new UnreadTracker(client, () => this.refreshRooms());
-            // SSS carries no presence; the poller is the only source and hands
-            // each value straight to the members tracker. The open room's
-            // members are polled every tick — the roster on screen stays live —
-            // while everyone else refreshes on a slower cadence.
-            this._presence = new PresencePoller(
-                client,
-                (presence) => this._members?.applyPollPresence(presence),
-                undefined,
-                () => this.priorityPresenceIds(),
-            );
-            this._presence.start();
+            // `slidingSync` is a START option that selects the sync loop: the
+            // SDK swaps to SlidingSyncSdk only when the instance is passed to
+            // startClient() below. Resolve the mode HERE, before the trackers:
+            // unread counts and presence work differently under each loop, and
+            // only sliding sync needs the client-side fallbacks (Synapse
+            // hardcodes SSS unread counts to 0, and SSS carries no presence at
+            // all). Under classic /sync the SDK reports exact server counts and
+            // sync-carried presence instead.
+            const slidingSupported = this.syncModeOption !== "classic" && (await detectSlidingSync(client));
+            this.activeSyncMode = slidingSupported ? "sliding" : "classic";
+            const sliding = slidingSupported ? buildSlidingSync(client, this.sssWindowStore()) : null;
+            if (sliding) {
+                this._unread = new UnreadTracker(client, () => this.refreshRooms());
+                // The open room's members are polled every tick — the roster on
+                // screen stays live — while everyone else refreshes on a slower
+                // cadence after a warm-up tick.
+                this._presence = new PresencePoller(
+                    client,
+                    (presence) => this._members?.applyPollPresence(presence),
+                    undefined,
+                    () => this.priorityPresenceIds(),
+                );
+                this._presence.start();
+            }
             // Profile is a plain HTTP read, independent of the sync loop:
             // seed the feed now rather than waiting for the first batch. A
             // failure publishes the localpart fallback (below) instead.
@@ -428,17 +440,10 @@ export class MatrixChatClient implements ChatClient {
             // partial until loadMembers() fetches the full list, which is why
             // MembersTracker never claims a partial snapshot is complete.
             //
-            // `slidingSync` is a START option too, and the one that selects the
-            // sync loop: the SDK swaps to SlidingSyncSdk only when the instance
-            // is passed here. `syncMode` resolves to a concrete loop (detecting
-            // MSC4186 unless forced classic) so the trackers below know which
-            // sync-driven features need a fallback (presence, unread counts).
-            const sliding =
-                this.syncModeOption === "classic" || !(await detectSlidingSync(client))
-                    ? null
-                    : buildSlidingSync(client, this.sssWindowStore());
-
-            this.activeSyncMode = sliding ? "sliding" : "classic";
+            // The mode was resolved above the trackers; here the built list
+            // and any selection made before the loop take effect for the first
+            // request (setListRanges / modifyRoomSubscriptions are non-sticky
+            // and safe pre-start).
             if (sliding) {
                 this._slidingSync = sliding.sync;
                 this._rangeManager = sliding.manager;
@@ -983,7 +988,9 @@ export class MatrixChatClient implements ChatClient {
         if (!client) return;
         try {
             // Sliding sync sends no unread counts (Synapse hardcodes them to 0),
-            // so the tracker recomputes them here, before the snapshot reads them.
+            // so in that mode the tracker recomputes them here, before the
+            // snapshot reads them. Classic /sync supplies exact server counts
+            // and highlights, so there is no tracker to run.
             this._unread?.update();
             const next = snapshotRooms(
                 client,
