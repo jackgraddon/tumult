@@ -1,4 +1,5 @@
 import { type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
+import { ReceiptType } from "matrix-js-sdk/lib/@types/read_receipts.js";
 
 /**
  * Client-side unread counts for Simplified Sliding Sync.
@@ -50,8 +51,8 @@ function isUnreadType(event: MatrixEvent): boolean {
 interface ReadPositions {
     /** The `m.fully_read` account-data event id, or `null`. */
     markerId: string | null;
-    /** The user's latest server-confirmed read receipt event id, or `null`. */
-    receiptId: string | null;
+    /** Real (server-confirmed) read-receipt event ids: public and private. */
+    receiptIds: string[];
 }
 
 function readPositions(room: Room, selfId: string | null): ReadPositions {
@@ -65,22 +66,29 @@ function readPositions(room: Room, selfId: string | null): ReadPositions {
 
     // `getEventReadUpTo` returns null when the receipt points at an event that
     // isn't loaded yet — but we still want the id so a backfill has something
-    // to hunt for, so read the raw receipt. Synthesized receipts (the SDK's
-    // implicit ones for events we sent) are ignored: the server-confirmed
-    // receipt is the read-receipt truth.
-    let receiptId: string | null = null;
-    try {
-        receiptId = selfId ? room.getReadReceiptForUserId(selfId, true)?.eventId ?? null : null;
-    } catch {
-        receiptId = null;
+    // to hunt for, so read the raw receipt. Both receipt types count: a user
+    // with private read receipts (`m.read.private`, a common privacy setting)
+    // has no public receipt at all, and the server's own count honours the
+    // private one. Synthesized receipts (the SDK's implicit ones for events we
+    // sent) are ignored: the server-confirmed receipt is the truth.
+    const receiptIds: string[] = [];
+    if (selfId) {
+        for (const type of [ReceiptType.Read, ReceiptType.ReadPrivate]) {
+            try {
+                const id = room.getReadReceiptForUserId(selfId, true, type)?.eventId;
+                if (id && !receiptIds.includes(id)) receiptIds.push(id);
+            } catch {
+                // A throwing accessor must not take down the whole snapshot.
+            }
+        }
     }
-    return { markerId, receiptId };
+    return { markerId, receiptIds };
 }
 
 /** The newest read position that is actually loaded, or -1 when none is. */
 function latestLoadedReadIndex(timeline: MatrixEvent[], read: ReadPositions): number {
     let index = -1;
-    for (const id of [read.markerId, read.receiptId]) {
+    for (const id of [read.markerId, ...read.receiptIds]) {
         if (!id) continue;
         const found = timeline.findIndex((e) => e.getId() === id);
         if (found > index) index = found;
@@ -90,7 +98,7 @@ function latestLoadedReadIndex(timeline: MatrixEvent[], read: ReadPositions): nu
 
 /** Re-arm key for the backfill: re-run when either read position moves. */
 function readKey(read: ReadPositions): string {
-    return `${read.markerId ?? ""}\u0000${read.receiptId ?? ""}`;
+    return `${read.markerId ?? ""}\u0000${read.receiptIds.join(",")}`;
 }
 
 export class UnreadTracker {
@@ -142,7 +150,7 @@ export class UnreadTracker {
         // exact. A room with NO read position at all was never read — the
         // whole window is genuinely unread and there is nothing to page to.
         const key = readKey(read);
-        const positionsKnown = read.markerId !== null || read.receiptId !== null;
+        const positionsKnown = read.markerId !== null || read.receiptIds.length > 0;
         if (
             positionsKnown &&
             readIndex < 0 &&

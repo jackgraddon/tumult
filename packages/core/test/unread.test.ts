@@ -28,6 +28,8 @@ interface StubRoomOpts {
     history?: StubEvent[];
     fullyRead?: string;
     receipt?: string | null;
+    /** Private read receipt (`m.read.private`), returned for that type only. */
+    privateReceipt?: string | null;
 }
 
 function stubRoom(o: StubRoomOpts): Room {
@@ -43,7 +45,10 @@ function stubRoom(o: StubRoomOpts): Room {
             type === "m.fully_read" && o.fullyRead
                 ? { getContent: () => ({ event_id: o.fullyRead }) }
                 : undefined,
-        getReadReceiptForUserId: () => (o.receipt ? { eventId: o.receipt, data: null } : null),
+        getReadReceiptForUserId: (_userId: string, _ignore: boolean, type?: string) => {
+            const id = type === "m.read.private" ? o.privateReceipt : o.receipt;
+            return id ? { eventId: id, data: null } : null;
+        },
     } as unknown as Room;
 }
 
@@ -112,6 +117,19 @@ describe("UnreadTracker", () => {
             roomId: "!a:x",
             events: [ev("$t1"), ev("$t2"), ev("$t3", "m.room.message", SELF), ev("$t5")],
             receipt: "$t2",
+        });
+        const tracker = makeTracker(stubClient([room]), []);
+        tracker.update();
+        assert.equal(tracker.getUnread("!a:x").total, 1); // $t5
+    });
+
+    it("uses a private read receipt when the public one is absent", () => {
+        // `m.read.private` (a common privacy setting) leaves no public receipt;
+        // the server's own count honours it, so we must too.
+        const room = stubRoom({
+            roomId: "!a:x",
+            events: [ev("$t1"), ev("$t2"), ev("$t3", "m.room.message", SELF), ev("$t5")],
+            privateReceipt: "$t2",
         });
         const tracker = makeTracker(stubClient([room]), []);
         tracker.update();
