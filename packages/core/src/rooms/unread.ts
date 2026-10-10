@@ -9,10 +9,14 @@ import { type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
  * Classic `/sync` computes them server-side, so this tracker exists only for
  * the sliding-sync mode; classic rooms keep using `room.getUnreadNotificationCount`.
  *
- * The count is message-like events from other users after the read marker
- * (`m.fully_read`). When the marker predates the loaded timeline window the
- * count is a lower bound, so a one-time backfill paginates history back to the
- * marker (capped) to make it exact. The backfill reuses `paginateEventTimeline`,
+ * The count is message-like events from other users after the read position —
+ * the later of the `m.fully_read` marker and the user's read receipt. The
+ * receipt half is load-bearing: older clients and rooms read before
+ * `m.fully_read` gained adoption only ever send a receipt, so a missing marker
+ * must not turn the whole loaded window "unread" (the exact bug that made old,
+ * read rooms light up). When the position predates the loaded timeline window
+ * the count is a lower bound, so a one-time backfill paginates history back to
+ * it (capped) to make it exact. The backfill reuses `paginateEventTimeline`,
  * so the scanned events join the room timeline — they are the unread messages,
  * and the render-side `TIMELINE_CAP` bounds what the feed shows.
  *
@@ -42,14 +46,51 @@ function isUnreadType(event: MatrixEvent): boolean {
     return UNREAD_TYPES.has(event.getType());
 }
 
-/** The `m.fully_read` event id, or `null` when this room has never been read. */
-function readMarkerEventId(room: Room): string | null {
+/** Where the user last read this room, from every signal we have. */
+interface ReadPositions {
+    /** The `m.fully_read` account-data event id, or `null`. */
+    markerId: string | null;
+    /** The user's latest server-confirmed read receipt event id, or `null`. */
+    receiptId: string | null;
+}
+
+function readPositions(room: Room, selfId: string | null): ReadPositions {
+    let markerId: string | null = null;
     try {
         const eventId = room.getAccountData(READ_MARKER)?.getContent()?.["event_id"];
-        return typeof eventId === "string" && eventId.length > 0 ? eventId : null;
+        markerId = typeof eventId === "string" && eventId.length > 0 ? eventId : null;
     } catch {
-        return null;
+        markerId = null;
     }
+
+    // `getEventReadUpTo` returns null when the receipt points at an event that
+    // isn't loaded yet — but we still want the id so a backfill has something
+    // to hunt for, so read the raw receipt. Synthesized receipts (the SDK's
+    // implicit ones for events we sent) are ignored: the server-confirmed
+    // receipt is the read-receipt truth.
+    let receiptId: string | null = null;
+    try {
+        receiptId = selfId ? room.getReadReceiptForUserId(selfId, true)?.eventId ?? null : null;
+    } catch {
+        receiptId = null;
+    }
+    return { markerId, receiptId };
+}
+
+/** The newest read position that is actually loaded, or -1 when none is. */
+function latestLoadedReadIndex(timeline: MatrixEvent[], read: ReadPositions): number {
+    let index = -1;
+    for (const id of [read.markerId, read.receiptId]) {
+        if (!id) continue;
+        const found = timeline.findIndex((e) => e.getId() === id);
+        if (found > index) index = found;
+    }
+    return index;
+}
+
+/** Re-arm key for the backfill: re-run when either read position moves. */
+function readKey(read: ReadPositions): string {
+    return `${read.markerId ?? ""}\u0000${read.receiptId ?? ""}`;
 }
 
 export class UnreadTracker {
@@ -58,8 +99,8 @@ export class UnreadTracker {
     private readonly onCounts: () => void;
     private readonly counts = new Map<string, UnreadCounts>();
     private readonly backfilling = new Set<string>();
-    /** Marker each room's backfill ran for — a new marker re-arms it. */
-    private readonly backfilledMarkers = new Map<string, string>();
+    /** Read position each room's backfill ran for — a moved position re-arms it. */
+    private readonly backfilledRead = new Map<string, string>();
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
     public constructor(matrix: MatrixClient, onCounts: () => void) {
@@ -81,11 +122,11 @@ export class UnreadTracker {
 
     private recompute(room: Room): void {
         const selfId = this.matrix.getUserId();
-        const marker = readMarkerEventId(room);
+        const read = readPositions(room, selfId);
         const timeline = room.getLiveTimeline().getEvents();
-        const markerIndex = marker ? timeline.findIndex((e) => e.getId() === marker) : -1;
+        const readIndex = latestLoadedReadIndex(timeline, read);
         let count = 0;
-        for (let i = markerIndex + 1; i < timeline.length; i++) {
+        for (let i = readIndex + 1; i < timeline.length; i++) {
             const event = timeline[i];
             if (!event) continue;
             if (event.getSender() === selfId) continue;
@@ -96,35 +137,45 @@ export class UnreadTracker {
             this.counts.set(room.roomId, { total: count, highlight: 0 });
             this.onCounts();
         }
-        // Marker predates the window → lower bound. Backfill once per marker.
+        // A read position that predates the loaded window leaves the count a
+        // lower bound. Backfill once per position so the next recompute is
+        // exact. A room with NO read position at all was never read — the
+        // whole window is genuinely unread and there is nothing to page to.
+        const key = readKey(read);
+        const positionsKnown = read.markerId !== null || read.receiptId !== null;
         if (
-            marker &&
-            markerIndex < 0 &&
-            this.backfilledMarkers.get(room.roomId) !== marker &&
+            positionsKnown &&
+            readIndex < 0 &&
+            this.backfilledRead.get(room.roomId) !== key &&
             !this.backfilling.has(room.roomId)
         ) {
-            void this.backfill(room, marker);
+            void this.backfill(room, read).catch(() => {
+                // Best-effort: the lower bound stays until the position lands
+                // in the window some other way.
+            });
         }
     }
 
     /**
-     * Paginate history back to the read marker so the next recompute is exact.
-     * Capped: a room whose marker is older than the cap keeps the lower bound
-     * until the user reads it (which moves the marker into the window).
+     * Paginate history back to a known read position so the next recompute is
+     * exact. Capped: a room whose position is older than the cap keeps the
+     * lower bound until the user reads it (which moves the position into the
+     * window). Never rejects — failures just leave the lower bound in place.
      */
-    private async backfill(room: Room, marker: string): Promise<void> {
+    private async backfill(room: Room, read: ReadPositions): Promise<void> {
+        const key = readKey(read);
         this.backfilling.add(room.roomId);
         try {
             for (let page = 0; page < BACKFILL_PAGES; page++) {
                 const timeline = room.getLiveTimeline().getEvents();
-                if (timeline.some((e) => e.getId() === marker)) break;
+                if (latestLoadedReadIndex(timeline, read) >= 0) break;
                 const more = await this.matrix.paginateEventTimeline(room.getLiveTimeline(), {
                     backwards: true,
                     limit: BACKFILL_PAGE_SIZE,
                 });
                 if (!more) break;
             }
-            this.backfilledMarkers.set(room.roomId, marker);
+            this.backfilledRead.set(room.roomId, key);
             this.recompute(room);
         } finally {
             this.backfilling.delete(room.roomId);
