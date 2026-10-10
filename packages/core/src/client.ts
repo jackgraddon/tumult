@@ -3,6 +3,7 @@ import {
     createClient,
     HttpApiEvent,
     IndexedDBStore,
+    NotificationCountType,
     SyncState,
     type MatrixClient,
     type SyncStateData,
@@ -1056,6 +1057,37 @@ export class MatrixChatClient implements ChatClient {
         } catch (error) {
             console.error("[tumult] room snapshot failed", error);
         }
+    }
+
+    /**
+     * Dev diagnostics: the raw read-position state behind each joined room's
+     * unread badge, so a wrong count can be explained instead of guessed at.
+     * Not part of the ChatClient contract — reachable through the concrete
+     * client, exposed by the web dev handle as `__tumult.client.debugUnread()`.
+     */
+    public debugUnread(): Array<Record<string, unknown>> {
+        const client = this.matrix;
+        if (!client) return [];
+        return client
+            .getRooms()
+            .filter((room) => room.getMyMembership() === "join")
+            .map((room) => ({
+                name: room.name,
+                roomId: room.roomId,
+                sdkUnread: room.getUnreadNotificationCount(),
+                threadUnread: room.hasThreadUnreadNotification(),
+                ...(this._unread
+                    ? this._unread.describe(room)
+                    : {
+                        total: room.getUnreadNotificationCount(),
+                        highlight: room.getUnreadNotificationCount(NotificationCountType.Highlight),
+                        markerId: null,
+                        receiptIds: [],
+                        readIndex: -1,
+                        window: room.getLiveTimeline().getEvents().length,
+                        tailId: null,
+                    }),
+            }));
     }
 
     private adoptSession(session: StoredSession): void {

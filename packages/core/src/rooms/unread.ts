@@ -128,6 +128,29 @@ export class UnreadTracker {
         return this.counts.get(roomId) ?? { total: 0, highlight: 0 };
     }
 
+    /**
+     * Dev diagnostics: every input behind a room's count, so a wrong badge can
+     * be explained instead of guessed at. Not part of the contract.
+     */
+    public describe(room: Room): UnreadCounts & {
+        markerId: string | null;
+        receiptIds: string[];
+        readIndex: number;
+        window: number;
+        tailId: string | null;
+    } {
+        const read = readPositions(room, this.matrix.getUserId());
+        const timeline = room.getLiveTimeline().getEvents();
+        return {
+            ...this.getUnread(room.roomId),
+            markerId: read.markerId,
+            receiptIds: read.receiptIds,
+            readIndex: latestLoadedReadIndex(timeline, read),
+            window: timeline.length,
+            tailId: timeline[timeline.length - 1]?.getId() ?? null,
+        };
+    }
+
     private recompute(room: Room): void {
         const selfId = this.matrix.getUserId();
         const read = readPositions(room, selfId);
