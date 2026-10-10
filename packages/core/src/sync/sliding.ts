@@ -1,15 +1,7 @@
 import type { MatrixClient } from "matrix-js-sdk";
-import {
-    MSC3575_STATE_KEY_ME,
-    MSC3575_WILDCARD,
-    SlidingSync,
-    type MSC3575List,
-} from "matrix-js-sdk/lib/sliding-sync.js";
-import {
-    SlidingSyncRangeManager,
-    SSS_LIST_KEY,
-    type SssWindowStore,
-} from "./range-manager.js";
+import { SlidingSync, type MSC3575List } from "matrix-js-sdk/lib/sliding-sync.js";
+import { SlidingSyncRangeManager, SSS_LIST_KEY, type SssWindowStore } from "./range-manager.js";
+import { REQUIRED_STATE } from "./requiredState.js";
 
 /**
  * Simplified Sliding Sync (MSC4186) — the sync mode this client prefers
@@ -37,30 +29,6 @@ export type ActiveSyncMode = "classic" | "sliding";
 export type { SlidingSync, SlidingSyncRangeManager, SssWindowStore };
 
 const SSS_FEATURE = "org.matrix.simplified_msc3575";
-
-/**
- * State every room in the window needs for the app to render it.
- *
- * `m.room.member` uses the wildcard because the pre-conformance draft has no
- * lazy-members flag (that is the final-MSC object form): without `*`, sender
- * displaynames and avatars don't resolve and the timeline shows raw mxids.
- * The cost is a full roster on each room's first sync; incremental syncs
- * then carry only membership deltas.
- */
-const REQUIRED_STATE: string[][] = [
-    ["m.room.name", ""],
-    ["m.room.topic", ""],
-    ["m.room.avatar", ""],
-    ["m.room.canonical_alias", ""],
-    ["m.room.encryption", ""],
-    ["m.room.create", ""],
-    ["m.room.power_levels", ""],
-    ["m.room.join_rules", ""],
-    ["m.space.child", ""],
-    ["m.room.parent", ""],
-    ["m.room.member", MSC3575_STATE_KEY_ME],
-    ["m.room.member", MSC3575_WILDCARD],
-];
 
 /**
  * Ask the homeserver whether it speaks MSC4186. Any failure (offline, weird
