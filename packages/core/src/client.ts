@@ -67,7 +67,7 @@ import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
-import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SyncModeOption } from "./sync/sliding.ts";
+import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
 
 export interface ChatClientOptions {
     /** Identity this app presents to the IdP during dynamic registration. */
@@ -138,6 +138,13 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
     });
 }
 
+/**
+ * Persisted sliding-sync room-window upper bound. Namespaced so it can't
+ * collide with the session or a pending login, and cleared on logout so the
+ * next account starts from the default window.
+ */
+const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
+
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -173,14 +180,12 @@ export class MatrixChatClient implements ChatClient {
     private _unread: UnreadTracker | null = null;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
-    /** Simplified Sliding Sync instance. */
-    private _slidingSync: any | null = null;
-    /** Simplified Sliding Sync range manager. */
-    private _rangeManager: any | null = null;
-    /** Simplified Sliding Sync instance. */
-    private _slidingSync: any | null = null;
-    /** Simplified Sliding Sync range manager. */
-    private _rangeManager: any | null = null;
+    /** Simplified Sliding Sync instance (sliding mode only). */
+    private _slidingSync: SlidingSync | null = null;
+    /** Sliding-sync room-window owner (sliding mode only). */
+    private _rangeManager: SlidingSyncRangeManager | null = null;
+    /** The room the UI is showing, fed by `setRoomSelection`. */
+    private _selectedRoomId: string | null = null;
     /**
      * Pasted recovery key, held ONLY for the duration of a restoreBackup()
      * call so the SDK's secret-storage requests can use it. Cleared in a
@@ -338,13 +343,6 @@ export class MatrixChatClient implements ChatClient {
                 //
                 // Timelines self-drive off the same loop inside TimelineFeed.
                 this.refreshRooms();
-
-                if (this.activeSyncMode === "sliding" && this._rangeManager) {
-                    const end = this._rangeManager.currentEnd;
-                    if (end !== -1) {
-                        this.storage.setItem("lastSssEnd", end);
-                    }
-                }
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -387,10 +385,14 @@ export class MatrixChatClient implements ChatClient {
             this._members = new MembersTracker(client);
             this._unread = new UnreadTracker(client, () => this.refreshRooms());
             // SSS carries no presence; the poller is the only source and hands
-            // each value straight to the members tracker.
+            // each value straight to the members tracker. The open room's
+            // members are polled every tick — the roster on screen stays live —
+            // while everyone else refreshes on a slower cadence.
             this._presence = new PresencePoller(
                 client,
                 (presence) => this._members?.applyPollPresence(presence),
+                undefined,
+                () => this.priorityPresenceIds(),
             );
             this._presence.start();
             // Profile is a plain HTTP read, independent of the sync loop:
@@ -431,41 +433,28 @@ export class MatrixChatClient implements ChatClient {
             // is passed here. `syncMode` resolves to a concrete loop (detecting
             // MSC4186 unless forced classic) so the trackers below know which
             // sync-driven features need a fallback (presence, unread counts).
-            const slidingSync =
-                (this.syncModeOption === "classic" ? false : await detectSlidingSync(client))
-                    ? buildSlidingSync(client)
-                    : null;
-            
-            if (slidingSync) {
-                this._slidingSync = slidingSync.sync;
-                this._rangeManager = slidingSync.manager;
-                
-                const lastEnd = this.storage.getItem<number>("lastSssEnd");
-                if (lastEnd !== undefined && lastEnd !== null) {
-                    this._rangeManager.addRange("initial", 0, lastEnd);
-                } else {
-                    this._rangeManager.addRange("initial", 0, 999);
-                }
-            }
+            const sliding =
+                this.syncModeOption === "classic" || !(await detectSlidingSync(client))
+                    ? null
+                    : buildSlidingSync(client, this.sssWindowStore());
 
-            this.activeSyncMode = slidingSync ? "sliding" : "classic";
-            
-            if (slidingSync) {
-                this._slidingSync = slidingSync.sync;
-                this._rangeManager = slidingSync.manager;
-                
-                const lastEnd = this.storage.getItem<number>("lastSssEnd");
-                if (lastEnd !== undefined && lastEnd !== null) {
-                    this._rangeManager.addRange("initial", 0, lastEnd);
-                } else {
-                    this._rangeManager.addRange("initial", 0, 999);
-                }
+            this.activeSyncMode = sliding ? "sliding" : "classic";
+            if (sliding) {
+                this._slidingSync = sliding.sync;
+                this._rangeManager = sliding.manager;
+                // Apply the restored (or default) window before the first
+                // request; setListRanges is non-sticky and safe pre-start.
+                sliding.manager.restoreWindow();
+                // The shell selects a room on mount, which can precede this
+                // loop; re-apply it so the open room is subscribed from the
+                // first request (modifyRoomSubscriptions is safe pre-start).
+                this.setRoomSelection(this._selectedRoomId);
             }
 
             await client.startClient({
                 threadSupport: true,
                 lazyLoadMembers: true,
-                ...(slidingSync ? { slidingSync } : {}),
+                ...(sliding ? { slidingSync: sliding.sync } : {}),
             });
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
@@ -492,6 +481,8 @@ export class MatrixChatClient implements ChatClient {
             this._media = null;
             this._notifications?.detachAll();
             this._notifications = null;
+            this._slidingSync = null;
+            this._rangeManager = null;
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -536,6 +527,9 @@ export class MatrixChatClient implements ChatClient {
         this.publishTyping();
         this.removeDecryptedHook?.();
         this.removeDecryptedHook = null;
+        this._slidingSync = null;
+        this._rangeManager = null;
+        this._selectedRoomId = null;
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
@@ -552,7 +546,7 @@ export class MatrixChatClient implements ChatClient {
         await this.stop();
 
         if (session) {
-            this.storage.removeItem("lastSssEnd");
+            this.storage.removeItem(SSS_WINDOW_KEY);
             try {
                 await this.login_.revoke(session);
             } catch (error) {
@@ -654,6 +648,34 @@ export class MatrixChatClient implements ChatClient {
         const timelines = this.timelines;
         if (!timelines) throw new Error("Cannot jump before start()");
         return timelines.jumpTo(roomId, eventId);
+    }
+
+    /**
+     * Tell the client which room the user is viewing. In sliding-sync mode this
+     * keeps the room subscribed with a richer timeline window, so it stays live
+     * even when it sits outside the room-list range; the members feed also
+     * prioritizes its members for presence. No-op in classic `/sync`.
+     */
+    public setRoomSelection(roomId: string | null): void {
+        this._selectedRoomId = roomId;
+        const sync = this._slidingSync;
+        if (!sync) return;
+        sync.modifyRoomSubscriptions(new Set(roomId ? [roomId] : []));
+    }
+
+    /**
+     * Grow the sliding-sync room window by one page. Resolves `false` at the
+     * cap, before the window is applied, or on classic `/sync` — callers must
+     * not keep offering "load more" on `false`.
+     */
+    public async loadMoreRooms(): Promise<boolean> {
+        const manager = this._rangeManager;
+        if (!manager) return false;
+        return manager.loadMore();
+    }
+
+    public hasMoreRooms(): boolean {
+        return this._rangeManager?.hasMore() ?? false;
     }
 
     public async createSpace(params: CreateSpaceParams): Promise<string> {
@@ -802,7 +824,8 @@ export class MatrixChatClient implements ChatClient {
         return encoded ?? "";
     }
 
-    public async restoreBackup(recoveryKey: string): Promise<boolean> {        const crypto = this.requireCrypto();
+    public async restoreBackup(recoveryKey: string): Promise<boolean> {
+        const crypto = this.requireCrypto();
         let decoded: Uint8Array<ArrayBuffer>;
         try {
             decoded = decodeRecoveryKey(recoveryKey.trim());
@@ -943,6 +966,7 @@ export class MatrixChatClient implements ChatClient {
      */
     private async handleSessionLoggedOut(): Promise<void> {
         await this.stop();
+        this.storage.removeItem(SSS_WINDOW_KEY);
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
@@ -1021,6 +1045,32 @@ export class MatrixChatClient implements ChatClient {
         } catch {
             this.profileState.set({ userId, displayName: fallbackName(userId), avatarUrl: null });
         }
+    }
+
+    /** Persist/restore the sliding-sync room-window upper bound across reloads. */
+    private sssWindowStore(): SssWindowStore {
+        return {
+            loadEnd: () => this.storage.getItem<number>(SSS_WINDOW_KEY),
+            saveEnd: (end) => this.storage.setItem(SSS_WINDOW_KEY, end),
+        };
+    }
+
+    /**
+     * The members of the room currently on screen — presence's high-priority
+     * set, polled every tick. Empty when no room is selected or it is not
+     * loaded yet.
+     */
+    private priorityPresenceIds(): string[] {
+        const client = this.matrix;
+        const roomId = this._selectedRoomId;
+        if (!client || !roomId) return [];
+        const room = client.getRoom(roomId);
+        if (!room) return [];
+        const ids: string[] = [];
+        for (const member of room.getMembers()) {
+            if (member.membership === "join" || member.membership === "invite") ids.push(member.userId);
+        }
+        return ids;
     }
 
     private requireCrypto(): CryptoApi {

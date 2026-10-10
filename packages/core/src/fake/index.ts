@@ -419,6 +419,19 @@ class FakeChatClient implements ChatClient {
         return this.timelines.get(roomId)?.get().some((m) => m.id === eventId) ?? false;
     }
 
+    public setRoomSelection(_roomId: string | null): void {
+        // The fake has no sync window; selection is a UI concern here.
+    }
+
+    public async loadMoreRooms(): Promise<boolean> {
+        // Fixtures are fully loaded; there is never more to page in.
+        return false;
+    }
+
+    public hasMoreRooms(): boolean {
+        return false;
+    }
+
     // Monotonic id source for created rooms: fixtures use readable ids, new
     // ones just need to be unique and recognisable in the tree.
     private nextCreated = 1;

@@ -566,8 +566,52 @@ chat client should be.
   header rows as virtual items, `as Row` casts — vue-tsc does not narrow
   `rows[v.index]` across `v-if`), and `MemberListItem` takes the whole
   `MemberView` so each virtual row casts once.
-- NEXT — slice 22: Simplified Sliding Sync (MSC4186) — see Potential next
-  slices for what follows it.
+- DONE — slice 22: Simplified Sliding Sync (MSC4186). Phase 0 (committed
+  earlier): client-side presence REST poller (`rooms/presence.ts`, no SSS
+  presence extension exists) feeding the members tracker, and
+  `rooms/unread.ts` recomputing unread totals because Synapse hardcodes
+  `notification_count=0` over SSS. This round finishes the mode:
+  - `sync/range-manager.ts` owns the room window as ONE list (`all`) whose
+    range `[[0, end]]` is grown in place via `SlidingSync.setListRanges`
+    (non-sticky; the supported entry point). `loadMoreRooms()` adds one page
+    (500, cap 5000) and persists the bound under `tumult.sss.windowEnd`;
+    the bound is restored (clamped) in `start()` before `startClient()`.
+    Logout and forced-logout clear the key.
+  - `setRoomSelection(roomId|null)` keeps the open room subscribed
+    (`modifyRoomSubscriptions`) even when it sits outside the list window;
+    the shell calls it from its `activeRoomId` watcher (immediate + cleared on
+    unmount).
+  - Presence poller takes an optional priority callback: the open room's
+    members poll EVERY tick, everyone else on a slow cadence (every 5th tick)
+    after a warm-up tick that polls everyone — previously the WIP never polled
+    non-priority users at all.
+  - Contract: `setRoomSelection` + `loadMoreRooms` + `hasMoreRooms` (window
+    still has rooms behind it, from SSS `joinedCount`; false under classic and
+    the fake) added, with fake parity. A shared `LoadMoreRooms` button renders
+    in both room-list views while `hasMoreRooms()` is true and calls
+    `loadMoreRooms()`; the shell refreshes it on `[rooms, connection]`.
+  - Covered by rewritten `test/sync/range-manager.test.ts` and the presence
+    cadence test (222 core unit tests).
+- VERIFIED slice-22 traps: the last WIP commit was broken six ways — it
+  deleted `AuthStorage.clearSession()` while three callers survived
+  (logout/forced-logout), duplicated the client's sliding fields and init
+  block, passed the `{sync, manager}` wrapper as `startClient({slidingSync})`,
+  dropped the `ActiveSyncMode` export, deleted `jumpTo` from the contract and
+  declared `loadMoreRooms` twice. `tsc` catches all of it; `node --test`
+  did NOT (type-stripping ignores `readonly`, so assigning to a
+  `readonly` field ran fine) — always run `pnpm typecheck` here, not just
+  tests. `SlidingSync`'s third ctor arg is a ROOM SUBSCRIPTION
+  (`{timeline_limit, required_state}`), not a list; a list-shaped object there
+  is silently ignored. Each range must be a range ON a list — a separate list
+  per range is not window growth. And SSS warm-boot is genuinely blocked in
+  v43: `sliding-sync.js` keeps `pos` in a local inside `start()` and never
+  calls `setSyncToken`, and `SlidingSyncSdk` only emits `Prepared` after the
+  first network response (`fromCache: false`) — so persisting the window restores
+  its SIZE, not offline rooms or a resumed token.
+- NEXT — slice 22 integration: a Synapse round-trip for window growth +
+  open-room subscription is NOT yet written (Docker was unavailable when this
+  landed); add one to `test-integration/` before trusting the window path on a
+  real server.
 
 ## Potential next slices
 
@@ -581,11 +625,11 @@ chat client should be.
 - Failed-send retry (slice-5 follow-up: retry affordance on failed echoes).
 - Idle-room unloading via `subscriberCount` (TimelineFeed already returns the
   same Subscribable per roomId).
-- SSS follow-ups (after slice 22): window growth + subscribe-to-open-room with
-  a richer `timeline_limit`; native SSS presence replacing the REST poll (the
-  js-sdk has no presence extension yet — "not possible in sliding sync yet");
-  SSS warm-boot persistence (the SSS path never calls `setSyncToken`, so cold
-  boot does a fresh initial sync and offline boot has no rooms).
+- SSS follow-ups (after slice 22): native SSS presence replacing the REST poll
+  (the js-sdk has no presence extension yet — "not possible in sliding sync
+  yet"); true SSS warm-boot (resume the sync token / show rooms offline) —
+  blocked on the SDK, see the slice-22 trap note. Window growth,
+  subscribe-to-open-room and window-size persistence are DONE.
 - Game/custom event renderers (post-v1-UI; registered renderers namespaced
   under our domain, no timeline rewrite).
 - Code-splitting (973 kB chunk).

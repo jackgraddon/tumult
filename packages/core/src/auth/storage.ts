@@ -62,12 +62,28 @@ export class AuthStorage {
         this.store.setItem(SESSION_KEY, JSON.stringify(session));
     }
 
+    /**
+     * Generic keyed access for client state that is neither the session nor a
+     * pending login (e.g. the sliding-sync room window). Values are JSON.
+     */
     public getItem<T>(key: string): T | null {
         return this.read<T>(key);
     }
 
     public setItem<T>(key: string, value: T): void {
         this.store.setItem(key, JSON.stringify(value));
+    }
+
+    public removeItem(key: string): void {
+        this.store.removeItem(key);
+    }
+
+    /**
+     * Drop the persisted session. The caller is responsible for clearing
+     * anything else keyed off the login (crypto store, sliding-sync window).
+     */
+    public clearSession(): void {
+        this.store.removeItem(SESSION_KEY);
     }
 
     /**

@@ -5,15 +5,19 @@ import type { SpaceNode } from "@tumult/core";
 import type { RoomSelection } from "../selection.ts";
 import SpaceCategory from "./SpaceCategory.vue";
 import RoomListItem from "./RoomListItem.vue";
+import LoadMoreRooms from "./LoadMoreRooms.vue";
 import IconButton from "../primitives/IconButton.vue";
 
 defineProps<{
     guild: SpaceNode | undefined;
     selection: RoomSelection;
+    /** Sliding-sync window still has rooms behind it. */
+    hasMore: boolean;
 }>();
 
 const emit = defineEmits<{
     createChannel: [];
+    loadMore: [];
 }>();
 </script>
 
@@ -42,6 +46,7 @@ const emit = defineEmits<{
                         :selection="selection"
                     />
                 </ul>
+                <LoadMoreRooms v-if="guild" :has-more="hasMore" @load-more="emit('loadMore')" />
             </ScrollAreaViewport>
             <ScrollAreaScrollbar orientation="vertical" class="tumult-scrollbar">
                 <ScrollAreaThumb class="tumult-scrollthumb" />

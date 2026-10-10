@@ -112,16 +112,35 @@ describe("PresencePoller", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
     })
 
-    it("only polls priority users when getPriorityUserIds is provided", async () => {
+    it("polls priority users every tick and others on the slow cadence", async () => {
         const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
         const bob = { userId: "@bob:localhost", membership: "join" } as unknown as RoomMember
         const m = matrixWith([room("!a", [alice, bob])])
-        const feed: Array<PresenceInput> = []
-        // Only prioritize Alice
-        const poller = new PresencePoller(m, (p) => { feed.push(...p) }, 30000, () => ["@alice:localhost"])
+        // Only prioritize Alice.
+        const poller = new PresencePoller(m, () => {}, 30000, () => ["@alice:localhost"])
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+
+        // Warm-up tick (tick 1) polls everyone so a fresh roster isn't blank.
         poller.tick()
-        await new Promise((resolve) => setTimeout(resolve, 10))
-        const ids = feed.map((x) => x.userId)
-        assert.deepEqual(ids, ["@alice:localhost"], "only priority user was polled")
+        await settle()
+        assert.deepEqual(
+            m.presenceHits.slice().sort(),
+            ["@alice:localhost", "@bob:localhost"],
+            "the warm-up tick polls everyone",
+        )
+
+        // A fast tick polls only the on-screen members.
+        m.presenceHits.length = 0
+        poller.tick() // tick 2
+        await settle()
+        assert.deepEqual(m.presenceHits, ["@alice:localhost"], "fast ticks poll only priority users")
+
+        // The slow cadence (every 5th tick) refreshes everyone again.
+        m.presenceHits.length = 0
+        poller.tick() // tick 3
+        poller.tick() // tick 4
+        poller.tick() // tick 5 -> slow
+        await settle()
+        assert.ok(m.presenceHits.includes("@bob:localhost"), "the slow tick refreshes non-priority users")
     })
 })

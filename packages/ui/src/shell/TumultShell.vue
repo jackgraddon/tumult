@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, ref, watch } from "vue";
+import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
@@ -15,6 +15,7 @@ import ConnectionBanner from "./ConnectionBanner.vue";
 import GuildRail from "../rail/GuildRail.vue";
 import RoomListPane from "../roomlist/RoomListPane.vue";
 import DmList from "../roomlist/DmList.vue";
+import LoadMoreRooms from "../roomlist/LoadMoreRooms.vue";
 import TimelinePane from "../timeline/TimelinePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
@@ -287,10 +288,32 @@ watch([rooms, connection], () => {
     }
 });
 
-// A thread belongs to one room; switching rooms closes it.
-watch(activeRoomId, () => {
-    threadView.value = null;
-});
+// Tell the client which room is on screen: under sliding sync this keeps it
+// subscribed with a richer timeline window and prioritizes its members for
+// presence. A thread belongs to one room, so switching rooms also closes it.
+watch(
+    activeRoomId,
+    (id) => {
+        props.client.setRoomSelection(id ?? null);
+        threadView.value = null;
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(() => props.client.setRoomSelection(null));
+
+// Sliding sync pages the room window rather than returning every room at once.
+// Show "load more" while the server reports rooms behind the current window;
+// classic /sync and the fake always report `false`.
+const moreRooms = ref(false);
+function refreshMoreRooms(): void {
+    moreRooms.value = props.client.hasMoreRooms();
+}
+async function loadMoreRooms(): Promise<void> {
+    await props.client.loadMoreRooms();
+    refreshMoreRooms();
+}
+watch([rooms, connection], refreshMoreRooms, { immediate: true });
 
 // Capability is only known once sync is up (it's probed in startClient), and
 // supportsThreads() isn't reactive — reading `connection` makes this recompute
@@ -329,7 +352,9 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         v-if="selection.view === 'guild'"
                         :guild="activeGuild"
                         :selection="selection"
+                        :has-more="moreRooms"
                         @create-channel="openCreateChannel()"
+                        @load-more="loadMoreRooms"
                     />
                     <div v-else class="tumult-roomlist-pane">
                         <header class="tumult-roomlist-header tumult-roomlist-header-row">
@@ -339,6 +364,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                             </IconButton>
                         </header>
                         <DmList :rooms="tree.orphans" />
+                        <LoadMoreRooms :has-more="moreRooms" @load-more="loadMoreRooms" />
                     </div>
                 </div>
                 <div class="tumult-pane tumult-pane-timeline">

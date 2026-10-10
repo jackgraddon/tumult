@@ -510,15 +510,27 @@ export interface ChatClient {
      * when the event is older than the bound or gone (redacted-and-purged,
      * never-joined history) — callers must not scroll on `false`.
      */
+    jumpTo(roomId: string, eventId: string): Promise<boolean>;
     /**
-     * Set the currently selected room.
+     * Tell the client which room the user is viewing. Under sliding sync the
+     * room is kept subscribed with a richer timeline window (and its members
+     * are polled first for presence), so it stays live even when it sits
+     * outside the room-list range. No-op under classic `/sync`.
      */
     setRoomSelection(roomId: string | null): void;
     /**
-     * Load the next block of rooms in the ring (paginating the room list).
-     * Resolves `false` if no more rooms exist to load.
+     * Grow the sliding-sync room window by one page and resend. Resolves
+     * `false` at the window cap, before the window is applied, or under
+     * classic `/sync` — callers must not offer more on `false`.
      */
     loadMoreRooms(): Promise<boolean>;
+    /**
+     * Whether the sliding-sync window still has rooms behind it, i.e. a
+     * "load more" affordance should be shown. False once the window covers
+     * every joined room, at the window cap, or under classic `/sync` and the
+     * fake (which hold the full room list up front).
+     */
+    hasMoreRooms(): boolean;
 
     /**
      * Create a top-level space (renders as a guild on the rail). Resolves to
@@ -611,11 +623,6 @@ export interface ChatClient {
     confirmSas(id: string): Promise<void>;
     /** Report the SAS does not match (cancels with m.mismatched_sas). */
     mismatchSas(id: string): Promise<void>;
-    /**
-     * Load the next block of rooms in the ring (paginating the room list).
-     * Resolves `false` if no more rooms exist to load.
-     */
-    loadMoreRooms(): Promise<boolean>;
     /** This account's devices with verification status, current device first. */
     listDevices(): Promise<DeviceView[]>;
 }

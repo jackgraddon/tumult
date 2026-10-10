@@ -3,6 +3,8 @@ import { type MatrixClient, type RoomMember } from "matrix-js-sdk";
 import type { PresenceInput } from "./members.ts";
 
 const TICK_MS = 30_000;
+/** Non-priority users are refreshed every Nth tick (priority polls every tick). */
+const SLOW_EVERY = 5;
 
 /**
  * A rest poller for presence under Simplified Sliding Sync.
@@ -27,11 +29,15 @@ export class PresencePoller {
     private readonly matrix: MatrixClient;
     private readonly feed: (presence: Array<PresenceInput>) => void;
     private readonly tickMs: number;
-    /** Optional callback to prioritize specific users (e.g. those in visible rooms). */
-    private readonly getPriorityUserIds?: () => string[];
+    /**
+     * Members of the room on screen. Polled every tick — their roster is what
+     * the user is looking at. Everyone else refreshes on the slow cadence.
+     */
+    private readonly getPriorityUserIds: (() => string[]) | undefined;
     private readonly pollers = new Map<string, Promise<void>>();
     private timer: ReturnType<typeof setTimeout> | undefined;
     private stopped = false;
+    private tickCount = 0;
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
     public constructor(
@@ -76,17 +82,19 @@ export class PresencePoller {
     }
 
     public tick(): void {
-        const priorityIds = this.getPriorityUserIds?.();
-        if (priorityIds) {
-            // High priority poll: only poll priority users
-            for (const userId of priorityIds) {
-                void this.poll(userId);
-            }
-        } else {
-            // Regular poll: poll everyone
-            for (const member of this.allMembers()) {
-                void this.poll(member.userId);
-            }
+        this.tickCount += 1;
+        const priority = new Set(this.getPriorityUserIds?.() ?? []);
+        for (const userId of priority) this.poll(userId);
+
+        // No priority callback means "poll everyone" (classic callers/tests).
+        // With one, non-priority users refresh on the slow cadence, plus a
+        // warm-up tick so a fresh roster isn't blank for the first interval.
+        const slow =
+            this.getPriorityUserIds === undefined || this.tickCount === 1 || this.tickCount % SLOW_EVERY === 0;
+        if (!slow) return;
+        for (const member of this.allMembers()) {
+            if (priority.has(member.userId)) continue;
+            this.poll(member.userId);
         }
     }
 
