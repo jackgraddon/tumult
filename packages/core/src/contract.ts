@@ -161,6 +161,33 @@ export interface UserSearchResult {
     avatarUrl: string | null;
 }
 
+/** Who may join the room. The server default is `"invite"`. */
+export type JoinRule = "public" | "invite" | "knock" | "restricted";
+/**
+ * How much conversation history new members can see. The server default is
+ * `"shared"`; `"world_readable"` additionally exposes history — not the
+ * timeline — to unauthenticated visitors.
+ */
+export type HistoryVisibility = "shared" | "invited" | "joined" | "world_readable";
+
+/**
+ * Editable room settings. Every field is optional; omitted fields are left
+ * unchanged. `null` clears the field (`topic`, `avatar`, `canonicalAlias`),
+ * while `undefined` means "not touched".
+ */
+export interface RoomSettingsPatch {
+    /** Trimmed before sending; empty clears the name (the fallback name returns). */
+    name?: string;
+    /** `null`, or empty after trimming, clears the topic. */
+    topic?: string | null;
+    /** Uploaded to the homeserver first; `null` clears the avatar. */
+    avatar?: Blob | null;
+    joinRule?: JoinRule;
+    historyVisibility?: HistoryVisibility;
+    /** Full `#alias:server` form; `null` (or empty after trim) removes it. */
+    canonicalAlias?: string | null;
+}
+
 export interface RoomSummary {
     id: string;
     name: string;
@@ -183,6 +210,12 @@ export interface RoomSummary {
      * so it changes on sync, not on our own sends.
      */
     fullyReadEventId: string | null;
+    /** Who can join: `"public"` | `"invite"` | `"knock"` | `"restricted"`. */
+    joinRule: JoinRule;
+    /** How much history new members see. Default `"shared"`. */
+    historyVisibility: HistoryVisibility;
+    /** The room's canonical alias (`#name:server`), or `null`. */
+    canonicalAlias: string | null;
 }
 
 /** The signed-in identity. `null` when logged out. */
@@ -564,6 +597,14 @@ export interface ChatClient {
     leave(roomId: string): Promise<void>;
     /** Invite `userId` to `roomId`. Rejects when the server refuses. */
     invite(roomId: string, userId: string): Promise<void>;
+    /**
+     * Update a room's settings. Only the fields present in `patch` are sent,
+     * each independently (the apply-what-works rule from `writeProfile`) — a
+     * later failure leaves earlier fields applied and surfaces through the
+     * returned rejection. The `rooms` feed catches up on the next sync.
+     * Permission failures are the server's to reject.
+     */
+    updateRoomSettings(roomId: string, patch: RoomSettingsPatch): Promise<void>;
     /**
      * User-directory search over ids, display names and domains. Accepts a
      * raw `@user:server` id too (the UI shows both kinds of input), but the

@@ -1,6 +1,7 @@
 import { NotificationCountType, type MatrixClient } from "matrix-js-sdk";
 
 import type { RoomSummary } from "../contract.ts";
+import { readSettingsFields } from "./settings.ts";
 import type { UnreadCounts } from "./unread.ts";
 
 const SPACE_CHILD = "m.space.child";
@@ -55,6 +56,7 @@ export function snapshotRooms(
 
     return joined.map((room) => {
         const override = unreadOverride?.(room.roomId) ?? null;
+        const settings = readSettingsFields(room);
         return {
             id: room.roomId,
             name: room.name,
@@ -65,6 +67,9 @@ export function snapshotRooms(
             unreadCount: override?.total ?? room.getUnreadNotificationCount(NotificationCountType.Total),
             highlightCount: override?.highlight ?? room.getUnreadNotificationCount(NotificationCountType.Highlight),
             fullyReadEventId: readFullyRead(room),
+            joinRule: settings.joinRule,
+            historyVisibility: settings.historyVisibility,
+            canonicalAlias: settings.canonicalAlias,
         };
     });
 }
@@ -90,6 +95,12 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
             // Account data, not send state: republish when the marker moves,
             // or the "New messages" divider sits on a stale row.
             room.fullyReadEventId === other.fullyReadEventId &&
+            // State events: republish so the settings dialog never shows stale
+            // join rule / history / alias after someone (or another client)
+            // changed them.
+            room.joinRule === other.joinRule &&
+            room.historyVisibility === other.historyVisibility &&
+            room.canonicalAlias === other.canonicalAlias &&
             room.parentSpaceIds.length === other.parentSpaceIds.length &&
             room.parentSpaceIds.every((p, j) => p === other.parentSpaceIds[j])
         );

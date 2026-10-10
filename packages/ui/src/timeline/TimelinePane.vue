@@ -17,6 +17,7 @@ const props = defineProps<{
 // falls through to the root <section> as a native attribute and never fires.
 const emit = defineEmits<{
     "open-thread": [rootEventId: string];
+    settings: [];
 }>();
 
 const typing = useSubscribable(props.client.typing);
@@ -64,6 +65,12 @@ watch(
                 :aria-pressed="searchOpen"
                 @click="searchOpen = !searchOpen"
                 >🔍</IconButton
+            >
+            <IconButton
+                v-if="room"
+                label="Room settings"
+                @click="emit('settings')"
+                >⚙</IconButton
             >
         </header>
         <!-- Keyed so one room's subscription is torn down before the next mounts. -->

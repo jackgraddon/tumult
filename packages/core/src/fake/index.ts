@@ -11,6 +11,7 @@ import type {
     NotificationPermission,
     NotificationState,
     ProfileView,
+    RoomSettingsPatch,
     RoomSummary,
     SearchPage,
     SecurityStatus,
@@ -94,6 +95,9 @@ function buildRooms(): RoomSummary[] {
             unreadCount: unread,
             highlightCount: highlight,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     };
     const chan = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0): void => {
@@ -107,6 +111,9 @@ function buildRooms(): RoomSummary[] {
             unreadCount: unread,
             highlightCount: highlight,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     };
 
@@ -154,9 +161,16 @@ function buildRooms(): RoomSummary[] {
     });
 
     // Marker sits mid-history in general so the "New messages" divider demos
-    // out of the box; fake markRead is a no-op, so it never advances.
+    // out of the box; fake markRead is a no-op, so it never advances. General
+    // is also public with a canonical alias so the settings dialog demos
+    // non-default join rule / history / alias values.
     const general = rooms.find((r) => r.id === "!a-general:fake");
-    if (general) general.fullyReadEventId = "!a-general:fake:e18";
+    if (general) {
+        general.fullyReadEventId = "!a-general:fake:e18";
+        general.joinRule = "public";
+        general.historyVisibility = "joined";
+        general.canonicalAlias = "#general:fake";
+    }
 
     return rooms;
 }
@@ -459,6 +473,9 @@ class FakeChatClient implements ChatClient {
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     }
 
@@ -477,6 +494,9 @@ class FakeChatClient implements ChatClient {
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     }
 
@@ -493,6 +513,9 @@ class FakeChatClient implements ChatClient {
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         }, params.userId);
     }
 
@@ -513,6 +536,9 @@ class FakeChatClient implements ChatClient {
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     }
 
@@ -520,6 +546,35 @@ class FakeChatClient implements ChatClient {
         (this.rooms as Observable<RoomSummary[]>).update((cur) => cur.filter((r) => r.id !== roomId));
         this.timelines.delete(roomId);
         this.threadTimelines.delete(roomId);
+    }
+
+    public async updateRoomSettings(roomId: string, patch: RoomSettingsPatch): Promise<void> {
+        (this.rooms as Observable<RoomSummary[]>).update((cur) =>
+            cur.map((room) => {
+                if (room.id !== roomId) return room;
+                const next: RoomSummary = { ...room };
+                if (patch.name !== undefined) {
+                    // Empty clear replays the real fallback-name behavior; the
+                    // fake has no member-derived fallback, so keep the old name.
+                    const name = patch.name.trim();
+                    if (name.length > 0) next.name = name;
+                }
+                if (patch.topic !== undefined) {
+                    const topic = patch.topic === null ? null : patch.topic.trim();
+                    next.topic = topic && topic.length > 0 ? topic : null;
+                }
+                if (patch.avatar !== undefined) {
+                    next.avatarUrl = patch.avatar === null ? null : `mxc://fake/avatar-${this.nextCreated++}`;
+                }
+                if (patch.joinRule !== undefined) next.joinRule = patch.joinRule;
+                if (patch.historyVisibility !== undefined) next.historyVisibility = patch.historyVisibility;
+                if (patch.canonicalAlias !== undefined) {
+                    const alias = patch.canonicalAlias === null ? null : patch.canonicalAlias.trim();
+                    next.canonicalAlias = alias && alias.length > 0 ? alias : null;
+                }
+                return next;
+            }),
+        );
     }
 
     public async invite(roomId: string, userId: string): Promise<void> {

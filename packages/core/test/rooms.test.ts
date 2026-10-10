@@ -98,6 +98,9 @@ describe("snapshotRooms", () => {
             unreadCount: 5,
             highlightCount: 1,
             fullyReadEventId: "$read:x",
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
         });
     });
 
@@ -184,6 +187,9 @@ describe("sameRoomSummaries", () => {
         unreadCount: 1,
         highlightCount: 0,
         fullyReadEventId: null,
+        joinRule: "invite",
+        historyVisibility: "shared",
+        canonicalAlias: null,
     };
     it("is true for identical snapshots", () => {
         assert.equal(sameRoomSummaries([a], [{ ...a }]), true);

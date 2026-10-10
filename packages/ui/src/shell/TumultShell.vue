@@ -31,6 +31,7 @@ import CreateDmDialog from "../rooms/CreateDmDialog.vue";
 import InviteDialog from "../rooms/InviteDialog.vue";
 import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
 import ProfileDialog from "../rooms/ProfileDialog.vue";
+import RoomSettingsDialog from "../rooms/RoomSettingsDialog.vue";
 
 const props = defineProps<{
     client: ChatClient;
@@ -100,6 +101,11 @@ function openVerificationModal(): void {
 
 // Profile edit dialog: the account menu's "Edit profile…" entry opens it.
 const profileModal = ref(false);
+
+// Room settings dialog: the timeline header's gear opens it, scoped to the
+// room being viewed. Room switch closes it (the room prop must not change
+// under a seeded form).
+const settingsOpen = ref(false);
 
 // Thread slide-over: the room's thread list, or one open thread.
 type ThreadView = { mode: "list" } | { mode: "thread"; threadId: string } | null;
@@ -295,6 +301,7 @@ watch(
     (id) => {
         props.client.setRoomSelection(id ?? null);
         threadView.value = null;
+        settingsOpen.value = false;
     },
     { immediate: true },
 );
@@ -382,6 +389,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :room="activeRoom"
                         :threads-enabled="threadsEnabled"
                         @open-thread="openThread"
+                        @settings="settingsOpen = true"
                     />
                     <!-- Overlay, not a fourth grid track: no layout changes for the other panes. -->
                     <div v-if="threadView && threadsEnabled && activeRoomId" class="tumult-thread-overlay">
@@ -433,6 +441,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :client="client"
             :open="profileModal"
             @close="profileModal = false"
+        />
+        <RoomSettingsDialog
+            :client="client"
+            :open="settingsOpen && activeRoom !== undefined"
+            :room="activeRoom"
+            @close="settingsOpen = false"
         />
         <CreateSpaceDialog
             :client="client"

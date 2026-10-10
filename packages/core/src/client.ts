@@ -26,6 +26,7 @@ import type {
     NotificationPermission,
     NotificationState,
     ProfileView,
+    RoomSettingsPatch,
     RoomSummary,
     SearchPage,
     SecurityStatus,
@@ -47,6 +48,7 @@ import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
+import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
     createChannel,
     createDm,
@@ -717,6 +719,12 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) throw new Error("Cannot invite before start()");
         await inviteToRoom(client, roomId, userId);
+    }
+
+    public async updateRoomSettings(roomId: string, patch: RoomSettingsPatch): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot update room settings before start()");
+        await writeRoomSettings(client, roomId, patch);
     }
 
     public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {

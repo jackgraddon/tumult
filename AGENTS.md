@@ -619,19 +619,55 @@ chat client should be.
   open-room subscription is NOT yet written (Docker was unavailable when this
   landed); add one to `test-integration/` before trusting the window path on a
   real server.
+- DONE — slice 23: room settings — `RoomSummary` now carries `joinRule` /
+  `historyVisibility` / `canonicalAlias`, read off the live `Room` by
+  `rooms/settings.ts` `readSettingsFields` (spec defaults `invite`/`shared`,
+  per-field try/catch so a throwing accessor never crashes the snapshot).
+  `updateRoomSettings(roomId, patch)` sends only the changed fields, each
+  independently (the `writeProfile` apply-what-works rule): `setRoomName` /
+  `setRoomTopic` (empty clears → snapshot `null`), room avatar via
+  `uploadContent` → `m.room.avatar` state event (`url: ""` clears),
+  `m.room.join_rules` / `m.room.history_visibility` via `sendStateEvent`,
+  canonical alias via `m.room.canonical_alias`. `sameRoomSummaries` compares
+  the new fields so a settings change republishes (redaction-class trap).
+  UI: gear IconButton in the timeline header → `RoomSettingsDialog` on the
+  shared `RoomDialog` chrome (name / topic / avatar-with-preview+undo, join
+  rule + history-visibility selects, alias input), closed on room switch with
+  the `activeRoomId` watcher. Fake parity mutates the summary feed (empty
+  name keeps the old fallback — the fake has no member-derived name). Covered
+  by 12 new tests (`test/settings.test.ts`: stub routing, snapshot mapping,
+  republish-on-settings-change, fake parity), 234 total; typecheck + build green.
+- VERIFIED slice-23 traps: `Room` itself has `getJoinRule()` /
+  `getHistoryVisibility()` / `getCanonicalAlias()` — no roomState dance — but
+  the SDK has NO `setRoomAvatarUrl` / `setRoomCanonicalAlias`; both are raw
+  `sendStateEvent`, and an avatar must be `uploadContent`'d BEFORE the event.
+  SDK `JoinRule` / `HistoryVisibility` are string ENUMS — a plain `"public"`
+  literal is NOT assignable to the enum-typed content field, so both
+  directions convert (contract unions ↔ enum members). Removing a canonical
+  alias means an event with `alias` absent: build the `{}` conditionally — a
+  literal `{ alias: undefined }` is an exactOptionalPropertyTypes error (and
+  JSON-drops the key anyway). `getJoinRule()` can throw on incomplete state —
+  wrap or the whole snapshot crashes. The UI deliberately offers no
+  "restricted" join rule: it needs an `allow` list (`m.room_membership` space
+  links) that room settings can't express — parked for moderation's
+  power-level editor.
 
 ## Potential next slices
 
-- Slice 23: moderation — settled scope: presets + custom power-level editor
+- Slice 24: moderation — settled scope: presets + custom power-level editor
   (Member 0 / Moderator 50 / Admin 100 presets + 0–100 number field); banned
   users in a "Banned" section at the bottom of the members pane (only when
   non-empty) with Unban in the row context menu. Contract: `RoomPowerLevelsView`
   + `powerLevels(roomId)` / `banned(roomId)` / `kick|ban|unban|setPowerLevel`;
   core `rooms/moderation.ts` + `PowerLevelsTracker` against the slice-21 member
-  feed.
-- Failed-send retry (slice-5 follow-up: retry affordance on failed echoes).
+  feed. (Room settings already gates: the settings dialog shows for everyone
+  and lets the server reject — moderation adds the power-level gating.)
+- Room tags / categories: `m.tag` room account data → category grouping in the
+  room list (Discord-folder-style), tag editor in the settings dialog.
 - Idle-room unloading via `subscriberCount` (TimelineFeed already returns the
-  same Subscribable per roomId).
+  same Subscribable per roomId) — the head of the perf/resource queue, with
+  the parked memory rules (windowed room loading, capped in-memory events,
+  server thumbnails) and code-splitting (973 kB chunk).
 - SSS follow-ups (after slice 22): native SSS presence replacing the REST poll
   (the js-sdk has no presence extension yet — "not possible in sliding sync
   yet"); true SSS warm-boot (resume the sync token / show rooms offline) —
@@ -639,7 +675,6 @@ chat client should be.
   subscribe-to-open-room and window-size persistence are DONE.
 - Game/custom event renderers (post-v1-UI; registered renderers namespaced
   under our domain, no timeline rewrite).
-- Code-splitting (973 kB chunk).
 - Parked v1 non-goals: push notifications, voice/video, multi-account,
   encrypted search, Electron desktop, Flatpak.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:

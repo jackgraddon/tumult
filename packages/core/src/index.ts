@@ -8,6 +8,8 @@ export type {
     DecryptionStatus,
     DeviceView,
     EncryptedAttachment,
+    HistoryVisibility,
+    JoinRule,
     LoginParams,
     Membership,
     MessageStatus,
@@ -19,6 +21,7 @@ export type {
     ProfileView,
     ReactionView,
     ReplyView,
+    RoomSettingsPatch,
     RoomSummary,
     SearchPage,
     SecurityStatus,
@@ -39,6 +42,7 @@ export { sendTextMessage } from "./rooms/send.ts";
 export { sendMediaMessage } from "./rooms/media.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
 export { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
+export { readSettingsFields, updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 export { collectEdits, sendEditMessage } from "./rooms/edits.ts";
 export type { EditRecord } from "./rooms/edits.ts";
 export { TypingTracker } from "./typing/tracker.ts";

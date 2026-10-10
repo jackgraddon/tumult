@@ -13,6 +13,9 @@ function room(partial: Partial<RoomSummary> & { id: string; name: string }): Roo
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
+        joinRule: "invite",
+        historyVisibility: "shared",
+        canonicalAlias: null,
         ...partial,
     };
 }
