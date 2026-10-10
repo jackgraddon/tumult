@@ -651,17 +651,62 @@ chat client should be.
   "restricted" join rule: it needs an `allow` list (`m.room_membership` space
   links) that room settings can't express — parked for moderation's
   power-level editor.
+- DONE — slice 24: moderation — contract: `RoomPowerLevelsView` (raw content —
+  `users`/`usersDefault`/`eventsDefault`/`stateDefault`/`ban`/`kick`/`redact`/
+  `invite`/`events` — plus `myPowerLevel` and the computed
+  `canKick`/`canBan`/`canSetPowerLevel`/`canEditSettings` flags, spec defaults
+  filled), feeds `powerLevels(roomId): Subscribable<RoomPowerLevelsView | null>`
+  and `banned(roomId): Subscribable<MemberView[]>`, methods `kick`/`ban`
+  (optional reason) / `unban` / `setPowerLevel`. Core `rooms/moderation.ts`:
+  `snapshotPowerLevels` (reads `room.currentState.getStateEvents(
+  EventType.RoomPowerLevels, "")`, `myPowerLevel` from
+  `room.getMember(selfId)?.powerLevel` with a `users[selfId] ?? users_default`
+  fallback), `snapshotBanned` (scans `room.getMembers()` for `membership ===
+  "ban"`, roster ordering, presence `unknown`), `PowerLevelsTracker` (lazy
+  per-room feed; rebuild on `RoomStateEvent.Events` filtered to
+  `m.room.power_levels`, `RoomMemberEvent.PowerLevel`/`Membership`, every
+  `ClientEvent.Sync`; room gone → `null`; `detachAll()`) and the four write
+  wrappers. `banned()` lives in `MembersTracker` as a second map — `rebuild`
+  now publishes both roster and banned, `detachAll` clears both, and the
+  listener guards test membership in either map. UI: `actions.ts` gains
+  `requestModeration({ kind, roomId, member })`; `MemberListItem` context menu
+  (Change permissions… / Kick / Ban / Unban, gated on the `can*` flags AND
+  target strictly below us); `MembersPane` subscribes `powerLevels` + `banned`
+  and renders a "Banned" section last only when non-empty; shell
+  `RoomAction` gains `{ kind: "moderate", moderation }`, split into the shared
+  `ModerationConfirmDialog` (kick/ban/unban, danger chrome, reason textarea for
+  kick/ban only) and `PowerLevelDialog` (Member 0 / Moderator 50 / Admin 100
+  presets + a clamped 0–100 number field); a `useRoomPower` composable
+  resubscribes the active room's feed on switch and drives
+  `settingsAllowed` (gear hidden for non-admins once power is known). Fake
+  parity: Mallory banned in `general`, roster feed filtered to join/invite,
+  kick/ban/unban/set-power mutate the feeds, permission throws. Covered by 20
+  new tests (`test/moderation.test.ts`: snapshot defaults/parse/flags,
+  banned filtering+mapping, tracker rebuild/lazy/detach, write routing, fake
+  parity), 274 total; typecheck + build green. The Synapse round-trip
+  (`test-integration/moderation.test.ts`) is written but UNVERIFIED — Docker
+  was unavailable.
+- VERIFIED slice-24 traps: a power-level change fires `RoomStateEvent.Events`
+  on the CLIENT (re-emitted from the room/currentState in both sync modes) with
+  `(event, state, prevEvent)` — `RoomMemberEvent.PowerLevel` alone MISSES it
+  when only a threshold like `state_default` changes, because no member's own
+  effective level moves, so the `Events` listener (filtered to
+  `m.room.power_levels`) is load-bearing. Banned users stay in
+  `room.getMembers()` as `membership === "ban"` — they are not removed from the
+  room — so the join/invite roster filter is what keeps them out of `members()`
+  and `banned()` is a separate scan. The SDK has exactly four helpers and no
+  dedicated ban-power setter (`kick`/`ban`/`unban`/`setPowerLevel`; the last
+  writes the `users` override). `unban` returns membership to `leave`, so the
+  user drops off `banned()` but does NOT reappear in the roster until they
+  rejoin. Reka's `ContextMenuTrigger` has a `disabled` prop: when true it skips
+  `event.preventDefault()`, so a row with no available actions gets the native
+  context menu instead of an empty Reka popup — gate the trigger on "any action
+  applies", not just the content. `room.getMember(selfId)` may be null while
+  the roster is lazy — fall back to the raw `users`/`users_default` so
+  `myPowerLevel` is never a lie.
 
 ## Potential next slices
 
-- Slice 24: moderation — settled scope: presets + custom power-level editor
-  (Member 0 / Moderator 50 / Admin 100 presets + 0–100 number field); banned
-  users in a "Banned" section at the bottom of the members pane (only when
-  non-empty) with Unban in the row context menu. Contract: `RoomPowerLevelsView`
-  + `powerLevels(roomId)` / `banned(roomId)` / `kick|ban|unban|setPowerLevel`;
-  core `rooms/moderation.ts` + `PowerLevelsTracker` against the slice-21 member
-  feed. (Room settings already gates: the settings dialog shows for everyone
-  and lets the server reject — moderation adds the power-level gating.)
 - Room tags / categories: `m.tag` room account data → category grouping in the
   room list (Discord-folder-style), tag editor in the settings dialog.
 - Idle-room unloading via `subscriberCount` (TimelineFeed already returns the

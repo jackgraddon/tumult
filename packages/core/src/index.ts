@@ -21,6 +21,7 @@ export type {
     ProfileView,
     ReactionView,
     ReplyView,
+    RoomPowerLevelsView,
     RoomSettingsPatch,
     RoomSummary,
     SearchPage,
@@ -48,6 +49,7 @@ export type { EditRecord } from "./rooms/edits.ts";
 export { TypingTracker } from "./typing/tracker.ts";
 export { ThreadTracker } from "./threads/tracker.ts";
 export { MembersTracker } from "./rooms/members.ts";
+export { PowerLevelsTracker } from "./rooms/moderation.ts";
 export { NotificationTracker } from "./notifications/tracker.ts";
 export { querySecurityStatus, toSecurityStatus } from "./crypto/security.ts";
 export { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";

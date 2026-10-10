@@ -294,9 +294,10 @@ export interface DeviceView {
 }
 
 /**
- * Membership of a room, as the members pane shows it. Only `join` and `invite`
- * are ever published — left/banned/kicked members belong to slice 22's
- * moderation surface, not the roster.
+ * Membership of a room, as the members pane shows it. The roster `members()`
+ * publishes only `join` and `invite`; banned members arrive through the
+ * separate `banned()` feed with `ban`. `leave`/`knock` are never published —
+ * a departed user is simply absent.
  */
 export type Membership = "join" | "invite" | "leave" | "ban" | "knock";
 
@@ -318,7 +319,7 @@ export interface MemberView {
     displayName: string;
     /** Usually an `mxc://` URI — pass through `resolveMedia()`. */
     avatarUrl: string | null;
-    /** `join` or `invite` only. */
+    /** `join` or `invite` in the roster; `ban` in the banned feed. */
     membership: Membership;
     /** From the room's power levels — drives admin/mod grouping and ordering. */
     powerLevel: number;
@@ -338,6 +339,42 @@ export interface ProfileView {
     displayName: string;
     /** Usually an `mxc://` URI — pass through `resolveMedia()`. */
     avatarUrl: string | null;
+}
+
+/**
+ * A room's `m.room.power_levels`, as the moderation UI needs it: the parsed
+ * thresholds plus this account's own standing. The `can*` flags are only the
+ * *threshold* half of permission (whether `myPowerLevel` reaches the bar);
+ * whether an action is allowed against a *specific* member also depends on
+ * that member's level, which the UI compares row by row.
+ *
+ * Spec defaults fill any field the room has not overridden, so a room with no
+ * power-levels event still yields a complete view.
+ */
+export interface RoomPowerLevelsView {
+    /** Explicit per-user overrides (`users`). */
+    users: Record<string, number>;
+    usersDefault: number;
+    eventsDefault: number;
+    stateDefault: number;
+    ban: number;
+    kick: number;
+    redact: number;
+    invite: number;
+    /** Per-event-type overrides (`events`), e.g. `{ "m.room.name": 100 }`. */
+    events: Record<string, number>;
+    /** This account's effective room level. */
+    myPowerLevel: number;
+    /** Whether `myPowerLevel` clears the room's kick / ban / state bar. */
+    canKick: boolean;
+    canBan: boolean;
+    canSetPowerLevel: boolean;
+    /**
+     * Whether this account may send the room's state events (name, topic,
+     * avatar, join rules, canonical alias…). Same `state_default` bar as
+     * `canSetPowerLevel`, kept separate because it gates different UI.
+     */
+    canEditSettings: boolean;
 }
 
 export interface LoginParams {
@@ -628,6 +665,30 @@ export interface ChatClient {
      * partial roster as complete. Concurrent calls for one room collapse.
      */
     loadMembers(roomId: string): Promise<void>;
+    /**
+     * A room's power levels plus this account's standing in it. Same
+     * `Subscribable` per roomId on repeat calls (same rule as `timeline`).
+     * `null` while the room is unknown (left/kicked) — there is no honest
+     * view of another room's thresholds.
+     */
+    powerLevels(roomId: string): Subscribable<RoomPowerLevelsView | null>;
+    /**
+     * Members banned from a room (`membership === "ban"`). Same `Subscribable`
+     * per roomId. Banned users are absent from `members()` — the roster is
+     * join/invite only — so this is the only surface that lists them.
+     */
+    banned(roomId: string): Subscribable<MemberView[]>;
+    /** Kick `userId` from `roomId`, with an optional reason. Server-enforced. */
+    kick(roomId: string, userId: string, reason?: string): Promise<void>;
+    /** Ban `userId` from `roomId`, with an optional reason. Server-enforced. */
+    ban(roomId: string, userId: string, reason?: string): Promise<void>;
+    /**
+     * Lift a ban. The user's membership returns to `leave` — they drop off
+     * `banned()` but do not reappear in the roster until they re-join.
+     */
+    unban(roomId: string, userId: string): Promise<void>;
+    /** Set a member's explicit power level (0–100 in the UI). Server-enforced. */
+    setPowerLevel(roomId: string, userId: string, powerLevel: number): Promise<void>;
     /**
      * Update our own profile: a `displayName` through the profile endpoint
      * (empty string clears it), and/or an `avatar` uploaded to the media

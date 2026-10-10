@@ -12,6 +12,7 @@ import {
 
 import type { MemberView, PresenceState, Subscribable } from "../contract.ts";
 import { Observable } from "../observable.ts";
+import { snapshotBanned } from "./moderation.ts";
 import { fallbackName } from "./profile.ts";
 
 /** A single presence entry fetched from the REST poller. */
@@ -129,6 +130,7 @@ function presenceOf(
 export class MembersTracker {
     private readonly matrix: MatrixClient;
     private readonly feeds = new Map<string, Observable<MemberView[]>>();
+    private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly livePresence = new Set<string>();
     private readonly pendingPresence = new Set<string>();
     private readonly onMemberChange: (event: MatrixEvent, member: RoomMember) => void;
@@ -139,7 +141,7 @@ export class MembersTracker {
     public constructor(matrix: MatrixClient) {
         this.matrix = matrix;
         this.onMemberChange = (_event, member) => {
-            if (member?.roomId && this.feeds.has(member.roomId)) this.rebuild(member.roomId);
+            if (member?.roomId && this.tracks(member.roomId)) this.rebuild(member.roomId);
         };
         this.onClientEvent = (event) => {
             if (event.getType() !== "m.presence") return;
@@ -176,6 +178,21 @@ export class MembersTracker {
     }
 
     /**
+     * Banned members for one room. Same `Subscribable` per roomId. Only rooms
+     * whose list has actually been asked for are tracked, exactly like
+     * `members()`.
+     */
+    public banned(roomId: string): Subscribable<MemberView[]> {
+        let feed = this.bannedFeeds.get(roomId);
+        if (!feed) {
+            feed = new Observable<MemberView[]>([]);
+            this.bannedFeeds.set(roomId, feed);
+            this.rebuild(roomId);
+        }
+        return feed;
+    }
+
+    /**
      * Fetch the room's full membership list. `loadMembersIfNeeded()` collapses
      * concurrent calls (one shared promise) and clears it on failure so a
      * rejected fetch can be retried — the rejection itself propagates so the
@@ -195,6 +212,7 @@ export class MembersTracker {
         this.matrix.removeListener(ClientEvent.Event, this.onClientEvent);
         this.matrix.removeListener(ClientEvent.Sync, this.onSync);
         this.feeds.clear();
+        this.bannedFeeds.clear();
         this.livePresence.clear();
         this.pendingPresence.clear();
     }
@@ -218,14 +236,20 @@ export class MembersTracker {
     }
 
     private rebuild(roomId: string): void {
-        const feed = this.feeds.get(roomId);
-        if (!feed) return;
         const room = this.matrix.getRoom(roomId);
+        const feed = this.feeds.get(roomId);
         // Room gone (left/kicked): an empty roster is the truth, not a stale list.
-        feed.set(room ? snapshotMembers(room, this.matrix, this.livePresence) : []);
+        if (feed) feed.set(room ? snapshotMembers(room, this.matrix, this.livePresence) : []);
+        const banned = this.bannedFeeds.get(roomId);
+        if (banned) banned.set(room ? snapshotBanned(room, this.matrix) : []);
+    }
+
+    private tracks(roomId: string): boolean {
+        return this.feeds.has(roomId) || this.bannedFeeds.has(roomId);
     }
 
     private rebuildAll(): void {
-        for (const roomId of this.feeds.keys()) this.rebuild(roomId);
+        const rooms = new Set<string>([...this.feeds.keys(), ...this.bannedFeeds.keys()]);
+        for (const roomId of rooms) this.rebuild(roomId);
     }
 }

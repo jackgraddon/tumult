@@ -5,7 +5,7 @@ import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection } from "../selection.ts";
-import { ActionsKey, type LeaveTarget } from "../actions.ts";
+import { ActionsKey, type LeaveTarget, type MemberModeration } from "../actions.ts";
 import { MediaKey, EncryptedMediaKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
@@ -32,6 +32,9 @@ import InviteDialog from "../rooms/InviteDialog.vue";
 import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
 import ProfileDialog from "../rooms/ProfileDialog.vue";
 import RoomSettingsDialog from "../rooms/RoomSettingsDialog.vue";
+import ModerationConfirmDialog from "../members/ModerationConfirmDialog.vue";
+import PowerLevelDialog from "../members/PowerLevelDialog.vue";
+import { useRoomPower } from "../members/power.ts";
 
 const props = defineProps<{
     client: ChatClient;
@@ -154,6 +157,12 @@ const activeRoom = computed(() => {
 
 const activeRoomId = computed(() => activeRoom.value?.id);
 
+// The gear opens room settings; while power levels are unknown we leave it
+// visible and let the server reject (the slice-23 rule). Once known, only
+// members who clear the room's `state_default` see it.
+const activePower = useRoomPower(props.client, () => activeRoomId.value);
+const settingsAllowed = computed(() => activePower.value === null || activePower.value.canEditSettings);
+
 type RoomAction =
     | { kind: "create-space" }
     | { kind: "create-channel"; spaceId: string; spaceName: string }
@@ -161,6 +170,7 @@ type RoomAction =
     | { kind: "create-dm" }
     | { kind: "invite" }
     | { kind: "leave"; target: LeaveTarget }
+    | { kind: "moderate"; moderation: MemberModeration }
     | null;
 
 const roomAction = ref<RoomAction>(null);
@@ -169,7 +179,22 @@ provide(ActionsKey, {
     requestLeave(target) {
         roomAction.value = { kind: "leave", target };
     },
+    requestModeration(moderation) {
+        roomAction.value = { kind: "moderate", moderation };
+    },
 });
+
+// Split the moderation payload by dialog: kick/ban/unban confirm, set-power
+// edits a number. Both derive from the same `roomAction` slot.
+const moderation = computed<MemberModeration | null>(() =>
+    roomAction.value?.kind === "moderate" ? roomAction.value.moderation : null,
+);
+const confirmModeration = computed<MemberModeration | null>(() =>
+    moderation.value && moderation.value.kind !== "set-power" ? moderation.value : null,
+);
+const powerModeration = computed<MemberModeration | null>(() =>
+    moderation.value && moderation.value.kind === "set-power" ? moderation.value : null,
+);
 
 const channelSpaceId = computed(() =>
     roomAction.value?.kind === "create-channel" ? roomAction.value.spaceId : "",
@@ -388,6 +413,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :client="client"
                         :room="activeRoom"
                         :threads-enabled="threadsEnabled"
+                        :settings-allowed="settingsAllowed"
                         @open-thread="openThread"
                         @settings="settingsOpen = true"
                     />
@@ -486,6 +512,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :target="leaveTarget"
             @close="roomAction = null"
             @left="onRoomLeft"
+        />
+        <ModerationConfirmDialog
+            :client="client"
+            :open="confirmModeration !== null"
+            :action="confirmModeration"
+            @close="roomAction = null"
+        />
+        <PowerLevelDialog
+            :client="client"
+            :open="powerModeration !== null"
+            :action="powerModeration"
+            @close="roomAction = null"
         />
         </div>
     </ConfigProvider>

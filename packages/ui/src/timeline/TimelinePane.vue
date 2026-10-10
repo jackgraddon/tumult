@@ -11,6 +11,8 @@ const props = defineProps<{
     client: ChatClient;
     room: RoomSummary | undefined;
     threadsEnabled?: boolean;
+    /** Hide the settings gear for members who cannot send state events. */
+    settingsAllowed?: boolean;
 }>();
 
 // Must be declared and re-emitted: an undeclared listener on this component
@@ -67,7 +69,7 @@ watch(
                 >🔍</IconButton
             >
             <IconButton
-                v-if="room"
+                v-if="room && settingsAllowed !== false"
                 label="Room settings"
                 @click="emit('settings')"
                 >⚙</IconButton

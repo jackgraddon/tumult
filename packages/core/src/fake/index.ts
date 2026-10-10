@@ -11,6 +11,7 @@ import type {
     NotificationPermission,
     NotificationState,
     ProfileView,
+    RoomPowerLevelsView,
     RoomSettingsPatch,
     RoomSummary,
     SearchPage,
@@ -298,7 +299,17 @@ function buildRoster(roomId: string, self: MemberView): MemberView[] {
         member("@bob:example.com", "Bob", 50, "join", "offline", now - 3 * 3_600_000),
         member("@carol:example.com", "Carol", 0, "join", "unknown", null),
         member("@erin:example.com", "Erin", 0, "invite", "unknown", null),
+        // General demos the Banned section: Mallory is banned, so she is absent
+        // from the roster feed and present in the banned feed only.
+        ...(roomId === "!a-general:fake"
+            ? [member("@mallory:example.com", "Mallory", 0, "ban", "unknown", null)]
+            : []),
     ]);
+}
+
+/** The roster `members()` publishes: join/invite only. */
+function isRosteredMember(m: MemberView): boolean {
+    return m.membership === "join" || m.membership === "invite";
 }
 
 class FakeChatClient implements ChatClient {
@@ -315,6 +326,8 @@ class FakeChatClient implements ChatClient {
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
     private readonly threadTimelines = new Map<string, Observable<MessageView[]>>();
     private readonly memberFeeds = new Map<string, Observable<MemberView[]>>();
+    private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
+    private readonly powerLevelFeeds = new Map<string, Observable<RoomPowerLevelsView | null>>();
     private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
 
@@ -583,7 +596,7 @@ class FakeChatClient implements ChatClient {
         if (roster.some((m) => m.userId === userId)) return;
         roster.push(member(userId, fallbackName(userId), 0, "invite", "unknown", null));
         sortMembers(roster);
-        this.publishMembers(roomId);
+        this.publishRoom(roomId);
     }
 
     public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {
@@ -745,8 +758,26 @@ class FakeChatClient implements ChatClient {
     public members(roomId: string): Subscribable<MemberView[]> {
         let feed = this.memberFeeds.get(roomId);
         if (!feed) {
-            feed = new Observable<MemberView[]>([...this.rosterFor(roomId)]);
+            feed = new Observable<MemberView[]>(this.rosterFor(roomId).filter(isRosteredMember));
             this.memberFeeds.set(roomId, feed);
+        }
+        return feed;
+    }
+
+    public banned(roomId: string): Subscribable<MemberView[]> {
+        let feed = this.bannedFeeds.get(roomId);
+        if (!feed) {
+            feed = new Observable<MemberView[]>(this.bannedFor(roomId));
+            this.bannedFeeds.set(roomId, feed);
+        }
+        return feed;
+    }
+
+    public powerLevels(roomId: string): Subscribable<RoomPowerLevelsView | null> {
+        let feed = this.powerLevelFeeds.get(roomId);
+        if (!feed) {
+            feed = new Observable<RoomPowerLevelsView | null>(this.powerLevelsFor(roomId));
+            this.powerLevelFeeds.set(roomId, feed);
         }
         return feed;
     }
@@ -757,7 +788,7 @@ class FakeChatClient implements ChatClient {
         }
         // Fake rosters are complete in memory: nothing to fetch, but publish
         // anyway so the UI's loading → ready transition runs the same path.
-        this.publishMembers(roomId);
+        this.publishRoom(roomId);
     }
 
     public async setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {
@@ -785,7 +816,7 @@ class FakeChatClient implements ChatClient {
                 roomId,
                 sortMembers(roster.map((m) => (m.isSelf ? { ...m, displayName: next.displayName, avatarUrl: next.avatarUrl } : m))),
             );
-            this.publishMembers(roomId);
+            this.publishRoom(roomId);
         }
     }
 
@@ -808,8 +839,96 @@ class FakeChatClient implements ChatClient {
         return this.rosters.get(roomId) ?? [];
     }
 
-    private publishMembers(roomId: string): void {
-        this.memberFeeds.get(roomId)?.set([...this.rosterFor(roomId)]);
+    private bannedFor(roomId: string): MemberView[] {
+        return this.rosterFor(roomId).filter((m) => m.membership === "ban");
+    }
+
+    /**
+     * The fake treats each member's effective level as an explicit override —
+     * it has no separate `users_default` bookkeeping. The self row is the
+     * admin (100), so every gate clears; the real floors are the spec defaults.
+     */
+    private powerLevelsFor(roomId: string): RoomPowerLevelsView | null {
+        const roster = this.rosters.get(roomId);
+        if (!roster) return null;
+        const users: Record<string, number> = {};
+        for (const m of roster) users[m.userId] = m.powerLevel;
+        const myPowerLevel = roster.find((m) => m.isSelf)?.powerLevel ?? 0;
+        return {
+            users,
+            usersDefault: 0,
+            eventsDefault: 0,
+            stateDefault: 50,
+            ban: 50,
+            kick: 50,
+            redact: 50,
+            invite: 0,
+            events: {},
+            myPowerLevel,
+            canKick: myPowerLevel >= 50,
+            canBan: myPowerLevel >= 50,
+            canSetPowerLevel: myPowerLevel >= 50,
+            canEditSettings: myPowerLevel >= 50,
+        };
+    }
+
+    /** Publish every feed a roster change can touch (members, banned, power). */
+    private publishRoom(roomId: string): void {
+        this.memberFeeds.get(roomId)?.set(this.rosterFor(roomId).filter(isRosteredMember));
+        this.bannedFeeds.get(roomId)?.set(this.bannedFor(roomId));
+        const power = this.powerLevelFeeds.get(roomId);
+        if (power) power.set(this.powerLevelsFor(roomId));
+    }
+
+    /** Refuse to act on self or someone at/above our level, like the server. */
+    private assertCanModerate(roomId: string, userId: string): MemberView {
+        const roster = this.rosters.get(roomId);
+        if (!roster) throw new Error(`Unknown room ${roomId}`);
+        const target = roster.find((m) => m.userId === userId);
+        if (!target) throw new Error(`${userId} is not in ${roomId}`);
+        const myPower = roster.find((m) => m.isSelf)?.powerLevel ?? 0;
+        if (myPower < 50) throw new Error("Insufficient power to moderate this room");
+        if (target.powerLevel >= myPower) throw new Error("Cannot moderate a member at or above your own power level");
+        return target;
+    }
+
+    public async kick(roomId: string, userId: string, _reason?: string): Promise<void> {
+        this.assertCanModerate(roomId, userId);
+        const roster = this.rosters.get(roomId);
+        if (!roster) return;
+        // Kicked → gone from the roster (leave is not rostered), not banned.
+        this.rosters.set(roomId, roster.filter((m) => m.userId !== userId));
+        this.publishRoom(roomId);
+    }
+
+    public async ban(roomId: string, userId: string, _reason?: string): Promise<void> {
+        this.assertCanModerate(roomId, userId);
+        const roster = this.rosters.get(roomId);
+        if (!roster) return;
+        const idx = roster.findIndex((m) => m.userId === userId);
+        const existing = idx >= 0 ? roster[idx]! : member(userId, fallbackName(userId), 0, "ban", "unknown", null);
+        const banned: MemberView = { ...existing, membership: "ban" };
+        if (idx >= 0) roster[idx] = banned;
+        else roster.push(banned);
+        sortMembers(roster);
+        this.publishRoom(roomId);
+    }
+
+    public async unban(roomId: string, userId: string): Promise<void> {
+        const roster = this.rosters.get(roomId);
+        if (!roster) return;
+        // Unban → leave, so the user drops off `banned()` without reappearing.
+        this.rosters.set(roomId, roster.filter((m) => m.userId !== userId));
+        this.publishRoom(roomId);
+    }
+
+    public async setPowerLevel(roomId: string, userId: string, powerLevel: number): Promise<void> {
+        const target = this.assertCanModerate(roomId, userId);
+        const roster = this.rosters.get(roomId);
+        if (!roster) return;
+        target.powerLevel = powerLevel;
+        sortMembers(roster);
+        this.publishRoom(roomId);
     }
 
     public async send(roomId: string, body: string, replyToEventId?: string): Promise<void> {

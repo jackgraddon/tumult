@@ -26,6 +26,7 @@ import type {
     NotificationPermission,
     NotificationState,
     ProfileView,
+    RoomPowerLevelsView,
     RoomSettingsPatch,
     RoomSummary,
     SearchPage,
@@ -61,6 +62,7 @@ import {
 import { TypingTracker } from "./typing/tracker.ts";
 import { ThreadTracker } from "./threads/tracker.ts";
 import { MembersTracker } from "./rooms/members.ts";
+import { banMember, kickMember, PowerLevelsTracker, setMemberPowerLevel, unbanMember } from "./rooms/moderation.ts";
 import { MediaResolver } from "./media/resolver.ts";
 import { NotificationTracker } from "./notifications/tracker.ts";
 import { PresencePoller } from "./rooms/presence.ts";
@@ -174,6 +176,8 @@ export class MatrixChatClient implements ChatClient {
     private _threads: ThreadTracker | null = null;
     /** Per-room member rosters, alive while the sync loop runs. */
     private _members: MembersTracker | null = null;
+    /** Per-room power levels, alive while the sync loop runs. */
+    private _powerLevels: PowerLevelsTracker | null = null;
     /** Authenticated-media fetches as blob URLs, alive while the sync loop runs. */
     private _media: MediaResolver | null = null;
     /** Browser notification firing, alive while the sync loop runs. */
@@ -385,6 +389,7 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._members = new MembersTracker(client);
+            this._powerLevels = new PowerLevelsTracker(client);
             // `slidingSync` is a START option that selects the sync loop: the
             // SDK swaps to SlidingSyncSdk only when the instance is passed to
             // startClient() below. Resolve the mode HERE, before the trackers:
@@ -484,6 +489,8 @@ export class MatrixChatClient implements ChatClient {
             this._threads = null;
             this._members?.detachAll();
             this._members = null;
+            this._powerLevels?.detachAll();
+            this._powerLevels = null;
             this._media?.dispose();
             this._media = null;
             this._notifications?.detachAll();
@@ -527,6 +534,8 @@ export class MatrixChatClient implements ChatClient {
         this._threads = null;
         this._members?.detachAll();
         this._members = null;
+        this._powerLevels?.detachAll();
+        this._powerLevels = null;
         this._media?.dispose();
         this._media = null;
         this._notifications?.detachAll();
@@ -743,6 +752,42 @@ export class MatrixChatClient implements ChatClient {
         const members = this._members;
         if (!members) throw new Error("Cannot load members before start()");
         await members.loadMembers(roomId);
+    }
+
+    public powerLevels(roomId: string): Subscribable<RoomPowerLevelsView | null> {
+        const tracker = this._powerLevels;
+        if (!tracker) throw new Error("Cannot read power levels before start()");
+        return tracker.powerLevels(roomId);
+    }
+
+    public banned(roomId: string): Subscribable<MemberView[]> {
+        const members = this._members;
+        if (!members) throw new Error("Cannot read banned members before start()");
+        return members.banned(roomId);
+    }
+
+    public async kick(roomId: string, userId: string, reason?: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot kick before start()");
+        await kickMember(client, roomId, userId, reason);
+    }
+
+    public async ban(roomId: string, userId: string, reason?: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot ban before start()");
+        await banMember(client, roomId, userId, reason);
+    }
+
+    public async unban(roomId: string, userId: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot unban before start()");
+        await unbanMember(client, roomId, userId);
+    }
+
+    public async setPowerLevel(roomId: string, userId: string, powerLevel: number): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot set a power level before start()");
+        await setMemberPowerLevel(client, roomId, userId, powerLevel);
     }
 
     public async setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {

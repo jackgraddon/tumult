@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import type { MemberView } from "@tumult/core";
+import { computed } from "vue";
+import type { MemberView, RoomPowerLevelsView } from "@tumult/core";
+import {
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuPortal,
+    ContextMenuRoot,
+    ContextMenuTrigger,
+} from "reka-ui";
 
+import { useActions, type MemberModerationKind } from "../actions.ts";
 import Avatar from "../primitives/Avatar.vue";
 
 const props = defineProps<{
     member: MemberView;
+    /** The room the row belongs to — carried on every moderation request. */
+    roomId: string;
+    /** Power levels for the room, or null while unknown (then no actions show). */
+    power: RoomPowerLevelsView | null;
 }>();
+
+const actions = useActions();
 
 function ago(ts: number): string {
     const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -26,20 +41,80 @@ function presenceTitle(): string {
     if (m.presence === "offline") return m.lastActiveTs ? `Last seen ${ago(m.lastActiveTs)}` : "Offline";
     return "Presence not yet known";
 }
+
+// Moderation is the server's to enforce; these flags only spare the user an
+// obviously doomed action. Everything requires the target to be strictly
+// below us and not us: the same rule the server applies.
+const myPower = computed(() => props.power?.myPowerLevel ?? 0);
+const belowMe = computed(() => !props.member.isSelf && props.member.powerLevel < myPower.value);
+
+const canSetPower = computed(
+    () => !!props.power?.canSetPowerLevel && props.member.membership !== "ban" && belowMe.value,
+);
+const canKick = computed(() => !!props.power?.canKick && props.member.membership === "join" && belowMe.value);
+const canBan = computed(() => !!props.power?.canBan && props.member.membership === "join" && belowMe.value);
+const canUnban = computed(() => !!props.power?.canBan && props.member.membership === "ban" && belowMe.value);
+const hasActions = computed(() => canSetPower.value || canKick.value || canBan.value || canUnban.value);
+
+function request(kind: MemberModerationKind): void {
+    actions.requestModeration({ kind, roomId: props.roomId, member: props.member });
+}
 </script>
 
 <template>
-    <div class="tumult-member">
-        <span
-            class="tumult-member-dot"
-            :data-presence="member.presence"
-            :title="presenceTitle()"
-            aria-hidden="true"
-        />
-        <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
-        <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
-        <span v-if="member.membership === 'invite'" class="tumult-member-badge">Invited</span>
-    </div>
+    <ContextMenuRoot>
+        <ContextMenuTrigger as-child :disabled="!hasActions">
+            <div class="tumult-member">
+                <span
+                    class="tumult-member-dot"
+                    :data-presence="member.presence"
+                    :title="presenceTitle()"
+                    aria-hidden="true"
+                />
+                <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
+                <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
+                <span v-if="member.membership === 'invite'" class="tumult-member-badge">Invited</span>
+                <span v-else-if="member.membership === 'ban'" class="tumult-member-badge">Banned</span>
+            </div>
+        </ContextMenuTrigger>
+        <!-- No actions for this row → no content, so a right-click shows nothing. -->
+        <ContextMenuPortal v-if="hasActions">
+            <ContextMenuContent class="tumult-menu">
+                <ContextMenuItem
+                    v-if="canSetPower"
+                    class="tumult-menu-item"
+                    text-value="set-power"
+                    @select="request('set-power')"
+                >
+                    Change permissions…
+                </ContextMenuItem>
+                <ContextMenuItem
+                    v-if="canKick"
+                    class="tumult-menu-item"
+                    text-value="kick"
+                    @select="request('kick')"
+                >
+                    Kick {{ member.displayName }}
+                </ContextMenuItem>
+                <ContextMenuItem
+                    v-if="canBan"
+                    class="tumult-menu-item"
+                    text-value="ban"
+                    @select="request('ban')"
+                >
+                    Ban {{ member.displayName }}
+                </ContextMenuItem>
+                <ContextMenuItem
+                    v-if="canUnban"
+                    class="tumult-menu-item"
+                    text-value="unban"
+                    @select="request('unban')"
+                >
+                    Unban {{ member.displayName }}
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenuPortal>
+    </ContextMenuRoot>
 </template>
 
 <style scoped>

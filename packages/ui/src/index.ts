@@ -2,7 +2,7 @@ export { useSubscribable } from "./subscribable.ts";
 export { SelectionKey, useSelection } from "./selection.ts";
 export type { RoomSelection, SelectionContext } from "./selection.ts";
 export { ActionsKey, useActions } from "./actions.ts";
-export type { ActionsContext, LeaveTarget } from "./actions.ts";
+export type { ActionsContext, LeaveTarget, MemberModeration, MemberModerationKind } from "./actions.ts";
 export { TimelineRegistry, RegistryKey, useTimelineRegistry } from "./timeline/registry.ts";
 export type { RendererEntry, TimelineRendererProps } from "./timeline/registry.ts";
 export { default as TumultShell } from "./shell/TumultShell.vue";

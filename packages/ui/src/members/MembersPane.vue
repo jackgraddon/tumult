@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import type { ChatClient, MemberView, Subscribable } from "@tumult/core";
+import type { ChatClient, MemberView, RoomPowerLevelsView, Subscribable } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import MemberListItem from "./MemberListItem.vue";
@@ -28,6 +28,27 @@ try {
     source = null;
 }
 const members = source ? useSubscribable(source) : null;
+
+// Power levels gate the per-row moderation menu (kick/ban/unban/set level).
+// Same throw-before-start() guard as members(): a missing feed just means no
+// actions, never a crash.
+let powerSource: Subscribable<RoomPowerLevelsView | null> | null = null;
+try {
+    powerSource = props.roomId ? props.client.powerLevels(props.roomId) : null;
+} catch {
+    powerSource = null;
+}
+const power = powerSource ? useSubscribable(powerSource) : null;
+
+// Banned members are pulled from the room's membership, not the roster feed,
+// so they need their own subscription.
+let bannedSource: Subscribable<MemberView[]> | null = null;
+try {
+    bannedSource = props.roomId ? props.client.banned(props.roomId) : null;
+} catch {
+    bannedSource = null;
+}
+const banned = bannedSource ? useSubscribable(bannedSource) : null;
 
 // The first sync may only carry a lazy-loaded subset of the room: until
 // loadMembers() resolves, the roster is partial — say so instead of
@@ -79,6 +100,9 @@ const rows = computed<Row[]>(() => {
     pushSection(out, "Moderators", joined.filter((m) => m.powerLevel >= 50 && m.powerLevel < 100));
     pushSection(out, "Members", joined.filter((m) => m.powerLevel < 50));
     pushSection(out, "Invited", list.filter((m) => m.membership === "invite"));
+    // Banned users are absent from the roster feed (join/invite only) but still
+    // `RoomMember`s, so they arrive on their own feed and render last.
+    pushSection(out, "Banned", banned?.value ?? []);
     return out;
 });
 
@@ -143,6 +167,8 @@ function measure(el: unknown): void {
                             <MemberListItem
                                 v-else-if="(rows[v.index] as Row).member !== null"
                                 :member="((rows[v.index] as Row).member as MemberView)"
+                                :room-id="roomId ?? ''"
+                                :power="power"
                             />
                         </template>
                     </div>
