@@ -187,6 +187,12 @@ export class MatrixChatClient implements ChatClient {
     private _notifications: NotificationTracker | null = null;
     /** Client-side unread counts (sliding sync only — Synapse sends none). */
     private _unread: UnreadTracker | null = null;
+    /**
+     * A room-list refresh is due on the next microtask. Sync, receipt, and
+     * unread-count signals arrive in bursts (a sync batch can carry many
+     * receipts); coalescing keeps `snapshotRooms` to one pass per burst.
+     */
+    private roomRefreshScheduled = false;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -351,7 +357,7 @@ export class MatrixChatClient implements ChatClient {
                 // of them without per-room listener bookkeeping.
                 //
                 // Timelines self-drive off the same loop inside TimelineFeed.
-                this.refreshRooms();
+                this.scheduleRefreshRooms();
             });
 
             // Read receipts do NOT ride the Sync event under sliding sync: the
@@ -365,7 +371,7 @@ export class MatrixChatClient implements ChatClient {
             // recompute off that too: this is the invalidation signal that
             // actually covers read positions.
             client.on(ClientEvent.Event, (event: MatrixEvent) => {
-                if (event.getType() === EventType.Receipt) this.refreshRooms();
+                if (event.getType() === EventType.Receipt) this.scheduleRefreshRooms();
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -419,7 +425,7 @@ export class MatrixChatClient implements ChatClient {
             this.activeSyncMode = slidingSupported ? "sliding" : "classic";
             const sliding = slidingSupported ? buildSlidingSync(client, this.sssWindowStore()) : null;
             if (sliding) {
-                this._unread = new UnreadTracker(client, () => this.refreshRooms());
+                this._unread = new UnreadTracker(client, () => this.scheduleRefreshRooms());
                 // The open room's members are polled every tick — the roster on
                 // screen stays live — while everyone else refreshes on a slower
                 // cadence after a warm-up tick.
@@ -514,6 +520,7 @@ export class MatrixChatClient implements ChatClient {
             this._notifications = null;
             this._slidingSync = null;
             this._rangeManager = null;
+            this.roomRefreshScheduled = false;
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -563,6 +570,7 @@ export class MatrixChatClient implements ChatClient {
         this._slidingSync = null;
         this._rangeManager = null;
         this._selectedRoomId = null;
+        this.roomRefreshScheduled = false;
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
@@ -1047,6 +1055,20 @@ export class MatrixChatClient implements ChatClient {
         this.sessionState.set(null);
         this.profileState.set(null);
         this.roomsState.set([]);
+    }
+
+    /**
+     * Coalesce a room-list refresh onto the next microtask. Sync, receipt, and
+     * unread-count changes all funnel here: a single sync batch can carry many
+     * receipts, and each used to run a full `snapshotRooms` pass.
+     */
+    private scheduleRefreshRooms(): void {
+        if (this.roomRefreshScheduled) return;
+        this.roomRefreshScheduled = true;
+        queueMicrotask(() => {
+            this.roomRefreshScheduled = false;
+            this.refreshRooms();
+        });
     }
 
     /**
