@@ -729,15 +729,43 @@ chat client should be.
   room — O(n²) and one stack frame per change). Dev check:
   `__tumult.client.debugUnread(true)` forces a recompute — if the numbers flip,
   the cache was stale; if they stay wrong, the recompute itself is wrong.
+- DONE — slice 25: first-sync responsiveness — the room list now paints AS
+  rooms arrive instead of after the whole batch. Under sliding sync the SDK
+  emits `ClientEvent.Room` once per room as it enters the window, but the
+  terminal `ClientEvent.Sync` does not fire until every room is processed, so
+  on a large account the list stayed blank for seconds. `MatrixChatClient` now
+  listens for `ClientEvent.Room` and recomputes through a new `ThrottledTask`
+  (`util/throttle.ts`, trailing throttle, 120 ms) so ~100 room events cost ~8
+  snapshots, not 100. The timer is deduped against `scheduleRefreshRooms` (a
+  microtask pass cancels it) and cleared on both teardown paths. Measured live
+  against matrix.jackg.cc (98 rooms): first paint 4.8 s → 2.4 s, full list
+  unchanged (98 joined, 38 orphan DMs, 15 spaces). Covered by
+  `test/throttle.test.ts` (4; 279 core unit total).
+- VERIFIED slice-25 traps: the first sync is NOT main-thread bound — on a warm
+  load rAF ran ~58 fps and total jank was ~380 ms (max 252 ms); the 900–2300 ms
+  stalls seen on the very first load were one-time WASM compile. The ~4.3 s
+  `starting → syncing` wait is SDK + network: crypto 4S bootstrap (~16
+  account-data reads), the initial SSS request, and the biggest client-side
+  chunk — `Room.addLiveEvents` `await`ing `fetchRoomEvent` SERIALLY for every
+  edit/reaction whose parent fell outside `timeline_limit: 20` (~14 calls ≈
+  1.9 s; confirmed with a runtime `fetchRoomEvent` stack hook, all frames
+  `addLiveEvents`). That fetch only happens because `supportsThreads()` is true:
+  `eventShouldLiveIn` short-circuits to "lives in room" and never fetches when
+  threads are off, so it is the price of threads (raising `timeline_limit`
+  would trade sync payload for it). No client code sits on that path — the
+  `UnreadTracker` backfill burst (9 `/messages` at load) lands AFTER the sync,
+  so it janks but does not delay the list.
 
 ## Potential next slices
 
 - Room tags / categories: `m.tag` room account data → category grouping in the
   room list (Discord-folder-style), tag editor in the settings dialog.
-- Idle-room unloading via `subscriberCount` (TimelineFeed already returns the
-  same Subscribable per roomId) — the head of the perf/resource queue, with
-  the parked memory rules (windowed room loading, capped in-memory events,
-  server thumbnails) and code-splitting (973 kB chunk).
+- Memory/perf follow-ups: idle-room unloading is DONE (slice 25 A — timeline
+  feeds are evicted 30 s after their last subscriber, `edb81a5`+); the first
+  sync paints progressively (slice 25, `ClientEvent.Room` + `ThrottledTask`).
+  Still parked: windowed room loading, capped in-memory events, and
+  code-splitting the entry chunk (992 kB / 287 kB gzip — the login route
+  statically imports the SDK, so this is mostly a parse-time win).
 - SSS follow-ups (after slice 22): native SSS presence replacing the REST poll
   (the js-sdk has no presence extension yet — "not possible in sliding sync
   yet"); true SSS warm-boot (resume the sync token / show rooms offline) —

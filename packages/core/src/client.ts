@@ -71,6 +71,7 @@ import { NotificationTracker } from "./notifications/tracker.ts";
 import { PresencePoller } from "./rooms/presence.ts";
 import { UnreadTracker } from "./rooms/unread.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
+import { ThrottledTask } from "./util/throttle.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
@@ -152,6 +153,16 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
  */
 const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
 
+/**
+ * Throttle for progressive room-list refreshes during the first sync. Sliding
+ * sync emits `ClientEvent.Room` once per room as it enters the window (roughly
+ * 100 events on a large account), all before the single terminal
+ * `ClientEvent.Sync`; without a throttle the list would recompute and re-render
+ * once per room. One pass per this window keeps it smooth while still painting
+ * long before the batch finishes.
+ */
+const PROGRESSIVE_REFRESH_MS = 120;
+
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -193,6 +204,12 @@ export class MatrixChatClient implements ChatClient {
      * receipts); coalescing keeps `snapshotRooms` to one pass per burst.
      */
     private roomRefreshScheduled = false;
+    /**
+     * Progressive room-list refresh for the first sync (see
+     * {@link scheduleProgressiveRefreshRooms}). A throttled task, not a
+     * microtask: the first-sync room flood must not recompute once per room.
+     */
+    private readonly progressiveRefresh: ThrottledTask;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -229,6 +246,7 @@ export class MatrixChatClient implements ChatClient {
         this.storage = options.storage ?? AuthStorage.browser();
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
         this.syncModeOption = options.syncMode ?? "auto";
+        this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
     }
 
     public get session(): Subscribable<SessionView | null> {
@@ -360,7 +378,18 @@ export class MatrixChatClient implements ChatClient {
                 this.scheduleRefreshRooms();
             });
 
-            // Read receipts do NOT ride the Sync event under sliding sync: the
+            // Rooms enter the sliding-sync window one at a time during the
+            // first sync: the SDK emits `ClientEvent.Room` per room as soon as
+            // that room's events are injected, and the terminal
+            // `ClientEvent.Sync` does not fire until the whole batch is done.
+            // Waiting for it leaves the room list blank for seconds on a large
+            // account while the SDK resolves each room. A throttled recompute
+            // here paints the list as rooms arrive. Once the window is warm,
+            // rooms are updated (not added), so this rarely fires again.
+            client.on(ClientEvent.Room, () => {
+                this.scheduleProgressiveRefreshRooms();
+            });
+
             // SSS loop emits ClientEvent.Sync from SlidingSyncState.Complete,
             // which fires BEFORE its post-process extensions run — and the
             // receipts extension is a PostProcess one. Recomputing only on Sync
@@ -521,6 +550,7 @@ export class MatrixChatClient implements ChatClient {
             this._slidingSync = null;
             this._rangeManager = null;
             this.roomRefreshScheduled = false;
+            this.clearProgressiveRefresh();
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -571,6 +601,7 @@ export class MatrixChatClient implements ChatClient {
         this._rangeManager = null;
         this._selectedRoomId = null;
         this.roomRefreshScheduled = false;
+        this.clearProgressiveRefresh();
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
@@ -1067,8 +1098,27 @@ export class MatrixChatClient implements ChatClient {
         this.roomRefreshScheduled = true;
         queueMicrotask(() => {
             this.roomRefreshScheduled = false;
+            // A pending progressive refresh would do the same pass; drop it so
+            // a Sync/receipt burst never costs two snapshots.
+            this.clearProgressiveRefresh();
             this.refreshRooms();
         });
+    }
+
+    /**
+     * Throttled variant of {@link scheduleRefreshRooms}, used for the first-sync
+     * room flood. At most one recompute per {@link PROGRESSIVE_REFRESH_MS} while
+     * rooms stream in, so the list grows smoothly instead of re-rendering once
+     * per room. A later `scheduleRefreshRooms` (the terminal Sync) still runs
+     * immediately; the timer is cleared on teardown.
+     */
+    private scheduleProgressiveRefreshRooms(): void {
+        this.progressiveRefresh.schedule();
+    }
+
+    /** Drop any pending progressive refresh (stop/teardown). */
+    private clearProgressiveRefresh(): void {
+        this.progressiveRefresh.clear();
     }
 
     /**
