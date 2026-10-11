@@ -64,6 +64,7 @@ function stubClient(rooms: Room[], pageFails = false): MatrixClient & { paginate
     const matrix = {
         getUserId: () => SELF,
         getRooms: () => rooms,
+        getRoom: (roomId: string) => rooms.find((r) => r.roomId === roomId) ?? null,
         async paginateEventTimeline(timeline: unknown) {
             if (pageFails) throw new Error("network down");
             const room = rooms.find((r) => r.getLiveTimeline() === timeline);

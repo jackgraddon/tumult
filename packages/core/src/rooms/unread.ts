@@ -1,6 +1,8 @@
 import { type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { ReceiptType } from "matrix-js-sdk/lib/@types/read_receipts.js";
 
+import { BackfillQueue } from "./backfill-queue.ts";
+
 /**
  * Client-side unread counts for Simplified Sliding Sync.
  *
@@ -106,7 +108,12 @@ export class UnreadTracker {
     /** Called when a room's count changes, so the caller can re-snapshot. */
     private readonly onCounts: () => void;
     private readonly counts = new Map<string, UnreadCounts>();
-    private readonly backfilling = new Set<string>();
+    /**
+     * Serialized, deduped backfills. A first sync with many out-of-window read
+     * positions used to launch one concurrent pagination each — a burst of
+     * hundreds of events in a single frame. The queue spreads them out.
+     */
+    private readonly backfills: BackfillQueue;
     /** Read position each room's backfill ran for — a moved position re-arms it. */
     private readonly backfilledRead = new Map<string, string>();
     /**
@@ -123,6 +130,7 @@ export class UnreadTracker {
     public constructor(matrix: MatrixClient, onCounts: () => void) {
         this.matrix = matrix;
         this.onCounts = onCounts;
+        this.backfills = new BackfillQueue((roomId) => this.runBackfill(roomId));
     }
 
     /** Recompute every joined room's count. Called before `snapshotRooms`. */
@@ -201,13 +209,15 @@ export class UnreadTracker {
             positionsKnown &&
             readIndex < 0 &&
             this.backfilledRead.get(room.roomId) !== key &&
-            !this.backfilling.has(room.roomId)
+            !this.backfills.has(room.roomId)
         ) {
-            void this.backfill(room, read).catch(() => {
-                // Best-effort: the lower bound stays until the position lands
-                // in the window some other way.
-            });
+            this.backfills.enqueue(room.roomId);
         }
+    }
+
+    /** Drop queued backfills on client teardown. Running ones finish on their own. */
+    public dispose(): void {
+        this.backfills.clear();
     }
 
     /**
@@ -215,24 +225,28 @@ export class UnreadTracker {
      * exact. Capped: a room whose position is older than the cap keeps the
      * lower bound until the user reads it (which moves the position into the
      * window). Never rejects — failures just leave the lower bound in place.
+     *
+     * Runs from the {@link BackfillQueue}, so the read position is re-read here:
+     * it may have landed in the window while this waited its turn.
      */
-    private async backfill(room: Room, read: ReadPositions): Promise<void> {
-        const key = readKey(read);
-        this.backfilling.add(room.roomId);
-        try {
-            for (let page = 0; page < BACKFILL_PAGES; page++) {
-                const timeline = room.getLiveTimeline().getEvents();
-                if (latestLoadedReadIndex(timeline, read) >= 0) break;
-                const more = await this.matrix.paginateEventTimeline(room.getLiveTimeline(), {
-                    backwards: true,
-                    limit: BACKFILL_PAGE_SIZE,
-                });
-                if (!more) break;
-            }
-            this.backfilledRead.set(room.roomId, key);
-            this.recompute(room);
-        } finally {
-            this.backfilling.delete(room.roomId);
+    private async runBackfill(roomId: string): Promise<void> {
+        const room = this.matrix.getRoom(roomId);
+        if (!room) return;
+        const read = readPositions(room, this.matrix.getUserId());
+        if (latestLoadedReadIndex(room.getLiveTimeline().getEvents(), read) >= 0) {
+            this.backfilledRead.set(roomId, readKey(read));
+            return;
         }
+        for (let page = 0; page < BACKFILL_PAGES; page++) {
+            const timeline = room.getLiveTimeline().getEvents();
+            if (latestLoadedReadIndex(timeline, read) >= 0) break;
+            const more = await this.matrix.paginateEventTimeline(room.getLiveTimeline(), {
+                backwards: true,
+                limit: BACKFILL_PAGE_SIZE,
+            });
+            if (!more) break;
+        }
+        this.backfilledRead.set(roomId, readKey(read));
+        this.recompute(room);
     }
 }

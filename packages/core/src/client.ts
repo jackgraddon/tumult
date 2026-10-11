@@ -547,6 +547,10 @@ export class MatrixChatClient implements ChatClient {
             this._media = null;
             this._notifications?.detachAll();
             this._notifications = null;
+            this._unread?.dispose();
+            this._unread = null;
+            this._presence?.detachAll();
+            this._presence = null;
             this._slidingSync = null;
             this._rangeManager = null;
             this.roomRefreshScheduled = false;
@@ -594,6 +598,9 @@ export class MatrixChatClient implements ChatClient {
         this._media = null;
         this._notifications?.detachAll();
         this._notifications = null;
+        this._unread?.dispose();
+        this._unread = null;
+        this._presence = null;
         this.publishTyping();
         this.removeDecryptedHook?.();
         this.removeDecryptedHook = null;
