@@ -704,6 +704,31 @@ chat client should be.
   applies", not just the content. `room.getMember(selfId)` may be null while
   the roster is lazy — fall back to the raw `users`/`users_default` so
   `myPowerLevel` is never a lie.
+- FIX — false unread badges on rooms read elsewhere (SSS only), four commits,
+  each verified against the v43 source: (1) the read position is the LATER of
+  the `m.fully_read` marker and the read receipt — old clients only ever wrote
+  a receipt, so a missing marker used to light up the whole loaded window;
+  (2) private read receipts (`m.read.private`) count too — a user on private
+  receipts has no public one; both come from
+  `getReadReceiptForUserId(selfId, true, type)`. (3) Space nesting is driven by
+  `m.space.child` / `m.room.parent`, and the state key is the WILDCARD `"*"` —
+  reading it under the child room id (or the space id) finds nothing, so every
+  child looked parent-less (rooms leaked into DMs, spaces into the rail);
+  `sync/requiredState.ts` owns the wildcarded required-state list now.
+- VERIFIED unread trap — the SSS loop emits `ClientEvent.Sync` from
+  `invokeLifecycleListeners(SlidingSyncState.Complete)` BEFORE
+  `onPostExtensionsResponse`, and receipts are a PostProcess extension. So
+  recomputing unread only on Sync always reads the PREVIOUS batch's receipt
+  map, and a room read on another client (or just opened) keeps its stale
+  badge until some later Sync happens to land. Recompute on the `m.receipt`
+  events the extension re-emits as `ClientEvent.Event` too — that is the
+  invalidation signal that actually covers read positions. `update()` also
+  try/catches per room (one throwing accessor used to abandon every room after
+  it, freezing their badges) and carries a re-entrancy guard (`onCounts` →
+  `refreshRooms` → `update` used to rescan the whole list once per changed
+  room — O(n²) and one stack frame per change). Dev check:
+  `__tumult.client.debugUnread(true)` forces a recompute — if the numbers flip,
+  the cache was stale; if they stay wrong, the recompute itself is wrong.
 
 ## Potential next slices
 
