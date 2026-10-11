@@ -226,4 +226,40 @@ describe("UnreadTracker", () => {
         tracker.update();
         assert.equal(tracker.getUnread("!a:x").total, 0);
     });
+
+    it("a throwing room does not freeze the rooms after it", () => {
+        // Regression: `update()` used to abort on the first room that threw,
+        // leaving every later room on a stale count until the thrower left.
+        const bad = stubRoom({ roomId: "!bad:x", events: [] });
+        (bad as unknown as { getLiveTimeline(): never }).getLiveTimeline = () => {
+            throw new Error("boom");
+        };
+        const good = stubRoom({ roomId: "!good:x", events: [ev("$t1"), ev("$t2")] });
+        const tracker = makeTracker(stubClient([bad, good]), []);
+        tracker.update();
+        assert.equal(tracker.getUnread("!good:x").total, 2, "the healthy room still counted");
+    });
+
+    it("collapses re-entrant updates instead of rescanning every room per change", () => {
+        // `onCounts` is refreshRooms, which calls `update()` again — and a
+        // recompute that changes a count calls `onCounts`. Without the guard,
+        // N simultaneous changes re-scan the whole list N times (O(n²) and one
+        // stack frame per change). With it, the callback's update is a no-op.
+        let visits = 0;
+        const rooms = Array.from({ length: 20 }, (_, i) => {
+            const room = stubRoom({ roomId: `!r${i}:x`, events: [ev("$t1")] });
+            const inner = room.getMyMembership;
+            (room as unknown as { getMyMembership(): string }).getMyMembership = () => {
+                visits++;
+                return inner();
+            };
+            return room;
+        });
+        let tracker!: UnreadTracker;
+        tracker = new UnreadTracker(stubClient(rooms), () => tracker.update());
+        tracker.update();
+        assert.equal(visits, 20, "each room visited exactly once; the re-entrant call bailed early");
+        assert.equal(tracker.getUnread("!r0:x").total, 1);
+        assert.equal(tracker.getUnread("!r19:x").total, 1);
+    });
 });

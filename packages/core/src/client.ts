@@ -1,11 +1,13 @@
 import {
     ClientEvent,
     createClient,
+    EventType,
     HttpApiEvent,
     IndexedDBStore,
     NotificationCountType,
     SyncState,
     type MatrixClient,
+    type MatrixEvent,
     type SyncStateData,
 } from "matrix-js-sdk";
 import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
@@ -350,6 +352,20 @@ export class MatrixChatClient implements ChatClient {
                 //
                 // Timelines self-drive off the same loop inside TimelineFeed.
                 this.refreshRooms();
+            });
+
+            // Read receipts do NOT ride the Sync event under sliding sync: the
+            // SSS loop emits ClientEvent.Sync from SlidingSyncState.Complete,
+            // which fires BEFORE its post-process extensions run — and the
+            // receipts extension is a PostProcess one. Recomputing only on Sync
+            // therefore always reads the previous batch's receipt map, so a
+            // room read on another client (or in a room we just opened) keeps
+            // its stale badge until some later Sync happens to land. The
+            // extension re-emits each receipt as ClientEvent.Event, so
+            // recompute off that too: this is the invalidation signal that
+            // actually covers read positions.
+            client.on(ClientEvent.Event, (event: MatrixEvent) => {
+                if (event.getType() === EventType.Receipt) this.refreshRooms();
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -1064,10 +1080,15 @@ export class MatrixChatClient implements ChatClient {
      * unread badge, so a wrong count can be explained instead of guessed at.
      * Not part of the ChatClient contract — reachable through the concrete
      * client, exposed by the web dev handle as `__tumult.client.debugUnread()`.
+     *
+     * Pass `true` to force a recompute first: if the numbers flip to the
+     * correct value, the cache was stale (an invalidation-signal bug); if they
+     * stay wrong, the recompute itself is wrong.
      */
-    public debugUnread(): Array<Record<string, unknown>> {
+    public debugUnread(recompute = false): Array<Record<string, unknown>> {
         const client = this.matrix;
         if (!client) return [];
+        if (recompute) this._unread?.update();
         return client
             .getRooms()
             .filter((room) => room.getMyMembership() === "join")

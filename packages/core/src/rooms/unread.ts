@@ -109,6 +109,15 @@ export class UnreadTracker {
     private readonly backfilling = new Set<string>();
     /** Read position each room's backfill ran for — a moved position re-arms it. */
     private readonly backfilledRead = new Map<string, string>();
+    /**
+     * `recompute` calls `onCounts` (→ refreshRooms → update) as soon as a count
+     * moves, so a burst of changes (receipts landing for the whole window)
+     * would otherwise re-enter this loop once per room — O(n²) snapshots and
+     * one stack frame per change. The guard collapses that: the in-flight pass
+     * finishes, `onCounts` still republishes, and the caller's own final
+     * snapshot follows.
+     */
+    private updating = false;
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
     public constructor(matrix: MatrixClient, onCounts: () => void) {
@@ -118,9 +127,23 @@ export class UnreadTracker {
 
     /** Recompute every joined room's count. Called before `snapshotRooms`. */
     public update(): void {
-        for (const room of this.matrix.getRooms()) {
-            if (room.getMyMembership() !== "join") continue;
-            this.recompute(room);
+        if (this.updating) return;
+        this.updating = true;
+        try {
+            for (const room of this.matrix.getRooms()) {
+                // One room's throwing accessor must not abandon every room
+                // after it: that would freeze those badges on stale counts for
+                // as long as the thrower stays in the list. Membership is read
+                // inside the guard too — it is not guaranteed not to throw.
+                try {
+                    if (room.getMyMembership() !== "join") continue;
+                    this.recompute(room);
+                } catch (err) {
+                    console.error("[tumult] unread recompute failed", room.roomId, err);
+                }
+            }
+        } finally {
+            this.updating = false;
         }
     }
 
