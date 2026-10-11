@@ -112,6 +112,20 @@ describe("PresencePoller", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
     })
 
+    it("commits a poll wave as a single feed call", async () => {
+        const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
+        const bob = { userId: "@bob:localhost", membership: "join" } as unknown as RoomMember
+        const carol = { userId: "@carol:localhost", membership: "join" } as unknown as RoomMember
+        const m = matrixWith([room("!a", [alice, bob, carol])])
+        let calls = 0
+        let committed = 0
+        const poller = new PresencePoller(m, (p) => { calls++; committed += p.length })
+        poller.tick()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        assert.equal(calls, 1, "three responses coalesce into one roster rebuild")
+        assert.equal(committed, 3, "every polled user still reaches the sink")
+    })
+
     it("polls priority users every tick and others on the slow cadence", async () => {
         const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
         const bob = { userId: "@bob:localhost", membership: "join" } as unknown as RoomMember
