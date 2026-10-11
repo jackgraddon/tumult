@@ -62,4 +62,5 @@ export type { MappableEvent } from "./timeline/map.ts";
 export type { SpaceNode, SpaceTree, SpaceTreeOptions } from "./selectors/spaceTree.ts";
 export { createChatClient, MatrixChatClient, type ChatClientOptions } from "./client.ts";
 export { AuthStorage, type AuthStore, type StoredSession } from "./auth/storage.ts";
+export { hasStoredSession } from "./auth/session.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";

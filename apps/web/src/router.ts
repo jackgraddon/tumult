@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
-
-import { chat } from "./chat.ts";
+import { hasStoredSession } from "@tumult/core/session";
 
 const routes: RouteRecordRaw[] = [
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },
@@ -16,25 +15,21 @@ export const router = createRouter({
 });
 
 /**
- * Rehydrating the persisted session has to finish before the first guarded
- * navigation resolves, or a reload bounces a signed-in user to /login.
+ * Deciding where to go only needs to know whether a *persisted* session
+ * exists, and that is a localStorage read — no SDK. Restoring the client
+ * itself (which does need matrix-js-sdk) now happens in AppView, after the
+ * shell has painted, so the SDK chunk streams in behind the first paint
+ * instead of blocking navigation.
  *
- * This memoizes the *attempt*, never the answer. Holding on to the result
- * would make the guard permanently believe whatever was true at startup, so a
- * logout could not take effect: navigation to /login would keep matching the
- * "already signed in" branch and bounce straight back.
+ * State is read fresh on every navigation, never memoized: a logout clears the
+ * session, and a memoized answer would keep matching the signed-in branch and
+ * bounce straight back from /login.
  */
-let restoreAttempted: Promise<unknown> | null = null;
-
-router.beforeEach(async (to) => {
+router.beforeEach((to) => {
     // The callback route is what *creates* the session, so it must stay open.
     if (to.name === "callback") return true;
 
-    restoreAttempted ??= chat.restoreSession();
-    await restoreAttempted;
-
-    // Live state, read fresh on every navigation.
-    const hasSession = chat.session.get() !== null;
+    const hasSession = hasStoredSession();
 
     if (!hasSession && to.name !== "login") return { name: "login" };
     if (hasSession && to.name === "login") return { name: "dms" };

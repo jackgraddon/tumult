@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { TumultShell, type RoomSelection, type TimelineRegistry } from "@tumult/ui";
+import type { ChatClient } from "@tumult/core";
 
-import { chat } from "../chat.ts";
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
 
 const route = useRoute();
 const router = useRouter();
+
+/**
+ * The concrete client is a dynamic import on purpose: importing it pulls in
+ * matrix-js-sdk (about 1 MB). Holding it in a ref lets this view paint a boot
+ * state first, then swap in the real shell once the SDK chunk arrives. The
+ * router guard already confirmed a session is *persisted*; rehydrating the
+ * client — which does need the SDK — is this view's job now.
+ */
+const chat = shallowRef<ChatClient | null>(null);
 const shell = ref<{ registry: TimelineRegistry; hrefFor: (next: RoomSelection) => string } | null>(null);
 const showMembers = ref(true);
 const showRoomList = ref(true);
@@ -16,7 +25,15 @@ const startError = ref<string | null>(null);
 
 onMounted(async () => {
     try {
-        await chat.start();
+        const { chat: client } = await import("../chat.ts");
+        // Restore before start: `start()` needs a session, and the guard only
+        // checked that one is stored, not that it is still loadable.
+        if (!(await client.restoreSession())) {
+            await router.replace({ name: "login" });
+            return;
+        }
+        chat.value = client;
+        await client.start();
     } catch (cause) {
         startError.value = cause instanceof Error ? cause.message : String(cause);
     }
@@ -46,13 +63,15 @@ function onSelect(next: RoomSelection): void {
 }
 
 async function signOut(): Promise<void> {
-    await chat.logout();
+    if (!chat.value) return;
+    await chat.value.logout();
     await router.replace({ name: "login" });
 }
 </script>
 
 <template>
     <TumultShell
+        v-if="chat"
         ref="shell"
         :client="chat"
         :selection="selection"
@@ -63,6 +82,10 @@ async function signOut(): Promise<void> {
         @toggle-room-list="showRoomList = !showRoomList"
         @sign-out="signOut"
     />
+    <main v-else class="centered" role="status">
+        <h1>Tumult</h1>
+        <p class="muted">Loading…</p>
+    </main>
     <p v-if="startError" role="alert" class="tumult-start-error">{{ startError }}</p>
 </template>
 

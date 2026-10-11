@@ -755,6 +755,51 @@ chat client should be.
   would trade sync payload for it). No client code sits on that path — the
   `UnreadTracker` backfill burst (9 `/messages` at load) lands AFTER the sync,
   so it janks but does not delay the list.
+- DONE — perf sweep after slice 25 (every item measured before landing):
+  * Unread backfills spread instead of bursting: `UnreadTracker` fired one
+    `paginateEventTimeline` per out-of-window room, concurrently, so a first
+    sync processed hundreds of SDK events in a single frame (a 219 ms spike
+    measured AFTER the room list had already painted). New
+    `rooms/backfill-queue.ts` runs at most two at once, deduped by room; the
+    tracker's run callback re-reads the read position first, so a backfill that
+    was queued while the sync (or an earlier backfill) pulled that position
+    into the window is skipped outright. Three reloads (98 rooms): the spike is
+    gone (worst frame ~128 ms at paint), backfills 9 → 3–4 across two waves,
+    first paint unchanged ~2.5 s. `test/backfill-queue.test.ts` (4).
+  * Crypto-event security snapshots coalesced: each
+    `KeyBackupStatus`/`KeysChanged`/`DevicesUpdated` ran a whole probe, and
+    `querySecurityStatus` awaits `checkKeyBackupAndEnable()` — a NETWORK round
+    trip — so a burst fanned out one request per event. The listener now
+    schedules a 250 ms trailing `ThrottledTask`; explicit moments (start,
+    `setupRecovery`, `restoreBackup`) still await `refreshSecurity()` directly.
+    This account's load emits 0–2 such events (its rooms are mostly
+    unencrypted), so the measured saving here is a bound, not a drop — the
+    encrypted workload is what it protects.
+  * Entry chunk code-split: the SDK is 1057 kB / 276 kB gzip — essentially the
+    entire 996 kB entry — and it was in the entry graph only because
+    `router.ts` imported `chat.ts` for its guard. The guard now answers from
+    the new `@tumult/core/session` subpath (`hasStoredSession()`: a
+    localStorage read, zero SDK), `main.ts` warms `import("./chat.ts")` only
+    when a session is persisted, and `AppView` does the dynamic import +
+    `restoreSession()`/`start()` behind a boot state (redirecting to /login if
+    the stored session will not load). Production: first paint 97 ms, shell
+    185 ms, entry 41 kB gzip, SDK a lazy `chat-*.js` (248 kB gzip) fetched in
+    PARALLEL with the route chunk. `test/session.test.ts` (3).
+  * Also stopped the presence poller on the start-failure teardown path, which
+    previously only the orderly `stop()` did.
+- VERIFIED perf traps: the `timeline_limit: 40` experiment was run and
+  REJECTED — it halves the `fetchRoomEvent` fallback (14 → 9) but doubles the
+  initial SSS payload (340 → 715 kB encoded, 1.33 → 1.58 s) and pushes first
+  paint 2.4 → 3.3 s, because the sync response must land before anything
+  paints while those fetches happen after paint anyway. Keep 20. Splitting the
+  entry is worth it ONLY because the guard's question ("is a session stored?")
+  needs no SDK; `LoginView`/`CallbackView` still import the client, so /login
+  stays heavy until the OAuth login surface itself is split out. And
+  `AuthStorage` used a TS parameter property — strip-only Node rejects that
+  with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, which no test had ever hit because
+  nothing imported `storage.ts`; exporting `hasStoredSession()` made it
+  reachable, so its constructor is now erasable (as `util/throttle.ts`
+  already was).
 
 ## Potential next slices
 
@@ -762,10 +807,12 @@ chat client should be.
   room list (Discord-folder-style), tag editor in the settings dialog.
 - Memory/perf follow-ups: idle-room unloading is DONE (slice 25 A — timeline
   feeds are evicted 30 s after their last subscriber, `edb81a5`+); the first
-  sync paints progressively (slice 25, `ClientEvent.Room` + `ThrottledTask`).
-  Still parked: windowed room loading, capped in-memory events, and
-  code-splitting the entry chunk (992 kB / 287 kB gzip — the login route
-  statically imports the SDK, so this is mostly a parse-time win).
+  sync paints progressively (slice 25, `ClientEvent.Room` + `ThrottledTask`);
+  unread backfills are queued two-at-a-time and the entry chunk is code-split
+  (the SDK is a lazy 248 kB gzip chunk). Still parked: windowed room loading,
+  capped in-memory events, and splitting the SDK out of *`/login`* too (it
+  needs a separate lightweight OAuth login surface — `LoginView`/`CallbackView`
+  currently import the full client).
 - SSS follow-ups (after slice 22): native SSS presence replacing the REST poll
   (the js-sdk has no presence extension yet — "not possible in sliding sync
   yet"); true SSS warm-boot (resume the sync token / show rooms offline) —

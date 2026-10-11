@@ -45,7 +45,16 @@ export interface AuthStore {
 }
 
 export class AuthStorage {
-    public constructor(private readonly store: AuthStore) {}
+    // No parameter property: Node's strip-only type-stripping rejects it
+    // (ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX), which breaks any test that imports
+    // this module — `@tumult/core/session` reaches it, so the guard's helper
+    // cannot be tested without an erasable constructor. Same rule as
+    // util/throttle.ts.
+    private readonly store: AuthStore;
+
+    public constructor(store: AuthStore) {
+        this.store = store;
+    }
 
     public static browser(): AuthStorage {
         if (typeof localStorage === "undefined") {

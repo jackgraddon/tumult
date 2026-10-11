@@ -15,6 +15,10 @@
     "./selectors": {
       "types": "./dist/selectors/spaceTree.d.ts",
       "import": "./dist/selectors/spaceTree.js"
+    },
+    "./session": {
+      "types": "./dist/auth/session.d.ts",
+      "import": "./dist/auth/session.js"
     }
   },
   "main": "./dist/index.js",
