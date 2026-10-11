@@ -163,6 +163,14 @@ const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
  */
 const PROGRESSIVE_REFRESH_MS = 120;
 
+/**
+ * Coalesce window for crypto-event-driven security snapshots. A single sync or
+ * device-list batch re-emits `KeysChanged` / `DevicesUpdated` many times, and
+ * each snapshot walks cross-signing, backup trust and secret storage. Explicit
+ * moments (start, restore, setup) still refresh immediately.
+ */
+const SECURITY_REFRESH_MS = 250;
+
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -210,6 +218,11 @@ export class MatrixChatClient implements ChatClient {
      * microtask: the first-sync room flood must not recompute once per room.
      */
     private readonly progressiveRefresh: ThrottledTask;
+    /**
+     * Coalesces crypto-event security refreshes (see {@link SECURITY_REFRESH_MS}).
+     * Explicit call sites stay immediate and await the query directly.
+     */
+    private readonly securityRefresh: ThrottledTask;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -247,6 +260,9 @@ export class MatrixChatClient implements ChatClient {
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
         this.syncModeOption = options.syncMode ?? "auto";
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
+        this.securityRefresh = new ThrottledTask(() => {
+            void this.refreshSecurity();
+        }, SECURITY_REFRESH_MS);
     }
 
     public get session(): Subscribable<SessionView | null> {
@@ -476,14 +492,16 @@ export class MatrixChatClient implements ChatClient {
             this.publishNotifications();
             // Key backup state can move at any time (another device rotates
             // keys, a backup completes). These three cover it; the snapshot
-            // recomputes wholesale on each.
+            // recomputes wholesale on each — but a single crypto batch re-emits
+            // them many times, so the refresh is coalesced (see
+            // SECURITY_REFRESH_MS) rather than run per event.
             for (const event of [
                 CryptoEvent.KeyBackupStatus,
                 CryptoEvent.KeysChanged,
                 CryptoEvent.DevicesUpdated,
             ]) {
                 client.on(event, () => {
-                    void this.refreshSecurity();
+                    this.securityRefresh.schedule();
                 });
             }
             // Thread support is OFF by default — without it the SDK treats
@@ -555,6 +573,7 @@ export class MatrixChatClient implements ChatClient {
             this._rangeManager = null;
             this.roomRefreshScheduled = false;
             this.clearProgressiveRefresh();
+            this.securityRefresh.clear();
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -609,6 +628,7 @@ export class MatrixChatClient implements ChatClient {
         this._selectedRoomId = null;
         this.roomRefreshScheduled = false;
         this.clearProgressiveRefresh();
+        this.securityRefresh.clear();
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
