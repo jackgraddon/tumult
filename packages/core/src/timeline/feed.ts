@@ -21,6 +21,12 @@ export const TIMELINE_CAP = 500;
 const PAGINATION_LIMIT = 50;
 /** Jump bound: enough pages to walk the whole cap (plus slack), never unbounded. */
 const JUMP_MAX_PAGES = 12;
+/**
+ * How long a feed with no subscribers is kept before its snapshot and room
+ * listeners are dropped. A short grace keeps rapid back-and-forth room
+ * switching instant; after it, an unvisited room costs nothing.
+ */
+const IDLE_EVICT_MS = 30_000;
 
 interface RoomFeed {
     obs: Observable<MessageView[]>;
@@ -168,15 +174,29 @@ export function collectReactions(
  * replaced. Listeners attach lazily (rooms may not be in the store yet) and
  * detach on `stop()`. Every signal rebuilds the snapshot wholesale — events
  * are invalidation, never patches.
+ *
+ * Rebuilds are coalesced per room: a burst of `RoomEvent.Timeline` /
+ * `MatrixEventEvent.Decrypted` signals (an initial sync, a decryption wave)
+ * collapses to one re-map on the next microtask instead of one per event.
+ * A feed with no subscribers is dropped after {@link IDLE_EVICT_MS}, so
+ * browsing 90 rooms does not keep 90 live 500-event snapshots and listeners;
+ * revisiting re-attaches and rebuilds from the SDK timeline.
  */
 export class TimelineFeed {
     private readonly feeds = new Map<string, RoomFeed>();
     private readonly matrix: MatrixClient;
     private readonly onSync: (state: SyncState) => void;
+    private readonly idleEvictMs: number;
+    /** Room ids with a rebuild due on the next microtask. */
+    private readonly pendingRebuild = new Set<string>();
+    private flushScheduled = false;
+    /** Pending idle-eviction timers, keyed by room id. */
+    private readonly evictTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     // No parameter properties: Node's type-stripping only supports erasable syntax.
-    public constructor(matrix: MatrixClient) {
+    public constructor(matrix: MatrixClient, idleEvictMs = IDLE_EVICT_MS) {
         this.matrix = matrix;
+        this.idleEvictMs = idleEvictMs;
         // Self-driving: rooms enter the store on any sync batch, so attach
         // and rebuild here rather than trusting callers to poll. Rebuilds skip
         // publishing when nothing changed.
@@ -188,18 +208,23 @@ export class TimelineFeed {
     }
 
     public timeline(roomId: string): Subscribable<MessageView[]> {
-        let feed = this.feeds.get(roomId);
-        if (!feed) {
-            feed = { obs: new Observable<MessageView[]>([]), room: null, invalidate: null, paginating: null, lastReceiptSent: null };
-            this.feeds.set(roomId, feed);
-            this.attach(roomId);
-        }
+        const feed = this.feeds.get(roomId) ?? this.create(roomId);
         return feed.obs;
     }
 
     /** Rebuild every live feed. Called on each sync as a backstop for missed signals. */
     public rebuildAll(): void {
-        for (const roomId of this.feeds.keys()) this.rebuild(roomId);
+        for (const roomId of this.feeds.keys()) this.scheduleRebuild(roomId);
+    }
+
+    /** Coalesced rebuild of one room's feed (a sync, timeline, or decrypt signal). */
+    public rebuildRoom(roomId: string | undefined): void {
+        if (roomId) this.scheduleRebuild(roomId);
+    }
+
+    /** Live (non-evicted) feed count. Diagnostics and tests. */
+    public feedCount(): number {
+        return this.feeds.size;
     }
 
     /** Re-attempt listener attach for feeds whose room wasn't in the store yet. */
@@ -283,6 +308,9 @@ export class TimelineFeed {
 
     public detachAll(): void {
         this.matrix.removeListener(ClientEvent.Sync, this.onSync);
+        for (const timer of this.evictTimers.values()) clearTimeout(timer);
+        this.evictTimers.clear();
+        this.pendingRebuild.clear();
         for (const [roomId, feed] of this.feeds) {
             if (feed.room && feed.invalidate) {
                 feed.room.removeListener(RoomEvent.Timeline, feed.invalidate);
@@ -293,8 +321,17 @@ export class TimelineFeed {
     }
 
     private create(roomId: string): RoomFeed {
+        // Ref-counted lifetime: the first subscriber refreshes the snapshot
+        // (an unsubscribed feed may have skipped rebuilds) and cancels any
+        // pending eviction; the last one arms it.
         const feed: RoomFeed = {
-            obs: new Observable<MessageView[]>([]),
+            obs: new Observable<MessageView[]>([], {
+                onFirstSubscribe: () => {
+                    this.cancelEvict(roomId);
+                    this.rebuild(roomId);
+                },
+                onLastUnsubscribe: () => this.scheduleEvict(roomId),
+            }),
             room: null,
             invalidate: null,
             paginating: null,
@@ -310,12 +347,59 @@ export class TimelineFeed {
         if (!feed || feed.room) return;
         const room = this.matrix.getRoom(roomId);
         if (!room) return;
-        const invalidate = (): void => this.rebuild(roomId);
+        const invalidate = (): void => this.scheduleRebuild(roomId);
         room.on(RoomEvent.Timeline, invalidate);
         room.on(RoomEvent.LocalEchoUpdated, invalidate);
         feed.room = room;
         feed.invalidate = invalidate;
         this.rebuild(roomId);
+    }
+
+    /**
+     * Mark a room's feed dirty; the actual rebuild runs once on the next
+     * microtask. A sync that processes 500 events, or a decryption wave, would
+     * otherwise re-map the whole snapshot once per event.
+     */
+    private scheduleRebuild(roomId: string): void {
+        this.pendingRebuild.add(roomId);
+        if (this.flushScheduled) return;
+        this.flushScheduled = true;
+        queueMicrotask(() => {
+            this.flushScheduled = false;
+            const ids = [...this.pendingRebuild];
+            this.pendingRebuild.clear();
+            for (const id of ids) this.rebuild(id);
+        });
+    }
+
+    private scheduleEvict(roomId: string): void {
+        if (this.evictTimers.has(roomId)) return;
+        const timer = setTimeout(() => {
+            this.evictTimers.delete(roomId);
+            this.evict(roomId);
+        }, this.idleEvictMs);
+        // Do not hold the process open for a background eviction.
+        (timer as { unref?: () => void }).unref?.();
+        this.evictTimers.set(roomId, timer);
+    }
+
+    private cancelEvict(roomId: string): void {
+        const timer = this.evictTimers.get(roomId);
+        if (timer === undefined) return;
+        clearTimeout(timer);
+        this.evictTimers.delete(roomId);
+    }
+
+    /** Drop an unsubscribed feed: its snapshot and room listeners cost nothing now. */
+    private evict(roomId: string): void {
+        const feed = this.feeds.get(roomId);
+        if (!feed || feed.obs.subscriberCount > 0) return;
+        if (feed.room && feed.invalidate) {
+            feed.room.removeListener(RoomEvent.Timeline, feed.invalidate);
+            feed.room.removeListener(RoomEvent.LocalEchoUpdated, feed.invalidate);
+        }
+        this.feeds.delete(roomId);
+        this.pendingRebuild.delete(roomId);
     }
 
     private rebuild(roomId: string): void {
@@ -417,9 +501,13 @@ export function latestReceiptable<E extends Pick<MatrixEvent, "getId" | "status"
     return undefined;
 }
 
-/** Matrix-level decrypted-event hook: any late key upgrades some feed. */
+/** Matrix-level decrypted-event hook: a late key upgrades exactly one room's feed. */
 export function onDecryptedRebuild(matrix: MatrixClient, feed: TimelineFeed): () => void {
-    const handler = (): void => feed.rebuildAll();
+    // Late keys change the plaintext of events in ONE room. The old handler
+    // rebuilt every feed on every Decrypted event, so an initial encrypted
+    // sync re-mapped the whole feed set once per decrypted event. Scope it to
+    // the event's room — the feed coalesces a decryption wave into one rebuild.
+    const handler = (event: MatrixEvent): void => feed.rebuildRoom(event.getRoomId());
     matrix.on(MatrixEventEvent.Decrypted, handler);
     return () => matrix.removeListener(MatrixEventEvent.Decrypted, handler);
 }

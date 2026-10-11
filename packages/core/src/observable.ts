@@ -1,6 +1,17 @@
 import type { Subscribable, Subscription } from "./contract.ts";
 
 /**
+ * Lifecycle hooks for ref-counted consumers. `TimelineFeed` uses them to keep
+ * an idle room's snapshot only while something is watching it (and to refresh
+ * the snapshot the moment a watcher arrives, since an unsubscribed feed may
+ * have skipped rebuilds).
+ */
+export interface ObservableHooks {
+    onFirstSubscribe?: () => void;
+    onLastUnsubscribe?: () => void;
+}
+
+/**
  * The write side of a {@link Subscribable}.
  *
  * Deliberately snapshot-oriented: `set` replaces the value wholesale rather than
@@ -12,11 +23,13 @@ import type { Subscribable, Subscription } from "./contract.ts";
 export class Observable<T> implements Subscribable<T> {
     private listeners = new Set<(value: T) => void>();
     private value: T;
+    private readonly hooks: ObservableHooks | undefined;
 
     // No parameter properties: Node's type-stripping (used by node --test)
     // only supports erasable syntax.
-    public constructor(value: T) {
+    public constructor(value: T, hooks?: ObservableHooks) {
         this.value = value;
+        this.hooks = hooks;
     }
 
     public get(): T {
@@ -36,10 +49,13 @@ export class Observable<T> implements Subscribable<T> {
     }
 
     public subscribe(listener: (value: T) => void): Subscription {
+        const wasEmpty = this.listeners.size === 0;
         this.listeners.add(listener);
+        if (wasEmpty) this.hooks?.onFirstSubscribe?.();
         return {
             unsubscribe: () => {
-                this.listeners.delete(listener);
+                const removed = this.listeners.delete(listener);
+                if (removed && this.listeners.size === 0) this.hooks?.onLastUnsubscribe?.();
             },
         };
     }
