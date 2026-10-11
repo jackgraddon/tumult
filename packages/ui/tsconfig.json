@@ -11,6 +11,7 @@
     "paths": {
       "@tumult/core": ["../core/src/index.ts"],
       "@tumult/core/selectors": ["../core/src/selectors/spaceTree.ts"],
+      "@tumult/core/media": ["../core/src/media/classify.ts"],
       "@tumult/core/*": ["../core/src/*"]
     }  },
   "include": ["src/**/*.ts", "src/**/*.vue"]

@@ -678,6 +678,11 @@ class FakeChatClient implements ChatClient {
         return uri;
     }
 
+    public async resolveMediaDownload(uri: string): Promise<string> {
+        // Fixtures carry loadable URLs (or none); nothing to authenticate.
+        return uri;
+    }
+
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
         // Fake client doesn't encrypt; return the plain URL.
         return file.url;

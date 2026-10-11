@@ -899,6 +899,12 @@ export class MatrixChatClient implements ChatClient {
         return media.resolve(uri, size * 2);
     }
 
+    public async resolveMediaDownload(uri: string): Promise<string> {
+        const media = this._media;
+        if (!media) throw new Error("Cannot resolve media before start()");
+        return media.resolveDownload(uri);
+    }
+
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
         const media = this._media;
         if (!media) throw new Error("Cannot resolve media before start()");

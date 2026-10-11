@@ -801,6 +801,57 @@ chat client should be.
   reachable, so its constructor is now erasable (as `util/throttle.ts`
   already was).
 
+- DONE — slice 26: media correctness. Five defects, each measured before
+  fixing: (1) the Download link on `m.video`/`m.audio`/`m.file` was a dead
+  `mxc://` href; (2) encrypted non-image media fetched + AES-CTR decrypted a
+  blob it then discarded, and because ciphertext evidences carry `file`, not
+  `url`, it rendered no link at all; (3) no failure state — a failed resolve
+  logged, `src` stayed null, and the row silently rendered as `<p>{{ body }}</p>`,
+  i.e. looked like a text message; (4) a retry storm — failed resolutions
+  were evicted, so every timeline rebuild re-fetched every permanently-missing
+  image; (5) every non-image attachment went through `/thumbnail`, which is an
+  image pipeline and answers 400 for formats it cannot render, so all
+  video/file/audio failed with a console error by construction.
+  - Core: `media/classify.ts` exports `isTerminalMediaError` (SDK-free, via a
+    new `@tumult/core/media` subpath, so the renderer can gate its retry
+    affordance without dragging matrix-js-sdk into the UI bundle). 4xx = the
+    server's verdict (404 purged, 400 unsupported) and is remembered; network
+    errors, 5xx, 408 and 429 stay retryable. `MediaResolver` gained
+    `resolveDownload()` (`/_matrix/client/v1/media/download`, no size params),
+    factored the shared full-bytes fetch out of the encrypted path, and
+    negative-caches terminal failures (cap 500, FIFO) so a rebuild rejects
+    without touching the network. Contract: additive `resolveMediaDownload(uri)`
+    with fake parity.
+  - UI: `MediaMessage` is now a `loading | ready | failed` state machine —
+    `<img>` for `m.image`, `<video controls>` for `m.video`, `<audio controls>`
+    for `m.audio`, filename + working `blob:` link with `download` for
+    `m.file` (plus a Download link on video/audio); an honest "X unavailable"
+    row with a Retry button only when the failure is retryable, and no console
+    noise (the resolver logs once per terminal URI). `MediaDownloadKey` +
+    `useMediaDownloadResolver()` provided by the shell.
+  - Verified live against matrix.jackg.cc (Docker unavailable): video and audio
+    both reach `readyState 4` (a 250 KB mp4 at 7.4 s; an uploaded 8 kHz WAV
+    round-trips to `duration: 0.2`, proving `/download` returns the exact
+    bytes); file links are `blob:` with the correct filename; 5 purged images
+    in one room were requested exactly ONCE each across four in-app visits
+    (the storm is gone — before, a rebuild re-fetched them all); console errors
+    36 → 0.
+- VERIFIED slice-26 traps: classify first, then code — resolving every mxc in
+  the loaded windows showed ~60 images succeed, 17 genuinely 404
+  (`M_NOT_FOUND`, purged), and EVERY `m.video`/`m.file`/`m.audio` 400
+  `M_UNKNOWN` "Cannot find any thumbnails for the requested media … not a
+  supported media format" at the thumbnail endpoint. The wrong-endpoint
+  failures were ours, not the server's; `/download` serves the same URIs.
+  `media-src` must be in the CSP explicitly: `img-src … blob:` already was,
+  but with no `media-src` the directive falls back to `default-src 'self'` and
+  `<video>`/`<audio>` are blocked — the attribute looked right while the media
+  never loaded. `history.pushState` is a same-document navigation, so it
+  reuses the OLD document's CSP (and a 304 reuses the old headers): verify
+  media only after a full document load, and read the CSP back with a
+  cache-busting `fetch('/?cb=…')` rather than trusting the header once.
+  `--accent-primary` does not exist (only `--accent`); `MediaMessage` had been
+  falling back to a hardcoded indigo for its link colour.
+
 ## Potential next slices
 
 - Room tags / categories: `m.tag` room account data → category grouping in the
@@ -825,3 +876,13 @@ chat client should be.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.
+- MEDIA SEND (found in slice 26, deliberately not fixed there): `matrix.uploadContent()`
+  is XHR-based with NO 401 refresh-retry, unlike `authedRequest`, which refreshes
+  and retries. An upload that races a token refresh (MAS rotates the refresh
+  token, so the access token it carries is already revoked) fails hard with
+  `[401] Token is not active` on `/_matrix/media/v3/upload`; it self-heals if you
+  simply retry. Reproduced twice live against matrix.jackg.cc. All three upload
+  call sites are affected — `sendMediaMessage`, room avatar, profile avatar.
+  Fix: one retry-with-refresh wrapper in core shared by all three, gated on
+  `httpStatus === 401` / `M_UNKNOWN_TOKEN`, surfaced through the composer's
+  existing failed-send path.

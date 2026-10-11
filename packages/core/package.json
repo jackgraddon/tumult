@@ -16,6 +16,10 @@
       "types": "./dist/selectors/spaceTree.d.ts",
       "import": "./dist/selectors/spaceTree.js"
     },
+    "./media": {
+      "types": "./dist/media/classify.d.ts",
+      "import": "./dist/media/classify.js"
+    },
     "./session": {
       "types": "./dist/auth/session.d.ts",
       "import": "./dist/auth/session.js"

@@ -3,27 +3,65 @@ import assert from "node:assert/strict";
 import type { MatrixClient } from "matrix-js-sdk";
 
 import { MediaResolver, parseMxc } from "../src/media/resolver.ts";
+import { isTerminalMediaError } from "../src/media/classify.ts";
 import { decryptAttachment } from "../src/media/attachment.ts";
 import { sendMediaMessage } from "../src/rooms/media.ts";
 import type { EncryptedAttachment } from "../src/contract.ts";
 
+/** Unpadded base64 (standard alphabet) — matches the wire format. */
+function toUnpaddedBase64(bytes: Uint8Array): string {
+    let binary = "";
+    for (const b of bytes) binary += String.fromCharCode(b);
+    return btoa(binary).replace(/=+$/, "");
+}
+
+/** Build a real AES-CTR encrypted attachment (MSC3846) plus its ciphertext. */
+async function encryptFixture(plaintext: string) {
+    const keyBytes = crypto.getRandomValues(new Uint8Array(32));
+    const encryptKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CTR" }, false, [
+        "encrypt",
+    ]);
+    const jwk = await crypto.subtle.exportKey(
+        "jwk",
+        await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CTR" }, true, [
+            "encrypt",
+            "decrypt",
+        ]),
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-CTR", counter: iv.buffer as ArrayBuffer, length: 64 },
+        encryptKey,
+        new TextEncoder().encode(plaintext),
+    );
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
+    const file: EncryptedAttachment = {
+        url: "mxc://hs/abc",
+        key: jwk as unknown as EncryptedAttachment["key"],
+        iv: toUnpaddedBase64(iv),
+        hashes: { sha256: toUnpaddedBase64(digest) },
+        v: "v2",
+    };
+    return { file, ciphertext };
+}
+
 interface Call {
     path: string;
-    query: Record<string, string>;
+    query: Record<string, string> | undefined;
     opts: Record<string, unknown>;
 }
 
-function stub(opts: { v111?: boolean; fail?: number } = {}) {
+function stub(opts: { v111?: boolean; fail?: number; error?: unknown; blob?: Blob } = {}) {
     const calls: Call[] = [];
-    let failures = opts.fail ?? 0;
+    let failures = opts.fail ?? (opts.error ? Number.POSITIVE_INFINITY : 0);
     const matrix = {
         isVersionSupported: async (v: string) => v === "v1.11" && (opts.v111 ?? true),
         mxcUrlToHttp: (uri: string, w: number) => `https://legacy/${uri.slice(6)}?w=${w}`,
         http: {
             authedRequest: async (_m: string, path: string, query: Record<string, string>, _b: unknown, o: Record<string, unknown>) => {
                 calls.push({ path, query, opts: o });
-                if (failures-- > 0) throw new Error("boom");
-                return new Blob(["png"], { type: "image/png" });
+                if (failures-- > 0) throw opts.error ?? new Error("boom");
+                return opts.blob ?? new Blob(["png"], { type: "image/png" });
             },
         },
     } as unknown as MatrixClient;
@@ -76,6 +114,89 @@ describe("MediaResolver", () => {
         await resolver.resolve("mxc://hs/id", 10_000);
         assert.equal(calls[0]?.query["width"], "1024");
         resolver.dispose();
+    });
+
+    it("downloads full media through /download, not the image pipeline", async () => {
+        const { matrix, calls } = stub();
+        const resolver = new MediaResolver(matrix);
+        const url = await resolver.resolveDownload("mxc://hs/clip");
+        assert.ok(url.startsWith("blob:"));
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0]?.path, "/download/hs/clip");
+        assert.equal(calls[0]?.opts["prefix"], "/_matrix/client/v1/media");
+        assert.equal(calls[0]?.opts["rawResponseBody"], true);
+        // No width/height: /download is not the thumbnailer.
+        assert.equal(calls[0]?.query, undefined);
+        resolver.dispose();
+    });
+
+    it("passes non-mxc URLs straight through for downloads", async () => {
+        const { matrix, calls } = stub();
+        assert.equal(await new MediaResolver(matrix).resolveDownload("https://x/a.mp4"), "https://x/a.mp4");
+        assert.equal(calls.length, 0);
+    });
+
+    it("decrypts an encrypted attachment fetched from /download", async () => {
+        const { file, ciphertext } = await encryptFixture("secret bytes");
+        const { matrix, calls } = stub({ blob: new Blob([ciphertext]) });
+        const resolver = new MediaResolver(matrix);
+        const url = await resolver.resolveEncrypted(file);
+        assert.ok(url.startsWith("blob:"));
+        assert.equal(calls[0]?.path, "/download/hs/abc");
+        assert.equal(await (await fetch(url)).text(), "secret bytes");
+        resolver.dispose();
+    });
+
+    it("remembers terminal failures instead of re-fetching them", async () => {
+        const notFound = Object.assign(new Error("Not found"), {
+            httpStatus: 404,
+            errcode: "M_NOT_FOUND",
+        });
+        const { matrix, calls } = stub({ error: notFound });
+        const resolver = new MediaResolver(matrix);
+        await assert.rejects(resolver.resolve("mxc://hs/gone", 48));
+        await assert.rejects(resolver.resolve("mxc://hs/gone", 48));
+        assert.equal(calls.length, 1, "the second render must not touch the network");
+        resolver.dispose();
+    });
+
+    it("keeps transient failures retryable", async () => {
+        const { matrix, calls } = stub({ fail: 2, error: Object.assign(new Error("boom"), { httpStatus: 503 }) });
+        const resolver = new MediaResolver(matrix);
+        await assert.rejects(resolver.resolve("mxc://hs/id", 48));
+        await assert.rejects(resolver.resolve("mxc://hs/id", 48));
+        assert.ok((await resolver.resolve("mxc://hs/id", 48)).startsWith("blob:"));
+        assert.equal(calls.length, 3);
+        resolver.dispose();
+    });
+
+    it("forgets terminal failures on dispose, so a restart retries", async () => {
+        const notFound = Object.assign(new Error("Not found"), { httpStatus: 404 });
+        const { matrix, calls } = stub({ error: notFound });
+        const resolver = new MediaResolver(matrix);
+        await assert.rejects(resolver.resolve("mxc://hs/gone", 48));
+        assert.equal(calls.length, 1);
+
+        resolver.dispose();
+        await assert.rejects(resolver.resolve("mxc://hs/gone", 48));
+        assert.equal(calls.length, 2, "a fresh client must be free to try again");
+    });
+});
+
+describe("isTerminalMediaError", () => {
+    it("treats a server verdict (4xx) as terminal", () => {
+        for (const httpStatus of [400, 403, 404, 410]) {
+            assert.equal(isTerminalMediaError({ httpStatus }), true, `status ${httpStatus}`);
+        }
+    });
+
+    it("keeps transient failures retryable", () => {
+        assert.equal(isTerminalMediaError({ httpStatus: 500 }), false);
+        assert.equal(isTerminalMediaError({ httpStatus: 408 }), false, "timeout");
+        assert.equal(isTerminalMediaError({ httpStatus: 429 }), false, "rate limited");
+        assert.equal(isTerminalMediaError(new Error("network down")), false);
+        assert.equal(isTerminalMediaError(undefined), false);
+        assert.equal(isTerminalMediaError(null), false);
     });
 });
 
@@ -166,38 +287,6 @@ describe("sendMediaMessage", () => {
 });
 
 describe("decryptAttachment", () => {
-    // Unpadded base64 (standard alphabet) — matches the wire format.
-    function toUnpaddedBase64(bytes: Uint8Array): string {
-        let binary = "";
-        for (const b of bytes) binary += String.fromCharCode(b);
-        return btoa(binary).replace(/=+$/, "");
-    }
-
-    async function encryptFixture(plaintext: string) {
-        const keyBytes = crypto.getRandomValues(new Uint8Array(32));
-        const encryptKey = await crypto.subtle.importKey(
-            "raw", keyBytes, { name: "AES-CTR" }, false, ["encrypt"],
-        );
-        const jwk = await crypto.subtle.exportKey("jwk", await crypto.subtle.importKey(
-            "raw", keyBytes, { name: "AES-CTR" }, true, ["encrypt", "decrypt"],
-        ));
-        const iv = crypto.getRandomValues(new Uint8Array(16));
-        const ciphertext = await crypto.subtle.encrypt(
-            { name: "AES-CTR", counter: iv.buffer as ArrayBuffer, length: 64 },
-            encryptKey,
-            new TextEncoder().encode(plaintext),
-        );
-        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
-        const file: EncryptedAttachment = {
-            url: "mxc://hs/abc",
-            key: jwk as unknown as EncryptedAttachment["key"],
-            iv: toUnpaddedBase64(iv),
-            hashes: { sha256: toUnpaddedBase64(digest) },
-            v: "v2",
-        };
-        return { file, ciphertext };
-    }
-
     it("decrypts ciphertext and verifies an unpadded base64 hash", async () => {
         const { file, ciphertext } = await encryptFixture("hello attachment");
         const plaintext = await decryptAttachment(file, ciphertext);

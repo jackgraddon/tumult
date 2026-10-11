@@ -525,6 +525,16 @@ export interface ChatClient {
      */
     resolveMedia(uri: string, size: number): Promise<string>;
     /**
+     * Resolve an `mxc://` URI to the full (unresized) media as a URL a
+     * `<video>`/`<audio>`/download link can use — the whole file, not a
+     * thumbnail. Needed for `m.video`/`m.audio`/`m.file`: the thumbnail
+     * endpoint is an image pipeline and rejects formats it cannot render
+     * (`400`, which used to surface as a console error on every rebuild), so
+     * non-image attachments download instead. Typically a `blob:` URL.
+     * Non-mxc URLs resolve to themselves. Rejects on failure.
+     */
+    resolveMediaDownload(uri: string): Promise<string>;
+    /**
      * Resolve an encrypted attachment (the `file` descriptor on an encrypted
      * `m.room.message`) to a URL an `<img>` can load — fetches the ciphertext
      * and decrypts it. Typically a `blob:` URL. Rejects on failure.

@@ -24,6 +24,9 @@ export default defineConfig({
                 "script-src 'self' 'wasm-unsafe-eval'",
                 "style-src 'self' 'unsafe-inline'",
                 "img-src 'self' data: blob: https:",
+                // Inline <video>/<audio> playback is a blob: URL, which
+                // media-src would otherwise inherit from default-src 'self'.
+                "media-src 'self' blob:",
                 "connect-src 'self' https: wss:",
                 "worker-src 'self' blob:",
             ].join("; "),

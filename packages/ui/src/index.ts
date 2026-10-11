@@ -42,3 +42,4 @@ export { default as InviteDialog } from "./rooms/InviteDialog.vue";
 export { default as LeaveConfirmDialog } from "./rooms/LeaveConfirmDialog.vue";
 export { default as ProfileDialog } from "./rooms/ProfileDialog.vue";
 export { MediaKey, useMediaResolver, type MediaResolver } from "./media.ts";
+export { MediaDownloadKey, useMediaDownloadResolver, type MediaDownloadResolver } from "./media.ts";

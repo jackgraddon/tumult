@@ -63,4 +63,7 @@ export type { SpaceNode, SpaceTree, SpaceTreeOptions } from "./selectors/spaceTr
 export { createChatClient, MatrixChatClient, type ChatClientOptions } from "./client.ts";
 export { AuthStorage, type AuthStore, type StoredSession } from "./auth/storage.ts";
 export { hasStoredSession } from "./auth/session.ts";
+// UI-safe (no matrix-js-sdk): reach it via `@tumult/core/media` so importing it
+// does not drag the SDK back into the UI chunks.
+export { isTerminalMediaError } from "./media/classify.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createClient } from "matrix-js-sdk";
 
 import { MediaResolver } from "../src/media/resolver.ts";
+import { isTerminalMediaError } from "../src/media/classify.ts";
 import { TimelineFeed } from "../src/timeline/feed.ts";
 import { snapshotRooms } from "../src/rooms/snapshot.ts";
 import { sendMediaMessage } from "../src/rooms/media.ts";
@@ -153,6 +154,61 @@ describe("media against real Synapse", () => {
         } finally {
             feed.detachAll();
             client.stopClient();
+        }
+    });
+
+    it("downloads a non-image attachment, which the thumbnailer refuses", { timeout: 120000 }, async () => {
+        const user = await register(`dma-${Date.now().toString(36)}`);
+        const upload = await fetch(`${BASE}/_matrix/media/v3/upload?filename=notes.txt`, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain", Authorization: `Bearer ${user.token}` },
+            body: "download me",
+        });
+        assert.equal(upload.status, 200, await upload.clone().text());
+        const mxc = ((await upload.json()) as Record<string, string>)["content_uri"] as string;
+
+        const client = createClient({ baseUrl: BASE, userId: user.userId, accessToken: user.token });
+        const resolver = new MediaResolver(client);
+        try {
+            if (!(await client.isVersionSupported("v1.11"))) return; // legacy servers have no gate
+
+            // Pins WHY non-image media must not use `resolve()`: the thumbnail
+            // endpoint is an image pipeline and 400s on a text file.
+            await assert.rejects(() => resolver.resolve(mxc, 256));
+
+            const url = await resolver.resolveDownload(mxc);
+            assert.ok(url.startsWith("blob:"), `expected a blob URL, got ${url}`);
+            assert.equal(await (await fetch(url)).text(), "download me");
+        } finally {
+            resolver.dispose();
+        }
+    });
+
+    it("reports purged media as a terminal failure, without re-fetching", { timeout: 120000 }, async () => {
+        const user = await register(`dm-${Date.now().toString(36)}`);
+        const client = createClient({ baseUrl: BASE, userId: user.userId, accessToken: user.token });
+        const resolver = new MediaResolver(client);
+        try {
+            if (!(await client.isVersionSupported("v1.11"))) return;
+            const gone = `mxc://${new URL(BASE).host}/does-not-exist-${Date.now().toString(36)}`;
+
+            const first = await resolver.resolveDownload(gone).then(
+                () => null,
+                (error: unknown) => error,
+            );
+            assert.ok(first, "expected a rejection");
+            assert.equal(isTerminalMediaError(first), true, `not terminal: ${String(first)}`);
+
+            // The negative cache hands back the SAME stored error, so a later
+            // render cannot re-hit the network for a URI the server already
+            // said is gone.
+            const second = await resolver.resolveDownload(gone).then(
+                () => null,
+                (error: unknown) => error,
+            );
+            assert.equal(second, first);
+        } finally {
+            resolver.dispose();
         }
     });
 });
