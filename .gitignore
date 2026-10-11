@@ -19,5 +19,8 @@ dist-types/
 .vscode/
 .idea/
 
+# Playwright MCP scratch (page snapshots, traces)
+.playwright-mcp/
+
 # Local test homeserver (generated keys + sqlite db)
 tests/synapse/data/
