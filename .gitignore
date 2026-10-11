@@ -1,6 +1,7 @@
 # Local-only opencode config for Tumult — never commit
 opencode.json
 opencode.jsonc
+opencode.json.bak
 
 # Node
 node_modules/
