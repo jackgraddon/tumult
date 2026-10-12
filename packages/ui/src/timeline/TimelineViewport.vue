@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { MessageView } from "@tumult/core";
 
@@ -77,6 +77,7 @@ const rows = computed<Row[]>(() => {
 });
 
 const scroller = ref<HTMLElement | null>(null);
+const spacer = ref<HTMLElement | null>(null);
 const hasMore = ref(true);
 const loadingMore = ref(false);
 let scrollQueued = false;
@@ -105,13 +106,39 @@ function isNearBottom(): boolean {
     return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
 }
 
+/**
+ * Jump to the bottom of the current spacer.
+ *
+ * The spacer is only an estimate until measureElement lands, so this is
+ * re-run whenever it changes — see the size watcher below.
+ */
 function pinToBottom(): void {
-    const last = rows.value.length - 1;
-    if (last >= 0) virtualizer.value.scrollToIndex(last, { align: "end" });
+    const el = scroller.value;
+    if (el) el.scrollTop = el.scrollHeight;
+}
+
+/** Id of the first rendered message, so a room switch is distinguishable from growth. */
+const firstMessageId = ref<string | null>(null);
+/** True while the view should keep tracking the latest message. */
+const trackingTail = ref(false);
+
+/**
+ * Open (or switch to) a room at its latest message.
+ *
+ * The `isNearBottom()` guard in the growth watcher is for live updates, where
+ * it means "the user is still at the tail". An OPEN must always land on the
+ * tail: the first history batch can already be taller than the viewport, so
+ * `isNearBottom()` is false before anything has ever pinned, and the open
+ * silently lands mid-history (measured: scrollTop 0 of 2802).
+ */
+function openAtTail(): void {
+    firstMessageId.value = props.messages[0]?.id ?? null;
+    trackingTail.value = true;
+    void nextTick(() => pinToBottom());
 }
 
 onMounted(() => {
-    pinToBottom();
+    openAtTail();
     // A pinned tail on open means the latest message is visible: report it
     // so our read receipt sends.
     if (isNearBottom()) props.onReadLatest?.();
@@ -128,7 +155,11 @@ onMounted(() => {
 watch(
     () => props.messages.length,
     () => {
-        if (isNearBottom()) {
+        const firstId = props.messages[0]?.id ?? null;
+        if (firstId !== firstMessageId.value) {
+            // A different list: a room switch (or a reset) opens at the tail.
+            openAtTail();
+        } else if (isNearBottom()) {
             void nextTick(() => pinToBottom());
             props.onReadLatest?.();
         }
@@ -136,6 +167,22 @@ watch(
     },
 );
 
+// measureElement corrects the spacer after the estimate, so a jump to the
+// current bottom would otherwise leave the tail stranded above the real
+// bottom. React to the spacer's own height changing (that is the reliable
+// trigger — the virtualizer gives no reactive hook on measurement updates)
+// and re-jump while we still track the tail.
+function onSpacerResize(entries: ResizeObserverEntry[]): void {
+    if (!trackingTail.value) return;
+    for (const entry of entries) {
+        void nextTick(() => pinToBottom());
+    }
+}
+const spacerObserver = new ResizeObserver(onSpacerResize);
+onScopeDispose(() => spacerObserver.disconnect());
+onMounted(() => {
+    if (spacer.value) spacerObserver.observe(spacer.value);
+});
 // Search jump: center the hit once its row exists (jumpTo already paged it
 // into the window), then pulse it so the eye doesn't hunt for the row.
 const flashEventId = ref<string | null>(null);
@@ -197,6 +244,10 @@ async function maybeLoadMore(fill = false): Promise<void> {
 }
 
 function onScroll(): void {
+    // Scrolling up into history opts the user out of tail tracking — the
+    // size watcher's re-jumps always land at the bottom, so any scroll away
+    // from it is a user decision, not one of our jumps.
+    if (!isNearBottom()) trackingTail.value = false;
     if (scrollQueued) return;
     scrollQueued = true;
     requestAnimationFrame(() => {
@@ -224,6 +275,7 @@ const profiles = computed(() => {
     <div ref="scroller" class="tumult-viewport" tabindex="0" aria-label="Message history" @scroll="onScroll">
         <div
             class="tumult-virtual-spacer"
+            ref="spacer"
             :style="{ height: `${virtualizer.getTotalSize()}px` }"
         >
             <div
