@@ -67,6 +67,25 @@ const emit = defineEmits<{
                         :unread="guild.aggregateUnread"
                         :highlight="guild.aggregateHighlight"
                     />
+                    <!-- Global favourites: rooms pulled from their guild, sorted by
+                         m.favourite tag order. A separator + heading open the band;
+                         everything is hidden when the user has no favourites. -->
+                    <li v-if="tree.favourites.length" class="tumult-rail-sep" aria-hidden="true" />
+                    <li v-if="tree.favourites.length" class="tumult-rail-heading">FAVOURITES</li>
+                    <li
+                        v-for="fave in tree.favourites"
+                        :key="fave.id"
+                        class="tumult-rail-fav-item"
+                        :aria-hidden="fave.unreadCount > 0 ? undefined : 'true'"
+                    >
+                        <GuildRailItem
+                            :favourite="fave.id"
+                            :name="fave.name"
+                            :avatar-url="fave.avatarUrl"
+                            :unread="fave.unreadCount"
+                            :highlight="fave.highlightCount"
+                        />
+                    </li>
                 </ul>
             </ScrollAreaViewport>
             <ScrollAreaScrollbar orientation="vertical" class="tumult-scrollbar">
@@ -114,6 +133,29 @@ const emit = defineEmits<{
     height: 1px;
     margin: var(--space-2) var(--space-3);
     background: var(--border-default);
+}
+.tumult-rail-heading {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    margin: var(--space-3) var(--space-3) var(--space-1);
+    padding: 0 var(--space-2);
+    text-align: left;
+    color: var(--text-muted);
+    unicode-bias: auto;
+}
+.tumult-rail-fav-item {
+    display: inline-flex;
+    padding-top: 2px;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    margin: 2px 0;
+}
+.tumult-rail-fav-item:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
 }
 .tumult-rail-add {
     display: flex;

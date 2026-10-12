@@ -7,6 +7,8 @@ import type { UnreadCounts } from "./unread.ts";
 const SPACE_CHILD = "m.space.child";
 const ROOM_TOPIC = "m.room.topic";
 const ROOM_FULLY_READ = "m.fully_read";
+const RTAGS = "m.tag";
+const FAVOURITES_TAG = "m.favourite";
 
 /**
  * Map the SDK's joined rooms onto contract snapshots.
@@ -70,6 +72,8 @@ export function snapshotRooms(
             joinRule: settings.joinRule,
             historyVisibility: settings.historyVisibility,
             canonicalAlias: settings.canonicalAlias,
+            favourite: readFavourite(room),
+            favouriteOrder: readFavouriteOrder(room),
         };
     });
 }
@@ -101,16 +105,63 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
             room.joinRule === other.joinRule &&
             room.historyVisibility === other.historyVisibility &&
             room.canonicalAlias === other.canonicalAlias &&
+            // Favourites: republish so the rail's Favourites band reorders or
+            // populates when the user's `m.favourite` tag / its order moves.
+            room.favourite === other.favourite &&
+            room.favouriteOrder === other.favouriteOrder &&
             room.parentSpaceIds.length === other.parentSpaceIds.length &&
             room.parentSpaceIds.every((p, j) => p === other.parentSpaceIds[j])
         );
     });
 }
 /** The `m.fully_read` room account data, or `null` when never set. */
-function readFullyRead(room: { getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined }): string | null {
+function readFullyRead(room: {
+    getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined;
+}): string | null {
     try {
         const eventId = room.getAccountData(ROOM_FULLY_READ)?.getContent()?.["event_id"];
         return typeof eventId === "string" && eventId.length > 0 ? eventId : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The `m.favourite` `favourite` flag: true when the room's `m.tag` account data
+ * lists the `m.favourite` tag (per `setRoomTag(roomId, "m.favourite")`). Read
+ * from room account data, so it follows sync, not the user's own sends.
+ */
+function readFavourite(room: {
+    getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined;
+}): boolean {
+    try {
+        const tags = room
+            .getAccountData(RTAGS)
+            ?.getContent?.()["tags"] as Record<string, unknown> | undefined;
+        const entry = tags?.["m.favourite"];
+        // Presence is what matters: a room tagged `m.favourite` without an
+        // explicit `order` is still a favourite (it sorts last); only a missing
+        // tag counts as "not favourited".
+        return entry !== undefined && entry !== null;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * The `m.favourite` tag's `order` for the room, or `null` when the room is not
+ * favourited or the tag carried no order. Higher values sort first (Discord
+ * semantics); rooms without an order sort last.
+ */
+function readFavouriteOrder(room: {
+    getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined;
+}): number | null {
+    try {
+        const tags = room
+            .getAccountData(RTAGS)
+            ?.getContent()?.["tags"] as Record<string, { order?: unknown }> | undefined;
+        const order = tags?.[FAVOURITES_TAG]?.order;
+        return typeof order === "number" && Number.isFinite(order) ? order : null;
     } catch {
         return null;
     }

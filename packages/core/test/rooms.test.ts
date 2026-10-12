@@ -101,6 +101,8 @@ describe("snapshotRooms", () => {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
         });
     });
 

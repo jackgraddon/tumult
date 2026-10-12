@@ -21,6 +21,12 @@ export interface SpaceTree {
     guilds: SpaceNode[];
     /** Orphaned non-space rooms: the DMs tab. */
     orphans: RoomSummary[];
+    /**
+     * Rooms the user tagged `m.favourite`, sorted by tag `order` (higher values
+     * first; no `order` sorts last, ties broken by name). Feeds the rail's
+     * Favourites band. Tag-less rooms are absent.
+     */
+    favourites: RoomSummary[];
     promotedGuildIds: string[];
     guildIdsByRoomId: Map<string, string[]>;
     truncatedCount: number;
@@ -32,6 +38,22 @@ const DEFAULT_MAX_NODES = 2000;
 
 function sortRooms(rooms: RoomSummary[]): RoomSummary[] {
     return [...rooms].sort((a, b) => collator.compare(a.name, b.name));
+}
+
+/**
+ * Order favourites in the rail: tag `order' desc (higher = nearer the top),
+ * rooms without an order last, ties broken by name. A favourited room carrying
+ * no explicit order (favourite=true, favouriteOrder=null) survives the presence
+ * filter and lands here, so the guards keep it behind every ordinal one.
+ */
+function compareFavouriteOrder(a: RoomSummary, b: RoomSummary): number {
+    const ao = a.favouriteOrder;
+    const bo = b.favouriteOrder;
+    if (ao === null && bo === null) return collator.compare(a.name, b.name);
+    if (ao === null) return 1;
+    if (bo === null) return -1;
+    if (ao !== bo) return bo - ao;
+    return collator.compare(a.name, b.name);
 }
 
 export function selectSpaceTree(
@@ -237,5 +259,12 @@ export function selectSpaceTree(
         rooms.filter((r) => !r.isSpace && (parentsOf.get(r.id) ?? []).length === 0),
     );
 
-    return { guilds, orphans, promotedGuildIds, guildIdsByRoomId, truncatedCount };
+    // Favourites: every favourited room, sorted by tag order (higher first, no
+    // order sorts last, ties by name). Tag-less rooms are absent. Feeds the
+    // rail's Favourites band. The comparator already orders everything, so do
+    // NOT re-sort by the room-list (alphabetical-name) order — that would
+    // defeat the per-tag ordering.
+    const favourites = rooms.filter((r) => r.favourite).sort(compareFavouriteOrder);
+
+    return { guilds, orphans, favourites, promotedGuildIds, guildIdsByRoomId, truncatedCount };
 }

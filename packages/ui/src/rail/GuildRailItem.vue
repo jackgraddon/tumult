@@ -12,23 +12,44 @@ import {
     TooltipTrigger,
 } from "reka-ui";
 
-import { useSelection } from "../selection.ts";
+import { useSelection, type RoomSelection } from "../selection.ts";
 import { useActions } from "../actions.ts";
 import Avatar from "../primitives/Avatar.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 
 const props = defineProps<{
-    guildId: string;
+    /** Omitted when this tile is a favourite room (opens the room). Present for a
+     * guild tile. */
+    guildId?: string;
     name: string;
     avatarUrl?: string | null;
     unread: number;
     highlight: number;
+    /** Room id when this tile opens a room (the favourites band) instead of a
+     * guild; a guild tile when absent. */
+    favourite?: string | undefined;
 }>();
 
 const selection = useSelection();
 const actions = useActions();
 
+/** The room selected when this tile opens a room (favourite band), otherwise
+ * the guild — used to build the href + click payload. */
+function selectTarget(): RoomSelection {
+    return props.favourite ? { view: "dms", roomId: props.favourite } : { view: "guild", guildId: props.guildId };
+}
+
+/** `aria-current` + active pill: honoured for whichever mode this tile is. */
+function currentFlag(): "page" | undefined {
+    const cur = selection.current;
+    if (props.favourite) {
+        return cur.view === "dms" && cur.roomId === props.favourite ? "page" : undefined;
+    }
+    return cur.view === "guild" && cur.guildId === props.guildId ? "page" : undefined;
+}
+
 function requestLeave(): void {
+    if (!props.guildId) return;
     actions.requestLeave({ id: props.guildId, name: props.name, isSpace: true });
 }
 </script>
@@ -39,24 +60,20 @@ function requestLeave(): void {
         <TooltipRoot>
             <TooltipTrigger as-child>
                 <li>
-                    <ContextMenuRoot>
+                    <!-- The favourites band opens rooms; no guild to act on, so no
+                         right-click context menu there. -->
+                    <ContextMenuRoot v-if="!favourite">
                         <ContextMenuTrigger as-child>
                             <a
                                 class="tumult-guild-item"
-                                :href="selection.hrefFor({ view: 'guild', guildId })"
-                                :aria-current="
-                                    selection.current.view === 'guild' && selection.current.guildId === guildId
-                                        ? 'page'
-                                        : undefined
-                                "
+                                :href="selection.hrefFor(selectTarget())"
+                                :aria-current="currentFlag()"
                                 :aria-label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
-                                @click.prevent="selection.select({ view: 'guild', guildId })"
+                                @click.prevent="selection.select(selectTarget())"
                             >
                                 <span
                                     class="tumult-guild-pill"
-                                    :data-active="
-                                        selection.current.view === 'guild' && selection.current.guildId === guildId
-                                    "
+                                    :data-active="currentFlag() === 'page'"
                                 />
                                 <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
                                 <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
@@ -70,6 +87,11 @@ function requestLeave(): void {
                             </ContextMenuContent>
                         </ContextMenuPortal>
                     </ContextMenuRoot>
+                    <a v-else class="tumult-guild-item" :href="selection.hrefFor(selectTarget())" :aria-current="currentFlag()" :aria-label="name" @click.prevent="selection.select(selectTarget())">
+                        <span class="tumult-guild-pill" :data-active="currentFlag() === 'page'" />
+                        <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
+                        <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
+                    </a>
                 </li>
             </TooltipTrigger>
             <TooltipPortal>

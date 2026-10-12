@@ -16,6 +16,8 @@ function room(partial: Partial<RoomSummary> & { id: string; name: string }): Roo
         joinRule: "invite",
         historyVisibility: "shared",
         canonicalAlias: null,
+        favourite: false,
+        favouriteOrder: null,
         ...partial,
     };
 }
@@ -146,5 +148,50 @@ describe("selectSpaceTree", () => {
         ]);
         assert.equal(tree.guilds[0]?.aggregateUnread, 120);
         assert.equal(tree.guilds[0]?.aggregateHighlight, 2);
+    });
+
+    it("sorts favourites by tag order desc, no-order last, ties by name", () => {
+        const favs = [
+            room({ id: "!low:1", name: "low", favourite: true, favouriteOrder: 1 }),
+            room({ id: "!med:1", name: "middle", favourite: true, favouriteOrder: 3 }),
+            room({ id: "!high:1", name: "high", favourite: true, favouriteOrder: 5 }),
+            room({ id: "!noorder:1", name: "noorder", favourite: true, favouriteOrder: null }),
+        ];
+        const tree = selectSpaceTree(favs);
+        assert.deepEqual(tree.favourites.map((r) => r.id), ["!high:1", "!med:1", "!low:1", "!noorder:1"]);
+    });
+
+    it("breaks equal tag-order by name", () => {
+        const tree = selectSpaceTree([
+            room({ id: "!b:1", name: "beta", favourite: true, favouriteOrder: 2 }),
+            room({ id: "!a:1", name: "alpha", favourite: true, favouriteOrder: 2 }),
+        ]);
+        assert.deepEqual(tree.favourites.map((r) => r.id), ["!a:1", "!b:1"]);
+    });
+
+    it("excludes tag-less rooms and leaves them as orphans, not favourites", () => {
+        const tree = selectSpaceTree([
+            room({ id: "!fav:1", name: "fav", favourite: true, favouriteOrder: 1 }),
+            room({ id: "!other:1", name: "other" }),
+        ]);
+        assert.deepEqual(tree.favourites.map((r) => r.id), ["!fav:1"]);
+        assert.equal(tree.orphans.find((r) => r.id === "!other:1") !== undefined, true);
+    });
+
+    it("keeps favourites detached from guild children (band is global)", () => {
+        const tree = selectSpaceTree([
+            space("!g:1", "G"),
+            room({ id: "!child:1", name: "child", parentSpaceIds: ["!g:1"], favourite: true, favouriteOrder: 1 }),
+        ]);
+        // The favourite lives under the guild in the tree…
+        assert.ok(tree.guilds[0]?.rooms.some((r) => r.id === "!child:1"));
+        // …but still appears once in the global favourites band.
+        assert.deepEqual(tree.favourites.map((r) => r.id), ["!child:1"]);
+        assert.equal(tree.favourites.length, 1);
+    });
+
+    it("returns an empty favourites list when nothing is favourited", () => {
+        const tree = selectSpaceTree([space("!g:1", "G")]);
+        assert.deepEqual(tree.favourites, []);
     });
 });

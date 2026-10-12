@@ -85,7 +85,7 @@ function msg(
 
 function buildRooms(): RoomSummary[] {
     const rooms: RoomSummary[] = [];
-    const space = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0): void => {
+    const space = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0, favourite = false, favouriteOrder: number | null = null): void => {
         rooms.push({
             id,
             name,
@@ -99,9 +99,11 @@ function buildRooms(): RoomSummary[] {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite,
+            favouriteOrder,
         });
     };
-    const chan = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0): void => {
+    const chan = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0, favourite = false, favouriteOrder: number | null = null): void => {
         rooms.push({
             id,
             name,
@@ -115,6 +117,8 @@ function buildRooms(): RoomSummary[] {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite,
+            favouriteOrder,
         });
     };
 
@@ -160,6 +164,22 @@ function buildRooms(): RoomSummary[] {
     DM_NAMES.forEach((n, i) => {
         chan(`!dm-${i}:fake`, n, [], i === 0 ? 105 : i, i === 1 ? 2 : 0);
     });
+
+    // Favourites for the rail's Favourites band: spread across guilds (the band
+    // is global, not in-guild) plus one DM with no order to exercise
+    // no-order-last sorting. Higher order sorts higher. These are room ids the
+    // fake already has — mark them rather than re-creating them.
+    const markFav = (id: RoomSummary["id"], order: number | null): void => {
+        const found = rooms.find((r) => r.id === id);
+        if (found) {
+            found.favourite = true;
+            found.favouriteOrder = order;
+        }
+    };
+    markFav("!dm-2:fake", 7);
+    markFav("!b-3:fake", 4);
+    markFav("!a-general:fake", 2);
+    markFav("!u-note:fake", null); // no order → sorts last
 
     // Marker sits mid-history in general so the "New messages" divider demos
     // out of the box; fake markRead is a no-op, so it never advances. General
@@ -489,6 +509,8 @@ class FakeChatClient implements ChatClient {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
         });
     }
 
@@ -510,6 +532,8 @@ class FakeChatClient implements ChatClient {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
         });
     }
 
@@ -529,6 +553,8 @@ class FakeChatClient implements ChatClient {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
         }, params.userId);
     }
 
@@ -552,6 +578,8 @@ class FakeChatClient implements ChatClient {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
         });
     }
 

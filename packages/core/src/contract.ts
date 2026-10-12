@@ -216,6 +216,22 @@ export interface RoomSummary {
     historyVisibility: HistoryVisibility;
     /** The room's canonical alias (`#name:server`), or `null`. */
     canonicalAlias: string | null;
+    /**
+     * True when the room carries the user's `m.favourite` room tag — the tag
+     * that feeds the global Favourites band in the rail (see
+     * `selectSpaceTree`'s `favourites`). Read from room account data (`m.tag`),
+     * so it follows sync, not the user's own sends. The write path is out of
+     * slice-27's scope.
+     */
+    favourite: boolean;
+    /**
+     * The `m.favourite` tag's `order` for this room, or `null` when the room
+     * is not favourited (or carried the tag without an order). Drives the order
+     * of favourites in the rail band: higher values sort first, `null` sorts
+     * last. Read from room account data (`m.favourite.order`), so it follows
+     * sync.
+     */
+    favouriteOrder: number | null;
 }
 
 /** The signed-in identity. `null` when logged out. */
