@@ -264,6 +264,15 @@ chat client should be.
   paths (e.g. `/var/home/jack/Documents/Git/tumult/...`). Use `workdir` to
   change directory; stay relative inside commands.
 
+## Context for agents
+
+- **Where truth lives:** `packages/core/src/contract.ts` is the UI↔data boundary, `AGENTS.md` is repo ops + verified Matrix traps. When executing the rewrite, reference both rather than duplicating.
+- **Stack pins:** Vue 3 + Vite (not Nuxt), Reka headless, `@tanstack/vue-virtual`, TypeScript 5.x (vue-tsc compatible), `rewriteRelativeImportExtensions` on for packages / off for `apps/web`, `optimizeDeps.exclude` must list `@matrix-org/matrix-sdk-crypto-wasm` and it is an explicit dependency of `apps/web`.
+- **Invariants to preserve:** one `ChatClient` per renderer, recompute-not-patch, chrome-vs-panes (`inert` + 0-width tracks), per-shell registry via provide/inject (never a module singleton), use whole-statement `import type` in SFCs (not inline `type` specifiers), CSP must allow `'wasm-unsafe-eval'` and `media-src blob:`.
+- **Theme v1 baseline:** registry in `packages/theme/src/registry/`, compiler/validator in `packages/theme/src/`, default theme `packages/theme/themes/default.json`, scoped on `:root[data-theme="name"]`.
+- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via Docker Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker may be unavailable; some integration paths are written but unverified.
+- **Rewrite plan:** See `REWRITE_PLAN.md` (phased: token audit/v2, plugin API, theme loader+UX, visual redesign, testing/parity). That plan is the source of truth for the UI rewrite and should be consulted on every session.
+
 ## Where the build is
 
 - DONE — slice 1: contract, MAS login (verified end to end against
