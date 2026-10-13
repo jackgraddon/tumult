@@ -162,6 +162,12 @@ chat client should be.
   a dev origin and a deployed one must re-register, not reuse.
 - Test against local homeserver in Docker (Matrix crypto suite uses published
   Synapse image). Write integration tests against it.
+- Browser-driven real-homeserver testing is available: the Playwright MCP
+  session can log in to the user's real homeserver (matrix.jackg.cc advertises
+  `org.matrix.simplified_msc3575: true`) and run the integration suite
+  (`packages/core/test-integration/*`, incl. sliding sync) end-to-end against
+  it. Prefer Docker Synapse for disposable rounds; the browser path works when
+  a real-homeserver session is logged in.
 
 ## UI mapping
 
@@ -876,13 +882,10 @@ chat client should be.
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver. Harmless:
   MatrixRTC discovery the SDK probes optimistically, and voice/video is a v1
   non-goal.
-- MEDIA SEND (found in slice 26, deliberately not fixed there): `matrix.uploadContent()`
-  is XHR-based with NO 401 refresh-retry, unlike `authedRequest`, which refreshes
-  and retries. An upload that races a token refresh (MAS rotates the refresh
-  token, so the access token it carries is already revoked) fails hard with
-  `[401] Token is not active` on `/_matrix/media/v3/upload`; it self-heals if you
-  simply retry. Reproduced twice live against matrix.jackg.cc. All three upload
-  call sites are affected — `sendMediaMessage`, room avatar, profile avatar.
-  Fix: one retry-with-refresh wrapper in core shared by all three, gated on
-  `httpStatus === 401` / `M_UNKNOWN_TOKEN`, surfaced through the composer's
-  existing failed-send path.
+- MEDIA SEND (fixed in slice 27): `matrix.uploadContent()` is XHR-based with no
+  401 refresh-retry, so an upload that races a token refresh (MAS rotates the
+  refresh token) fails with `[401] Token is not active` on
+  `/_matrix/media/v3/upload` and lands dead-ended at the caller. Routed all three
+  upload call sites (media, room avatar, profile avatar) through a shared core
+  wrapper gated on `httpStatus === 401` / `M_UNKNOWN_TOKEN`; surfaced through the
+  failed-send path.
