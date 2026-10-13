@@ -1,3 +1,4 @@
+import { uploadWithRefresh } from "../util/token-refresh.ts";
 import { EventType, type MatrixClient } from "matrix-js-sdk";
 import {
     HistoryVisibility as SdkHistoryVisibility,
@@ -126,7 +127,7 @@ export async function updateRoomSettings(
         if (patch.avatar === null) {
             await matrix.sendStateEvent(roomId, EventType.RoomAvatar, { url: "" });
         } else {
-            const { content_uri } = await matrix.uploadContent(patch.avatar);
+            const { content_uri } = await uploadWithRefresh(matrix, patch.avatar);
             await matrix.sendStateEvent(roomId, EventType.RoomAvatar, { url: content_uri });
         }
     }

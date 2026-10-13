@@ -1,4 +1,5 @@
 import { MsgType, type MatrixClient } from "matrix-js-sdk";
+import { uploadWithRefresh } from "../util/token-refresh.ts";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
 
 /**
@@ -16,7 +17,7 @@ export async function sendMediaMessage(
     file: File | Blob,
     body?: string,
 ): Promise<void> {
-    const { content_uri } = await matrix.uploadContent(file);
+    const { content_uri } = await uploadWithRefresh(matrix, file);
     const msgtype = msgtypeForFile(file);
     const name = file instanceof File ? file.name : "file";
     const content = {

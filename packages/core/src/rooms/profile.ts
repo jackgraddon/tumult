@@ -1,3 +1,4 @@
+import { uploadWithRefresh } from "../util/token-refresh.ts";
 import type { MatrixClient } from "matrix-js-sdk";
 
 import type { ProfileView } from "../contract.ts";
@@ -51,7 +52,7 @@ export async function writeProfile(
         if (params.avatar === null) {
             await matrix.setAvatarUrl("");
         } else {
-            const { content_uri } = await matrix.uploadContent(params.avatar);
+            const { content_uri } = await uploadWithRefresh(matrix, params.avatar);
             await matrix.setAvatarUrl(content_uri);
         }
     }
