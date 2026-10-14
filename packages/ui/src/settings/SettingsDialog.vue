@@ -124,6 +124,9 @@ function onOpenChange(next: boolean): void {
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+    transition:
+        background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease);
 }
 .tumult-settings-tab:hover {
     background: var(--roomlist-item-bg-hover);

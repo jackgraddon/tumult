@@ -139,6 +139,7 @@ function request(kind: MemberModerationKind): void {
     border-radius: var(--control-radius);
     font-size: var(--text-sm);
     color: var(--text-secondary);
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-member:hover {
     background: var(--roomlist-item-bg-hover);

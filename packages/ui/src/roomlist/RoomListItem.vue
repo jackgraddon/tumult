@@ -79,6 +79,9 @@ function requestLeave(): void {
     font-size: var(--text-sm);
     text-decoration: none;
     min-width: 0;
+    transition:
+        background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease);
 }
 .tumult-room-item:hover {
     background: var(--roomlist-item-bg-hover);

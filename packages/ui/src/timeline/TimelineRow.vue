@@ -278,6 +278,7 @@ function cancelEdit(): void {
     display: flex;
     gap: var(--timeline-row-gap);
     padding: var(--timeline-row-padding-y) var(--timeline-row-padding-x);
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-row[data-grouped="true"] {
     padding-top: 0;

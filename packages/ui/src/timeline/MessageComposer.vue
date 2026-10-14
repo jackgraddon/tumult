@@ -289,6 +289,7 @@ function onFileSelected(event: Event): void {
     font-size: var(--text-md);
     line-height: var(--leading-none);
     cursor: pointer;
+    transition: color var(--motion-fast) var(--motion-ease);
 }
 .tumult-composer-reply-cancel:hover {
     color: var(--text-primary);
@@ -323,6 +324,7 @@ function onFileSelected(event: Event): void {
     font-size: var(--text-md);
     line-height: var(--leading-none);
     cursor: pointer;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-composer-attach:hover:not(:disabled) {
     background: var(--button-secondary-bg-hover);
@@ -343,6 +345,7 @@ function onFileSelected(event: Event): void {
     font-size: var(--text-md);
     line-height: var(--leading-none);
     cursor: pointer;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-composer-action:hover:not(:disabled) {
     background: var(--button-secondary-bg-hover);
@@ -422,6 +425,7 @@ function onFileSelected(event: Event): void {
     font-size: var(--text-sm);
     font-weight: var(--weight-semibold);
     cursor: pointer;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-composer-send:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);

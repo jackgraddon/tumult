@@ -27,6 +27,9 @@ const emit = defineEmits<{
     color: var(--text-secondary);
     font-size: var(--text-sm);
     cursor: pointer;
+    transition:
+        background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease);
 }
 .tumult-load-more:hover {
     background: var(--roomlist-item-bg-hover);

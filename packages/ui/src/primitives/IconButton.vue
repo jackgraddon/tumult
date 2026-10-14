@@ -22,6 +22,9 @@ defineProps<{
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
+    transition:
+        background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease);
 }
 .tumult-icon-button:hover {
     background: var(--roomlist-item-bg-hover);

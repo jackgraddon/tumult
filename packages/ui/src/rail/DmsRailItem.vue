@@ -47,6 +47,7 @@ const selection = useSelection();
     color: var(--text-primary);
     font-size: var(--icon-md);
     text-decoration: none;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-dms-item[aria-current="page"] {
     background: var(--rail-item-bg-active);

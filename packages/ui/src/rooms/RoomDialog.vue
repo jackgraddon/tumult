@@ -182,6 +182,9 @@ function onOpenChange(next: boolean): void {
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+    transition:
+        background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease);
 }
 .tumult-dialog-button:disabled {
     opacity: var(--state-disabled-opacity);
@@ -192,6 +195,7 @@ function onOpenChange(next: boolean): void {
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
     font-weight: var(--weight-semibold);
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-dialog-primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
@@ -201,6 +205,7 @@ function onOpenChange(next: boolean): void {
     background: var(--button-danger-bg);
     color: var(--button-danger-text);
     font-weight: var(--weight-semibold);
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-dialog-danger:hover:not(:disabled) {
     background: var(--button-danger-bg-hover);

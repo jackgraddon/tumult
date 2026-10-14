@@ -596,6 +596,79 @@ describe("browser smoke test (fake client)", () => {
         await fresh.close();
     });
 
+    // --- Shell polish: focus visibility and motion ---------------------------
+
+    it("gives keyboard focus a ring on controls that declare none themselves", async () => {
+        // The app-level `:focus-visible` floor is what covers a control like the
+        // Appearance tab's selects — that SFC declares no ring of its own. Focus
+        // is moved by KEYBOARD on purpose: `:focus-visible` does not match a
+        // programmatic `.focus()`, so that would prove nothing.
+        await openAppearance();
+
+        let focused = "";
+        for (let i = 0; i < 40 && focused !== "select#tumult-theme-active"; i += 1) {
+            await page.keyboard.press("Tab");
+            focused = await page.evaluate(() => {
+                const el = document.activeElement;
+                return el instanceof HTMLElement ? `${el.tagName.toLowerCase()}#${el.id}` : "";
+            });
+        }
+        assert.equal(focused, "select#tumult-theme-active", "the theme select was not reachable by keyboard");
+
+        const ring = await page.evaluate(() => {
+            const el = document.activeElement;
+            if (!el) return null;
+            const style = getComputedStyle(el);
+            return { style: style.outlineStyle, width: style.outlineWidth, color: style.outlineColor };
+        });
+        // `solid`/`2px` is the token's signature: the browser's own ring is
+        // `auto` and 1px or 5px wide, so both of these say the rule won.
+        assert.equal(ring?.style, "solid", "the focused control got no focus ring");
+        assert.equal(ring?.width, "2px", "the focus ring width did not come from the token");
+        assert.notEqual(ring?.color, "rgba(0, 0, 0, 0)", "the focus ring colour did not resolve");
+
+        await closeSettings();
+    });
+
+    it("zeroes transitions when the system prefers reduced motion", async () => {
+        const withSession = async (reducedMotion: "reduce" | "no-preference") => {
+            const context = await browser.newContext({ viewport: VIEWPORT, reducedMotion });
+            await context.addInitScript((session) => {
+                localStorage.setItem("tumult.session", JSON.stringify(session));
+            }, SESSION);
+            const target = await context.newPage();
+            await target.goto(`${origin}/dms`, { waitUntil: "load" });
+            await target.waitForSelector(".tumult-room-item", { timeout: 20_000 });
+            return { context, target };
+        };
+        const durations = (target: Page) =>
+            target
+                .locator(".tumult-room-item")
+                .first()
+                .evaluate((el) => getComputedStyle(el).transitionDuration);
+
+        const calm = await withSession("reduce");
+        const busy = await withSession("no-preference");
+        try {
+            const reduced = await durations(calm.target);
+            assert.ok(
+                reduced.split(",").every((part) => part.trim() === "0s"),
+                `reduced motion left a transition running (${reduced})`,
+            );
+            // The control: the same row under the default preference really does
+            // carry the token, so the zero above is the media query's doing and
+            // not a transition that was never there.
+            const normal = await durations(busy.target);
+            assert.ok(
+                normal.split(",").some((part) => Number.parseFloat(part) > 0),
+                `the default transition token is not applied at all (${normal})`,
+            );
+        } finally {
+            await calm.context.close();
+            await busy.context.close();
+        }
+    });
+
     it("reports no console errors across the whole run", () => {
         assert.deepEqual(consoleErrors, []);
     });

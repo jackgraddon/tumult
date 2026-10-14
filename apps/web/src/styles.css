@@ -26,6 +26,34 @@ body {
     margin: 0;
 }
 
+/*
+ * Keyboard focus is an affordance, not a decoration: nothing focusable may be
+ * invisible to a keyboard user. Components that want a different ring (inset,
+ * or the accent on a danger affordance) declare their own `:focus-visible` rule
+ * and outrank this one — this is only the floor.
+ */
+:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+/*
+ * Motion-minimal systems. `!important` is deliberate: a theme sets `--motion-*`
+ * at `:root[data-theme]`, which outranks any token override written here, so the
+ * preference has to be enforced on the property itself. Components that swap an
+ * animation for a static equivalent keep their own media query — this one only
+ * removes the movement.
+ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0ms !important;
+    }
+}
+
 /* --- Pre-shell surfaces: one centered column, one card --- */
 
 .tumult-page {

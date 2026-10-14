@@ -96,6 +96,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     border-radius: var(--control-radius);
     background: transparent;
     cursor: pointer;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-account:hover {
     background: var(--rail-item-bg-hover);

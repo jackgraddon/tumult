@@ -108,6 +108,7 @@ function requestLeave(): void {
     justify-content: center;
     padding: var(--space-1) 0;
     border-radius: var(--control-radius);
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .tumult-guild-item:hover {
     background: var(--rail-item-bg-hover);
