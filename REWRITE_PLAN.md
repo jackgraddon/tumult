@@ -28,13 +28,15 @@ This plan builds on the existing data/core/contract foundation, but resets UI de
 
 ## 4. Phase 1 — Token System v2
 
-- [ ] Extend `TokenKind`/registry to cover: shadows, z-index, letter-spacing, icon sizes, line-height, breakpoints (optional), layout rail/members/roomlist fully parameterized.
-- [ ] Expand primitives + semantic + component sets to reach "token-everything": buttons, inputs, badges, overlays, dialogs, lists, timeline decorations, members, rail states (hover/active/unread/highlight).
-- [ ] Add state tokens (hover/active/selected/focus/disabled) consistently.
-- [ ] Version bump: `ThemeJson.version` to 2, `packages/theme/src/version.ts`. Add migration notes.
-- [ ] Compiler: emit CSS vars for all registered tokens, validate unknown tokens (warn or error by mode), support dark/light via `:root[data-theme][data-mode]` (default dark).
-- [ ] Default theme v2: `packages/theme/themes/default.json` expanded to cover all component tokens. Keep backwards compatible with v1 where possible.
-- [ ] Token-complete SFC pass: replace hardcoded values with `var(--…)` in `packages/ui/src/**.vue`, scoped styles only.
+> DONE 2026-10-13 — migration + authoring rules in `docs/theme-migration-v1-to-v2.md`.
+
+- [x] Extend `TokenKind`/registry to cover: shadows, z-index, letter-spacing, icon sizes, line-height, breakpoints (optional), layout rail/members/roomlist fully parameterized. → kinds added: `size`, `shadow`, `z-index`, `line-height`, `letter-spacing`, `font-weight`, `border-width`, `opacity`; icon sizes are the semantic `icon-*` scale. Breakpoints **not** added (a CSS var cannot drive `@media`; documented as deferred). Rail/roomlist/members widths were already parameterized; `layout-*` gained slide-over/menu/dialog widths.
+- [x] Expand primitives + semantic + component sets to reach "token-everything": buttons, inputs, badges, overlays, dialogs, lists, timeline decorations, members, rail states (hover/active/unread/highlight). → registry 102 → **271** (91/104/76); every component token is now referenced (coverage test).
+- [x] Add state tokens (hover/active/selected/focus/disabled) consistently. → `state-hover`, `state-selected`, `state-disabled-opacity`, `state-muted-opacity` (+ `focus-ring-color`/`focus-ring-outline`/`focus-ring-width`/`focus-ring-offset`). `state-*` are reference tokens; no new visual states were invented in Phase 1 (see the migration doc's normalization list).
+- [x] Version bump: `ThemeJson.version` to 2, `packages/theme/src/version.ts`. Add migration notes. → `TOKEN_CONTRACT_VERSION = 2`, `SUPPORTED_TOKEN_CONTRACT_VERSIONS = [1, 2]`, unsupported → `warning`; `docs/theme-migration-v1-to-v2.md`. v1 themes stay valid (one removed token: `shell-gap`).
+- [x] Compiler: emit CSS vars for all registered tokens, validate unknown tokens (warn or error by mode), support dark/light via `:root[data-theme][data-mode]` (default dark). → `base.css` emits all 271; unknown token = error (with did-you-mean), unsupported version = warning; modes validated as scoped override maps and emitted as `:root[data-theme][data-mode="…"]`.
+- [x] Default theme v2: `packages/theme/themes/default.json` expanded to cover all component tokens. Keep backwards compatible with v1 where possible. → complete snapshot of the structural defaults (271) + 14 light-mode overrides; a drift test fails if it disagrees with the registry.
+- [x] Token-complete SFC pass: replace hardcoded values with `var(--…)` in `packages/ui/src/**.vue`, scoped styles only. → 44 SFCs (plus the app's own `DemoPoll.vue`/`AppView.vue`, which the new scan also covers); nothing hardcoded remains outside allowed geometry. Verified mechanically: 319 declarations paired, 14 differ only in notation, **2 intentional changes** (danger-button rest→hover direction, start-error toast 13px→14px) — see the migration doc §3.
 
 ## 5. Phase 2 — Plugin API (Vencord-like, built-in)
 
@@ -71,7 +73,7 @@ Design: per-shell, injection-based, isolated, CSP-safe. No external code executi
 ## 8. Phase 5 — Testing & Parity
 
 - [ ] Unit: selectors, theme validator/compiler, plugin registry, token expansion.
-- [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip.
+- [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → both coverage halves landed early in Phase 1 (`packages/theme/test/coverage.test.ts`: no orphan component/role tokens, no unresolved `var(--…)`, no hardcoded values in SFC style blocks). Still missing: the theme v2 roundtrip.
 - [ ] Integration: MAS login/sync/E2EE still work (no core contract changes). Fake/real swap unchanged.
 - [ ] Visual regression: compare shell layout against existing (grid tracks, chrome vs panes).
 - [ ] Linux target smoke: Wayland/X11, secret storage fallback messaging, packaging notes.
