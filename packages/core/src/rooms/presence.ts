@@ -1,4 +1,4 @@
-import { type MatrixClient, type RoomMember } from "matrix-js-sdk";
+import type { MatrixClient, RoomMember } from "matrix-js-sdk";
 
 import type { PresenceInput } from "./members.ts";
 

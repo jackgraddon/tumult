@@ -1,4 +1,4 @@
-import { type MatrixClient } from "matrix-js-sdk";
+import type { MatrixClient } from "matrix-js-sdk";
 
 /**
  * The shape two of our call sites need from an upload, without pulling the SDK's

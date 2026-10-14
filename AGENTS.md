@@ -198,7 +198,13 @@ chat client should be.
 - Inline `type` specifiers (`import { type X }`) are NOT erased by the SFC
   compiler and pull the whole module into the web bundle — use whole-statement
   `import type` for type-only imports (this kept matrix-js-sdk out of the fake
-  build). `packages/ui` ships `src` (SFCs), not `dist`; `apps/web` takes no
+  build). VERIFIED: the same trap applies to plain `.ts` in `packages/core`,
+  where `verbatimModuleSyntax` makes tsc emit `import { type X } from "y"` as
+  the side-effect `import {} from "y"` — so an all-type braces import keeps its
+  module in the graph there too. Three files had drifted into it and pulled the
+  whole SDK into the fake client's chunk (839 kB → 17 kB when fixed); guarded
+  repo-wide by `packages/core/test/imports.test.ts`.
+  `packages/ui` ships `src` (SFCs), not `dist`; `apps/web` takes no
   project reference to it and maps `@tumult/ui` via tsconfig paths.
 - `CryptoApi`, `CryptoEvent` and `decodeRecoveryKey` are NOT exported from the
   `matrix-js-sdk` package root — import them deep

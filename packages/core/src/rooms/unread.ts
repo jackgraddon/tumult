@@ -1,4 +1,4 @@
-import { type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
+import type { MatrixClient, MatrixEvent, Room } from "matrix-js-sdk";
 import { ReceiptType } from "matrix-js-sdk/lib/@types/read_receipts.js";
 
 import { BackfillQueue } from "./backfill-queue.ts";
