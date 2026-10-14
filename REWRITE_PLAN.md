@@ -19,10 +19,12 @@ This plan builds on the existing data/core/contract foundation, but resets UI de
 
 ## 3. Phase 0 — Audit & Baseline
 
-- [ ] Token audit of all UI SFCs: grep hardcoded colors/px/spacing in `packages/ui/src` and list violations.
-- [ ] Current theme coverage: compare `packages/theme/themes/default.json` and `packages/theme/src/registry/*` against used tokens.
-- [ ] Performance snapshot: bundle size of web entry, first paint against matrix.jackg.cc (or fake) to avoid regressions.
-- [ ] CSP review: confirm `wasm-unsafe-eval` present, `media-src blob:` ok, plan CSS loading for advanced themes.
+> DONE 2026-10-13 — full results in `docs/phase0-audit.md`.
+
+- [x] Token audit of all UI SFCs: grep hardcoded colors/px/spacing in `packages/ui/src` and list violations. → 208 px literals / 30 files, 27 font-weight, 9 letter-spacing, 7 font-size, 4 hex, 7 rgba, 2 z-index. Per-file table in the audit doc. One real bug fixed: unregistered `--accent-primary` in `PowerLevelDialog.vue`.
+- [x] Current theme coverage: compare `packages/theme/themes/default.json` and `packages/theme/src/registry/*` against used tokens. → registry 102 (39/36/27), app references 56, used-but-unregistered 0 after the fix; gap list (shadow/z-index/type metrics/state/icon-size/light-mode) in the audit doc.
+- [x] Performance snapshot: bundle size of web entry, first paint against matrix.jackg.cc (or fake) to avoid regressions. → clean build: entry 104.73 kB (40.65 gzip), shell `AppView` 254.98 kB (69.77 gzip), SDK `chat` 892.94 kB (248.15 gzip), CSS total 50.22 kB (7.49 gzip). Fake-client shell paint 51 ms warm / 65.7 ms cold (headless CDP harness). Real-homeserver numbers still from AGENTS.md (~97 ms first paint, ~2.5 s room list) — not re-measured (needs the browser MCP session).
+- [x] CSP review: confirm `wasm-unsafe-eval` present, `media-src blob:` ok, plan CSS loading for advanced themes. → both present and correct. **Finding: the policy is dev-only (`vite.config.ts` `server.headers`); production has no CSP.** `style-src 'unsafe-inline'` is load-bearing (Vite dev injection + Reka inline `style` attributes) — Phase 3's advanced-CSS path must decide CSP3 `style-src-attr`/nonces up front. Production delivery mechanism still undecided.
 
 ## 4. Phase 1 — Token System v2
 

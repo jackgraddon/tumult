@@ -133,7 +133,7 @@ function submit(): void {
     gap: var(--space-2);
 }
 .tumult-power-presets .tumult-dialog-button[aria-pressed="true"] {
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 </style>
