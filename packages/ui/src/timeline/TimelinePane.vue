@@ -117,6 +117,10 @@ watch(
     border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-timeline-header-text {
+    /* Absorb the slack so the icon buttons cluster at the right edge: with
+       space-between and a third flex child, the search control would drift to
+       the middle of the header and separate from settings. */
+    flex: 1;
     min-width: 0;
 }
 .tumult-timeline-header h2 {

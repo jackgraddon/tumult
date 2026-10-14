@@ -140,6 +140,13 @@ function onOpenChange(next: boolean): void {
 .tumult-dialog-textarea::placeholder {
     color: var(--input-placeholder);
 }
+/* Native checkbox / radio: `accent-color` hands their fill to the theme instead
+   of the UA's own blue, while keeping native hit-testing, focus and keyboard
+   behaviour — unlike a hand-rolled control. */
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--accent);
+}
 .tumult-dialog-group {
     display: block;
     margin: 0;
@@ -170,10 +177,15 @@ function onOpenChange(next: boolean): void {
 }
 .tumult-dialog-actions {
     display: flex;
+    /* Whole controls flow to the next line rather than a label breaking mid-word
+       (the file picker is wide enough to squeeze the buttons beside it). */
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--space-2);
 }
 .tumult-dialog-button {
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: var(--space-2) var(--space-3);
     border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);

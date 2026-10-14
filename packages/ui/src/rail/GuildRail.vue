@@ -72,7 +72,7 @@ const emit = defineEmits<{
                          m.favourite tag order. A separator + heading open the band;
                          everything is hidden when the user has no favourites. -->
                     <li v-if="tree.favourites.length" class="tumult-rail-sep" aria-hidden="true" />
-                    <li v-if="tree.favourites.length" class="tumult-rail-heading">FAVOURITES</li>
+                    <li v-if="tree.favourites.length" class="tumult-rail-heading">Favourites</li>
                     <li
                         v-for="fave in tree.favourites"
                         :key="fave.id"
@@ -139,13 +139,18 @@ const emit = defineEmits<{
 .tumult-rail-heading {
     font-size: var(--text-2xs);
     font-weight: var(--weight-semibold);
-    letter-spacing: var(--tracking-wider);
     line-height: var(--leading-none);
-    margin: var(--space-3) var(--space-3) var(--space-1);
-    padding: 0 var(--space-2);
+    margin: var(--space-3) 0 var(--space-1);
+    padding: 0;
     text-align: left;
     color: var(--text-muted);
     unicode-bias: auto;
+    /* The rail is a fixed, narrow chrome track, so the band label either fits
+       inside it or degrades to an ellipsis — it must never clip mid-glyph the
+       way a tracked-out uppercase run did. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .tumult-rail-fav-item {
     display: inline-flex;

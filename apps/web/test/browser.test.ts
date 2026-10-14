@@ -688,6 +688,60 @@ describe("browser smoke test (fake client)", () => {
         await closeSettings();
     });
 
+    it("floats a row's hover actions instead of resizing the row", async () => {
+        // The regression this guards: the affordances used to sit in the flow
+        // and be `display: none` until hover, so hovering grew the row and
+        // pushed every message below it down — in a virtualized timeline that
+        // moves the very thing the pointer was aiming at.
+        await page.locator(".tumult-dmlist .tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+        await page.mouse.move(3, 3);
+        await page.waitForTimeout(250);
+
+        const row = page.locator(".tumult-virtual-row:has(.tumult-row-actions)").nth(2);
+        await row.scrollIntoViewIfNeeded();
+        await page.mouse.move(3, 3);
+        await page.waitForTimeout(250);
+
+        const measure = () =>
+            row.evaluate((el) => {
+                const actions = el.querySelector(".tumult-row-actions")?.getBoundingClientRect();
+                const message = el.querySelector(".tumult-row")?.getBoundingClientRect();
+                return {
+                    height: Math.round(el.getBoundingClientRect().height),
+                    overflow: actions && message ? Math.round(actions.right - message.right) : null,
+                };
+            });
+
+        const before = await measure();
+        const box = await row.boundingBox();
+        assert.ok(box, "the row carrying hover actions is off screen");
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(250);
+        const after = await measure();
+
+        assert.equal(
+            after.height,
+            before.height,
+            `hovering changed the row height by ${after.height - before.height}px`,
+        );
+        assert.ok(
+            after.overflow !== null && after.overflow <= 0,
+            `the actions panel overflowed its row by ${after.overflow}px`,
+        );
+    });
+
+    it("keeps the rail's favourites label inside the fixed-width rail", async () => {
+        // The rail is a narrow, non-collapsible chrome track: as a tracked-out
+        // uppercase run the band heading clipped mid-glyph, reading "FAVOURI".
+        const heading = await page.locator(".tumult-rail-heading").evaluate((el) => ({
+            text: (el.textContent ?? "").trim(),
+            clipped: el.scrollWidth > el.clientWidth + 1,
+        }));
+        assert.ok(heading.text.length > 0, "the fake seed should have a favourites band to measure");
+        assert.ok(!heading.clipped, `"${heading.text}" is clipped by the rail`);
+    });
+
     it("renders the login view when no session is stored", async () => {
         // A clean context: the shared one seeds a session before every load.
         const fresh = await browser.newContext({ viewport: VIEWPORT });

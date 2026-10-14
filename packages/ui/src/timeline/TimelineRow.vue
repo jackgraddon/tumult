@@ -84,6 +84,21 @@ const redactable = computed(
 const editing = ref(false);
 const draft = ref("");
 
+/**
+ * Panel renders only when an affordance will actually show inside it: an empty
+ * bordered chip parked at the row's top-right on hover would be visual noise,
+ * and pending/failed rows render none of the gated children.
+ */
+const hasActions = computed(
+    () =>
+        !editing.value &&
+        (editable.value ||
+            redactable.value ||
+            replyable.value ||
+            (props.onOpenThread !== undefined && props.message.decryption === "ok") ||
+            (props.onToggleReaction !== undefined && props.message.decryption === "ok")),
+);
+
 function startEdit(): void {
     draft.value = props.message.body;
     editing.value = true;
@@ -158,42 +173,6 @@ function cancelEdit(): void {
                 :message="message"
             />
             <component :is="renderer" v-else-if="!editing" :message="message" />
-                <button
-                    v-if="editable && !editing"
-                    type="button"
-                    class="tumult-row-edit"
-                    aria-label="Edit message"
-                    @click="startEdit"
-                >
-                    ✎ edit
-                </button>
-                <button
-                    v-if="redactable && !editing"
-                    type="button"
-                    class="tumult-row-delete"
-                    aria-label="Delete message"
-                    @click="onRedactMessage?.(message.id)"
-                >
-                    🗑 delete
-                </button>
-                <button
-                    v-if="replyable && !editing"
-                    type="button"
-                    class="tumult-row-reply"
-                    aria-label="Reply to message"
-                    @click="onReply?.(message)"
-                >
-                    ↩ reply
-                </button>
-                <button
-                    v-if="onOpenThread && message.decryption === 'ok'"
-                    type="button"
-                    class="tumult-row-thread"
-                    aria-label="Reply in thread"
-                    @click="onOpenThread?.(message.id)"
-                >
-                    💬 thread
-                </button>
             <button
                 v-if="onOpenThread && (threadReplyCount ?? 0) > 0"
                 type="button"
@@ -216,7 +195,7 @@ function cancelEdit(): void {
                 <button type="button" class="tumult-edit-cancel" @click="cancelEdit">Cancel</button>
             </form>
             <div
-                v-if="message.decryption === 'ok' && (message.reactions.length > 0 || onToggleReaction)"
+                v-if="message.decryption === 'ok' && message.reactions.length > 0"
                 class="tumult-reactions"
             >
                 <button
@@ -232,25 +211,6 @@ function cancelEdit(): void {
                     <span aria-hidden="true">{{ reaction.emoji }}</span>
                     <span class="tumult-reaction-count">{{ reaction.count }}</span>
                 </button>
-                <PopoverRoot v-if="onToggleReaction">
-                    <PopoverTrigger as-child>
-                        <button type="button" class="tumult-reaction-add" aria-label="Add reaction">+</button>
-                    </PopoverTrigger>
-                    <PopoverPortal>
-                        <PopoverContent class="tumult-reaction-popover" side="top" align="start">
-                            <button
-                                v-for="emoji in QUICK_REACTIONS"
-                                :key="emoji"
-                                type="button"
-                                class="tumult-reaction-pick"
-                                :aria-label="`React with ${emoji}`"
-                                @click="toggle(emoji)"
-                            >
-                                {{ emoji }}
-                            </button>
-                        </PopoverContent>
-                    </PopoverPortal>
-                </PopoverRoot>
             </div>
             <div
                 v-if="message.decryption === 'ok' && message.readBy.length > 0"
@@ -270,11 +230,76 @@ function cancelEdit(): void {
                 </span>
             </div>
         </div>
+        <!--
+            Hover affordances live OUT of the flow: they are shown by
+            `.tumult-row:hover`, and an in-flow row that grows on hover shifts
+            every message below it — which, in a virtualized timeline, moves the
+            very thing the pointer was aiming at. Absolutely positioned at the
+            row's top-right, so revealing them costs no layout.
+        -->
+        <div v-if="hasActions" class="tumult-row-actions">
+            <button
+                v-if="editable && !editing"
+                type="button"
+                class="tumult-row-edit"
+                aria-label="Edit message"
+                @click="startEdit"
+            >
+                ✎ edit
+            </button>
+            <button
+                v-if="redactable && !editing"
+                type="button"
+                class="tumult-row-delete"
+                aria-label="Delete message"
+                @click="onRedactMessage?.(message.id)"
+            >
+                🗑 delete
+            </button>
+            <button
+                v-if="replyable && !editing"
+                type="button"
+                class="tumult-row-reply"
+                aria-label="Reply to message"
+                @click="onReply?.(message)"
+            >
+                ↩ reply
+            </button>
+            <button
+                v-if="onOpenThread && message.decryption === 'ok'"
+                type="button"
+                class="tumult-row-thread"
+                aria-label="Reply in thread"
+                @click="onOpenThread?.(message.id)"
+            >
+                💬 thread
+            </button>
+            <PopoverRoot v-if="onToggleReaction && message.decryption === 'ok'">
+                <PopoverTrigger as-child>
+                    <button type="button" class="tumult-reaction-add" aria-label="Add reaction">+</button>
+                </PopoverTrigger>
+                <PopoverPortal>
+                    <PopoverContent class="tumult-reaction-popover" side="bottom" align="end">
+                        <button
+                            v-for="emoji in QUICK_REACTIONS"
+                            :key="emoji"
+                            type="button"
+                            class="tumult-reaction-pick"
+                            :aria-label="`React with ${emoji}`"
+                            @click="toggle(emoji)"
+                        >
+                            {{ emoji }}
+                        </button>
+                    </PopoverContent>
+                </PopoverPortal>
+            </PopoverRoot>
+        </div>
     </div>
 </template>
 
 <style scoped>
 .tumult-row {
+    position: relative;
     display: flex;
     gap: var(--timeline-row-gap);
     padding: var(--timeline-row-padding-y) var(--timeline-row-padding-x);
@@ -337,9 +362,27 @@ function cancelEdit(): void {
     outline-offset: var(--focus-ring-offset);
     border-radius: var(--radius-sm);
 }
-.tumult-row-edit,
-.tumult-row-delete {
+/* Absolutely positioned, so hovering never re-flows the row. */
+.tumult-row-actions {
+    position: absolute;
+    top: var(--space-0-5);
+    right: var(--space-3);
     display: none;
+    align-items: center;
+    padding: var(--space-px);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+    box-shadow: var(--shadow-sm);
+}
+.tumult-row:hover .tumult-row-actions {
+    display: flex;
+}
+.tumult-row-edit,
+.tumult-row-delete,
+.tumult-row-reply,
+.tumult-row-thread {
+    display: inline-flex;
     align-items: center;
     padding: 0 var(--space-0-5);
     border: none;
@@ -347,15 +390,18 @@ function cancelEdit(): void {
     color: var(--text-muted);
     font-size: var(--text-xs);
     cursor: pointer;
+    transition: color var(--motion-fast) var(--motion-ease);
 }
-.tumult-row:hover .tumult-row-edit,
-.tumult-row:hover .tumult-row-delete,
-.tumult-row-edit:focus-visible,
-.tumult-row-delete:focus-visible {
-    display: inline-flex;
+.tumult-row-edit:hover,
+.tumult-row-delete:hover,
+.tumult-row-reply:hover,
+.tumult-row-thread:hover {
+    color: var(--text-primary);
 }
 .tumult-row-edit:focus-visible,
-.tumult-row-delete:focus-visible {
+.tumult-row-delete:focus-visible,
+.tumult-row-reply:focus-visible,
+.tumult-row-thread:focus-visible {
     outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
@@ -377,42 +423,6 @@ function cancelEdit(): void {
 .tumult-row-replies:focus-visible {
     outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     outline-offset: var(--focus-ring-offset);
-}
-.tumult-row-thread {
-    display: none;
-    align-items: center;
-    padding: 0 var(--space-0-5);
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    cursor: pointer;
-}
-.tumult-row:hover .tumult-row-thread,
-.tumult-row-thread:focus-visible {
-    display: inline-flex;
-}
-.tumult-row-thread:focus-visible {
-    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
-    border-radius: var(--radius-sm);
-}
-.tumult-row-reply {
-    display: none;
-    align-items: center;
-    padding: 0 var(--space-0-5);
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    cursor: pointer;
-}
-.tumult-row:hover .tumult-row-reply,
-.tumult-row-reply:focus-visible {
-    display: inline-flex;
-}
-.tumult-row-reply:focus-visible {
-    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
-    border-radius: var(--radius-sm);
 }
 .tumult-row-quote {
     margin: 0 0 var(--space-1);
@@ -513,7 +523,7 @@ function cancelEdit(): void {
     font-weight: var(--weight-semibold);
 }
 .tumult-reaction-add {
-    display: none;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: var(--control-sm);
@@ -526,9 +536,9 @@ function cancelEdit(): void {
     line-height: var(--leading-none);
     cursor: pointer;
 }
-.tumult-row:hover .tumult-reaction-add,
-.tumult-reaction-add:focus-visible {
-    display: inline-flex;
+.tumult-reaction-add:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
 }
 .tumult-reaction-pick {
     padding: var(--space-1);

@@ -415,6 +415,10 @@ function reset(): void {
     gap: var(--space-1);
 }
 .tumult-appearance-file {
+    /* Takes the slack on the install row so the picker sits at the left edge
+       instead of drifting to the middle when the buttons wrap. */
+    flex: 1;
+    min-width: 0;
     color: var(--text-secondary);
     font-size: var(--text-sm);
 }
