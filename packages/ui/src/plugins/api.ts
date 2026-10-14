@@ -12,6 +12,7 @@ import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
+import type { SettingsTab } from "../settings/tabs.ts";
 
 export interface PluginApiTarget {
     /** Throws when the manifest did not declare `permission`. */
@@ -21,6 +22,9 @@ export interface PluginApiTarget {
     addComposerAction(action: ComposerAction): Disposable;
     addCommand(command: Command): Disposable;
     addMemberDecoration(decoration: MemberDecoration): Disposable;
+    addSettingsTab(tab: SettingsTab): Disposable;
+    /** Injects under this plugin's id as the owner (the registry binds it). */
+    injectStylesheet(css: string): Disposable;
     /** Record a disposable so uninstall runs it whether or not the plugin kept it. */
     track(dispose: Disposable): Disposable;
 }
@@ -42,6 +46,14 @@ export function createPluginApi(target: PluginApiTarget): PluginApi {
         addMemberDecoration(decoration) {
             target.require("member-decorations");
             return target.track(target.addMemberDecoration(decoration));
+        },
+        addSettingsTab(tab) {
+            target.require("settings-tabs");
+            return target.track(target.addSettingsTab(tab));
+        },
+        injectStylesheet(css) {
+            target.require("styles");
+            return target.track(target.injectStylesheet(css));
         },
     };
 }

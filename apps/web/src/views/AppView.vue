@@ -6,7 +6,7 @@ import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
-import { adminBadge, reactLastAction, shrugCommand } from "../plugins/showcase.ts";
+import { adminBadge, reactLastAction, settingsShowcase, shrugCommand } from "../plugins/showcase.ts";
 
 /**
  * The reference plugin: registers the demo-poll timeline renderer through the
@@ -63,6 +63,7 @@ onMounted(async () => {
     shell.value?.plugins.install(shrugCommand);
     shell.value?.plugins.install(reactLastAction);
     shell.value?.plugins.install(adminBadge);
+    shell.value?.plugins.install(settingsShowcase);
 });
 
 const selection = computed<RoomSelection>(() => {

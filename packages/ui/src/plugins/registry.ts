@@ -4,6 +4,7 @@ import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
+import type { SettingsTab } from "../settings/tabs.ts";
 import type {
     Disposable,
     Permission,
@@ -87,6 +88,16 @@ export class PluginRegistry {
         return this.deps.memberDecorations.add(decoration);
     }
 
+    /** Shell-level settings tab (no permission — see {@link addRenderer}). */
+    public addSettingsTab(tab: SettingsTab): Disposable {
+        return this.deps.settingsTabs.add(tab);
+    }
+
+    /** Shell-level stylesheet, owned by `"shell"` (no permission — see {@link addRenderer}). */
+    public injectStylesheet(css: string): Disposable {
+        return this.deps.injectStylesheet(css, "shell");
+    }
+
     /**
      * Install one plugin. Throws when the id is already installed or when
      * `install()` itself throws — in which case everything the plugin had
@@ -122,6 +133,10 @@ export class PluginRegistry {
             addComposerAction: (action) => this.addComposerAction(action),
             addCommand: (command) => this.addCommand(command),
             addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
+            addSettingsTab: (tab) => this.addSettingsTab(tab),
+            // The manifest id is the stylesheet's owner, so a failed install
+            // and a later uninstall both remove exactly this plugin's styles.
+            injectStylesheet: (css) => this.deps.injectStylesheet(css, id),
             track,
         });
         const ctx: PluginContext = {
@@ -134,6 +149,8 @@ export class PluginRegistry {
             addComposerAction: api.addComposerAction,
             addCommand: api.addCommand,
             addMemberDecoration: api.addMemberDecoration,
+            addSettingsTab: api.addSettingsTab,
+            injectStylesheet: api.injectStylesheet,
         };
 
         let teardown: Disposable | null = null;

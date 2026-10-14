@@ -9,6 +9,7 @@ import { ContributionList } from "../src/plugins/contributions.ts";
 import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
 import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
+import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 
 const Comp = { name: "Comp" } as unknown as Component;
 
@@ -204,5 +205,35 @@ describe("MemberDecorationsRegistry", () => {
         assert.throws(() => decorations.add({ id: "d", component: Comp }), /already registered/);
         assert.equal(decorations.remove("d"), true);
         assert.deepEqual(decorations.resolve(member()), []);
+    });
+});
+
+describe("SettingsTabsRegistry", () => {
+    it("orders by priority and disposes", () => {
+        const tabs = new SettingsTabsRegistry();
+        tabs.add({ id: "plugins", title: "Plugins", component: Comp });
+        tabs.add({ id: "first", title: "First", component: Comp, priority: 10 });
+        tabs.add({ id: "middle", title: "Middle", component: Comp, priority: 5 });
+
+        assert.deepEqual(
+            tabs.all().map((tab) => tab.id),
+            ["first", "middle", "plugins"],
+        );
+
+        assert.equal(tabs.remove("middle"), true);
+        assert.deepEqual(
+            tabs.all().map((tab) => tab.id),
+            ["first", "plugins"],
+        );
+    });
+
+    it("refuses a duplicate id and an empty id", () => {
+        const tabs = new SettingsTabsRegistry();
+        tabs.add({ id: "plugins", title: "Plugins", component: Comp });
+        assert.throws(
+            () => tabs.add({ id: "plugins", title: "Other", component: Comp }),
+            /already registered/,
+        );
+        assert.throws(() => tabs.add({ id: "", title: "Nameless", component: Comp }), /non-empty key/);
     });
 });

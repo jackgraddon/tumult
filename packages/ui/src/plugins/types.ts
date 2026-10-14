@@ -18,6 +18,7 @@ import type { RendererEntry, TimelineRegistry } from "../timeline/registry.ts";
 import type { ComposerActionsRegistry, ComposerAction } from "../timeline/composer-actions.ts";
 import type { CommandsRegistry, Command } from "../timeline/commands.ts";
 import type { MemberDecorationsRegistry, MemberDecoration } from "../members/decorations.ts";
+import type { SettingsTabsRegistry, SettingsTab } from "../settings/tabs.ts";
 import type { SelectionContext } from "../selection.ts";
 import type { ActionsContext } from "../actions.ts";
 
@@ -29,9 +30,8 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * `timeline-renderers`, `composer-actions`, `commands` and
- * `member-decorations` are enforced today. `settings-tabs` and `styles` name
- * the remaining Phase 2 extension points as they land.
+ * All six are enforced: `timeline-renderers`, `composer-actions`, `commands`,
+ * `member-decorations`, `settings-tabs` and `styles`.
  */
 export type Permission =
     | "timeline-renderers"
@@ -72,8 +72,8 @@ export interface PluginMedia {
 
 /**
  * The registration surface every plugin gets — permission-checked and
- * disposable. Future extension points (settings tabs, styles) extend this
- * interface; existing plugins keep working because it only grows.
+ * disposable. New extension points append methods; existing plugins keep
+ * working because it only grows.
  */
 export interface PluginApi {
     /**
@@ -91,6 +91,15 @@ export interface PluginApi {
     addCommand(command: Command): Disposable;
     /** Add a badge/decoration to member rows that `match` accepts. */
     addMemberDecoration(decoration: MemberDecoration): Disposable;
+    /** Add a tab to the settings dialog. */
+    addSettingsTab(tab: SettingsTab): Disposable;
+    /**
+     * Append a `<style>` element to the document. The CSS applies app-wide
+     * (there is no shadow root to scope into) and must be self-contained:
+     * `@import` and any `url()` other than `data:`, `blob:` or a `#fragment`
+     * throw instead of landing.
+     */
+    injectStylesheet(css: string): Disposable;
 }
 
 /**
@@ -134,7 +143,13 @@ export interface PluginDeps {
     composerActions: ComposerActionsRegistry;
     commands: CommandsRegistry;
     memberDecorations: MemberDecorationsRegistry;
+    settingsTabs: SettingsTabsRegistry;
     selection: SelectionContext;
     actions: ActionsContext;
     media: PluginMedia;
+    /**
+     * Shell-provided stylesheet injection (see `plugins/styles.ts`). The
+     * registry passes the plugin's manifest id as the owner.
+     */
+    injectStylesheet(css: string, owner: string): Disposable;
 }

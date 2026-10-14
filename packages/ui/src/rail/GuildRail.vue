@@ -27,6 +27,7 @@ const emit = defineEmits<{
     security: [];
     verify: [];
     profile: [];
+    settings: [];
     createSpace: [];
     join: [];
 }>();
@@ -99,6 +100,7 @@ const emit = defineEmits<{
             @security="emit('security')"
             @verify="emit('verify')"
             @profile="emit('profile')"
+            @settings="emit('settings')"
         />
     </nav>
 </template>

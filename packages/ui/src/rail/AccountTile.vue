@@ -22,6 +22,7 @@ const emit = defineEmits<{
     security: [];
     verify: [];
     profile: [];
+    settings: [];
 }>();
 
 // Unlike members(), the profile feed always exists (it's a plain field, not
@@ -67,18 +68,21 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
                         </li>
                     </ul>
                 </div>
-<DropdownMenuItem class="tumult-menu-item" text-value="edit profile" @select="emit('profile')">
-                Edit profile…
-            </DropdownMenuItem>
-            <DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
-                Security…
-            </DropdownMenuItem>
-            <DropdownMenuItem class="tumult-menu-item" text-value="verify" @select="emit('verify')">
-                Verify this device…
-            </DropdownMenuItem>
-            <DropdownMenuItem class="tumult-menu-item" text-value="sign out" @select="emit('signOut')">
-                Sign out
-            </DropdownMenuItem>
+                <DropdownMenuItem class="tumult-menu-item" text-value="settings" @select="emit('settings')">
+                    Settings…
+                </DropdownMenuItem>
+                <DropdownMenuItem class="tumult-menu-item" text-value="edit profile" @select="emit('profile')">
+                    Edit profile…
+                </DropdownMenuItem>
+                <DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
+                    Security…
+                </DropdownMenuItem>
+                <DropdownMenuItem class="tumult-menu-item" text-value="verify" @select="emit('verify')">
+                    Verify this device…
+                </DropdownMenuItem>
+                <DropdownMenuItem class="tumult-menu-item" text-value="sign out" @select="emit('signOut')">
+                    Sign out
+                </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenuPortal>
     </DropdownMenuRoot>

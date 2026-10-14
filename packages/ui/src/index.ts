@@ -26,6 +26,11 @@ export { CommandsKey, CommandsRegistry, useCommands } from "./timeline/commands.
 export type { Command, CommandContext, ResolvedCommand } from "./timeline/commands.ts";
 export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations } from "./members/decorations.ts";
 export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
+export { SettingsTabsKey, SettingsTabsRegistry, useSettingsTabs } from "./settings/tabs.ts";
+export type { SettingsTab, SettingsTabProps } from "./settings/tabs.ts";
+export { findExternalStylesheetReferences, injectStylesheet } from "./plugins/styles.ts";
+export { default as SettingsDialog } from "./settings/SettingsDialog.vue";
+export { default as PluginsTab } from "./settings/PluginsTab.vue";
 export { default as TumultShell } from "./shell/TumultShell.vue";
 export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";
 export { default as GuildRail } from "./rail/GuildRail.vue";

@@ -8,6 +8,7 @@ import { TimelineRegistry } from "../src/timeline/registry.ts";
 import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
 import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
+import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
 import type { ActionsContext } from "../src/actions.ts";
 import type { SelectionContext } from "../src/selection.ts";
@@ -27,11 +28,14 @@ function manifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
 
 /** Fresh shell-shaped deps. Each call is an independent "shell". */
 function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
+    const stylesheets: Array<{ css: string; owner: string }> = [];
+    const removedStylesheets: string[] = [];
     return {
         timeline,
         composerActions: new ComposerActionsRegistry(),
         commands: new CommandsRegistry(),
         memberDecorations: new MemberDecorationsRegistry(),
+        settingsTabs: new SettingsTabsRegistry(),
         client: {} as ChatClient,
         selection: {} as SelectionContext,
         actions: {} as ActionsContext,
@@ -39,6 +43,13 @@ function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
             resolve: async () => "",
             resolveDownload: async () => "",
             resolveEncrypted: async () => "",
+        },
+        /** Shell-side stand-ins for the real DOM injector (see styles.ts). */
+        stylesheets,
+        removedStylesheets,
+        injectStylesheet(css: string, owner: string) {
+            stylesheets.push({ css, owner });
+            return () => removedStylesheets.push(owner);
         },
     };
 }
@@ -266,12 +277,20 @@ describe("PluginRegistry extension points", () => {
         const plugins = new PluginRegistry(deps);
         const renderer: Plugin = {
             manifest: manifest({
-                permissions: ["composer-actions", "commands", "member-decorations"],
+                permissions: [
+                    "composer-actions",
+                    "commands",
+                    "member-decorations",
+                    "settings-tabs",
+                    "styles",
+                ],
             }),
             install(ctx) {
                 ctx.addComposerAction({ id: "a1", label: "One", run() {} });
                 ctx.addCommand({ name: "shrug", run() {} });
                 ctx.addMemberDecoration({ id: "d1", component: PluginComp });
+                ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp });
+                ctx.injectStylesheet(".tumult-demo { color: red; }");
             },
         };
 
@@ -279,11 +298,18 @@ describe("PluginRegistry extension points", () => {
         assert.equal(deps.composerActions.all().length, 1);
         assert.equal(deps.commands.all().length, 1);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
+        assert.equal(deps.settingsTabs.all().length, 1);
+        assert.deepEqual(deps.stylesheets, [
+            { css: ".tumult-demo { color: red; }", owner: "test.plugin" },
+        ]);
 
         plugins.uninstall("test.plugin");
         assert.equal(deps.composerActions.all().length, 0);
         assert.equal(deps.commands.all().length, 0);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
+        assert.equal(deps.settingsTabs.all().length, 0);
+        // The stylesheet's disposer is tracked, not left to the plugin.
+        assert.deepEqual(deps.removedStylesheets, ["test.plugin"]);
     });
 
     it("refuses each extension API without its declared permission, with no residue", () => {
@@ -291,6 +317,8 @@ describe("PluginRegistry extension points", () => {
             ["composer-actions", (ctx) => ctx.addComposerAction({ id: "a1", label: "One", run() {} })],
             ["commands", (ctx) => ctx.addCommand({ name: "shrug", run() {} })],
             ["member-decorations", (ctx) => ctx.addMemberDecoration({ id: "d1", component: PluginComp })],
+            ["settings-tabs", (ctx) => ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp })],
+            ["styles", (ctx) => ctx.injectStylesheet(".tumult-demo { color: red; }")],
         ];
 
         for (const [permission, use] of cases) {
@@ -302,6 +330,8 @@ describe("PluginRegistry extension points", () => {
             assert.equal(deps.composerActions.all().length, 0, permission);
             assert.equal(deps.commands.all().length, 0, permission);
             assert.equal(deps.memberDecorations.resolve({} as never).length, 0, permission);
+            assert.equal(deps.settingsTabs.all().length, 0, permission);
+            assert.equal(deps.stylesheets.length, 0, permission);
         }
     });
 
@@ -311,17 +341,28 @@ describe("PluginRegistry extension points", () => {
         const actionDispose = plugins.addComposerAction({ id: "a1", label: "One", run() {} });
         const commandDispose = plugins.addCommand({ name: "shrug", run() {} });
         const badgeDispose = plugins.addMemberDecoration({ id: "d1", component: PluginComp });
+        const tabDispose = plugins.addSettingsTab({ id: "s1", title: "One", component: PluginComp });
+        const stylesDispose = plugins.injectStylesheet(".tumult-demo { color: red; }");
 
         assert.equal(deps.composerActions.all().length, 1);
         assert.equal(deps.commands.all().length, 1);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
+        assert.equal(deps.settingsTabs.all().length, 1);
+        // Shell-level styles have no plugin manifest to borrow an id from.
+        assert.deepEqual(deps.stylesheets, [
+            { css: ".tumult-demo { color: red; }", owner: "shell" },
+        ]);
 
         actionDispose();
         commandDispose();
         badgeDispose();
+        tabDispose();
+        stylesDispose();
         assert.equal(deps.composerActions.all().length, 0);
         assert.equal(deps.commands.all().length, 0);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
+        assert.equal(deps.settingsTabs.all().length, 0);
+        assert.deepEqual(deps.removedStylesheets, ["shell"]);
     });
 });
 

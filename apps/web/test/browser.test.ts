@@ -254,6 +254,53 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
     });
 
+    it("renders a plugin settings tab, styled by the plugin's injected stylesheet", async () => {
+        // Two extension points in one flow. The account menu opens the shell's
+        // settings dialog: the built-in "Plugins" tab (the shell registering
+        // through its own host) plus the plugin's tab via `settings-tabs`. The
+        // note inside that tab is styled by CSS the plugin injected via
+        // `styles` — a marker custom property only resolves if that stylesheet
+        // actually landed in the document.
+        await page.locator(".tumult-account").click();
+        await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+
+        const dialog = page.locator(".tumult-settings");
+        await dialog.waitFor({ timeout: 10_000 });
+
+        const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
+        assert.deepEqual(
+            tabNames.map((name) => name.trim()),
+            ["Plugins", "Plugin demo"],
+            "the tab strip is not the shell's tab plus the plugin's",
+        );
+
+        // The built-in tab lists what PluginRegistry actually installed.
+        assert.match(
+            (await dialog.textContent()) ?? "",
+            /cc\.jackg\.tumult\.shrug/,
+            "the built-in tab did not list the installed plugins",
+        );
+
+        await page.getByRole("tab", { name: "Plugin demo" }).click();
+        const note = page.locator('[data-showcase="note"]');
+        await note.waitFor({ timeout: 5_000 });
+
+        const styles = await note.evaluate((element) => {
+            const computed = getComputedStyle(element);
+            return {
+                marker: computed.getPropertyValue("--tumult-showcase-style").trim(),
+                background: computed.backgroundColor,
+                radius: computed.borderTopLeftRadius,
+            };
+        });
+        assert.equal(styles.marker, "applied", "the injected stylesheet did not apply");
+        assert.notEqual(styles.background, "rgba(0, 0, 0, 0)", "injected CSS set no background");
+        assert.notEqual(styles.radius, "0px", "injected CSS set no radius");
+
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
     it("takes the guild rail width from its layout token", async () => {
         const state = await readState(page);
         const token = state.tokens["--layout-guild-rail-width"];

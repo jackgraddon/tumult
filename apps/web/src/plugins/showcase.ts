@@ -1,6 +1,7 @@
 import type { Plugin } from "@tumult/ui";
 
 import AdminBadge from "./AdminBadge.vue";
+import SettingsShowcaseTab from "./SettingsShowcaseTab.vue";
 
 /**
  * Reference plugins, registered by the app (not `packages/ui`), proving each
@@ -74,6 +75,45 @@ export const adminBadge: Plugin = {
             id: "cc.jackg.tumult.admin-badge",
             component: AdminBadge,
             match: (member) => member.membership === "join" && member.powerLevel >= 100,
+        });
+    },
+};
+
+/**
+ * `settings-tabs` + `styles` — a settings tab whose box is styled by an
+ * injected stylesheet rather than by a scoped component style.
+ *
+ * Injected CSS is app-wide (the shell has no shadow root) and must be
+ * self-contained: the shell refuses `@import` and any `url()` that is not
+ * `data:`, `blob:` or a same-document fragment, so a plugin can never turn its
+ * stylesheet into a third-party request.
+ */
+export const settingsShowcase: Plugin = {
+    manifest: {
+        id: "cc.jackg.tumult.settings-showcase",
+        name: "Settings showcase",
+        version: "1.0.0",
+        author: "Tumult",
+        description: "Adds a settings tab, styled by a stylesheet the plugin injects.",
+        permissions: ["settings-tabs", "styles"],
+    },
+    install(ctx) {
+        ctx.injectStylesheet(`
+.tumult-showcase-note {
+    --tumult-showcase-style: applied;
+    margin: 0;
+    padding: var(--space-3);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+`);
+        ctx.addSettingsTab({
+            id: "cc.jackg.tumult.settings-showcase",
+            title: "Plugin demo",
+            component: SettingsShowcaseTab,
         });
     },
 };

@@ -12,6 +12,8 @@ import { ComposerActionsKey, ComposerActionsRegistry } from "../timeline/compose
 import { CommandsKey, CommandsRegistry } from "../timeline/commands.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
+import { injectStylesheet } from "../plugins/styles.ts";
+import { SettingsTabsKey, SettingsTabsRegistry } from "../settings/tabs.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
 import MediaMessage from "../timeline/renderers/MediaMessage.vue";
@@ -38,6 +40,8 @@ import ProfileDialog from "../rooms/ProfileDialog.vue";
 import RoomSettingsDialog from "../rooms/RoomSettingsDialog.vue";
 import ModerationConfirmDialog from "../members/ModerationConfirmDialog.vue";
 import PowerLevelDialog from "../members/PowerLevelDialog.vue";
+import SettingsDialog from "../settings/SettingsDialog.vue";
+import PluginsTab from "../settings/PluginsTab.vue";
 import { useRoomPower } from "../members/power.ts";
 
 const props = defineProps<{
@@ -102,6 +106,7 @@ const registry = new TimelineRegistry();
 const composerActions = new ComposerActionsRegistry();
 const commands = new CommandsRegistry();
 const memberDecorations = new MemberDecorationsRegistry();
+const settingsTabs = new SettingsTabsRegistry();
 const media = {
     resolve: (uri: string, size: number) => props.client.resolveMedia(uri, size),
     resolveDownload: (uri: string) => props.client.resolveMediaDownload(uri),
@@ -113,15 +118,18 @@ const plugins = new PluginRegistry({
     composerActions,
     commands,
     memberDecorations,
+    settingsTabs,
     selection: selectionContext,
     actions: actionsCtx,
     media,
+    injectStylesheet,
 });
 provide(RegistryKey, registry);
 provide(PluginsKey, plugins);
 provide(ComposerActionsKey, composerActions);
 provide(CommandsKey, commands);
 provide(MemberDecorationsKey, memberDecorations);
+provide(SettingsTabsKey, settingsTabs);
 
 const mediaTypes = new Set(["m.image", "m.video", "m.audio", "m.file"]);
 plugins.addRenderer("m.room.message", {
@@ -130,6 +138,14 @@ plugins.addRenderer("m.room.message", {
     match: (m) => typeof m.content["msgtype"] === "string" && mediaTypes.has(m.content["msgtype"]),
 });
 plugins.addRenderer("m.room.message", { component: TextMessage, priority: 0 });
+
+// The shell's own settings tab, alongside whatever plugins contribute. Tabs
+// render inside this shell's tree, so they can inject anything provided here.
+plugins.addSettingsTab({
+    id: "cc.jackg.tumult.plugins",
+    title: "Plugins",
+    component: PluginsTab,
+});
 
 provide(MediaKey, media.resolve);
 provide(EncryptedMediaKey, media.resolveEncrypted);
@@ -166,6 +182,11 @@ const profileModal = ref(false);
 // room being viewed. Room switch closes it (the room prop must not change
 // under a seeded form).
 const settingsOpen = ref(false);
+
+// App settings dialog (account menu → Settings…): the shell's own tabs plus
+// every plugin-contributed one. Distinct from `settingsOpen`, which is the
+// per-room settings dialog.
+const appSettingsOpen = ref(false);
 
 // Thread slide-over: the room's thread list, or one open thread.
 type ThreadView = { mode: "list" } | { mode: "thread"; threadId: string } | null;
@@ -416,6 +437,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     @security="openSecurityModal()"
                     @verify="openVerificationModal()"
                     @profile="profileModal = true"
+                    @settings="appSettingsOpen = true"
                     @create-space="roomAction = { kind: 'create-space' }"
                     @join="roomAction = { kind: 'join' }"
                 />
@@ -514,6 +536,11 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :open="settingsOpen && activeRoom !== undefined"
             :room="activeRoom"
             @close="settingsOpen = false"
+        />
+        <SettingsDialog
+            :client="client"
+            :open="appSettingsOpen"
+            @close="appSettingsOpen = false"
         />
         <CreateSpaceDialog
             :client="client"
