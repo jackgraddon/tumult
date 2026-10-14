@@ -58,7 +58,7 @@ export function loadTheme(input: unknown): LoadedTheme {
     const json = toThemeJson(doc);
     const css = hasErrors(validation)
         ? null
-        : serializeTheme({ name: doc.name, tokens: doc.tokens, modes: doc.modes, validation });
+        : serializeTheme({ name: doc.name, tokens: doc.tokens, modes: doc.modes, densities: doc.densities, validation });
 
     return { name: doc.name, json, validation, css };
 }

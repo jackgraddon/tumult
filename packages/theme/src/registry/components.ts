@@ -24,6 +24,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "roomlist-item-text", tier: "component", kind: "color", value: v("text-secondary"), description: "Room item text." },
     { name: "roomlist-item-text-active", tier: "component", kind: "color", value: v("text-primary"), description: "Active room text." },
     { name: "roomlist-item-radius", tier: "component", kind: "radius", value: v("control-radius"), description: "Room item radius." },
+    { name: "roomlist-item-padding-y", tier: "component", kind: "spacing", value: v("space-1"), description: "Room item vertical padding (density anchor)." },
 
     // Timeline
     { name: "timeline-bg", tier: "component", kind: "color", value: v("surface-base"), description: "Timeline background." },
@@ -52,6 +53,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "members-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Members pane." },
     { name: "member-dot-size", tier: "component", kind: "size", value: v("presence-dot-size"), description: "Presence dot." },
     { name: "member-badge-radius", tier: "component", kind: "radius", value: v("radius-full"), description: "Member role badge." },
+    { name: "member-item-padding-y", tier: "component", kind: "spacing", value: v("space-1"), description: "Member row vertical padding (density anchor)." },
 
     // Buttons
     { name: "button-primary-bg", tier: "component", kind: "color", value: v("accent"), description: "Primary button." },

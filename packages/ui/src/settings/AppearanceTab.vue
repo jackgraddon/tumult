@@ -52,6 +52,10 @@ function onMode(event: Event): void {
     theme.setMode((event.target as HTMLSelectElement).value);
 }
 
+function onDensity(event: Event): void {
+    theme.setDensity((event.target as HTMLSelectElement).value);
+}
+
 function install(): void {
     const result = theme.install(pasted.value);
     installIssues.value = result.issues;
@@ -159,6 +163,24 @@ function reset(): void {
             <p class="tumult-dialog-hint">
                 A theme offers the modes it implements. “dark” is the base map; other modes are
                 the theme's overrides.
+            </p>
+        </div>
+
+        <div v-if="state.densities.length > 1" class="tumult-dialog-field">
+            <label class="tumult-dialog-label" for="tumult-theme-density">Density</label>
+            <select
+                id="tumult-theme-density"
+                class="tumult-appearance-select"
+                :value="state.density"
+                @change="onDensity"
+            >
+                <option v-for="density in state.densities" :key="density" :value="density">
+                    {{ density }}
+                </option>
+            </select>
+            <p class="tumult-dialog-hint">
+                How tightly rows pack in the timeline, room list and member list. A theme offers
+                the densities it implements.
             </p>
         </div>
 

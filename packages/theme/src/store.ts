@@ -1,7 +1,7 @@
 /**
- * User-theme management: list, upsert, select, mode, advanced CSS, reset —
- * persisted through a `ThemeStorage`, so it is testable without a browser and
- * the app only supplies `localStorage`.
+ * User-theme management: list, upsert, select, mode, density, advanced CSS,
+ * reset — persisted through a `ThemeStorage`, so it is testable without a
+ * browser and the app only supplies `localStorage`.
  *
  * Every write goes through the loader, which means the persisted `css` cache is
  * always emitted from a validated document and the boot path (`runtime.ts`) can
@@ -10,10 +10,13 @@
  */
 import { loadTheme, loadThemeText } from "./loader.ts";
 import {
+    DEFAULT_THEME_DENSITIES,
+    DEFAULT_THEME_DENSITY,
     DEFAULT_THEME_MODE,
     DEFAULT_THEME_MODES,
     DEFAULT_THEME_NAME,
     EMPTY_THEME_STATE,
+    SAFE_THEME_DENSITY,
     SAFE_THEME_MODE,
     activeThemeCss,
     activeThemeName,
@@ -22,7 +25,7 @@ import {
     writeThemeState,
 } from "./runtime.ts";
 import type { ThemeJson } from "./types.ts";
-import type { ThemeMode, ThemeStorage, StoredTheme, StoredThemeState } from "./runtime.ts";
+import type { ThemeDensity, ThemeMode, ThemeStorage, StoredTheme, StoredThemeState } from "./runtime.ts";
 import type { ValidationIssue, ValidationResult } from "./validate/issues.ts";
 
 /**
@@ -58,6 +61,7 @@ export class ThemeStore {
     private entries: ThemeEntry[];
     private activeName: string;
     private themeMode: ThemeMode;
+    private themeDensity: ThemeDensity;
     private advanced = "";
     private readonly storage: ThemeStorage;
 
@@ -67,6 +71,7 @@ export class ThemeStore {
         this.entries = persisted.themes.map((theme) => this.reconcile(theme));
         this.activeName = this.pickActive(persisted.active);
         this.themeMode = persisted.mode;
+        this.themeDensity = persisted.density;
         this.advanced = persisted.advancedCss;
 
         // The cache is written by us, so a mismatch means the emitter (or the
@@ -100,6 +105,7 @@ export class ThemeStore {
             themes: this.entries.map((entry) => ({ name: entry.name, json: entry.json, css: entry.css })),
             active: this.activeName,
             mode: this.themeMode,
+            density: this.themeDensity,
             advancedCss: this.advanced,
         };
         writeThemeState(this.storage, state);
@@ -118,6 +124,10 @@ export class ThemeStore {
         return this.themeMode;
     }
 
+    public density(): ThemeDensity {
+        return this.themeDensity;
+    }
+
     public advancedCss(): string {
         return this.advanced;
     }
@@ -133,6 +143,19 @@ export class ThemeStore {
         const declared = Object.keys(this.activeJson()?.modes ?? {});
         const extra = this.activeName === DEFAULT_THEME_NAME ? DEFAULT_THEME_MODES : declared;
         return [DEFAULT_THEME_MODE, ...extra.filter((mode) => mode !== DEFAULT_THEME_MODE)];
+    }
+
+    /**
+     * Densities the active theme declares, base density (`cozy`) first.
+     *
+     * A theme need not declare `cozy`: like the base mode it is the theme's
+     * unmodified `tokens` map, so it is always a real choice. Other names are
+     * the theme's own `densities.*` overrides.
+     */
+    public activeDensities(): string[] {
+        const declared = Object.keys(this.activeJson()?.densities ?? {});
+        const extra = this.activeName === DEFAULT_THEME_NAME ? DEFAULT_THEME_DENSITIES : declared;
+        return [DEFAULT_THEME_DENSITY, ...extra.filter((density) => density !== DEFAULT_THEME_DENSITY)];
     }
 
     private activeJson(): ThemeJson | undefined {
@@ -179,6 +202,7 @@ export class ThemeStore {
 
         this.activeName = entry.name;
         this.normalizeMode();
+        this.normalizeDensity();
         this.persist();
         return { ok: true, entry };
     }
@@ -201,6 +225,7 @@ export class ThemeStore {
         }
         this.activeName = name;
         this.normalizeMode();
+        this.normalizeDensity();
         this.persist();
         return true;
     }
@@ -217,6 +242,22 @@ export class ThemeStore {
     public setMode(mode: ThemeMode): boolean {
         if (!SAFE_THEME_MODE.test(mode)) return false;
         this.themeMode = mode;
+        this.persist();
+        return true;
+    }
+
+    /**
+     * A density only means something if the active theme implements it; a stale
+     * value would apply a block that does not exist and relabel the choice.
+     * Called whenever the active theme changes.
+     */
+    private normalizeDensity(): void {
+        if (!this.activeDensities().includes(this.themeDensity)) this.themeDensity = DEFAULT_THEME_DENSITY;
+    }
+
+    public setDensity(density: ThemeDensity): boolean {
+        if (!SAFE_THEME_DENSITY.test(density)) return false;
+        this.themeDensity = density;
         this.persist();
         return true;
     }
@@ -250,10 +291,11 @@ export class ThemeStore {
         this.entries = [];
         this.activeName = DEFAULT_THEME_NAME;
         this.themeMode = DEFAULT_THEME_MODE;
+        this.themeDensity = DEFAULT_THEME_DENSITY;
         this.advanced = "";
         this.persist();
     }
 }
 
-export { DEFAULT_THEME_MODE, DEFAULT_THEME_NAME, activeThemeCss, activeThemeName };
-export type { ThemeMode, ThemeStorage, StoredTheme, StoredThemeState };
+export { DEFAULT_THEME_MODE, DEFAULT_THEME_DENSITY, DEFAULT_THEME_NAME, activeThemeCss, activeThemeName };
+export type { ThemeDensity, ThemeMode, ThemeStorage, StoredTheme, StoredThemeState };

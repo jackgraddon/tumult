@@ -4,6 +4,8 @@ import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { ChatClient, MemberView, RoomPowerLevelsView, Subscribable } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
+import { tryUseTheme } from "../theme/controls.ts";
+import { densityRowDelta } from "../theme/density.ts";
 import MemberListItem from "./MemberListItem.vue";
 import IconButton from "../primitives/IconButton.vue";
 
@@ -113,10 +115,15 @@ const memberCount = computed(() => members?.value.length ?? 0);
 // container — needed for the member list well past a few hundred rows.
 const scroller = ref<HTMLElement | null>(null);
 
+// Density is a document-level theme choice; the estimate must track it.
+const theme = tryUseTheme();
+const density = computed(() => theme?.state.value.density);
+
 const virtualizerOptions = computed(() => ({
     count: rows.value.length,
     getScrollElement: () => scroller.value,
-    estimateSize: (index: number) => (rows.value[index]?.header ? 28 : 36),
+    estimateSize: (index: number) =>
+        rows.value[index]?.header ? 28 : 36 + densityRowDelta(density.value),
     overscan: 8,
 }));
 const virtualizer = useVirtualizer(virtualizerOptions);

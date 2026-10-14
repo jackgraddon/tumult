@@ -32,6 +32,15 @@ export function buildThemeSchema(): Record<string, unknown> {
                     additionalProperties: false,
                 },
             },
+            densities: {
+                type: "object",
+                description: "Per-density token overrides (e.g. `compact`, `spacious`), applied via :root[data-theme][data-density].",
+                additionalProperties: {
+                    type: "object",
+                    properties: tokenProperties,
+                    additionalProperties: false,
+                },
+            },
         },
         additionalProperties: false,
     };

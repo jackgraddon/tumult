@@ -125,6 +125,27 @@ describe("validateTheme", () => {
         assert.equal(r.valid, false);
     });
 
+    it("errors on a density key that could escape the selector", () => {
+        const r = validateTheme({
+            version: 0,
+            name: "t",
+            tokens: {},
+            densities: { 'compact"] * { color: red } .x {': {} },
+        });
+        const issue = r.issues.find((i) => i.code === "invalid-density");
+        assert.ok(issue);
+        assert.equal(issue.severity, "error");
+        assert.equal(issue.density, 'compact"] * { color: red } .x {');
+        assert.equal(r.valid, false);
+    });
+
+    it("errors when densities is not an object", () => {
+        const r = validateTheme({ version: 0, name: "t", tokens: {}, densities: [] });
+        const issue = r.issues.find((i) => i.code === "invalid-envelope");
+        assert.ok(issue);
+        assert.equal(r.valid, false);
+    });
+
     describe("unsafe values", () => {
         // A token value is emitted as `--name: <value>;`. `var(--…)` used to
         // short-circuit value validation, so `var(--accent); } html { … }` was
@@ -167,6 +188,19 @@ describe("validateTheme", () => {
             const issue = r.issues.find((i) => i.code === "unsafe-value");
             assert.ok(issue);
             assert.equal(issue.mode, "light");
+        });
+
+        it("applies inside density maps too", () => {
+            const r = validateTheme({
+                version: 0,
+                name: "t",
+                tokens: {},
+                densities: { compact: { accent: "#fff; } body { color: red" } },
+            });
+            const issue = r.issues.find((i) => i.code === "unsafe-value");
+            assert.ok(issue);
+            assert.equal(issue.density, "compact");
+            assert.equal(issue.mode, undefined);
         });
     });
 });

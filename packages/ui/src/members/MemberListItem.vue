@@ -135,7 +135,7 @@ function request(kind: MemberModerationKind): void {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
+    padding: var(--member-item-padding-y) var(--space-2);
     border-radius: var(--control-radius);
     font-size: var(--text-sm);
     color: var(--text-secondary);

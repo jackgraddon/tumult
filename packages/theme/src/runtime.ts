@@ -24,11 +24,14 @@ export { findExternalStylesheetReferences };
  * block. Themes declare their own modes, so this stays a string.
  */
 export type ThemeMode = string;
+export type ThemeDensity = string;
 
 /** The built-in theme, compiled at build time from `themes/default.json`. */
 export const DEFAULT_THEME_NAME = "default";
 /** Mode used when `data-mode` is absent, i.e. a theme's base `tokens` map. */
 export const DEFAULT_THEME_MODE = "dark";
+/** Density used when `data-density` is absent; `cozy` is today's spacing. */
+export const DEFAULT_THEME_DENSITY = "cozy";
 /**
  * Non-base modes the built-in theme implements. Mirrors `modes` in
  * `themes/default.json`, and `themes.test.ts` fails if the two drift: the app
@@ -36,6 +39,12 @@ export const DEFAULT_THEME_MODE = "dark";
  * theme does not implement, or hide one it does.
  */
 export const DEFAULT_THEME_MODES: readonly string[] = ["light"];
+/**
+ * Non-base densities the built-in theme implements. Mirrors `densities` in
+ * `themes/default.json` (and `themes.test.ts` fails if the two drift); the base
+ * density (`cozy`) is the theme's unmodified `tokens` map, so it is not listed.
+ */
+export const DEFAULT_THEME_DENSITIES: readonly string[] = ["compact", "spacious"];
 
 /** One localStorage key holds the whole theme state — one read at boot. */
 export const THEME_STORAGE_KEY = "tumult.themes";
@@ -51,6 +60,8 @@ export const THEME_STATE_VERSION = 1;
 export const SAFE_THEME_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** Same rule for `data-mode` values. */
 export const SAFE_THEME_MODE = /^[A-Za-z0-9-]{1,32}$/;
+/** Same rule for `data-density` values (also lands in a selector). */
+export const SAFE_THEME_DENSITY = /^[A-Za-z0-9-]{1,32}$/;
 
 /** Minimal storage surface (localStorage-shaped), so the store is testable. */
 export interface ThemeStorage {
@@ -74,6 +85,7 @@ export interface StoredThemeState {
     /** `DEFAULT_THEME_NAME` for the built-in theme, else a stored theme's name. */
     active: string;
     mode: ThemeMode;
+    density: ThemeDensity;
     /** Raw advanced CSS (an explicit opt-in), applied after every theme. */
     advancedCss: string;
 }
@@ -83,6 +95,7 @@ export const EMPTY_THEME_STATE: StoredThemeState = {
     themes: [],
     active: DEFAULT_THEME_NAME,
     mode: DEFAULT_THEME_MODE,
+    density: DEFAULT_THEME_DENSITY,
     advancedCss: "",
 };
 
@@ -126,9 +139,13 @@ export function readThemeState(storage: ThemeStorage): StoredThemeState {
         typeof parsed["mode"] === "string" && SAFE_THEME_MODE.test(parsed["mode"])
             ? parsed["mode"]
             : DEFAULT_THEME_MODE;
+    const density =
+        typeof parsed["density"] === "string" && SAFE_THEME_DENSITY.test(parsed["density"])
+            ? parsed["density"]
+            : DEFAULT_THEME_DENSITY;
     const advancedCss = typeof parsed["advancedCss"] === "string" ? parsed["advancedCss"] : "";
 
-    return { version: THEME_STATE_VERSION, themes, active, mode, advancedCss };
+    return { version: THEME_STATE_VERSION, themes, active, mode, density, advancedCss };
 }
 
 /** Accepts both the persisted envelope and a bare `ThemeJson` (older data). */

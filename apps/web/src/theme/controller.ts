@@ -8,8 +8,15 @@
  * theme is a document-level property, so two of them could only fight.
  */
 import { shallowRef, type Ref } from "vue";
-import { DEFAULT_THEME_MODE, DEFAULT_THEME_NAME, ThemeStore, loadTheme, loadThemeText } from "@tumult/theme";
-import type { ThemeJson, ThemeMode, ValidationIssue } from "@tumult/theme";
+import {
+    DEFAULT_THEME_DENSITY,
+    DEFAULT_THEME_MODE,
+    DEFAULT_THEME_NAME,
+    ThemeStore,
+    loadTheme,
+    loadThemeText,
+} from "@tumult/theme";
+import type { ThemeDensity, ThemeJson, ThemeMode, ValidationIssue } from "@tumult/theme";
 import type { ThemeControls, ThemeResult, ThemeState } from "@tumult/ui";
 
 import { applyAdvancedCss, setDocumentTheme, setThemeSlot } from "./apply.ts";
@@ -31,9 +38,9 @@ class AppThemeController implements ThemeControls {
         this.paint();
     }
 
-    /** Select the stored theme (and mode) on the document. */
+    /** Select the stored theme (and mode/density) on the document. */
     private paint(): void {
-        setDocumentTheme(this.store.active(), this.store.mode());
+        setDocumentTheme(this.store.active(), this.store.mode(), this.store.density());
         setThemeSlot("active", this.store.activeCss());
     }
 
@@ -42,6 +49,8 @@ class AppThemeController implements ThemeControls {
             active: this.store.active(),
             mode: this.store.mode(),
             modes: this.store.activeModes(),
+            density: this.store.density(),
+            densities: this.store.activeDensities(),
             themes: this.store.list(),
             advancedCss: this.store.advancedCss(),
         };
@@ -60,6 +69,12 @@ class AppThemeController implements ThemeControls {
 
     public setMode(mode: ThemeMode): void {
         if (!this.store.setMode(mode)) return;
+        this.paint();
+        this.sync();
+    }
+
+    public setDensity(density: ThemeDensity): void {
+        if (!this.store.setDensity(density)) return;
         this.paint();
         this.sync();
     }
@@ -94,7 +109,7 @@ class AppThemeController implements ThemeControls {
             return { ok: false, issues: [RESERVED_NAME_ISSUE] };
         }
 
-        setDocumentTheme(loaded.name, this.previewMode(loaded.json));
+        setDocumentTheme(loaded.name, this.previewMode(loaded.json), this.previewDensity(loaded.json));
         setThemeSlot("preview", loaded.css);
         return { ok: true, issues: loaded.validation.issues };
     }
@@ -108,6 +123,15 @@ class AppThemeController implements ThemeControls {
         const current = this.store.mode();
         if (current !== DEFAULT_THEME_MODE && json.modes !== undefined && current in json.modes) return current;
         return DEFAULT_THEME_MODE;
+    }
+
+    /** The density to preview in, by the same rule as the mode. */
+    private previewDensity(json: ThemeJson): ThemeDensity {
+        const current = this.store.density();
+        if (current !== DEFAULT_THEME_DENSITY && json.densities !== undefined && current in json.densities) {
+            return current;
+        }
+        return DEFAULT_THEME_DENSITY;
     }
 
     public endPreview(): void {

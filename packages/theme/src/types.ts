@@ -27,6 +27,7 @@ export interface TokenDef {
 
 /** Optional light (or other non-default) mode override map inside a theme. */
 export type ThemeModes = Record<string, Record<string, string>>;
+export type ThemeDensities = Record<string, Record<string, string>>;
 
 /** On-disk theme file envelope. */
 export interface ThemeJson {
@@ -39,4 +40,9 @@ export interface ThemeJson {
      * default (dark) mode.
      */
     modes?: ThemeModes;
+    /**
+     * Per-density token overrides (e.g. `compact`, `cozy`, `spacious`). Applied on
+     * `:root[data-theme="name"][data-density="density"]`.
+     */
+    densities?: ThemeDensities;
 }

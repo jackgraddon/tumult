@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { MessageView } from "@tumult/core";
 
+import { tryUseTheme } from "../theme/controls.ts";
+import { densityRowDelta } from "../theme/density.ts";
 import TimelineRow from "./TimelineRow.vue";
 
 const props = defineProps<{
@@ -82,15 +84,23 @@ const hasMore = ref(true);
 const loadingMore = ref(false);
 let scrollQueued = false;
 
+// Density is a document-level theme choice; the estimate must track it. Read
+// through the theme seam rather than a prop so every timeline (main pane and
+// thread panel) follows the active density without prop plumbing.
+const theme = tryUseTheme();
+const density = computed(() => theme?.state.value.density);
+
 const virtualizerOptions = computed(() => ({
     count: rows.value.length,
     getScrollElement: () => scroller.value,
     estimateSize: (index: number) => {
         const row = rows.value[index];
         // Unmeasured estimate only: the divider's real height lands in
-        // measureElement, but start close so prepends don't jump.
-        if (row?.unreadBefore) return row.dayLabel ? 64 : 92;
-        return row?.dayLabel ? 40 : 68;
+        // measureElement, but start close so prepends don't jump. Density moves
+        // the message row's own vertical padding.
+        const delta = densityRowDelta(density.value);
+        if (row?.unreadBefore) return (row.dayLabel ? 64 : 92) + delta;
+        return (row?.dayLabel ? 40 : 68) + delta;
     },
     overscan: 10,
 }));

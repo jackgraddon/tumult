@@ -35,6 +35,7 @@ export function compileThemes(): void {
             name: string;
             tokens: Record<string, string>;
             modes?: Record<string, Record<string, string>>;
+            densities?: Record<string, Record<string, string>>;
         };
         writeFileSync(
             join(outDir, `${parsed.name}.css`),
@@ -42,6 +43,7 @@ export function compileThemes(): void {
                 name: parsed.name,
                 tokens: parsed.tokens,
                 ...(parsed.modes ? { modes: parsed.modes } : {}),
+                ...(parsed.densities ? { densities: parsed.densities } : {}),
                 validation,
             }),
         );

@@ -1,5 +1,5 @@
 import { inject, type InjectionKey, type Ref } from "vue";
-import type { ThemeEntry, ThemeMode, ValidationIssue } from "@tumult/theme";
+import type { ThemeDensity, ThemeEntry, ThemeMode, ValidationIssue } from "@tumult/theme";
 
 /**
  * The theme seam between the app and the UI.
@@ -17,6 +17,9 @@ export interface ThemeState {
     mode: ThemeMode;
     /** Modes the active theme implements, base mode first. */
     modes: string[];
+    density: ThemeDensity;
+    /** Densities the active theme implements, base density first. */
+    densities: string[];
     /** Built-in theme first, then user themes (including unusable ones). */
     themes: ThemeEntry[];
     /** Raw advanced CSS the user opted into, `""` when unused. */
@@ -34,6 +37,7 @@ export interface ThemeControls {
     state: Ref<ThemeState>;
     select(name: string): void;
     setMode(mode: ThemeMode): void;
+    setDensity(density: ThemeDensity): void;
     /** Validate + store a document (JSON text or a parsed value) and activate it. */
     install(input: unknown): ThemeResult;
     remove(name: string): void;

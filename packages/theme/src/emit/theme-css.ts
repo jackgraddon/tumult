@@ -1,10 +1,18 @@
-import type { ThemeModes } from "../types.ts";
+import type { ThemeDensities, ThemeModes } from "../types.ts";
 
 /** Theme overrides: only tokens the theme sets, on `:root[data-theme="…"]`. */
-export function emitThemeCss(name: string, tokens: Record<string, string>, modes?: ThemeModes): string {
+export function emitThemeCss(
+    name: string,
+    tokens: Record<string, string>,
+    modes?: ThemeModes,
+    densities?: ThemeDensities,
+): string {
     const blocks: string[] = [block(`:root[data-theme="${name}"]`, tokens)];
     for (const [mode, modeTokens] of Object.entries(modes ?? {})) {
         blocks.push(block(`:root[data-theme="${name}"][data-mode="${mode}"]`, modeTokens));
+    }
+    for (const [density, densityTokens] of Object.entries(densities ?? {})) {
+        blocks.push(block(`:root[data-theme="${name}"][data-density="${density}"]`, densityTokens));
     }
     return blocks.join("\n") + "\n";
 }

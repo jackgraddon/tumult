@@ -223,8 +223,24 @@ chat client should be.
   Cover color + spacing + radius + typography + motion + layout dims
   (e.g. `--layout-guild-rail-width`, `--layout-members-width`).
 - One file per theme on `:root[data-theme="name"]`, version the token list.
+- Modes (`modes`) and densities (`densities`) are the same mechanism: an
+  optional per-name override map in the theme JSON, validated exactly like the
+  base `tokens` (the name lands in a selector, so it is checked), emitted as
+  `:root[data-theme][data-mode]` / `:root[data-theme][data-density]` blocks
+  after the base. The base mode (`dark`) and base density (`cozy`) are the
+  theme's unmodified `tokens` map, so they mean NO attribute. Density blocks
+  come last so they win a same-specificity tie with a mode. The selection lives
+  in the one `tumult.themes` state (`ThemeStore`) and is applied at boot.
+  Virtualized rows (`TimelineViewport`, `MembersPane`) estimate height in TS, so
+  they carry a per-density pixel delta and re-measure rendered rows; the CSS is
+  the source of truth, the estimate is a hint.
 - JSON is the default safe path: validate → emit CSS vars. Raw CSS is
   explicit advanced opt-in (arbitrary URLs, keep strict CSP).
+- Document defaults belong to the app base (`apps/web/src/styles.css`), not to
+  `@tumult/theme`'s `base.css` (which defines token *values* only): the one
+  global reset is a `box-sizing: border-box` floor, written by hand — no
+  vendored reset sheet, which would inject hardcoded values the token gate
+  exists to keep out.
 - CSP must allow `'wasm-unsafe-eval'` in `script-src` for crypto WASM.
 
 ## Build tooling — verified gotchas

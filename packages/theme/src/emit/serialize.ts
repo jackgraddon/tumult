@@ -1,10 +1,11 @@
-import type { ThemeModes } from "../types.ts";
+import type { ThemeDensities, ThemeModes } from "../types.ts";
 import type { ValidationResult } from "../validate/issues.ts";
 
 export interface EmitInput {
     name: string;
     tokens: Record<string, string>;
     modes?: ThemeModes;
+    densities?: ThemeDensities;
     validation: ValidationResult;
 }
 
@@ -19,6 +20,9 @@ export function serializeTheme(input: EmitInput): string {
     const blocks: string[] = [block(`:root[data-theme="${input.name}"]`, input.tokens)];
     for (const [mode, tokens] of Object.entries(input.modes ?? {})) {
         blocks.push(block(`:root[data-theme="${input.name}"][data-mode="${mode}"]`, tokens));
+    }
+    for (const [density, tokens] of Object.entries(input.densities ?? {})) {
+        blocks.push(block(`:root[data-theme="${input.name}"][data-density="${density}"]`, tokens));
     }
     return blocks.join("\n") + "\n";
 }

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { TOKEN_CONTRACT_VERSION, SUPPORTED_TOKEN_CONTRACT_VERSIONS } from "../src/version.ts";
-import { DEFAULT_THEME_MODES } from "../src/runtime.ts";
+import { DEFAULT_THEME_DENSITIES, DEFAULT_THEME_MODES } from "../src/runtime.ts";
 import { ALL_TOKENS } from "../src/registry/index.ts";
 import { validateTheme } from "../src/validate/index.ts";
 
@@ -55,6 +55,18 @@ describe("default theme", () => {
         assert.deepEqual(
             Object.keys(raw.modes ?? {}).sort(),
             [...DEFAULT_THEME_MODES].sort(),
+        );
+    });
+
+    it("declares exactly the non-base densities the app offers for it", () => {
+        // Same contract as modes: the base density (`cozy`) is the theme's
+        // unmodified `tokens` map, so only the overrides are declared here.
+        const raw = JSON.parse(readFileSync(join(themesDir, "default.json"), "utf8")) as {
+            densities?: Record<string, unknown>;
+        };
+        assert.deepEqual(
+            Object.keys(raw.densities ?? {}).sort(),
+            [...DEFAULT_THEME_DENSITIES].sort(),
         );
     });
 });

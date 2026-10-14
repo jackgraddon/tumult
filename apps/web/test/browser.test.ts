@@ -389,6 +389,35 @@ describe("browser smoke test (fake client)", () => {
         });
     }
 
+    /**
+     * Density is a DOM attribute plus the row heights it drives. Measured off
+     * real elements, not just the token string: the whole point is that the
+     * attribute reaches the rows, so a theme-format change that emits the block
+     * but never matches it would still fail here.
+     */
+    function readDensity() {
+        return page.evaluate(() => {
+            const roomEl = document.querySelector(".tumult-room-item");
+            // The first *non-grouped* row carries the vertical padding token; a
+            // grouped (continuation) row is deliberately pinned to 0, and the
+            // virtualizer re-renders a different row when heights move, so the
+            // padding — not the row height — is the stable thing to compare.
+            const messageEl = document.querySelector('.tumult-row:not([data-grouped="true"])');
+            return {
+                density: document.documentElement.dataset.density ?? null,
+                room: roomEl
+                    ? {
+                          height: Math.round(roomEl.getBoundingClientRect().height),
+                          paddingTop: Math.round(Number.parseFloat(getComputedStyle(roomEl).paddingTop)),
+                      }
+                    : null,
+                messagePaddingTop: messageEl
+                    ? Math.round(Number.parseFloat(getComputedStyle(messageEl).paddingTop))
+                    : null,
+            };
+        });
+    }
+
     it("installs a theme from the Appearance tab and applies it live", async () => {
         await openAppearance();
         await installTheme({ version: 1, name: THEME_NAME, tokens: { accent: THEME_ACCENT } });
@@ -541,6 +570,122 @@ describe("browser smoke test (fake client)", () => {
             0,
             "a theme stylesheet survived the reset",
         );
+    });
+
+    // --- Density (the theme's third axis) ------------------------------------
+
+    it("offers the built-in densities and repacks rows when one is chosen", async () => {
+        // Open a timeline so there is a message row to measure, then open the
+        // Appearance tab over it (the dialog is an overlay; the rows stay laid
+        // out behind it).
+        await page.locator(".tumult-dmlist .tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+        await page.waitForTimeout(200);
+
+        await openAppearance();
+        const options = await page.locator("#tumult-theme-density option").allTextContents();
+        assert.deepEqual(
+            options.map((option) => option.trim()),
+            ["cozy", "compact", "spacious"],
+            "the density menu should offer the theme's densities, base first",
+        );
+
+        const cozy = await readDensity();
+        assert.equal(cozy.density, null, "cozy is the base density, so no data-density attribute");
+        assert.ok(cozy.room && cozy.room.height > 0, "no room row to measure");
+        assert.ok(cozy.messagePaddingTop !== null, "no message row to measure");
+
+        await page.locator("#tumult-theme-density").selectOption("compact");
+        await page.waitForTimeout(250);
+        const compact = await readDensity();
+        assert.equal(compact.density, "compact", "data-density did not follow the choice");
+        assert.ok(
+            compact.room && compact.room.height < cozy.room.height,
+            `compact did not tighten the room list (${cozy.room?.height} -> ${compact.room?.height})`,
+        );
+        assert.ok(
+            compact.messagePaddingTop !== null &&
+                cozy.messagePaddingTop !== null &&
+                compact.messagePaddingTop < cozy.messagePaddingTop,
+            `compact did not tighten the timeline row (${cozy.messagePaddingTop} -> ${compact.messagePaddingTop})`,
+        );
+        assert.ok(
+            compact.room && cozy.room && compact.room.paddingTop < cozy.room.paddingTop,
+            "the density block changed the height without changing the padding token",
+        );
+
+        await page.locator("#tumult-theme-density").selectOption("spacious");
+        await page.waitForTimeout(250);
+        const spacious = await readDensity();
+        assert.equal(spacious.density, "spacious");
+        assert.ok(
+            spacious.room && spacious.room.height > cozy.room.height,
+            `spacious did not loosen the room list (${cozy.room?.height} -> ${spacious.room?.height})`,
+        );
+        assert.ok(
+            spacious.messagePaddingTop !== null &&
+                cozy.messagePaddingTop !== null &&
+                spacious.messagePaddingTop > cozy.messagePaddingTop,
+            `spacious did not loosen the timeline row (${cozy.messagePaddingTop} -> ${spacious.messagePaddingTop})`,
+        );
+
+        // Back to the base: the attribute disappears and so does the effect.
+        await page.locator("#tumult-theme-density").selectOption("cozy");
+        await page.waitForTimeout(250);
+        const back = await readDensity();
+        assert.equal(back.density, null, "choosing cozy should drop data-density");
+        assert.deepEqual(back.room, cozy.room, "returning to cozy did not restore the room row");
+        assert.equal(back.messagePaddingTop, cozy.messagePaddingTop, "returning to cozy did not restore the timeline row");
+    });
+
+    it("restores the stored density at boot, before the shell renders", async () => {
+        // Leave a non-base density selected, then reload.
+        await page.locator("#tumult-theme-density").selectOption("compact");
+        await page.waitForTimeout(150);
+        await closeSettings();
+
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        // index.html hardcodes no density, so a value here can only come from
+        // main.ts's boot path — the same route the mode test proves.
+        const early = await page.evaluate(() => document.documentElement.dataset.density ?? null);
+        assert.equal(early, "compact", "the boot path did not apply the stored density");
+
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.waitForTimeout(300);
+        assert.equal((await readDensity()).density, "compact");
+
+        // Clean up: later tests should start on the base density.
+        await openAppearance();
+        await page.locator("#tumult-theme-density").selectOption("cozy");
+        await page.waitForTimeout(150);
+        await closeSettings();
+    });
+
+    it("sizes a full-width dialog field to its container, not past it", async () => {
+        // The regression this guards: without a document-wide `box-sizing:
+        // border-box`, a `width: 100%` field adds its own padding and border on
+        // top and overflows its container. The Appearance tab's install box is
+        // one of those fields, so it measures the reset end to end.
+        await openAppearance();
+        const fits = await page.evaluate(() => {
+            const field = document.querySelector(".tumult-dialog-textarea");
+            if (!field) return null;
+            const parent = field.parentElement;
+            if (!parent) return null;
+            const parentStyle = getComputedStyle(parent);
+            const contentWidth =
+                parent.clientWidth -
+                Number.parseFloat(parentStyle.paddingLeft) -
+                Number.parseFloat(parentStyle.paddingRight);
+            return { field: field.getBoundingClientRect().width, contentWidth };
+        });
+        assert.ok(fits, "no full-width field rendered");
+        assert.ok(
+            fits.field <= fits.contentWidth + 0.5,
+            `a width:100% field overflowed its container (${fits.field} > ${fits.contentWidth})`,
+        );
+
+        await closeSettings();
     });
 
     it("renders the login view when no session is stored", async () => {

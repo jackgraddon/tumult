@@ -1,6 +1,6 @@
 import { TOKEN_MAP } from "../registry/index.ts";
 import { SUPPORTED_TOKEN_CONTRACT_VERSIONS } from "../version.ts";
-import { SAFE_THEME_MODE, SAFE_THEME_NAME } from "../runtime.ts";
+import { SAFE_THEME_DENSITY, SAFE_THEME_MODE, SAFE_THEME_NAME } from "../runtime.ts";
 import { parseDocument } from "./document.ts";
 import { suggestToken } from "./suggest.ts";
 import { findUnsafeValue, isValidValue } from "./values.ts";
@@ -11,14 +11,15 @@ import type { ValidationIssue, ValidationResult } from "./issues.ts";
  * Validate a theme document. Collects ALL issues in one pass and never throws —
  * the emitter must only accept input that passed through here.
  *
- * Base (default-mode) tokens AND every `modes.*` override map are validated.
- * Mode maps are overrides, so a missing token is not reported for them.
+ * Base (default-mode) tokens AND every `modes.*` / `densities.*` override map
+ * are validated. Override maps are overrides, so a missing token is not
+ * reported for them.
  *
- * Beyond token values this also gates the two things the *selector* is built
- * from (the theme name and each mode key). Themes are now user-supplied at
- * runtime, so a name that could close `:root[data-theme="…"]` is an error
- * rather than an escape hatch — and because `serializeTheme` refuses an invalid
- * result, unvalidated names can never reach a stylesheet.
+ * Beyond token values this also gates the things the *selector* is built from
+ * (the theme name, each mode key and each density key). Themes are now
+ * user-supplied at runtime, so a name that could close `:root[data-theme="…"]`
+ * is an error rather than an escape hatch — and because `serializeTheme`
+ * refuses an invalid result, unvalidated names can never reach a stylesheet.
  */
 export function validateTheme(input: unknown): ValidationResult {
     const issues: ValidationIssue[] = [];
@@ -56,6 +57,19 @@ export function validateTheme(input: unknown): ValidationResult {
         }
     }
 
+    for (const density of Object.keys(doc.densities)) {
+        if (!SAFE_THEME_DENSITY.test(density)) {
+            issues.push({
+                code: "invalid-density",
+                severity: "error",
+                density,
+                message:
+                    `Density name "${density}" is not usable: use letters, digits and dashes ` +
+                    `(at most 32 characters).`,
+            });
+        }
+    }
+
     if (!SUPPORTED_TOKEN_CONTRACT_VERSIONS.includes(doc.version)) {
         issues.push({
             code: "unsupported-version",
@@ -70,6 +84,9 @@ export function validateTheme(input: unknown): ValidationResult {
     for (const [mode, tokens] of Object.entries(doc.modes)) {
         validateScope(tokens, { reportMissing: false, mode, base: doc.tokens }, names, issues);
     }
+    for (const [density, tokens] of Object.entries(doc.densities)) {
+        validateScope(tokens, { reportMissing: false, density, base: doc.tokens }, names, issues);
+    }
 
     const valid = !issues.some((i) => i.severity === "error");
     return { valid, issues };
@@ -78,6 +95,7 @@ export function validateTheme(input: unknown): ValidationResult {
 interface ScopeOptions {
     reportMissing: boolean;
     mode?: string;
+    density?: string;
     base?: Record<string, string>;
 }
 
@@ -88,7 +106,9 @@ function validateScope(
     issues: ValidationIssue[],
 ): void {
     const mode = opts.mode;
-    const at = { ...(mode ? { mode } : {}) };
+    const density = opts.density;
+    const at = { ...(mode ? { mode } : {}), ...(density ? { density } : {}) };
+    const where = mode ? ` in mode "${mode}"` : density ? ` in density "${density}"` : "";
 
     // Unknown tokens: typo'd tokens are silently dropped by CSS, so this is an error.
     for (const key of Object.keys(tokens)) {
@@ -99,7 +119,7 @@ function validateScope(
                 severity: "error",
                 token: key,
                 ...at,
-                message: `Unknown token "${key}"${mode ? ` in mode "${mode}"` : ""}.`,
+                message: `Unknown token "${key}"${where}.`,
                 ...(suggestion ? { suggestion } : {}),
             });
         }

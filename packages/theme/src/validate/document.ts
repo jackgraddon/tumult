@@ -1,4 +1,4 @@
-import type { ThemeJson, ThemeModes } from "../types.ts";
+import type { ThemeDensities, ThemeJson, ThemeModes } from "../types.ts";
 import { TOKEN_CONTRACT_VERSION } from "../version.ts";
 
 export interface ThemeDocument {
@@ -7,6 +7,8 @@ export interface ThemeDocument {
     tokens: Record<string, string>;
     /** Per-mode overrides (e.g. `light`). Absent means the theme has only its default mode. */
     modes: ThemeModes;
+    /** Per-density overrides (e.g. `compact`, `cozy`, `spacious`). */
+    densities: ThemeDensities;
 }
 
 /** Structural envelope check. Returns null when the shape is unusable. */
@@ -34,11 +36,24 @@ export function parseDocument(input: unknown): { doc?: ThemeDocument; error?: st
         }
     }
 
+    const densities: ThemeDensities = {};
+    if (o["densities"] !== undefined) {
+        if (typeof o["densities"] !== "object" || o["densities"] === null || Array.isArray(o["densities"])) {
+            return { error: "Theme `densities` must be an object." };
+        }
+        for (const [density, map] of Object.entries(o["densities"] as Record<string, unknown>)) {
+            const parsed = readTokenMap(map, `densities.${density}`);
+            if (typeof parsed === "string") return { error: parsed };
+            densities[density] = parsed;
+        }
+    }
+
     const doc: ThemeDocument = {
         name: o["name"] as string,
         version: o["version"] as number,
         tokens,
         modes,
+        densities,
     };
     void TOKEN_CONTRACT_VERSION;
     return { doc };
@@ -59,5 +74,6 @@ function readTokenMap(input: unknown, label: string): Record<string, string> | s
 export function toThemeJson(doc: ThemeDocument): ThemeJson {
     const out: ThemeJson = { version: doc.version, name: doc.name, tokens: { ...doc.tokens } };
     if (Object.keys(doc.modes).length > 0) out.modes = { ...doc.modes };
+    if (Object.keys(doc.densities).length > 0) out.densities = { ...doc.densities };
     return out;
 }

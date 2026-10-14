@@ -1,5 +1,5 @@
 export { TOKEN_CONTRACT_VERSION, SUPPORTED_TOKEN_CONTRACT_VERSIONS } from "./version.ts";
-export type { TokenDef, TokenTier, TokenKind, ThemeJson, ThemeModes } from "./types.ts";
+export type { TokenDef, TokenTier, TokenKind, ThemeJson, ThemeModes, ThemeDensities } from "./types.ts";
 export { PRIMITIVE_TOKENS, SEMANTIC_TOKENS, COMPONENT_TOKENS, ALL_TOKENS, TOKEN_MAP } from "./registry/index.ts";
 export { validateTheme } from "./validate/index.ts";
 export { suggestToken } from "./validate/suggest.ts";
@@ -17,9 +17,12 @@ export type { ThemeEntry, ThemeSaveResult, ThemeCssResult } from "./store.ts";
 export {
     DEFAULT_THEME_MODE,
     DEFAULT_THEME_MODES,
+    DEFAULT_THEME_DENSITY,
+    DEFAULT_THEME_DENSITIES,
     DEFAULT_THEME_NAME,
     EMPTY_THEME_STATE,
     SAFE_THEME_MODE,
+    SAFE_THEME_DENSITY,
     SAFE_THEME_NAME,
     THEME_STATE_VERSION,
     THEME_STORAGE_KEY,
@@ -29,4 +32,4 @@ export {
     readThemeState,
     writeThemeState,
 } from "./runtime.ts";
-export type { StoredTheme, StoredThemeState, ThemeMode, ThemeStorage } from "./runtime.ts";
+export type { StoredTheme, StoredThemeState, ThemeMode, ThemeDensity, ThemeStorage } from "./runtime.ts";

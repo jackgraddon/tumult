@@ -209,6 +209,7 @@
     "roomlist-item-text": "var(--text-secondary)",
     "roomlist-item-text-active": "var(--text-primary)",
     "roomlist-item-radius": "var(--control-radius)",
+    "roomlist-item-padding-y": "var(--space-1)",
     "timeline-bg": "var(--surface-base)",
     "timeline-day-divider": "var(--text-muted)",
     "timeline-unread-divider": "var(--danger)",
@@ -229,6 +230,7 @@
     "members-bg": "var(--surface-pane)",
     "member-dot-size": "var(--presence-dot-size)",
     "member-badge-radius": "var(--radius-full)",
+    "member-item-padding-y": "var(--space-1)",
     "button-primary-bg": "var(--accent)",
     "button-primary-bg-hover": "var(--accent-hover)",
     "button-primary-text": "var(--accent-contrast)",
@@ -290,6 +292,20 @@
       "shadow-md": "0 8px 24px rgba(0, 0, 0, 0.18)",
       "shadow-panel": "-8px 0 24px rgba(0, 0, 0, 0.12)",
       "timeline-mention-bg": "rgba(240, 178, 50, 0.25)"
+    }
+  },
+  "densities": {
+    "compact": {
+      "timeline-row-gap": "var(--space-1)",
+      "timeline-row-padding-y": "var(--space-0-5)",
+      "roomlist-item-padding-y": "var(--space-0-5)",
+      "member-item-padding-y": "var(--space-0-5)"
+    },
+    "spacious": {
+      "timeline-row-gap": "var(--space-3)",
+      "timeline-row-padding-y": "var(--space-2)",
+      "roomlist-item-padding-y": "var(--space-2)",
+      "member-item-padding-y": "var(--space-2)"
     }
   }
 }

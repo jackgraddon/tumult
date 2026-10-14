@@ -9,7 +9,9 @@
  * Two dataset attributes plus three ordered `<style>` slots carry the whole
  * state. Attribute `data-theme` scopes the emitted theme CSS
  * (`:root[data-theme="…"]`); `data-mode` selects a mode override block and is
- * *absent* for the base mode. The slots are ordered so a later one wins:
+ * *absent* for the base mode; `data-density` selects a density override block
+ * and is *absent* for the base density. The slots are ordered so a later one
+ * wins:
  *
  *   active   — the stored theme's emitted CSS
  *   preview  — an unsaved draft from the editor
@@ -19,13 +21,14 @@
  * reactive controller can call it again on every change.
  */
 import {
+    DEFAULT_THEME_DENSITY,
     DEFAULT_THEME_MODE,
     activeThemeCss,
     activeThemeName,
     findExternalStylesheetReferences,
     readThemeState,
 } from "@tumult/theme/runtime";
-import type { ThemeMode } from "@tumult/theme/runtime";
+import type { ThemeDensity, ThemeMode } from "@tumult/theme/runtime";
 
 /** The three stylesheet slots, in cascade order (last wins). */
 export type ThemeSlot = "active" | "preview" | "advanced";
@@ -63,12 +66,17 @@ export function setThemeSlot(name: ThemeSlot, css: string): void {
     }
 }
 
-/** Scope a theme to the document. The base mode means no `data-mode` at all. */
-export function setDocumentTheme(name: string, mode: ThemeMode): void {
+/**
+ * Scope a theme to the document. The base mode (and base density) means no
+ * attribute at all.
+ */
+export function setDocumentTheme(name: string, mode: ThemeMode, density: ThemeDensity): void {
     const root = document.documentElement;
     root.dataset["theme"] = name;
     if (mode === DEFAULT_THEME_MODE) delete root.dataset["mode"];
     else root.dataset["mode"] = mode;
+    if (density === DEFAULT_THEME_DENSITY) delete root.dataset["density"];
+    else root.dataset["density"] = density;
 }
 
 /**
@@ -90,7 +98,7 @@ export function applyAdvancedCss(css: string): string[] {
  */
 export function bootTheme(): void {
     const state = readThemeState(localStorage);
-    setDocumentTheme(activeThemeName(state), state.mode);
+    setDocumentTheme(activeThemeName(state), state.mode, state.density);
     setThemeSlot("active", activeThemeCss(state));
 
     const rejected = applyAdvancedCss(state.advancedCss);

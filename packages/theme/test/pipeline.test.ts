@@ -85,6 +85,56 @@ describe("theme modes", () => {
     });
 });
 
+describe("theme densities", () => {
+    const base = {
+        version: TOKEN_CONTRACT_VERSION,
+        name: "t",
+        tokens: { "timeline-row-padding-y": "var(--space-1)" },
+    };
+
+    it("accepts a valid density override", () => {
+        const r = validateTheme({
+            ...base,
+            densities: { compact: { "timeline-row-padding-y": "var(--space-0-5)" } },
+        });
+        assert.equal(r.valid, true);
+    });
+
+    it("errors on unknown token inside a density, tagged with the density", () => {
+        const r = validateTheme({ ...base, densities: { compact: { "timeline-row-padding-yy": "#fff" } } });
+        const issue = r.issues.find((i) => i.code === "unknown-token");
+        assert.ok(issue);
+        assert.equal(issue.density, "compact");
+        assert.equal(r.valid, false);
+    });
+
+    it("tags a value error with the density, not the mode", () => {
+        const r = validateTheme({
+            ...base,
+            densities: { spacious: { "timeline-row-padding-y": "not a length !!!" } },
+        });
+        const issue = r.issues.find((i) => i.code === "invalid-value");
+        assert.ok(issue);
+        assert.equal(issue.density, "spacious");
+        assert.equal(issue.mode, undefined);
+    });
+
+    it("errors on a density key that could escape the selector", () => {
+        const r = validateTheme({ ...base, densities: { 'x"] { display: none } .y': {} } });
+        const issue = r.issues.find((i) => i.code === "invalid-density");
+        assert.ok(issue);
+        assert.equal(issue.density, 'x"] { display: none } .y');
+        assert.equal(r.valid, false);
+    });
+
+    it("does not report missing tokens for density maps", () => {
+        const r = validateTheme({ ...base, densities: { compact: { accent2: "#fff" } } });
+        // Unknown tokens still error, but nothing should be reported *missing*
+        // (a density is an override, not a replacement map).
+        assert.ok(!r.issues.some((i) => i.code === "missing-token" && i.density !== undefined));
+    });
+});
+
 describe("contract version", () => {
     it("warns (not errors) on an unsupported version", () => {
         const r = validateTheme({ version: 999, name: "t", tokens: { accent: "#fff" } });
@@ -118,5 +168,44 @@ describe("serializeTheme modes", () => {
     it("refuses to emit an invalid theme", () => {
         const validation = validateTheme({ version: 2, name: "t", tokens: { nope: "#fff" } });
         assert.throws(() => serializeTheme({ name: "t", tokens: { nope: "#fff" }, validation }));
+    });
+});
+
+describe("serializeTheme densities", () => {
+    it("emits [data-density] blocks after the mode blocks", () => {
+        const base = {
+            version: TOKEN_CONTRACT_VERSION,
+            name: "default",
+            tokens: { "timeline-row-padding-y": "var(--space-1)" },
+        };
+        const input = {
+            ...base,
+            modes: { light: { "timeline-row-padding-y": "var(--space-2)" } },
+            densities: {
+                compact: { "timeline-row-padding-y": "var(--space-0-5)" },
+                spacious: { "timeline-row-padding-y": "var(--space-2)" },
+            },
+        };
+        const validation = validateTheme(input);
+        const css = serializeTheme({
+            name: "default",
+            tokens: input.tokens,
+            modes: input.modes,
+            densities: input.densities,
+            validation,
+        });
+        assert.match(css, /:root\[data-theme="default"\] \{/);
+        assert.match(css, /:root\[data-theme="default"\]\[data-mode="light"\] \{/);
+        assert.match(css, /:root\[data-theme="default"\]\[data-density="compact"\] \{/);
+        assert.match(css, /:root\[data-theme="default"\]\[data-density="spacious"\] \{/);
+        // Same specificity as a mode block, so the later (density) block wins a tie.
+        assert.ok(css.indexOf("[data-density=") > css.indexOf("[data-mode="));
+    });
+
+    it("emits no density blocks when none are declared", () => {
+        const input = { version: TOKEN_CONTRACT_VERSION, name: "t", tokens: { accent: "#fff" } };
+        const validation = validateTheme(input);
+        const css = serializeTheme({ name: "t", tokens: input.tokens, validation });
+        assert.ok(!css.includes("data-density"));
     });
 });

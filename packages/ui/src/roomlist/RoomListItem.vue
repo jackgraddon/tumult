@@ -73,7 +73,7 @@ function requestLeave(): void {
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
+    padding: var(--roomlist-item-padding-y) var(--space-2);
     border-radius: var(--roomlist-item-radius);
     color: var(--roomlist-item-text);
     font-size: var(--text-sm);

@@ -3,6 +3,7 @@ export type IssueCode =
     | "invalid-envelope"
     | "invalid-name"
     | "invalid-mode"
+    | "invalid-density"
     | "unknown-token"
     | "missing-token"
     | "tier-violation"
@@ -19,6 +20,8 @@ export interface ValidationIssue {
     token?: string;
     /** Set when the issue belongs to a mode override rather than the base mode. */
     mode?: string;
+    /** Set when the issue belongs to a density override rather than the base map. */
+    density?: string;
     message: string;
     suggestion?: string;
 }

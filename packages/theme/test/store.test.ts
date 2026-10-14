@@ -133,6 +133,55 @@ describe("ThemeStore", () => {
         assert.deepEqual(store.activeModes(), ["dark", "light", "dim"]);
     });
 
+    it("starts on the base density and reports the built-in theme's densities", () => {
+        const store = new ThemeStore(fakeStorage());
+        assert.equal(store.density(), "cozy");
+        assert.deepEqual(store.activeDensities(), ["cozy", "compact", "spacious"]);
+    });
+
+    it("persists the selected density across a reload", () => {
+        const storage = fakeStorage();
+        const store = new ThemeStore(storage);
+        assert.equal(store.setDensity("compact"), true);
+        assert.equal(store.density(), "compact");
+        assert.equal(new ThemeStore(storage).density(), "compact");
+    });
+
+    it("rejects a density name that could escape the selector", () => {
+        const store = new ThemeStore(fakeStorage());
+        assert.equal(store.setDensity('x"] { display: none } .y'), false);
+        assert.equal(store.density(), "cozy");
+    });
+
+    it("falls back to the base density when a theme does not implement it", () => {
+        const store = new ThemeStore(fakeStorage());
+        store.setDensity("spacious");
+
+        // A theme that declares only `compact` cannot honour `spacious`.
+        store.save({ ...theme("tight"), densities: { compact: { accent: "#111" } } });
+        assert.deepEqual(store.activeDensities(), ["cozy", "compact"]);
+        assert.equal(store.density(), "cozy");
+
+        // Switching back to the built-in theme re-offers every density, but the
+        // selection stays at the base — it was normalized, not remembered.
+        assert.equal(store.select(DEFAULT_THEME_NAME), true);
+        assert.deepEqual(store.activeDensities(), ["cozy", "compact", "spacious"]);
+        assert.equal(store.density(), "cozy");
+    });
+
+    it("reports the densities a stored theme declares, base density first", () => {
+        const store = new ThemeStore(fakeStorage());
+        store.save({ ...theme("airy"), densities: { roomy: { accent: "#fff" } } });
+        assert.deepEqual(store.activeDensities(), ["cozy", "roomy"]);
+    });
+
+    it("resets the density too", () => {
+        const store = new ThemeStore(fakeStorage());
+        store.setDensity("spacious");
+        store.reset();
+        assert.equal(store.density(), "cozy");
+    });
+
     it("refuses advanced CSS that could fetch a third-party resource", () => {
         const store = new ThemeStore(fakeStorage());
         for (const css of ["@import url(https://evil.example/x.css);", ".x { background: url('https://x/y.png'); }"]) {
