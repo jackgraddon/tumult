@@ -207,6 +207,53 @@ describe("browser smoke test (fake client)", () => {
         assert.match(question ?? "", /Lunch\?/, "the demo poll rendered without its question");
     });
 
+    it("renders a composer action contributed by an app-installed plugin", async () => {
+        // The react-last plugin registers this button through PluginRegistry's
+        // `composer-actions` permission, so it only exists when the composer
+        // read the per-shell ComposerActionsRegistry.
+        const action = page.locator('.tumult-composer-action[aria-label="React to the last message"]');
+        assert.equal(await action.count(), 1, "the composer action button did not render");
+    });
+
+    it("runs an installed slash command instead of sending it as text", async () => {
+        const input = page.locator(".tumult-composer-input");
+
+        // `/shrug` alone opens the suggestion list built from the plugin's command.
+        await input.fill("/shrug");
+        await page.waitForSelector(".tumult-command-suggestion", { timeout: 5_000 });
+        assert.equal(await page.locator(".tumult-command-name").first().textContent(), "/shrug");
+
+        // With args, submitting runs the command: the row carries the shrug.
+        await input.fill("/shrug hi there");
+        await input.press("Enter");
+        const row = page.locator(".tumult-row", { hasText: "hi there ¯\\_(ツ)_/¯" });
+        await row.first().waitFor({ timeout: 10_000 });
+        assert.equal(await input.inputValue(), "", "the composer should clear after a command runs");
+        assert.equal(
+            await page.locator(".tumult-command-suggestion").count(),
+            0,
+            "the suggestion list should close once the command is submitted",
+        );
+    });
+
+    it("runs the composer action: reacting to the newest message", async () => {
+        // Wait out the fake's local echo settling `sending -> sent`, so the
+        // action's filters accept the message we just sent.
+        await page.waitForTimeout(600);
+        await page.locator('.tumult-composer-action[aria-label="React to the last message"]').click();
+        await page
+            .locator(".tumult-row", { hasText: "hi there" })
+            .locator('.tumult-reaction-chip[data-own="true"]')
+            .first()
+            .waitFor({ timeout: 10_000 });
+    });
+
+    it("renders a member decoration from an app-installed plugin", async () => {
+        // Alice seeds power level 100, so the admin badge's `match` accepts her.
+        await page.waitForSelector(".tumult-members", { timeout: 10_000 });
+        await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
+    });
+
     it("takes the guild rail width from its layout token", async () => {
         const state = await readState(page);
         const token = state.tokens["--layout-guild-rail-width"];

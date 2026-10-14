@@ -1,6 +1,9 @@
 import { inject, ref, type InjectionKey, type Ref } from "vue";
 
 import type { RendererEntry } from "../timeline/registry.ts";
+import type { ComposerAction } from "../timeline/composer-actions.ts";
+import type { Command } from "../timeline/commands.ts";
+import type { MemberDecoration } from "../members/decorations.ts";
 import type {
     Disposable,
     Permission,
@@ -69,6 +72,21 @@ export class PluginRegistry {
         };
     }
 
+    /** Shell-level composer action (no permission — see {@link addRenderer}). */
+    public addComposerAction(action: ComposerAction): Disposable {
+        return this.deps.composerActions.add(action);
+    }
+
+    /** Shell-level slash command (no permission — see {@link addRenderer}). */
+    public addCommand(command: Command): Disposable {
+        return this.deps.commands.add(command);
+    }
+
+    /** Shell-level member decoration (no permission — see {@link addRenderer}). */
+    public addMemberDecoration(decoration: MemberDecoration): Disposable {
+        return this.deps.memberDecorations.add(decoration);
+    }
+
     /**
      * Install one plugin. Throws when the id is already installed or when
      * `install()` itself throws — in which case everything the plugin had
@@ -101,6 +119,9 @@ export class PluginRegistry {
         const api = createPluginApi({
             require,
             addRenderer: (type, entry) => this.addRenderer(type, entry),
+            addComposerAction: (action) => this.addComposerAction(action),
+            addCommand: (command) => this.addCommand(command),
+            addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
             track,
         });
         const ctx: PluginContext = {
@@ -110,6 +131,9 @@ export class PluginRegistry {
             actions: this.deps.actions,
             media: this.deps.media,
             addRenderer: api.addRenderer,
+            addComposerAction: api.addComposerAction,
+            addCommand: api.addCommand,
+            addMemberDecoration: api.addMemberDecoration,
         };
 
         let teardown: Disposable | null = null;

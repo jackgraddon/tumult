@@ -16,6 +16,16 @@ export type {
     PluginManifest,
     PluginMedia,
 } from "./plugins/types.ts";
+export {
+    ComposerActionsKey,
+    ComposerActionsRegistry,
+    useComposerActions,
+} from "./timeline/composer-actions.ts";
+export type { ComposerAction, ComposerActionContext } from "./timeline/composer-actions.ts";
+export { CommandsKey, CommandsRegistry, useCommands } from "./timeline/commands.ts";
+export type { Command, CommandContext, ResolvedCommand } from "./timeline/commands.ts";
+export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations } from "./members/decorations.ts";
+export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
 export { default as TumultShell } from "./shell/TumultShell.vue";
 export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";
 export { default as GuildRail } from "./rail/GuildRail.vue";

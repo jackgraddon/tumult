@@ -5,6 +5,9 @@ import type { Component } from "vue";
 import type { ChatClient, MessageView } from "@tumult/core";
 
 import { TimelineRegistry } from "../src/timeline/registry.ts";
+import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
+import { CommandsRegistry } from "../src/timeline/commands.ts";
+import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
 import type { ActionsContext } from "../src/actions.ts";
 import type { SelectionContext } from "../src/selection.ts";
@@ -26,6 +29,9 @@ function manifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
 function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
     return {
         timeline,
+        composerActions: new ComposerActionsRegistry(),
+        commands: new CommandsRegistry(),
+        memberDecorations: new MemberDecorationsRegistry(),
         client: {} as ChatClient,
         selection: {} as SelectionContext,
         actions: {} as ActionsContext,
@@ -251,6 +257,71 @@ describe("PluginRegistry permissions", () => {
         assert.equal(seen["actions"], deps.actions);
         assert.equal(seen["media"], deps.media);
         assert.equal(seen["id"], "test.plugin");
+    });
+});
+
+describe("PluginRegistry extension points", () => {
+    it("installs contributions and disposes them on uninstall", () => {
+        const deps = makeDeps();
+        const plugins = new PluginRegistry(deps);
+        const renderer: Plugin = {
+            manifest: manifest({
+                permissions: ["composer-actions", "commands", "member-decorations"],
+            }),
+            install(ctx) {
+                ctx.addComposerAction({ id: "a1", label: "One", run() {} });
+                ctx.addCommand({ name: "shrug", run() {} });
+                ctx.addMemberDecoration({ id: "d1", component: PluginComp });
+            },
+        };
+
+        plugins.install(renderer);
+        assert.equal(deps.composerActions.all().length, 1);
+        assert.equal(deps.commands.all().length, 1);
+        assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
+
+        plugins.uninstall("test.plugin");
+        assert.equal(deps.composerActions.all().length, 0);
+        assert.equal(deps.commands.all().length, 0);
+        assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
+    });
+
+    it("refuses each extension API without its declared permission, with no residue", () => {
+        const cases: Array<[string, (ctx: Parameters<Plugin["install"]>[0]) => void]> = [
+            ["composer-actions", (ctx) => ctx.addComposerAction({ id: "a1", label: "One", run() {} })],
+            ["commands", (ctx) => ctx.addCommand({ name: "shrug", run() {} })],
+            ["member-decorations", (ctx) => ctx.addMemberDecoration({ id: "d1", component: PluginComp })],
+        ];
+
+        for (const [permission, use] of cases) {
+            const deps = makeDeps();
+            const plugins = new PluginRegistry(deps);
+            const plugin: Plugin = { manifest: manifest({ permissions: [] }), install: use };
+            assert.throws(() => plugins.install(plugin), new RegExp(permission), permission);
+            assert.equal(plugins.has("test.plugin"), false, permission);
+            assert.equal(deps.composerActions.all().length, 0, permission);
+            assert.equal(deps.commands.all().length, 0, permission);
+            assert.equal(deps.memberDecorations.resolve({} as never).length, 0, permission);
+        }
+    });
+
+    it("exposes shell-level registration methods that are unpermissioned", () => {
+        const deps = makeDeps();
+        const plugins = new PluginRegistry(deps);
+        const actionDispose = plugins.addComposerAction({ id: "a1", label: "One", run() {} });
+        const commandDispose = plugins.addCommand({ name: "shrug", run() {} });
+        const badgeDispose = plugins.addMemberDecoration({ id: "d1", component: PluginComp });
+
+        assert.equal(deps.composerActions.all().length, 1);
+        assert.equal(deps.commands.all().length, 1);
+        assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
+
+        actionDispose();
+        commandDispose();
+        badgeDispose();
+        assert.equal(deps.composerActions.all().length, 0);
+        assert.equal(deps.commands.all().length, 0);
+        assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
     });
 });
 

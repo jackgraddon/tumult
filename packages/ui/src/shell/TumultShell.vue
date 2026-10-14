@@ -8,6 +8,9 @@ import { SelectionKey, type RoomSelection, type SelectionContext } from "../sele
 import { ActionsKey, type ActionsContext, type LeaveTarget, type MemberModeration } from "../actions.ts";
 import { MediaKey, EncryptedMediaKey, MediaDownloadKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
+import { ComposerActionsKey, ComposerActionsRegistry } from "../timeline/composer-actions.ts";
+import { CommandsKey, CommandsRegistry } from "../timeline/commands.ts";
+import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
@@ -91,10 +94,14 @@ const actionsCtx: ActionsContext = {
 };
 provide(ActionsKey, actionsCtx);
 
-// One timeline registry + one plugin host per shell. The built-in renderers
-// register through the host (unpermissioned — this call IS the shell); apps
-// install plugins on top via the exposed `plugins` handle, e.g. the demo poll.
+// One timeline registry, one contribution registry per extension point, and
+// one plugin host per shell. The built-in renderers register through the host
+// (unpermissioned — this call IS the shell); apps install plugins on top via
+// the exposed `plugins` handle, e.g. the demo poll.
 const registry = new TimelineRegistry();
+const composerActions = new ComposerActionsRegistry();
+const commands = new CommandsRegistry();
+const memberDecorations = new MemberDecorationsRegistry();
 const media = {
     resolve: (uri: string, size: number) => props.client.resolveMedia(uri, size),
     resolveDownload: (uri: string) => props.client.resolveMediaDownload(uri),
@@ -103,12 +110,18 @@ const media = {
 const plugins = new PluginRegistry({
     client: props.client,
     timeline: registry,
+    composerActions,
+    commands,
+    memberDecorations,
     selection: selectionContext,
     actions: actionsCtx,
     media,
 });
 provide(RegistryKey, registry);
 provide(PluginsKey, plugins);
+provide(ComposerActionsKey, composerActions);
+provide(CommandsKey, commands);
+provide(MemberDecorationsKey, memberDecorations);
 
 const mediaTypes = new Set(["m.image", "m.video", "m.audio", "m.file"]);
 plugins.addRenderer("m.room.message", {

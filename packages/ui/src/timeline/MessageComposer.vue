@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ChatClient, MessageView } from "@tumult/core";
+
+import { useComposerActions, type ComposerAction, type ComposerActionContext } from "./composer-actions.ts";
+import { useCommands, type Command, type ResolvedCommand } from "./commands.ts";
 
 const props = defineProps<{
     disabled?: boolean;
@@ -18,7 +21,14 @@ const emit = defineEmits<{
     cancelReply: [];
 }>();
 
+// Both are per-shell and optional: the composer is an exported primitive, so a
+// standalone use (or the thread composer, which carries no roomId) renders no
+// plugin affordances instead of throwing.
+const composerActions = useComposerActions();
+const commands = useCommands();
+
 const draft = ref("");
+const inputEl = ref<HTMLInputElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 let typingSent = false;
 let typingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -49,9 +59,80 @@ watch(draft, (value) => {
     }
 });
 
+/** Actions need a room and a client to build their context, so no context = no row. */
+const visibleActions = computed<ComposerAction[]>(() =>
+    composerActions && props.roomId && props.client ? composerActions.all() : [],
+);
+
+function actionContext(): ComposerActionContext | null {
+    if (!props.roomId || !props.client) return null;
+    return {
+        roomId: props.roomId,
+        client: props.client,
+        draft: draft.value,
+        setDraft: (text: string) => {
+            draft.value = text;
+        },
+    };
+}
+
+function runAction(action: ComposerAction): void {
+    const ctx = actionContext();
+    if (!ctx) return;
+    const label = `[tumult] composer action "${action.id}" failed`;
+    try {
+        // Promise.resolve covers both a void return and a rejected promise.
+        void Promise.resolve(action.run(ctx)).catch((error) => console.error(label, error));
+    } catch (error) {
+        console.error(label, error);
+    }
+}
+
+/**
+ * While the draft is exactly `/prefix` (no whitespace yet), offer the matching
+ * commands. Once there is a space the user has picked one and is typing args,
+ * so the list gets out of the way.
+ */
+const commandSuggestions = computed<Command[]>(() => {
+    if (!commands || props.disabled || !props.roomId || !props.client) return [];
+    const body = draft.value;
+    if (!body.startsWith("/")) return [];
+    const rest = body.slice(1);
+    if (/\s/.test(rest)) return [];
+    return commands.suggest(rest);
+});
+
+/** Clicking a suggestion completes the draft; Enter then runs it. */
+function completeSuggestion(command: Command): void {
+    const rest = draft.value.slice(1);
+    if (!command.name.startsWith(rest.toLowerCase())) return; // stale click
+    draft.value = `/${command.name} `;
+    inputEl.value?.focus();
+}
+
+function executeCommand(resolved: ResolvedCommand): void {
+    if (!props.roomId || !props.client) return;
+    const { command, args, raw } = resolved;
+    draft.value = "";
+    clearTyping();
+    const label = `[tumult] command "/${command.name}" failed`;
+    try {
+        void Promise.resolve(
+            command.run({ roomId: props.roomId, client: props.client, args, raw }),
+        ).catch((error) => console.error(label, error));
+    } catch (error) {
+        console.error(label, error);
+    }
+}
+
 function submit(): void {
     const body = draft.value.trim();
     if (!body || props.disabled) return;
+    const resolved = commands && props.roomId && props.client ? commands.resolve(body) : null;
+    if (resolved) {
+        executeCommand(resolved);
+        return;
+    }
     emit("send", body);
     draft.value = "";
     clearTyping();
@@ -92,6 +173,26 @@ function onFileSelected(event: Event): void {
                 ×
             </button>
         </div>
+        <!-- Slash-command suggestions: only while the draft is `/prefix`. -->
+        <div
+            v-if="commandSuggestions.length > 0"
+            class="tumult-composer-commands"
+            aria-label="Command suggestions"
+        >
+            <button
+                v-for="command in commandSuggestions"
+                :key="command.name"
+                type="button"
+                class="tumult-command-suggestion"
+                @click="completeSuggestion(command)"
+            >
+                <span class="tumult-command-name">/{{ command.name }}</span>
+                <span v-if="command.usage" class="tumult-command-usage">{{ command.usage }}</span>
+                <span v-if="command.description" class="tumult-command-description">
+                    {{ command.description }}
+                </span>
+            </button>
+        </div>
         <form class="tumult-composer-row" @submit.prevent="submit">
             <label class="tumult-composer-label" for="tumult-composer-input">Message</label>
             <button
@@ -111,8 +212,21 @@ function onFileSelected(event: Event): void {
                 aria-hidden="true"
                 @change="onFileSelected"
             />
+            <button
+                v-for="action in visibleActions"
+                :key="action.id"
+                type="button"
+                class="tumult-composer-action"
+                :title="action.label"
+                :aria-label="action.label"
+                :disabled="disabled"
+                @click="runAction(action)"
+            >
+                {{ action.icon ?? action.label }}
+            </button>
             <input
                 id="tumult-composer-input"
+                ref="inputEl"
                 v-model="draft"
                 class="tumult-composer-input"
                 type="text"
@@ -216,6 +330,72 @@ function onFileSelected(event: Event): void {
 .tumult-composer-attach:disabled {
     opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
+}
+.tumult-composer-action {
+    flex-shrink: 0;
+    width: var(--control-md);
+    height: var(--control-md);
+    align-self: center;
+    border: var(--border-width) solid var(--button-secondary-border);
+    border-radius: var(--control-radius);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+    font-size: var(--text-md);
+    line-height: var(--leading-none);
+    cursor: pointer;
+}
+.tumult-composer-action:hover:not(:disabled) {
+    background: var(--button-secondary-bg-hover);
+}
+.tumult-composer-action:disabled {
+    opacity: var(--state-disabled-opacity);
+    cursor: not-allowed;
+}
+.tumult-composer-commands {
+    display: flex;
+    flex-direction: column;
+    gap: var(--hairline);
+    margin: var(--space-2) var(--space-3) 0;
+    padding: var(--space-1);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+}
+.tumult-command-suggestion {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+}
+.tumult-command-suggestion:hover {
+    background: var(--roomlist-item-bg-hover);
+}
+.tumult-command-suggestion:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+}
+.tumult-command-name {
+    color: var(--text-primary);
+    font-weight: var(--weight-semibold);
+}
+.tumult-command-usage {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+.tumult-command-description {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .tumult-composer-input {
     flex: 1;

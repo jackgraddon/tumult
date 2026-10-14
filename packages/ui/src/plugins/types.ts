@@ -15,6 +15,9 @@
 import type { ChatClient, EncryptedAttachment } from "@tumult/core";
 
 import type { RendererEntry, TimelineRegistry } from "../timeline/registry.ts";
+import type { ComposerActionsRegistry, ComposerAction } from "../timeline/composer-actions.ts";
+import type { CommandsRegistry, Command } from "../timeline/commands.ts";
+import type { MemberDecorationsRegistry, MemberDecoration } from "../members/decorations.ts";
 import type { SelectionContext } from "../selection.ts";
 import type { ActionsContext } from "../actions.ts";
 
@@ -26,8 +29,9 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * Only `timeline-renderers` is enforced so far — the rest name the Phase 2
- * extension points as they land.
+ * `timeline-renderers`, `composer-actions`, `commands` and
+ * `member-decorations` are enforced today. `settings-tabs` and `styles` name
+ * the remaining Phase 2 extension points as they land.
  */
 export type Permission =
     | "timeline-renderers"
@@ -68,8 +72,8 @@ export interface PluginMedia {
 
 /**
  * The registration surface every plugin gets — permission-checked and
- * disposable. Future extension points (composer actions, commands, …) extend
- * this interface; existing plugins keep working because it only grows.
+ * disposable. Future extension points (settings tabs, styles) extend this
+ * interface; existing plugins keep working because it only grows.
  */
 export interface PluginApi {
     /**
@@ -78,6 +82,15 @@ export interface PluginApi {
      * this entry.
      */
     addRenderer(type: string, entry: RendererEntry): Disposable;
+    /**
+     * Add a button to the composer's action row. The action only runs when a
+     * room and client are present (never in the thread composer today).
+     */
+    addComposerAction(action: ComposerAction): Disposable;
+    /** Register a `/name` slash command for the composer. */
+    addCommand(command: Command): Disposable;
+    /** Add a badge/decoration to member rows that `match` accepts. */
+    addMemberDecoration(decoration: MemberDecoration): Disposable;
 }
 
 /**
@@ -118,6 +131,9 @@ export interface Plugin {
 export interface PluginDeps {
     client: ChatClient;
     timeline: TimelineRegistry;
+    composerActions: ComposerActionsRegistry;
+    commands: CommandsRegistry;
+    memberDecorations: MemberDecorationsRegistry;
     selection: SelectionContext;
     actions: ActionsContext;
     media: PluginMedia;

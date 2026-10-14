@@ -10,6 +10,7 @@ import {
 } from "reka-ui";
 
 import { useActions, type MemberModerationKind } from "../actions.ts";
+import { useMemberDecorations } from "./decorations.ts";
 import Avatar from "../primitives/Avatar.vue";
 
 const props = defineProps<{
@@ -21,6 +22,10 @@ const props = defineProps<{
 }>();
 
 const actions = useActions();
+const decorations = useMemberDecorations();
+
+/** Plugin decorations that apply to this member, after the built-in badges. */
+const memberDecorations = computed(() => decorations.resolve(props.member));
 
 function ago(ts: number): string {
     const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -75,6 +80,14 @@ function request(kind: MemberModerationKind): void {
                 <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
                 <span v-if="member.membership === 'invite'" class="tumult-member-badge">Invited</span>
                 <span v-else-if="member.membership === 'ban'" class="tumult-member-badge">Banned</span>
+                <component
+                    :is="decoration.component"
+                    v-for="decoration in memberDecorations"
+                    :key="decoration.id"
+                    class="tumult-member-decoration"
+                    :member="member"
+                    :room-id="roomId"
+                />
             </div>
         </ContextMenuTrigger>
         <!-- No actions for this row → no content, so a right-click shows nothing. -->
