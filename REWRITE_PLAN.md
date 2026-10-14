@@ -38,7 +38,7 @@ This plan builds on the existing data/core/contract foundation, but resets UI de
 - [x] Default theme v2: `packages/theme/themes/default.json` expanded to cover all component tokens. Keep backwards compatible with v1 where possible. → complete snapshot of the structural defaults (271) + 14 light-mode overrides; a drift test fails if it disagrees with the registry.
 - [x] Token-complete SFC pass: replace hardcoded values with `var(--…)` in `packages/ui/src/**.vue`, scoped styles only. → 44 SFCs (plus the app's own `DemoPoll.vue`/`AppView.vue`, which the new scan also covers); nothing hardcoded remains outside allowed geometry. Verified mechanically: 319 declarations paired, 14 differ only in notation, **2 intentional changes** (danger-button rest→hover direction, start-error toast 13px→14px) — see the migration doc §3.
 
-## 5. Phase 2 — Plugin API (Vencord-like, built-in)
+## 5. Phase 2 — Plugin API (Vencord-like, built-in) [CURRENT: FOUNDATIONS DONE]
 
 Design: per-shell, injection-based, isolated, CSP-safe. No external code execution strings; plugins are TS modules registered at runtime (app registers, not arbitrary user JS eval). 
 
@@ -100,7 +100,14 @@ Design: per-shell, injection-based, isolated, CSP-safe. No external code executi
 - `REWRITE_PLAN.md` (this file)
 - `docs/themes.md` (Phase 3)
 - `packages/theme/themes/default.json` v2
-- `packages/ui/src/plugins/*` (Phase 2)
-- Token audit checklist and migration notes 
+- `packages/ui/src/plugins/*` (Phase 2) — see Phase 2 checklist below
+- Token audit checklist and migration notes
+
+## Status (2026-10-13)
+
+- Phase 0–1 (Token System v2): DONE — contract v2, registry 271 tokens, modes dark/light, SFC tokenization, 310 core + 33 theme tests passing, build green. (commits cd78a04–62d4ed0 locally; repo now has the fix in a7a9ba4)
+- Phase 1b follow-up (SDK-free fake build + guard): DONE — fixed verbatimModuleSyntax side-effect import (three files), added `packages/core/test/imports.test.ts`, fake build chunk 839KB→17KB. (a7a9ba4)
+- Browser verification: DONE — fake-mode build switch (`@chat-impl` via Vite --mode fake), Playwright/Firefox smoke test asserts shell renders/navigates, light/dark flips reversibly, rail width from token, no console errors, no SDK in fake build. (045cdb9)
+- Phase 2: CURRENT — designing injection points, registry extensions, sandbox rules, example plugin. 
 
 Created: 2026-10-13
