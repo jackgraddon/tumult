@@ -1,8 +1,9 @@
 import { TOKEN_MAP } from "../registry/index.ts";
 import { SUPPORTED_TOKEN_CONTRACT_VERSIONS } from "../version.ts";
+import { SAFE_THEME_MODE, SAFE_THEME_NAME } from "../runtime.ts";
 import { parseDocument } from "./document.ts";
 import { suggestToken } from "./suggest.ts";
-import { isValidValue } from "./values.ts";
+import { findUnsafeValue, isValidValue } from "./values.ts";
 import { extractRefs, findCycle, hasUrl } from "./references.ts";
 import type { ValidationIssue, ValidationResult } from "./issues.ts";
 
@@ -12,6 +13,12 @@ import type { ValidationIssue, ValidationResult } from "./issues.ts";
  *
  * Base (default-mode) tokens AND every `modes.*` override map are validated.
  * Mode maps are overrides, so a missing token is not reported for them.
+ *
+ * Beyond token values this also gates the two things the *selector* is built
+ * from (the theme name and each mode key). Themes are now user-supplied at
+ * runtime, so a name that could close `:root[data-theme="…"]` is an error
+ * rather than an escape hatch — and because `serializeTheme` refuses an invalid
+ * result, unvalidated names can never reach a stylesheet.
  */
 export function validateTheme(input: unknown): ValidationResult {
     const issues: ValidationIssue[] = [];
@@ -24,6 +31,29 @@ export function validateTheme(input: unknown): ValidationResult {
             message: error ?? "Invalid theme envelope.",
         });
         return { valid: false, issues };
+    }
+
+    if (!SAFE_THEME_NAME.test(doc.name)) {
+        issues.push({
+            code: "invalid-name",
+            severity: "error",
+            message:
+                `Theme name "${doc.name}" is not usable: use letters, digits, dots, dashes and ` +
+                `underscores, starting with a letter or digit (at most 64 characters).`,
+        });
+    }
+
+    for (const mode of Object.keys(doc.modes)) {
+        if (!SAFE_THEME_MODE.test(mode)) {
+            issues.push({
+                code: "invalid-mode",
+                severity: "error",
+                mode,
+                message:
+                    `Mode name "${mode}" is not usable: use letters, digits and dashes ` +
+                    `(at most 32 characters).`,
+            });
+        }
     }
 
     if (!SUPPORTED_TOKEN_CONTRACT_VERSIONS.includes(doc.version)) {
@@ -99,6 +129,21 @@ function validateScope(
     for (const [name, def] of TOKEN_MAP) {
         const raw = tokens[name];
         if (raw === undefined) continue;
+
+        // Before anything else: a value that can close its declaration is not a
+        // bad value of its kind, it is an escape from the stylesheet. Report it
+        // alone — every other check below would just pile on.
+        const unsafe = findUnsafeValue(raw);
+        if (unsafe !== null) {
+            issues.push({
+                code: "unsafe-value",
+                severity: "error",
+                token: name,
+                ...at,
+                message: `Token "${name}" value contains ${unsafe}, which can escape its declaration.`,
+            });
+            continue;
+        }
 
         if (hasUrl(raw)) {
             issues.push({

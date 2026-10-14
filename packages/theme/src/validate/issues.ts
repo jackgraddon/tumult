@@ -1,12 +1,15 @@
 export type IssueSeverity = "error" | "warning" | "info";
 export type IssueCode =
     | "invalid-envelope"
+    | "invalid-name"
+    | "invalid-mode"
     | "unknown-token"
     | "missing-token"
     | "tier-violation"
     | "reference-cycle"
     | "banned-url"
     | "invalid-value"
+    | "unsafe-value"
     | "unknown-reference"
     | "unsupported-version";
 

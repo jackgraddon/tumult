@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { TOKEN_CONTRACT_VERSION, SUPPORTED_TOKEN_CONTRACT_VERSIONS } from "../src/version.ts";
+import { DEFAULT_THEME_MODES } from "../src/runtime.ts";
 import { ALL_TOKENS } from "../src/registry/index.ts";
 import { validateTheme } from "../src/validate/index.ts";
 
@@ -42,6 +43,19 @@ describe("default theme", () => {
             (t) => `${t.name}: ${JSON.stringify(raw.tokens[t.name])} != ${JSON.stringify(t.value)}`,
         );
         assert.deepEqual(drift, [], "default theme drifted from the registry defaults");
+    });
+
+    it("declares exactly the modes the app offers for it", () => {
+        // The app reads `DEFAULT_THEME_MODES` (a runtime constant, so the boot
+        // path needs no JSON) and shows those as mode choices for the built-in
+        // theme. If this fails, one of the two sides is stale.
+        const raw = JSON.parse(readFileSync(join(themesDir, "default.json"), "utf8")) as {
+            modes?: Record<string, unknown>;
+        };
+        assert.deepEqual(
+            Object.keys(raw.modes ?? {}).sort(),
+            [...DEFAULT_THEME_MODES].sort(),
+        );
     });
 });
 

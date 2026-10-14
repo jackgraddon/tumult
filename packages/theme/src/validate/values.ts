@@ -18,6 +18,25 @@ const SHADOW_PART = new RegExp(
     `^(inset\\s+)?((0|-?${NUMBER}(px|rem|em))\\s+){1,4}(#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)|hsla?\\([^)]*\\))?$`,
 );
 
+/**
+ * Characters that can end a declaration or a block inside a custom-property
+ * value. A value is emitted as `--name: <value>;`, so any of `; { } @ < > \`
+ * (or a control character, or an unterminated comment opener) would let a theme
+ * document escape its declaration and inject arbitrary rules into the
+ * stylesheet. `@` also covers at-rules like import/font-face; `<`/`>` and
+ * comment openers are pure syntax attacks. `url()` is separate (`banned-url`),
+ * because a remote fetch is a different problem from a selector escape.
+ */
+const UNSAFE_VALUE = /[\u0000-\u001f\u007f;{}@<>\\]/;
+
+/** The offending substring of `value`, or null when it cannot escape a declaration. */
+export function findUnsafeValue(value: string): string | null {
+    const match = UNSAFE_VALUE.exec(value);
+    if (match) return JSON.stringify(match[0]);
+    if (value.includes("/*")) return JSON.stringify("/*");
+    return null;
+}
+
 /** Split on commas that are not inside parentheses (e.g. `rgba(0, 0, 0, .3)`). */
 function splitTopLevel(value: string): string[] {
     const parts: string[] = [];
