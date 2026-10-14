@@ -31,8 +31,20 @@ export function compileThemes(): void {
             const errors = validation.issues.filter((i) => i.severity === "error");
             throw new Error(`Theme ${file} invalid:\n${errors.map((e) => `- ${e.message}`).join("\n")}`);
         }
-        const parsed = JSON.parse(raw) as { name: string; tokens: Record<string, string> };
-        writeFileSync(join(outDir, `${parsed.name}.css`), serializeTheme({ ...parsed, validation }));
+        const parsed = JSON.parse(raw) as {
+            name: string;
+            tokens: Record<string, string>;
+            modes?: Record<string, Record<string, string>>;
+        };
+        writeFileSync(
+            join(outDir, `${parsed.name}.css`),
+            serializeTheme({
+                name: parsed.name,
+                tokens: parsed.tokens,
+                ...(parsed.modes ? { modes: parsed.modes } : {}),
+                validation,
+            }),
+        );
     }
 }
 

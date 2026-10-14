@@ -1,8 +1,10 @@
+import type { ThemeModes } from "../types.ts";
 import type { ValidationResult } from "../validate/issues.ts";
 
 export interface EmitInput {
     name: string;
     tokens: Record<string, string>;
+    modes?: ThemeModes;
     validation: ValidationResult;
 }
 
@@ -14,10 +16,18 @@ export function serializeTheme(input: EmitInput): string {
     if (!input.validation.valid) {
         throw new Error("Refusing to emit CSS for an invalid theme.");
     }
-    const keys = Object.keys(input.tokens).sort();
-    const lines: string[] = [`:root[data-theme="${input.name}"] {`];
+    const blocks: string[] = [block(`:root[data-theme="${input.name}"]`, input.tokens)];
+    for (const [mode, tokens] of Object.entries(input.modes ?? {})) {
+        blocks.push(block(`:root[data-theme="${input.name}"][data-mode="${mode}"]`, tokens));
+    }
+    return blocks.join("\n") + "\n";
+}
+
+function block(selector: string, tokens: Record<string, string>): string {
+    const keys = Object.keys(tokens).sort();
+    const lines: string[] = [`${selector} {`];
     for (const k of keys) {
-        lines.push(`    --${k}: ${input.tokens[k]};`);
+        lines.push(`    --${k}: ${tokens[k]};`);
     }
     lines.push("}");
     return lines.join("\n") + "\n";

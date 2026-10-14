@@ -7,12 +7,15 @@ export type IssueCode =
     | "reference-cycle"
     | "banned-url"
     | "invalid-value"
-    | "unknown-reference";
+    | "unknown-reference"
+    | "unsupported-version";
 
 export interface ValidationIssue {
     code: IssueCode;
     severity: IssueSeverity;
     token?: string;
+    /** Set when the issue belongs to a mode override rather than the base mode. */
+    mode?: string;
     message: string;
     suggestion?: string;
 }
