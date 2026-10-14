@@ -42,6 +42,8 @@ import ModerationConfirmDialog from "../members/ModerationConfirmDialog.vue";
 import PowerLevelDialog from "../members/PowerLevelDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import PluginsTab from "../settings/PluginsTab.vue";
+import AppearanceTab from "../settings/AppearanceTab.vue";
+import { tryUseTheme } from "../theme/controls.ts";
 import { useRoomPower } from "../members/power.ts";
 
 const props = defineProps<{
@@ -146,6 +148,19 @@ plugins.addSettingsTab({
     title: "Plugins",
     component: PluginsTab,
 });
+
+// Appearance is the shell's theming surface, but storage and the DOM belong to
+// the app — it provides a `ThemeControls` implementation above the shell.
+// Without one there is nothing to manage, so the tab is simply absent (a bare
+// UI host gets no half-wired theme editor).
+if (tryUseTheme()) {
+    plugins.addSettingsTab({
+        id: "cc.jackg.tumult.appearance",
+        title: "Appearance",
+        component: AppearanceTab,
+        priority: 10,
+    });
+}
 
 provide(MediaKey, media.resolve);
 provide(EncryptedMediaKey, media.resolveEncrypted);

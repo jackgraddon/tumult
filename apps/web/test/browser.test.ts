@@ -57,6 +57,13 @@ const COLOUR_TOKENS = [
 /** Mode-independent by design — brand colour and geometry. */
 const STABLE_TOKENS = ["--accent", "--layout-guild-rail-width", "--layout-roomlist-width"];
 
+/** The theme documents the Appearance-tab tests install and assert on. */
+const THEME_NAME = "browser-theme";
+const THEME_ACCENT = "#12ab34";
+const MODES_NAME = "browser-modes";
+const LIGHT_ACCENT = "#abcdef";
+const DRAFT_NAME = "browser-draft";
+
 async function readState(page: Page) {
     return page.evaluate(
         ({ colour, stable }: { colour: string[]; stable: string[] }) => {
@@ -166,9 +173,12 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(biggest, "the build produced no JS chunks");
         // The SDK is ~890 kB raw. Anything that links it lands far past this,
         // which is how a stray all-type import from matrix-js-sdk gets caught
-        // even though it leaves no runtime trace.
+        // even though it leaves no runtime trace. The shell chunk legitimately
+        // carries the token registry + theme editor (~30 kB) since the theming
+        // surface lives in the settings dialog; the entry chunk is the one that
+        // has to stay registry-free (`@tumult/theme/runtime` at boot).
         assert.ok(
-            biggest.bytes < 300_000,
+            biggest.bytes < 400_000,
             `largest chunk ${biggest.name} is ${biggest.bytes} bytes — matrix-js-sdk leaked into the fake build`,
         );
     });
@@ -270,11 +280,14 @@ describe("browser smoke test (fake client)", () => {
         const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
         assert.deepEqual(
             tabNames.map((name) => name.trim()),
-            ["Plugins", "Plugin demo"],
-            "the tab strip is not the shell's tab plus the plugin's",
+            ["Appearance", "Plugins", "Plugin demo"],
+            "the tab strip is not the shell's tabs plus the plugin's",
         );
 
-        // The built-in tab lists what PluginRegistry actually installed.
+        // The built-in tab lists what PluginRegistry actually installed. It is
+        // not the first tab any more (Appearance sorts ahead of it), so it has
+        // to be selected explicitly.
+        await page.getByRole("tab", { name: "Plugins" }).click();
         assert.match(
             (await dialog.textContent()) ?? "",
             /cc\.jackg\.tumult\.shrug/,
@@ -339,6 +352,195 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForTimeout(200);
         const restored = await readState(page);
         assert.deepEqual(restored.tokens, dark.tokens, "dropping data-mode did not restore dark");
+    });
+
+    // --- Appearance tab (the theme loader + UX) ------------------------------
+
+    /** Open Settings and switch to the Appearance tab. */
+    async function openAppearance(): Promise<void> {
+        await page.locator(".tumult-account").click();
+        await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.getByRole("tab", { name: "Appearance" }).click();
+        await page.locator("#tumult-theme-active").waitFor({ timeout: 5_000 });
+    }
+
+    async function closeSettings(): Promise<void> {
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+    }
+
+    /** Paste a document into the Install box and submit it. */
+    async function installTheme(document: unknown): Promise<void> {
+        await page.locator("#tumult-theme-install").fill(JSON.stringify(document));
+        await page.locator('[data-testid="theme-install"]').click();
+        await page.waitForTimeout(150);
+    }
+
+    /** What the current document says about advanced CSS and its slots. */
+    function readAdvanced() {
+        return page.evaluate(() => {
+            const rail = document.querySelector(".tumult-rail");
+            return {
+                marker: rail ? getComputedStyle(rail).getPropertyValue("--tumult-advanced-marker").trim() : "",
+                slots: document.querySelectorAll('style[data-tumult-theme="advanced"]').length,
+                allSlots: document.querySelectorAll("style[data-tumult-theme]").length,
+            };
+        });
+    }
+
+    it("installs a theme from the Appearance tab and applies it live", async () => {
+        await openAppearance();
+        await installTheme({ version: 1, name: THEME_NAME, tokens: { accent: THEME_ACCENT } });
+
+        const installed = await readState(page);
+        assert.equal(installed.theme, THEME_NAME, "data-theme did not follow the install");
+        assert.equal(installed.tokens["--accent"], THEME_ACCENT, "the installed token did not take effect");
+        // A sparse theme is a diff, not a blank canvas: base.css carries every
+        // structural default, so tokens the theme omits still resolve.
+        assert.ok(installed.tokens["--surface-base"], "--surface-base lost its fallback");
+
+        assert.equal(
+            await page.locator(`.tumult-appearance-row[data-theme-name="${THEME_NAME}"]`).count(),
+            1,
+            "the installed theme is not listed",
+        );
+        assert.equal(await page.locator("#tumult-theme-install").inputValue(), "", "the install box was not consumed");
+
+        // The editor previews a draft without storing it, and abandoning the
+        // draft restores the stored theme — nothing half-applied survives.
+        await page.locator(`[data-theme-edit="${THEME_NAME}"]`).click();
+        await page.locator("#tumult-theme-name").waitFor({ timeout: 5_000 });
+        await page.locator('input[data-token="accent"]').fill("#ff8800");
+        await page.waitForTimeout(150);
+        assert.equal((await readState(page)).tokens["--accent"], "#ff8800", "the draft did not preview live");
+
+        await page.locator("#tumult-theme-name").fill(DRAFT_NAME);
+        await page.waitForTimeout(150);
+        assert.equal((await readState(page)).theme, DRAFT_NAME, "the draft's name did not preview");
+
+        await page.locator(".tumult-dialog-actions button", { hasText: "Cancel" }).click();
+        await page.waitForTimeout(150);
+        const abandoned = await readState(page);
+        assert.equal(abandoned.theme, THEME_NAME, "cancelling did not restore the stored theme");
+        assert.equal(abandoned.tokens["--accent"], THEME_ACCENT, "the abandoned draft left its tokens behind");
+    });
+
+    it("switches mode on a theme that declares one", async () => {
+        await installTheme({
+            version: 1,
+            name: MODES_NAME,
+            tokens: { accent: THEME_ACCENT },
+            modes: { light: { accent: LIGHT_ACCENT } },
+        });
+
+        const options = await page.locator("#tumult-theme-mode option").allTextContents();
+        assert.deepEqual(
+            options.map((option) => option.trim()),
+            ["dark", "light"],
+            "the mode menu should offer exactly what the theme implements",
+        );
+
+        await page.locator("#tumult-theme-mode").selectOption("light");
+        await page.waitForTimeout(150);
+        const light = await readState(page);
+        assert.equal(light.mode, "light");
+        assert.equal(light.tokens["--accent"], LIGHT_ACCENT, "the light override did not apply");
+
+        // Base mode means no attribute at all — it is the theme's `tokens` map.
+        await page.locator("#tumult-theme-mode").selectOption("dark");
+        await page.waitForTimeout(150);
+        const dark = await readState(page);
+        assert.equal(dark.mode, null);
+        assert.equal(dark.tokens["--accent"], THEME_ACCENT);
+
+        // Leave it on light: the reload test asserts the mode persisted too.
+        await page.locator("#tumult-theme-mode").selectOption("light");
+        await page.waitForTimeout(150);
+    });
+
+    it("restores the stored theme at boot, before the shell renders", async () => {
+        await closeSettings();
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+
+        // index.html hardcodes `data-theme="default"`, so a non-default value
+        // here can only come from main.ts's boot path — the theme slot is a
+        // <style> it appended, and the registry-free boot does not need the UI.
+        const early = await page.evaluate(() => ({
+            theme: document.documentElement.dataset.theme ?? null,
+            mode: document.documentElement.dataset.mode ?? null,
+            slot: document.querySelector('style[data-tumult-theme="active"]')?.textContent ?? "",
+        }));
+        assert.equal(early.theme, MODES_NAME, "the boot path did not apply the stored theme");
+        assert.equal(early.mode, "light", "the boot path did not apply the stored mode");
+        assert.match(early.slot, /data-theme="browser-modes"/, "the cached CSS was not applied at boot");
+
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.waitForTimeout(400);
+        const settled = await readState(page);
+        assert.equal(settled.theme, MODES_NAME);
+        assert.equal(settled.tokens["--accent"], LIGHT_ACCENT);
+    });
+
+    it("applies advanced CSS behind an opt-in, and refuses external references", async () => {
+        await openAppearance();
+        const marker = "applied";
+
+        await page.locator('[data-testid="theme-advanced"]').check();
+        await page.locator("#tumult-theme-advanced-css").fill(`.tumult-rail { --tumult-advanced-marker: ${marker}; }`);
+        await page.locator('[data-testid="theme-advanced-apply"]').click();
+        await page.waitForTimeout(150);
+        const applied = await readAdvanced();
+        assert.equal(applied.marker, marker, "advanced CSS did not apply");
+        assert.equal(applied.slots, 1, "advanced CSS should be exactly one dedicated slot");
+
+        // A remote fetch is refused: it would be a third-party request from CSS
+        // the app cannot audit, so it never reaches the document — and it does
+        // not silently replace the CSS that is already applied.
+        await page.locator("#tumult-theme-advanced-css").fill("@import url(https://evil.invalid/t.css);");
+        await page.locator('[data-testid="theme-advanced-apply"]').click();
+        await page.waitForTimeout(150);
+        assert.ok(await page.locator(".tumult-dialog-error").count() > 0, "the refusal was not explained");
+        assert.equal((await readAdvanced()).marker, marker, "refused CSS replaced the applied CSS");
+
+        // Turning the opt-in off takes it out of the document immediately.
+        await page.locator('[data-testid="theme-advanced"]').uncheck();
+        await page.waitForTimeout(150);
+        assert.equal((await readAdvanced()).marker, "", "advanced CSS survived the opt-in being turned off");
+    });
+
+    it("refuses an invalid theme and stores nothing", async () => {
+        await page.locator("#tumult-theme-install").fill(
+            JSON.stringify({ version: 1, name: "evil", tokens: { accent: "red; } html { display: none" } }),
+        );
+        await page.locator('[data-testid="theme-install"]').click();
+        await page.waitForTimeout(150);
+
+        assert.ok(await page.locator(".tumult-dialog-error").count() > 0, "the refusal was not explained");
+        assert.equal((await readState(page)).theme, MODES_NAME, "an invalid theme was applied anyway");
+        assert.equal(
+            await page.locator('.tumult-appearance-row[data-theme-name="evil"]').count(),
+            0,
+            "an invalid theme was listed",
+        );
+    });
+
+    it("resets to the built-in theme", async () => {
+        await page.locator('[data-testid="theme-reset"]').click();
+        await page.locator('[data-testid="theme-reset-confirm"]').click();
+        await page.waitForTimeout(200);
+
+        const state = await readState(page);
+        assert.equal(state.theme, "default");
+        assert.equal(state.mode, null);
+        assert.equal(await page.locator(".tumult-appearance-row").count(), 0, "themes survived a reset");
+
+        await closeSettings();
+        assert.equal(
+            (await readAdvanced()).allSlots,
+            0,
+            "a theme stylesheet survived the reset",
+        );
     });
 
     it("renders the login view when no session is stored", async () => {

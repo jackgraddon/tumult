@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from "vue";
+import { computed, onMounted, provide, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { TumultShell, type Plugin, type PluginRegistry, type RoomSelection } from "@tumult/ui";
+import { ThemeKey, TumultShell, type Plugin, type PluginRegistry, type RoomSelection } from "@tumult/ui";
 import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
 import { adminBadge, reactLastAction, settingsShowcase, shrugCommand } from "../plugins/showcase.ts";
+import { themeController } from "../theme/controller.ts";
 
 /**
  * The reference plugin: registers the demo-poll timeline renderer through the
@@ -29,6 +30,11 @@ const demoPoll: Plugin = {
 
 const route = useRoute();
 const router = useRouter();
+
+// The theme seam: the app owns storage and the DOM, the UI renders the editor.
+// Provided above the shell, so `TumultShell` registers its Appearance tab only
+// when a controller exists.
+provide(ThemeKey, themeController);
 
 /**
  * The concrete client is a dynamic import on purpose: importing it pulls in

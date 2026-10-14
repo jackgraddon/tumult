@@ -5,7 +5,14 @@ import "@tumult/theme/dist/themes/base.css";
 import "@tumult/theme/dist/themes/default.css";
 import App from "./App.vue";
 import { router } from "./router.ts";
+import { bootTheme } from "./theme/apply.ts";
 import "./styles.css";
+
+// Apply the stored theme before the first paint, so the app never flashes the
+// built-in theme on the way to the user's. This path is registry-free (it reads
+// one localStorage key and appends one <style>), so the ~50 kB token registry
+// stays out of the entry chunk.
+bootTheme();
 
 // The router guard and the shell are deliberately SDK-free, so the client
 // (and its 1 MB matrix-js-sdk chunk) is a dynamic import. When a session is
