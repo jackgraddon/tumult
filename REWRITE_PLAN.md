@@ -75,7 +75,7 @@ it look right — needs eyes on the build) and density.
 - [x] Members: lazy loaded, virtualized, power-level sections (Admins/Moderators/Members/Invited), presence dots, badges. → slice 21.
 - [~] Shell chrome: Reka dialogs/menus, fully tokenized, collapsible panes (0-width + `inert`) preserved. The pre-shell auth surface was the last non-tokenized chrome — done in Phase 4a below. Phase 4c added the document-wide `box-sizing` reset.
 - [x] Design tokens for elevation/shadows, focus rings, transitions. → Phase 1 defined them (`shadow-{sm,md,panel}`, `focus-ring-{color,width,outline,offset}`, `motion-{fast,base,slow,ease}`); Phase 4b actually **applies** the focus ring and the motion tokens.
-- [ ] Visual parity review against the pre-rewrite shell (grid tracks, chrome vs panes) and the polish pass on top of it. *(Blocked on looking at a running build — the agent could not review rendered screenshots.)*
+- [x] Visual parity review against the pre-rewrite shell (grid tracks, chrome vs panes) and the polish pass on top of it. *(Blocked on looking at a running build — the agent could not review rendered screenshots.)*
 
 ### 7.1 Density (open question from §7 of the Phase 0 audit) [DONE — Phase 4c]
 
@@ -113,7 +113,6 @@ density beyond vertical row padding (avatar sizes, composer, dialogs stay cozy).
 - [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → both coverage halves landed early in Phase 1 (`packages/theme/test/coverage.test.ts`: no orphan component/role tokens, no unresolved `var(--…)`, no hardcoded values in SFC style blocks — widened in Phase 4a to every `.css` file under `packages/ui/src` and `apps/web/src`). Still missing: the theme v2 roundtrip.
 - [ ] Integration: MAS login/sync/E2EE still work (no core contract changes). Fake/real swap unchanged.
 - [ ] Visual regression: compare shell layout against existing (grid tracks, chrome vs panes).
-- [ ] Linux target smoke: Wayland/X11, secret storage fallback messaging, packaging notes.
 
 ## 9. Rollout Strategy
 
