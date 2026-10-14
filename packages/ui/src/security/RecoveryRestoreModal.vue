@@ -120,7 +120,6 @@ async function submit(): Promise<void> {
 }
 .tumult-field-input {
     width: 100%;
-    box-sizing: border-box;
     padding: var(--space-2) var(--space-3);
     border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);

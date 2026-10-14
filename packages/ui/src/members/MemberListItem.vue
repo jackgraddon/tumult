@@ -149,7 +149,6 @@ function request(kind: MemberModerationKind): void {
     height: var(--member-dot-size);
     flex-shrink: 0;
     border-radius: var(--radius-full);
-    box-sizing: border-box;
     background: transparent;
 }
 .tumult-member-dot[data-presence="online"] {

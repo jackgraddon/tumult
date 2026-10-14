@@ -27,6 +27,21 @@ body {
 }
 
 /*
+ * Our own minimal reset. There is deliberately no vendored reset sheet: a
+ * third-party one injects its own hardcoded margins, line-heights and font sizes
+ * — exactly the app-level literals the token gate exists to keep out — and we
+ * would be trusting CSS we did not write. The one document default that actually
+ * bites us is `box-sizing`: without it, a `width: 100%` field plus its padding
+ * overflows its container. Every renderer already declares its own `margin: 0`,
+ * so an element-by-element reset has nothing left to do.
+ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+/*
  * Keyboard focus is an affordance, not a decoration: nothing focusable may be
  * invisible to a keyboard user. Components that want a different ring (inset,
  * or the accent on a danger affordance) declare their own `:focus-visible` rule
