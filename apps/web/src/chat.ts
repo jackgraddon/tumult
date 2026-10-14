@@ -1,8 +1,10 @@
 import type { ChatClient, MatrixChatClient } from "@tumult/core";
-import { createChat } from "./chat.real.ts";
+import { createChat } from "@chat-impl";
 
-// Slice 2 ran on "./chat.fake.ts". Slice 3 points at the real client; the fake
-// stays for tests and offline UI work — swap this one import to go back.
+// `@chat-impl` is chat.real.ts, or chat.fake.ts under `--mode fake`
+// (see vite.config.ts) — resolved there as an alias so the unused
+// implementation is never linked. The fake stays for the browser tests and for
+// offline UI work, where a deterministic client beats a live homeserver.
 
 export const chat: ChatClient = createChat();
 

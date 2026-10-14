@@ -14,7 +14,11 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@tumult/ui": ["../../packages/ui/src/index.ts"]
+      "@tumult/ui": ["../../packages/ui/src/index.ts"],
+      // Typecheck against the real client; which one a *build* links is
+      // vite.config.ts's business, and both implementations are typechecked
+      // because both live under src/.
+      "@chat-impl": ["./src/chat.real.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"],
