@@ -196,6 +196,17 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(inRoom.counts.messages > 0, "opening a channel rendered no messages");
     });
 
+    it("renders the demo poll through the app-installed plugin", async () => {
+        // The fake timeline carries a `cc.jackg.tumult.demo.poll` event per room.
+        // Its `.tumult-poll` root only exists when AppView's plugin installed
+        // through PluginRegistry (manifest -> permission -> addRenderer) and the
+        // timeline registry resolved it — the plugin seam end to end in a real
+        // browser, not just the node tests.
+        await page.waitForSelector(".tumult-poll", { timeout: 10_000 });
+        const question = await page.locator(".tumult-poll-question").first().textContent();
+        assert.match(question ?? "", /Lunch\?/, "the demo poll rendered without its question");
+    });
+
     it("takes the guild rail width from its layout token", async () => {
         const state = await readState(page);
         const token = state.tokens["--layout-guild-rail-width"];

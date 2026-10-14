@@ -10,7 +10,8 @@
     "src"
   ],
   "scripts": {
-    "typecheck": "vue-tsc -p tsconfig.json"
+    "typecheck": "vue-tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@tanstack/vue-virtual": "^3.13.39",

@@ -1,0 +1,180 @@
+import { inject, ref, type InjectionKey, type Ref } from "vue";
+
+import type { RendererEntry } from "../timeline/registry.ts";
+import type {
+    Disposable,
+    Permission,
+    Plugin,
+    PluginContext,
+    PluginDeps,
+    PluginManifest,
+} from "./types.ts";
+import { createPluginApi } from "./api.ts";
+
+interface InstalledPlugin {
+    plugin: Plugin;
+    /** Context disposables (and the install-time teardown) — run on uninstall. */
+    disposables: Disposable[];
+    teardown: Disposable | null;
+}
+
+/** Run disposables best-effort: one plugin's cleanup cannot block the rest. */
+function runAll(disposables: readonly Disposable[]): void {
+    for (const dispose of disposables) {
+        try {
+            dispose();
+        } catch (error) {
+            console.error("[tumult] plugin disposal failed", error);
+        }
+    }
+}
+
+/**
+ * Per-shell plugin host — owned via provide/inject (`PluginsKey`), never a
+ * module singleton, so two shells on one page cannot share install state
+ * (same rule as {@link TimelineRegistry}).
+ *
+ * Wraps the shell's `TimelineRegistry`: the built-in renderers go through
+ * `addRenderer` unpermissioned (that call IS the shell), while plugin calls
+ * go through the permission-checked API in `api.ts`.
+ */
+export class PluginRegistry {
+    /**
+     * Bumped on every install/uninstall. The `installed` map is a plain Map,
+     * invisible to Vue — a consumer reading `.value` inside a `computed` (the
+     * same snapshot-plus-version-counter shape as `TimelineRegistry.version`)
+     * gets that dependency, so plugins registered after first paint take effect.
+     */
+    public readonly version: Ref<number> = ref(0);
+
+    private readonly deps: PluginDeps;
+    private readonly installed = new Map<string, InstalledPlugin>();
+
+    public constructor(deps: PluginDeps) {
+        this.deps = deps;
+    }
+
+    /**
+     * Register a timeline renderer as the shell itself (no permission — this
+     * is how the built-ins are wired). Returns a disposer; a shell never needs
+     * it (registrations die with the registry), but plugins' wrappers do.
+     */
+    public addRenderer(type: string, entry: RendererEntry): Disposable {
+        this.deps.timeline.register(type, entry);
+        let disposed = false;
+        return () => {
+            if (disposed) return;
+            disposed = true;
+            this.deps.timeline.unregister(type, entry);
+        };
+    }
+
+    /**
+     * Install one plugin. Throws when the id is already installed or when
+     * `install()` itself throws — in which case everything the plugin had
+     * registered is rolled back, so a failed install leaves no residue.
+     */
+    public install(plugin: Plugin): void {
+        const id = plugin.manifest.id;
+        if (this.installed.has(id)) {
+            throw new Error(`[tumult] plugin "${id}" is already installed`);
+        }
+
+        const disposables: Disposable[] = [];
+        const track = (dispose: Disposable): Disposable => {
+            let done = false;
+            const wrapped: Disposable = () => {
+                if (done) return;
+                done = true;
+                dispose();
+            };
+            disposables.push(wrapped);
+            return wrapped;
+        };
+        const require = (permission: Permission): void => {
+            if (!plugin.manifest.permissions.includes(permission)) {
+                throw new Error(
+                    `[tumult] plugin "${id}" tried to use "${permission}" without declaring it in its manifest`,
+                );
+            }
+        };
+        const api = createPluginApi({
+            require,
+            addRenderer: (type, entry) => this.addRenderer(type, entry),
+            track,
+        });
+        const ctx: PluginContext = {
+            manifest: plugin.manifest,
+            client: this.deps.client,
+            selection: this.deps.selection,
+            actions: this.deps.actions,
+            media: this.deps.media,
+            addRenderer: api.addRenderer,
+        };
+
+        let teardown: Disposable | null = null;
+        try {
+            const result = plugin.install(ctx);
+            teardown = typeof result === "function" ? result : null;
+        } catch (error) {
+            runAll(disposables); // roll back the half-installed plugin
+            throw error;
+        }
+
+        this.installed.set(id, { plugin, disposables, teardown });
+        this.version.value++;
+    }
+
+    /**
+     * Uninstall by id: run the context disposables (unregistering renderers),
+     * then the install-time teardown, then `plugin.uninstall()` — each guarded,
+     * so one throw never leaves the rest un-cleaned. Resolves `false` when the
+     * id was not installed.
+     */
+    public uninstall(id: string): boolean {
+        const entry = this.installed.get(id);
+        if (!entry) return false;
+        this.installed.delete(id);
+        runAll(entry.disposables);
+        if (entry.teardown) {
+            try {
+                entry.teardown();
+            } catch (error) {
+                console.error(`[tumult] plugin "${id}" teardown failed`, error);
+            }
+        }
+        if (entry.plugin.uninstall) {
+            try {
+                entry.plugin.uninstall();
+            } catch (error) {
+                console.error(`[tumult] plugin "${id}" uninstall failed`, error);
+            }
+        }
+        this.version.value++;
+        return true;
+    }
+
+    /** Uninstall everything (shell teardown). */
+    public uninstallAll(): void {
+        for (const id of [...this.installed.keys()]) {
+            this.uninstall(id);
+        }
+    }
+
+    public has(id: string): boolean {
+        return this.installed.has(id);
+    }
+
+    /** Manifests of everything installed, in install order. */
+    public list(): PluginManifest[] {
+        return [...this.installed.values()].map((entry) => entry.plugin.manifest);
+    }
+}
+
+export const PluginsKey: InjectionKey<PluginRegistry> = Symbol("tumult/plugins");
+
+export function usePluginRegistry(): PluginRegistry {
+    const registry = inject(PluginsKey);
+    if (!registry) throw new Error("usePluginRegistry() requires TumultShell above it.");
+    return registry;
+}

@@ -1,11 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { TumultShell, type RoomSelection, type TimelineRegistry } from "@tumult/ui";
+import { TumultShell, type Plugin, type PluginRegistry, type RoomSelection } from "@tumult/ui";
 import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
+
+/**
+ * The reference plugin: registers the demo-poll timeline renderer through the
+ * plugin API (manifest + permission + context) instead of poking the registry
+ * directly. A game renderer follows this exact shape.
+ */
+const demoPoll: Plugin = {
+    manifest: {
+        id: "cc.jackg.tumult.demo-poll",
+        name: "Demo Poll",
+        version: "1.0.0",
+        author: "Tumult",
+        description: "Renders cc.jackg.tumult.demo.poll events as a poll.",
+        permissions: ["timeline-renderers"],
+    },
+    install(ctx) {
+        ctx.addRenderer("cc.jackg.tumult.demo.poll", { component: DemoPoll, priority: 10 });
+    },
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -18,7 +37,7 @@ const router = useRouter();
  * client — which does need the SDK — is this view's job now.
  */
 const chat = shallowRef<ChatClient | null>(null);
-const shell = ref<{ registry: TimelineRegistry; hrefFor: (next: RoomSelection) => string } | null>(null);
+const shell = ref<{ plugins: PluginRegistry; hrefFor: (next: RoomSelection) => string } | null>(null);
 const showMembers = ref(true);
 const showRoomList = ref(true);
 const startError = ref<string | null>(null);
@@ -37,12 +56,9 @@ onMounted(async () => {
     } catch (cause) {
         startError.value = cause instanceof Error ? cause.message : String(cause);
     }
-    // Register the demo poll renderer from the app, proving the extension seam
-    // lives outside packages/ui.
-    shell.value?.registry.register("cc.jackg.tumult.demo.poll", {
-        component: DemoPoll,
-        priority: 10,
-    });
+    // Install the reference plugin from the app, proving the extension seam
+    // lives outside packages/ui and flows through the manifest/permission path.
+    shell.value?.plugins.install(demoPoll);
 });
 
 const selection = computed<RoomSelection>(() => {

@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -b && node ./dist/build/compile.js",
     "typecheck": "tsc -b",
-    "test": "node --test test/"
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "devDependencies": {
     "typescript": "^5.9.3"

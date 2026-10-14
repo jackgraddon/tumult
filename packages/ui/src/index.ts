@@ -5,6 +5,17 @@ export { ActionsKey, useActions } from "./actions.ts";
 export type { ActionsContext, LeaveTarget, MemberModeration, MemberModerationKind } from "./actions.ts";
 export { TimelineRegistry, RegistryKey, useTimelineRegistry } from "./timeline/registry.ts";
 export type { RendererEntry, TimelineRendererProps } from "./timeline/registry.ts";
+export { PluginRegistry, PluginsKey, usePluginRegistry } from "./plugins/registry.ts";
+export type {
+    Disposable,
+    Permission,
+    Plugin,
+    PluginApi,
+    PluginContext,
+    PluginDeps,
+    PluginManifest,
+    PluginMedia,
+} from "./plugins/types.ts";
 export { default as TumultShell } from "./shell/TumultShell.vue";
 export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";
 export { default as GuildRail } from "./rail/GuildRail.vue";

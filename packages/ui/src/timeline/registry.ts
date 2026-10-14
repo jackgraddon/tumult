@@ -39,6 +39,22 @@ export class TimelineRegistry {
         this.version.value++;
     }
 
+    /**
+     * Remove exactly this entry (by identity) — the other half of `register`,
+     * so plugin disposables can take a registration back. A no-op when the
+     * entry is already gone (a disposable run twice must stay harmless).
+     * Bumps `version` like `register`, so resolution re-runs.
+     */
+    public unregister(type: string, entry: RendererEntry): void {
+        const list = this.buckets.get(type);
+        if (!list) return;
+        const next = list.filter((candidate) => candidate !== entry);
+        if (next.length === list.length) return;
+        if (next.length === 0) this.buckets.delete(type);
+        else this.buckets.set(type, next);
+        this.version.value++;
+    }
+
     public resolve(message: MessageView, fallback: Component): Component {
         // Touch `version` so callers that resolve inside a `computed` re-run
         // when a renderer registers after the fact.

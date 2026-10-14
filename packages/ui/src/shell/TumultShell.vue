@@ -2,12 +2,13 @@
 import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
-import type { ChatClient, SpaceTree } from "@tumult/core";
+import type { ChatClient, EncryptedAttachment, SpaceTree } from "@tumult/core";
 
-import { SelectionKey, type RoomSelection } from "../selection.ts";
-import { ActionsKey, type LeaveTarget, type MemberModeration } from "../actions.ts";
+import { SelectionKey, type RoomSelection, type SelectionContext } from "../selection.ts";
+import { ActionsKey, type ActionsContext, type LeaveTarget, type MemberModeration } from "../actions.ts";
 import { MediaKey, EncryptedMediaKey, MediaDownloadKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
+import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
 import MediaMessage from "../timeline/renderers/MediaMessage.vue";
@@ -56,30 +57,72 @@ function hrefFor(next: RoomSelection): string {
     return next.roomId ? `${guild}/${encodeURIComponent(next.roomId)}` : guild;
 }
 
-provide(SelectionKey, {
+const selectionContext: SelectionContext = {
     get current() {
         return props.selection;
     },
     select: (next: RoomSelection) => emit("select", next),
     hrefFor,
-});
+};
+provide(SelectionKey, selectionContext);
 
-// One registry per shell. Default text renderer; apps register their own
-// (e.g. the demo poll) on top via the exposed instance.
+// A leave/moderation request starts in a list row (which can't reach the
+// shell's dialogs) and lands in `roomAction` here. Declared above the plugin
+// registry because the plugin context exposes the actions channel.
+type RoomAction =
+    | { kind: "create-space" }
+    | { kind: "create-channel"; spaceId: string; spaceName: string }
+    | { kind: "join" }
+    | { kind: "create-dm" }
+    | { kind: "invite" }
+    | { kind: "leave"; target: LeaveTarget }
+    | { kind: "moderate"; moderation: MemberModeration }
+    | null;
+
+const roomAction = ref<RoomAction>(null);
+
+const actionsCtx: ActionsContext = {
+    requestLeave(target) {
+        roomAction.value = { kind: "leave", target };
+    },
+    requestModeration(moderation) {
+        roomAction.value = { kind: "moderate", moderation };
+    },
+};
+provide(ActionsKey, actionsCtx);
+
+// One timeline registry + one plugin host per shell. The built-in renderers
+// register through the host (unpermissioned — this call IS the shell); apps
+// install plugins on top via the exposed `plugins` handle, e.g. the demo poll.
 const registry = new TimelineRegistry();
+const media = {
+    resolve: (uri: string, size: number) => props.client.resolveMedia(uri, size),
+    resolveDownload: (uri: string) => props.client.resolveMediaDownload(uri),
+    resolveEncrypted: (file: EncryptedAttachment) => props.client.resolveEncryptedMedia(file),
+};
+const plugins = new PluginRegistry({
+    client: props.client,
+    timeline: registry,
+    selection: selectionContext,
+    actions: actionsCtx,
+    media,
+});
+provide(RegistryKey, registry);
+provide(PluginsKey, plugins);
+
 const mediaTypes = new Set(["m.image", "m.video", "m.audio", "m.file"]);
-registry.register("m.room.message", {
+plugins.addRenderer("m.room.message", {
     component: MediaMessage,
     priority: 10,
     match: (m) => typeof m.content["msgtype"] === "string" && mediaTypes.has(m.content["msgtype"]),
 });
-registry.register("m.room.message", { component: TextMessage, priority: 0 });
-provide(RegistryKey, registry);
-provide(MediaKey, (uri: string, size: number) => props.client.resolveMedia(uri, size));
-provide(EncryptedMediaKey, (file) => props.client.resolveEncryptedMedia(file));
-provide(MediaDownloadKey, (uri: string) => props.client.resolveMediaDownload(uri));
+plugins.addRenderer("m.room.message", { component: TextMessage, priority: 0 });
 
-defineExpose({ registry, hrefFor });
+provide(MediaKey, media.resolve);
+provide(EncryptedMediaKey, media.resolveEncrypted);
+provide(MediaDownloadKey, media.resolveDownload);
+
+defineExpose({ registry, plugins, hrefFor });
 
 const rooms = useSubscribable(props.client.rooms);
 const connection = useSubscribable(props.client.connection);
@@ -163,27 +206,6 @@ const activeRoomId = computed(() => activeRoom.value?.id);
 // members who clear the room's `state_default` see it.
 const activePower = useRoomPower(props.client, () => activeRoomId.value);
 const settingsAllowed = computed(() => activePower.value === null || activePower.value.canEditSettings);
-
-type RoomAction =
-    | { kind: "create-space" }
-    | { kind: "create-channel"; spaceId: string; spaceName: string }
-    | { kind: "join" }
-    | { kind: "create-dm" }
-    | { kind: "invite" }
-    | { kind: "leave"; target: LeaveTarget }
-    | { kind: "moderate"; moderation: MemberModeration }
-    | null;
-
-const roomAction = ref<RoomAction>(null);
-
-provide(ActionsKey, {
-    requestLeave(target) {
-        roomAction.value = { kind: "leave", target };
-    },
-    requestModeration(moderation) {
-        roomAction.value = { kind: "moderate", moderation };
-    },
-});
 
 // Split the moderation payload by dialog: kick/ban/unban confirm, set-power
 // edits a number. Both derive from the same `roomAction` slot.
@@ -332,7 +354,12 @@ watch(
     { immediate: true },
 );
 
-onBeforeUnmount(() => props.client.setRoomSelection(null));
+onBeforeUnmount(() => {
+    // Plugins are per-shell: unmount takes every installed one down with it
+    // (renderers unregistered, teardowns run) so a re-mount starts clean.
+    plugins.uninstallAll();
+    props.client.setRoomSelection(null);
+});
 
 // Sliding sync pages the room window rather than returning every room at once.
 // Show "load more" while the server reports rooms behind the current window;
