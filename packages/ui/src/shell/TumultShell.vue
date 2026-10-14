@@ -589,16 +589,16 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 .tumult-thread-overlay {
     position: absolute;
     inset: 0 0 0 auto;
-    z-index: 5;
-    width: min(360px, 100%);
-    border-left: 1px solid var(--border-default);
-    box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
+    z-index: var(--panel-z);
+    width: min(var(--panel-width), 100%);
+    border-left: var(--border-width) solid var(--panel-border);
+    box-shadow: var(--panel-shadow);
 }
 .tumult-pane-toolbar {
     display: flex;
     gap: var(--space-1);
     padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-roomlist-pane {
     display: flex;
@@ -609,7 +609,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 }
 .tumult-roomlist-header {
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-roomlist-header-row {
     display: flex;

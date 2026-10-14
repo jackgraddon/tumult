@@ -19,13 +19,13 @@ defineProps<{ connection: ConnectionState }>();
 .tumult-banner {
     padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-align: center;
-    color: #111214;
+    color: var(--banner-reconnect-text);
 }
 .tumult-banner[data-kind="error"] {
     background: var(--banner-error-bg);
-    color: #fff;
+    color: var(--banner-error-text);
 }
 .tumult-banner[data-kind="reconnect"] {
     background: var(--banner-reconnect-bg);

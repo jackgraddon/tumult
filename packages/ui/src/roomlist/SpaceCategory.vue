@@ -57,13 +57,13 @@ const open = ref(true);
     align-items: center;
     gap: var(--space-1);
     width: 100%;
-    padding: 4px var(--space-1);
+    padding: var(--space-1) var(--space-1);
     border: none;
     background: transparent;
     color: var(--text-muted);
     font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.04em;
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-wide);
     cursor: pointer;
     min-width: 0;
 }
@@ -71,7 +71,7 @@ const open = ref(true);
     color: var(--text-primary);
 }
 .tumult-category-trigger:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
 .tumult-category-caret {
@@ -102,7 +102,7 @@ const open = ref(true);
     list-style: none;
 }
 .tumult-truncated {
-    padding: 2px var(--space-2);
+    padding: var(--space-0-5) var(--space-2);
     color: var(--text-muted);
     font-size: var(--text-xs);
     font-style: italic;

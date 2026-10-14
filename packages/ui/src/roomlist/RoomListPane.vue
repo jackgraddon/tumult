@@ -69,7 +69,7 @@ const emit = defineEmits<{
     justify-content: space-between;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-roomlist-header h2 {
     flex: 1;
@@ -100,7 +100,7 @@ const emit = defineEmits<{
     font-size: var(--text-sm);
 }
 .tumult-scrollbar {
-    width: 6px;
+    width: var(--scrollbar-width);
 }
 .tumult-scrollthumb {
     border-radius: var(--radius-full);

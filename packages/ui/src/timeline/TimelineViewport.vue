@@ -336,7 +336,7 @@ const profiles = computed(() => {
     width: 100%;
 }
 .tumult-virtual-row[data-flash="on"] {
-    animation: tumult-flash 2.4s ease-out;
+    animation: tumult-flash var(--timeline-flash-duration) var(--motion-ease);
 }
 @keyframes tumult-flash {
     0%,
@@ -352,8 +352,8 @@ const profiles = computed(() => {
     .tumult-virtual-row[data-flash="on"] {
         animation: none;
         background: var(--timeline-mention-bg);
-        outline: 2px solid var(--focus-ring-color);
-        outline-offset: -2px;
+        outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+        outline-offset: calc(var(--focus-ring-offset) * -1);
     }
 }
 .tumult-day {
@@ -363,15 +363,15 @@ const profiles = computed(() => {
     padding: var(--space-2) var(--space-3);
     color: var(--timeline-day-divider);
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-wide);
 }
 .tumult-day::before,
 .tumult-day::after {
     content: "";
     flex: 1;
-    border-top: 1px solid var(--border-default);
+    border-top: var(--border-width) solid var(--border-default);
 }
 .tumult-unread {
     display: flex;
@@ -380,13 +380,13 @@ const profiles = computed(() => {
     padding: var(--space-1) var(--space-3);
     color: var(--timeline-unread-divider);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: var(--weight-bold);
 }
 .tumult-unread::before,
 .tumult-unread::after {
     content: "";
     flex: 1;
-    border-top: 2px solid var(--timeline-unread-divider);
+    border-top: var(--border-width-strong) solid var(--timeline-unread-divider);
 }
 .tumult-history-loading {
     position: sticky;

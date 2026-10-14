@@ -70,22 +70,22 @@ function onOpenChange(next: boolean): void {
 .tumult-dialog-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-bg);
 }
 .tumult-dialog {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(28rem, calc(100vw - 2rem));
+    width: min(var(--dialog-width), calc(100vw - var(--dialog-gutter)));
     padding: var(--space-4);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--dialog-border);
     border-radius: var(--control-radius);
-    background: var(--surface-pane);
+    background: var(--dialog-bg);
     color: var(--text-primary);
 }
 .tumult-dialog:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 .tumult-dialog-title {
     margin: 0 0 var(--space-1);
@@ -111,34 +111,34 @@ function onOpenChange(next: boolean): void {
 }
 .tumult-dialog-label {
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-wide);
     color: var(--text-secondary);
 }
 .tumult-dialog-input,
 .tumult-dialog-textarea {
     width: 100%;
     padding: var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--input-bg);
+    color: var(--input-text);
     font: inherit;
     font-size: var(--text-sm);
 }
 .tumult-dialog-textarea {
-    min-height: 4.5rem;
+    min-height: var(--input-textarea-min-height);
     resize: vertical;
 }
 .tumult-dialog-input:focus-visible,
 .tumult-dialog-textarea:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 .tumult-dialog-input::placeholder,
 .tumult-dialog-textarea::placeholder {
-    color: var(--text-muted);
+    color: var(--input-placeholder);
 }
 .tumult-dialog-group {
     display: block;
@@ -175,35 +175,35 @@ function onOpenChange(next: boolean): void {
 }
 .tumult-dialog-button {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
 }
 .tumult-dialog-button:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: default;
 }
 .tumult-dialog-primary {
     border: none;
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-dialog-primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
 }
 .tumult-dialog-danger {
     border: none;
-    background: var(--danger-hover);
-    color: var(--button-primary-text);
-    font-weight: 600;
+    background: var(--button-danger-bg);
+    color: var(--button-danger-text);
+    font-weight: var(--weight-semibold);
 }
 .tumult-dialog-danger:hover:not(:disabled) {
-    background: var(--danger);
+    background: var(--button-danger-bg-hover);
 }
 .tumult-dialog-error {
     margin: 0;

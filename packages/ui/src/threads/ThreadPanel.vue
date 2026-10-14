@@ -80,7 +80,7 @@ async function onSend(body: string): Promise<void> {
     align-items: flex-start;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-thread-header-text {
     flex: 1;
@@ -99,7 +99,7 @@ async function onSend(body: string): Promise<void> {
     white-space: nowrap;
 }
 .tumult-thread-btn {
-    padding: 2px var(--space-1);
+    padding: var(--space-0-5) var(--space-1);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -114,6 +114,6 @@ async function onSend(body: string): Promise<void> {
     padding: var(--space-1) var(--space-3);
     color: var(--text-muted);
     font-size: var(--text-xs);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 </style>

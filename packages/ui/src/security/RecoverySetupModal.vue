@@ -128,7 +128,7 @@ async function copyKey(): Promise<void> {
 .tumult-recovery-key {
     display: block;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     background: var(--surface-base);
     color: var(--text-primary);
@@ -145,10 +145,10 @@ async function copyKey(): Promise<void> {
 }
 .tumult-dialog-button {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
@@ -157,7 +157,7 @@ async function copyKey(): Promise<void> {
     border: none;
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-dialog-primary:hover {
     background: var(--button-primary-bg-hover);
@@ -168,22 +168,22 @@ async function copyKey(): Promise<void> {
 .tumult-dialog-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-bg);
 }
 .tumult-dialog {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(28rem, calc(100vw - 2rem));
+    width: min(var(--dialog-width), calc(100vw - var(--dialog-gutter)));
     padding: var(--space-4);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--dialog-border);
     border-radius: var(--control-radius);
-    background: var(--surface-pane);
+    background: var(--dialog-bg);
     color: var(--text-primary);
 }
 .tumult-dialog:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 .tumult-dialog-title {
     margin: 0 0 var(--space-1);

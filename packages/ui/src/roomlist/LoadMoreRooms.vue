@@ -21,7 +21,7 @@ const emit = defineEmits<{
     width: calc(100% - 2 * var(--space-2));
     margin: var(--space-1) var(--space-2) var(--space-2);
     padding: var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     background: transparent;
     color: var(--text-secondary);
@@ -33,7 +33,7 @@ const emit = defineEmits<{
     color: var(--text-primary);
 }
 .tumult-load-more:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>

@@ -122,7 +122,7 @@ function request(kind: MemberModerationKind): void {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 4px var(--space-2);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--control-radius);
     font-size: var(--text-sm);
     color: var(--text-secondary);
@@ -131,8 +131,8 @@ function request(kind: MemberModerationKind): void {
     background: var(--roomlist-item-bg-hover);
 }
 .tumult-member-dot {
-    width: 8px;
-    height: 8px;
+    width: var(--member-dot-size);
+    height: var(--member-dot-size);
     flex-shrink: 0;
     border-radius: var(--radius-full);
     box-sizing: border-box;
@@ -145,7 +145,7 @@ function request(kind: MemberModerationKind): void {
     background: var(--text-muted);
 }
 .tumult-member-dot[data-presence="unknown"] {
-    border: 1.5px solid var(--text-muted);
+    border: var(--border-width-medium) solid var(--text-muted);
 }
 .tumult-member-name {
     min-width: 0;
@@ -157,11 +157,11 @@ function request(kind: MemberModerationKind): void {
 .tumult-member-badge {
     flex-shrink: 0;
     padding: 0 var(--space-1);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-full);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--member-badge-radius);
     color: var(--text-muted);
     font-size: var(--text-xs);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-wide);
 }
 </style>

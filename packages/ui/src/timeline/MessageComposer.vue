@@ -132,7 +132,7 @@ function onFileSelected(event: Event): void {
     display: flex;
     flex-direction: column;
     background: var(--composer-bg);
-    border-top: 1px solid var(--border-default);
+    border-top: var(--border-width) solid var(--border-default);
 }
 .tumult-composer-row {
     display: flex;
@@ -145,8 +145,8 @@ function onFileSelected(event: Event): void {
     gap: var(--space-2);
     margin: var(--space-2) var(--space-3) 0;
     padding: var(--space-1) var(--space-2);
-    border-left: 3px solid var(--accent);
-    background: var(--surface-pane, var(--surface-base));
+    border-left: var(--timeline-quote-bar-width) solid var(--accent);
+    background: var(--surface-pane);
 }
 .tumult-composer-reply-text {
     flex: 1;
@@ -157,7 +157,7 @@ function onFileSelected(event: Event): void {
 .tumult-composer-reply-name {
     color: var(--text-secondary);
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-composer-reply-body {
     color: var(--text-muted);
@@ -168,69 +168,69 @@ function onFileSelected(event: Event): void {
 }
 .tumult-composer-reply-cancel {
     flex-shrink: 0;
-    padding: 0 6px;
+    padding: 0 var(--space-1-5);
     border: none;
     background: transparent;
     color: var(--text-muted);
     font-size: var(--text-md);
-    line-height: 1;
+    line-height: var(--leading-none);
     cursor: pointer;
 }
 .tumult-composer-reply-cancel:hover {
     color: var(--text-primary);
 }
 .tumult-composer-reply-cancel:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
 .tumult-composer-label {
     position: absolute;
-    width: 1px;
-    height: 1px;
+    width: var(--hairline);
+    height: var(--hairline);
     overflow: hidden;
     clip: rect(0 0 0 0);
 }
 .tumult-composer-file {
     position: absolute;
-    width: 1px;
-    height: 1px;
+    width: var(--hairline);
+    height: var(--hairline);
     overflow: hidden;
     clip: rect(0 0 0 0);
 }
 .tumult-composer-attach {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+    width: var(--control-md);
+    height: var(--control-md);
     align-self: center;
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font-size: var(--text-md);
-    line-height: 1;
+    line-height: var(--leading-none);
     cursor: pointer;
 }
 .tumult-composer-attach:hover:not(:disabled) {
-    background: var(--surface-hover, var(--surface-base));
+    background: var(--button-secondary-bg-hover);
 }
 .tumult-composer-attach:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
 }
 .tumult-composer-input {
     flex: 1;
     min-width: 0;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--composer-input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--composer-input-bg);
+    color: var(--input-text);
     font: inherit;
     font-size: var(--text-sm);
 }
 .tumult-composer-input:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: -1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--hairline) * -1);
 }
 .tumult-composer-send {
     padding: var(--space-2) var(--space-4);
@@ -240,14 +240,14 @@ function onFileSelected(event: Event): void {
     color: var(--button-primary-text);
     font: inherit;
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     cursor: pointer;
 }
 .tumult-composer-send:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
 }
 .tumult-composer-send:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
 }
 </style>

@@ -87,7 +87,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
 <style scoped>
 .tumult-account {
     display: flex;
-    padding: 4px;
+    padding: var(--space-1);
     border: none;
     border-radius: var(--control-radius);
     background: transparent;
@@ -97,21 +97,21 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     background: var(--rail-item-bg-hover);
 }
 .tumult-account:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 </style>
 
 <style>
 .tumult-menu {
-    min-width: 200px;
-    padding: 4px;
-    border: 1px solid var(--border-default);
+    min-width: var(--menu-min-width);
+    padding: var(--space-1);
+    border: var(--border-width) solid var(--menu-border);
     border-radius: var(--control-radius);
-    background: var(--surface-pane);
+    background: var(--menu-bg);
     color: var(--text-primary);
 }
 .tumult-menu-id {
-    padding: 6px 8px;
+    padding: var(--space-1-5) var(--space-2);
     color: var(--text-muted);
     font-size: var(--text-xs);
     overflow: hidden;
@@ -121,15 +121,15 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     display: block;
     color: var(--text-primary);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-menu-devices {
-    max-height: 160px;
+    max-height: var(--menu-devices-max-height);
     overflow-y: auto;
-    border-top: 1px solid var(--border-default);
-    border-bottom: 1px solid var(--border-default);
-    margin: 4px 0;
-    padding: 4px 0;
+    border-top: var(--border-width) solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
+    margin: var(--space-1) 0;
+    padding: var(--space-1) 0;
 }
 .tumult-menu-devices ul {
     margin: 0;
@@ -140,7 +140,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     font-size: var(--text-xs);
     color: var(--text-secondary);
 }
@@ -151,7 +151,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     white-space: nowrap;
 }
 .tumult-menu-item {
-    padding: 6px 8px;
+    padding: var(--space-1-5) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
     cursor: pointer;

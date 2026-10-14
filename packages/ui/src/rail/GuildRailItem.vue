@@ -106,7 +106,7 @@ function requestLeave(): void {
     position: relative;
     display: flex;
     justify-content: center;
-    padding: 4px 0;
+    padding: var(--space-1) 0;
     border-radius: var(--control-radius);
 }
 .tumult-guild-item:hover {
@@ -115,10 +115,10 @@ function requestLeave(): void {
 .tumult-guild-pill {
     position: absolute;
     left: 0;
-    top: 8px;
-    bottom: 8px;
-    width: 4px;
-    border-radius: 0 4px 4px 0;
+    top: var(--space-2);
+    bottom: var(--space-2);
+    width: var(--rail-pill-width);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     background: transparent;
 }
 .tumult-guild-pill[data-active="true"] {
@@ -126,14 +126,14 @@ function requestLeave(): void {
 }
 .tumult-guild-badge {
     position: absolute;
-    right: 6px;
-    bottom: 2px;
+    right: var(--space-1-5);
+    bottom: var(--space-0-5);
 }
 </style>
 
 <style>
 .tumult-tooltip {
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--control-radius);
     background: var(--surface-active);
     color: var(--text-primary);

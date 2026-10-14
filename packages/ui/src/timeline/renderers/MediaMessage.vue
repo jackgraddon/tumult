@@ -151,18 +151,18 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
     margin: 0;
 }
 .tumult-media-message-image {
-    max-width: 320px;
-    max-height: 240px;
+    max-width: var(--media-image-max-width);
+    max-height: var(--media-image-max-height);
     border-radius: var(--radius-md);
     object-fit: contain;
 }
 .tumult-media-message-video {
-    max-width: 360px;
-    max-height: 280px;
+    max-width: var(--media-video-max-width);
+    max-height: var(--media-video-max-height);
     border-radius: var(--radius-md);
 }
 .tumult-media-message-audio {
-    max-width: 320px;
+    max-width: var(--media-audio-max-width);
 }
 .tumult-media-message-pending,
 .tumult-media-message-body {
@@ -186,7 +186,7 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
 }
 .tumult-media-message-retry {
     padding: 0 var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     background: var(--surface-hover);
     color: var(--text-secondary);

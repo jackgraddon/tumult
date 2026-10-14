@@ -34,14 +34,14 @@ function optionsOf(message: MessageView): string[] {
 
 <style scoped>
 .tumult-poll {
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     padding: var(--space-2) var(--space-3);
     background: var(--surface-pane);
 }
 .tumult-poll-question {
     margin: 0 0 var(--space-1);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-poll-options {
     display: flex;
@@ -55,7 +55,7 @@ function optionsOf(message: MessageView): string[] {
     width: 100%;
     text-align: left;
     padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--radius-sm);
     background: var(--surface-base);
     color: var(--text-primary);

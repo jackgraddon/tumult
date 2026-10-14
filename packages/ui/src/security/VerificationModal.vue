@@ -236,12 +236,12 @@ function formatDecimal(dec: [number, number, number]): string {
 
 <style scoped>
 .tumult-verification-modal {
-    --width: min(28rem, calc(100vw - 2rem));
+    --width: min(var(--dialog-width), calc(100vw - var(--dialog-gutter)));
 }
 .tumult-dialog-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-bg);
 }
 .tumult-dialog {
     position: fixed;
@@ -250,13 +250,13 @@ function formatDecimal(dec: [number, number, number]): string {
     transform: translate(-50%, -50%);
     width: var(--width);
     padding: var(--space-4);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--dialog-border);
     border-radius: var(--control-radius);
-    background: var(--surface-pane);
+    background: var(--dialog-bg);
     color: var(--text-primary);
 }
 .tumult-dialog:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 .tumult-dialog-title {
     margin: 0 0 var(--space-1);
@@ -268,22 +268,22 @@ function formatDecimal(dec: [number, number, number]): string {
     font-size: var(--text-sm);
 }
 .tumult-sas-emoji {
-    font-size: 1.5rem;
-    letter-spacing: 0.5em;
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-emoji-lg);
     text-align: center;
     margin: var(--space-3) 0;
     user-select: none;
 }
 .tumult-sas-decimal {
     font-family: var(--font-mono);
-    font-size: 1.25rem;
-    letter-spacing: 0.25em;
+    font-size: var(--text-lg);
+    letter-spacing: var(--tracking-emoji);
     text-align: center;
     margin: var(--space-3) 0;
 }
 .tumult-dialog-status {
     color: var(--success);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-align: center;
     margin: var(--space-3) 0;
 }
@@ -300,28 +300,28 @@ function formatDecimal(dec: [number, number, number]): string {
 }
 .tumult-dialog-button {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
 }
 .tumult-dialog-button:hover:not(:disabled) {
-    background: var(--roomlist-item-bg-hover);
+    background: var(--button-secondary-bg-hover);
 }
 .tumult-dialog-primary {
     border: none;
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-dialog-primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
 }
 .tumult-dialog-button:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
 }
 </style>

@@ -270,15 +270,15 @@ function submit(): void {
 .tumult-dialog-select {
     width: 100%;
     padding: var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--input-bg);
+    color: var(--input-text);
     font: inherit;
     font-size: var(--text-sm);
 }
 .tumult-dialog-select:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>

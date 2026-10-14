@@ -15,8 +15,8 @@ defineProps<{
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: var(--control-md);
+    height: var(--control-md);
     border: none;
     border-radius: var(--control-radius);
     background: transparent;
@@ -28,7 +28,7 @@ defineProps<{
     color: var(--text-primary);
 }
 .tumult-icon-button:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>

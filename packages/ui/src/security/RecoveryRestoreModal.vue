@@ -113,8 +113,8 @@ async function submit(): Promise<void> {
 <style scoped>
 .tumult-field-label {
     position: absolute;
-    width: 1px;
-    height: 1px;
+    width: var(--hairline);
+    height: var(--hairline);
     overflow: hidden;
     clip: rect(0 0 0 0);
 }
@@ -122,16 +122,16 @@ async function submit(): Promise<void> {
     width: 100%;
     box-sizing: border-box;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--input-bg);
+    color: var(--input-text);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
 }
 .tumult-field-input:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: -1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--hairline) * -1);
 }
 .tumult-dialog-status {
     color: var(--text-muted);
@@ -149,10 +149,10 @@ async function submit(): Promise<void> {
 }
 .tumult-dialog-button {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
@@ -161,13 +161,13 @@ async function submit(): Promise<void> {
     border: none;
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-dialog-primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
 }
 .tumult-dialog-primary:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
 }
 </style>

@@ -39,13 +39,13 @@ const selection = useSelection();
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
+    width: var(--rail-item-size);
+    height: var(--rail-item-size);
     margin: 0 auto;
     border-radius: var(--control-radius);
     background: var(--surface-pane);
     color: var(--text-primary);
-    font-size: 20px;
+    font-size: var(--icon-md);
     text-decoration: none;
 }
 .tumult-dms-item[aria-current="page"] {
@@ -56,7 +56,7 @@ const selection = useSelection();
 }
 .tumult-dms-badge {
     position: absolute;
-    right: 2px;
+    right: var(--space-0-5);
     bottom: 0;
 }
 </style>

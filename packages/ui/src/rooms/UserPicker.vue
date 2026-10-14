@@ -136,9 +136,9 @@ function clear(): void {
 }
 .tumult-picker-clear {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    border: 1px solid var(--border-default);
+    width: var(--control-md);
+    height: var(--control-md);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     background: var(--surface-base);
     color: var(--text-secondary);
@@ -147,8 +147,8 @@ function clear(): void {
 .tumult-picker-results {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 12rem;
+    gap: var(--space-0-5);
+    max-height: var(--picker-results-max-height);
     margin: 0;
     padding: 0;
     overflow-y: auto;

@@ -197,11 +197,11 @@ function measure(el: unknown): void {
     gap: var(--space-2);
     margin: 0;
     padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-wide);
 }
 .tumult-members-state {
     margin: 0;
@@ -214,17 +214,17 @@ function measure(el: unknown): void {
 }
 .tumult-members-retry {
     margin-left: var(--space-1);
-    padding: 2px var(--space-2);
-    border: 1px solid var(--border-default);
+    padding: var(--space-0-5) var(--space-2);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font: inherit;
     font-size: var(--text-xs);
     cursor: pointer;
 }
 .tumult-members-retry:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 .tumult-members-scroller {
     flex: 1;
@@ -233,8 +233,8 @@ function measure(el: unknown): void {
     padding: var(--space-2);
 }
 .tumult-members-scroller:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: -2px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--focus-ring-offset) * -1);
 }
 .tumult-members-spacer {
     position: relative;
@@ -255,11 +255,11 @@ function measure(el: unknown): void {
     padding: var(--space-2) var(--space-2) var(--space-1);
     color: var(--text-muted);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-wide);
 }
 .tumult-members-count {
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 </style>

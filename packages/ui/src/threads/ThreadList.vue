@@ -64,7 +64,7 @@ function when(ts: number): string {
     align-items: center;
     justify-content: space-between;
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-thread-list-header h2 {
     margin: 0;
@@ -90,7 +90,7 @@ ul {
 .tumult-thread-item {
     position: relative;
     display: grid;
-    gap: 2px;
+    gap: var(--space-0-5);
     width: 100%;
     padding: var(--space-2) var(--space-3);
     border: none;
@@ -117,9 +117,9 @@ ul {
     position: absolute;
     top: var(--space-2);
     right: var(--space-2);
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    width: var(--presence-dot-size);
+    height: var(--presence-dot-size);
+    border-radius: var(--radius-full);
     background: var(--danger);
 }
 </style>

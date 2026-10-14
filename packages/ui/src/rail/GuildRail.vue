@@ -124,21 +124,21 @@ const emit = defineEmits<{
 .tumult-rail-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-0-5);
     margin: 0;
     padding: 0 var(--space-2);
     list-style: none;
 }
 .tumult-rail-sep {
-    height: 1px;
+    height: var(--hairline);
     margin: var(--space-2) var(--space-3);
     background: var(--border-default);
 }
 .tumult-rail-heading {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    line-height: 1;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wider);
+    line-height: var(--leading-none);
     margin: var(--space-3) var(--space-3) var(--space-1);
     padding: 0 var(--space-2);
     text-align: left;
@@ -147,33 +147,33 @@ const emit = defineEmits<{
 }
 .tumult-rail-fav-item {
     display: inline-flex;
-    padding-top: 2px;
+    padding-top: var(--space-0-5);
     align-items: center;
     justify-content: center;
-    min-width: 30px;
-    margin: 2px 0;
+    min-width: var(--rail-favourite-min-width);
+    margin: var(--space-0-5) 0;
 }
 .tumult-rail-fav-item:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 2px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 .tumult-rail-add {
     display: flex;
     justify-content: center;
-    padding: 4px 0;
+    padding: var(--space-1) 0;
 }
 .tumult-rail-add-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border: 1px solid var(--border-default);
-    border-radius: 50%;
+    width: var(--control-lg);
+    height: var(--control-lg);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-full);
     background: var(--surface-base);
     color: var(--text-secondary);
-    font-size: 22px;
-    line-height: 1;
+    font-size: var(--icon-lg);
+    line-height: var(--leading-none);
     cursor: pointer;
 }
 .tumult-rail-add-button:hover {
@@ -182,11 +182,11 @@ const emit = defineEmits<{
     color: var(--button-primary-text);
 }
 .tumult-rail-add-button:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 2px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 .tumult-scrollbar {
-    width: 6px;
+    width: var(--scrollbar-width);
     background: transparent;
 }
 .tumult-scrollthumb {

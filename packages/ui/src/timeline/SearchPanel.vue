@@ -161,21 +161,21 @@ function hitTime(ts: number): string {
 .tumult-search-panel {
     position: absolute;
     inset: 0 0 0 auto;
-    z-index: 5;
+    z-index: var(--panel-z);
     display: flex;
     flex-direction: column;
     min-width: 0;
-    width: min(360px, 100%);
-    background: var(--surface-pane);
-    border-left: 1px solid var(--border-default);
-    box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
+    width: min(var(--panel-width), 100%);
+    background: var(--panel-bg);
+    border-left: var(--border-width) solid var(--panel-border);
+    box-shadow: var(--panel-shadow);
 }
 .tumult-search-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
+    border-bottom: var(--border-width) solid var(--border-default);
 }
 .tumult-search-header h2 {
     margin: 0;
@@ -187,16 +187,16 @@ function hitTime(ts: number): string {
 .tumult-search-input {
     width: 100%;
     padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--input-bg);
+    color: var(--input-text);
     font: inherit;
     font-size: var(--text-sm);
 }
 .tumult-search-input:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 .tumult-search-error {
     margin: 0;
@@ -221,7 +221,7 @@ function hitTime(ts: number): string {
 .tumult-search-hit {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-0-5);
     width: 100%;
     padding: var(--space-2) var(--space-3);
     border: none;
@@ -235,12 +235,12 @@ function hitTime(ts: number): string {
     background: var(--roomlist-item-bg-hover);
 }
 .tumult-search-hit:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: -2px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--focus-ring-offset) * -1);
 }
 .tumult-search-hit:disabled {
     cursor: wait;
-    opacity: 0.7;
+    opacity: var(--state-muted-opacity);
 }
 .tumult-search-hit-meta {
     display: flex;
@@ -251,7 +251,7 @@ function hitTime(ts: number): string {
 }
 .tumult-search-hit-sender {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-search-hit-body {
     overflow: hidden;
@@ -263,7 +263,7 @@ function hitTime(ts: number): string {
 .tumult-search-more {
     margin: var(--space-2) var(--space-3);
     padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-default);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
     background: transparent;
     color: var(--text-secondary);
@@ -275,7 +275,7 @@ function hitTime(ts: number): string {
     background: var(--roomlist-item-bg-hover);
 }
 .tumult-search-more:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>

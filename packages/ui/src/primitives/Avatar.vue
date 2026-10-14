@@ -66,29 +66,29 @@ function initials(label: string): string {
     flex-shrink: 0;
     border-radius: var(--radius-full);
     background: var(--avatar-bg);
-    color: var(--button-primary-text);
+    color: var(--avatar-text);
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     overflow: hidden;
     user-select: none;
 }
 .tumult-avatar[data-size="xs"] {
-    width: 16px;
-    height: 16px;
-    font-size: 8px;
+    width: var(--avatar-xs);
+    height: var(--avatar-xs);
+    font-size: var(--avatar-initials-size);
     border-radius: var(--radius-sm);
 }
 .tumult-avatar[data-size="sm"] {
-    width: 24px;
-    height: 24px;
+    width: var(--avatar-sm);
+    height: var(--avatar-sm);
 }
 .tumult-avatar[data-size="md"] {
-    width: 32px;
-    height: 32px;
+    width: var(--avatar-md);
+    height: var(--avatar-md);
 }
 .tumult-avatar[data-size="lg"] {
-    width: 48px;
-    height: 48px;
+    width: var(--avatar-lg);
+    height: var(--avatar-lg);
     font-size: var(--text-sm);
     border-radius: var(--control-radius);
 }

@@ -48,7 +48,7 @@ const DMS_SELECTION = { view: "dms" as const };
     list-style: none;
 }
 .tumult-scrollbar {
-    width: 6px;
+    width: var(--scrollbar-width);
 }
 .tumult-scrollthumb {
     border-radius: var(--radius-full);

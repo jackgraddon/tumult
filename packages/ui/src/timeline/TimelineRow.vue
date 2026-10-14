@@ -276,8 +276,8 @@ function cancelEdit(): void {
 <style scoped>
 .tumult-row {
     display: flex;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-3);
+    gap: var(--timeline-row-gap);
+    padding: var(--timeline-row-padding-y) var(--timeline-row-padding-x);
 }
 .tumult-row[data-grouped="true"] {
     padding-top: 0;
@@ -287,12 +287,12 @@ function cancelEdit(): void {
     background: var(--roomlist-item-bg-hover);
 }
 .tumult-row-avatar {
-    margin-top: 2px;
+    margin-top: var(--space-0-5);
 }
 .tumult-row-gutter {
     flex-shrink: 0;
-    width: 24px;
-    margin-top: 2px;
+    width: var(--timeline-gutter-width);
+    margin-top: var(--space-0-5);
 }
 .tumult-row-body {
     min-width: 0;
@@ -304,7 +304,7 @@ function cancelEdit(): void {
     gap: var(--space-2);
 }
 .tumult-row-sender {
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     font-size: var(--text-sm);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -332,15 +332,15 @@ function cancelEdit(): void {
     color: var(--danger);
 }
 .tumult-row-flag-retry:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm, 3px);
+    outline: var(--focus-ring-outline) solid var(--accent);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: var(--radius-sm);
 }
 .tumult-row-edit,
 .tumult-row-delete {
     display: none;
     align-items: center;
-    padding: 0 2px;
+    padding: 0 var(--space-0-5);
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -355,32 +355,32 @@ function cancelEdit(): void {
 }
 .tumult-row-edit:focus-visible,
 .tumult-row-delete:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
 .tumult-row-replies {
     display: block;
-    margin-top: 2px;
+    margin-top: var(--space-0-5);
     padding: 0;
     border: none;
     background: transparent;
     color: var(--accent);
     font: inherit;
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     cursor: pointer;
 }
 .tumult-row-replies:hover {
     text-decoration: underline;
 }
 .tumult-row-replies:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 2px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 .tumult-row-thread {
     display: none;
     align-items: center;
-    padding: 0 2px;
+    padding: 0 var(--space-0-5);
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -392,13 +392,13 @@ function cancelEdit(): void {
     display: inline-flex;
 }
 .tumult-row-thread:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
 .tumult-row-reply {
     display: none;
     align-items: center;
-    padding: 0 2px;
+    padding: 0 var(--space-0-5);
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -410,20 +410,20 @@ function cancelEdit(): void {
     display: inline-flex;
 }
 .tumult-row-reply:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
 }
 .tumult-row-quote {
     margin: 0 0 var(--space-1);
-    padding: 2px var(--space-2);
-    border-left: 3px solid var(--border-default);
+    padding: var(--space-0-5) var(--space-2);
+    border-left: var(--timeline-quote-bar-width) solid var(--border-default);
     color: var(--text-secondary);
     font-size: var(--text-xs);
     min-width: 0;
 }
 .tumult-row-quote-sender {
     display: block;
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -445,25 +445,25 @@ function cancelEdit(): void {
 .tumult-edit-input {
     flex: 1;
     min-width: 0;
-    padding: 4px var(--space-2);
-    border: 1px solid var(--border-default);
+    padding: var(--space-1) var(--space-2);
+    border: var(--border-width) solid var(--input-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--input-bg);
+    color: var(--input-text);
     font: inherit;
     font-size: var(--text-sm);
 }
 .tumult-edit-input:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: -1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--hairline) * -1);
 }
 .tumult-edit-save,
 .tumult-edit-cancel {
-    padding: 4px var(--space-2);
-    border: 1px solid var(--border-default);
+    padding: var(--space-1) var(--space-2);
+    border: var(--border-width) solid var(--button-secondary-border);
     border-radius: var(--control-radius);
-    background: var(--surface-base);
-    color: var(--text-primary);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
     font-size: var(--text-xs);
     cursor: pointer;
 }
@@ -471,10 +471,10 @@ function cancelEdit(): void {
     border: none;
     background: var(--button-primary-bg);
     color: var(--button-primary-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-edit-save:disabled {
-    opacity: 0.5;
+    opacity: var(--state-disabled-opacity);
     cursor: not-allowed;
 }
 .tumult-reactions {
@@ -486,9 +486,9 @@ function cancelEdit(): void {
 .tumult-reaction-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 1px 6px;
-    border: 1px solid var(--border-default);
+    gap: var(--space-1);
+    padding: var(--space-px) var(--space-1-5);
+    border: var(--border-width) solid var(--border-default);
     border-radius: var(--radius-full);
     background: var(--surface-pane);
     color: var(--text-primary);
@@ -505,24 +505,24 @@ function cancelEdit(): void {
 .tumult-reaction-chip:focus-visible,
 .tumult-reaction-add:focus-visible,
 .tumult-reaction-pick:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 .tumult-reaction-count {
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-reaction-add {
     display: none;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border: 1px dashed var(--border-default);
+    width: var(--control-sm);
+    height: var(--control-sm);
+    border: var(--border-width) dashed var(--border-default);
     border-radius: var(--radius-full);
     background: transparent;
     color: var(--text-muted);
     font-size: var(--text-sm);
-    line-height: 1;
+    line-height: var(--leading-none);
     cursor: pointer;
 }
 .tumult-row:hover .tumult-reaction-add,
@@ -530,11 +530,11 @@ function cancelEdit(): void {
     display: inline-flex;
 }
 .tumult-reaction-pick {
-    padding: 4px;
+    padding: var(--space-1);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    font-size: 20px;
+    font-size: var(--icon-md);
     cursor: pointer;
 }
 .tumult-reaction-pick:hover {
@@ -546,14 +546,14 @@ function cancelEdit(): void {
     margin-top: var(--space-1);
 }
 .tumult-reader-avatar {
-    border: 2px solid var(--timeline-bg);
-    margin-left: -8px;
+    border: var(--border-width-strong) solid var(--timeline-bg);
+    margin-left: var(--avatar-stack-overlap);
 }
 .tumult-reader-avatar:first-child {
     margin-left: 0;
 }
 .tumult-reader-more {
-    margin-left: 2px;
+    margin-left: var(--space-0-5);
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
@@ -562,11 +562,11 @@ function cancelEdit(): void {
 <style>
 .tumult-reaction-popover {
     display: flex;
-    gap: 2px;
-    padding: 6px;
-    border: 1px solid var(--border-default);
+    gap: var(--space-0-5);
+    padding: var(--space-1-5);
+    border: var(--border-width) solid var(--popover-border);
     border-radius: var(--control-radius);
-    background: var(--surface-pane);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    background: var(--popover-bg);
+    box-shadow: var(--popover-shadow);
 }
 </style>

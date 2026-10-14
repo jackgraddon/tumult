@@ -43,13 +43,13 @@ defineEmits<{
     gap: var(--space-2);
     padding: var(--space-1) var(--space-3);
     background: var(--banner-reconnect-bg);
-    color: #111214;
+    color: var(--text-on-warning);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tumult-security-action {
-    padding: 2px var(--space-2);
-    border: 1px solid currentColor;
+    padding: var(--space-0-5) var(--space-2);
+    border: var(--border-width) solid currentColor;
     border-radius: var(--control-radius);
     background: transparent;
     color: inherit;
@@ -57,10 +57,10 @@ defineEmits<{
     cursor: pointer;
 }
 .tumult-security-action:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--banner-action-hover);
 }
 .tumult-security-action:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 1px;
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>

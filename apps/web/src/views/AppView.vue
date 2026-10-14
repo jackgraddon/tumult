@@ -92,13 +92,13 @@ async function signOut(): Promise<void> {
 <style scoped>
 .tumult-start-error {
     position: fixed;
-    bottom: 8px;
+    bottom: var(--space-2);
     left: 50%;
     transform: translateX(-50%);
-    padding: 6px 12px;
-    border-radius: 6px;
+    padding: var(--space-1-5) var(--space-3);
+    border-radius: var(--radius-md);
     background: var(--banner-error-bg);
-    color: #fff;
-    font-size: 13px;
+    color: var(--banner-error-text);
+    font-size: var(--text-sm);
 }
 </style>

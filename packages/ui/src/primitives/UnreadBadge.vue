@@ -25,15 +25,15 @@ function display(count: number): string {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    min-width: var(--badge-min-size);
+    height: var(--badge-min-size);
+    padding: 0 var(--space-1);
     border-radius: var(--radius-full);
     background: var(--badge-bg);
-    color: #fff;
+    color: var(--badge-text);
     font-size: var(--text-xs);
-    font-weight: 700;
-    line-height: 1;
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-none);
 }
 .tumult-badge[data-highlight="true"] {
     background: var(--badge-highlight-bg);
