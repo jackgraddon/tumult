@@ -108,15 +108,20 @@ const STYLE_BLOCK = /<style[^>]*>([\s\S]*?)<\/style>/g;
 /** Colors, absolute lengths, and numeric font weights are token territory. */
 const HARDCODED = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|\d+(?:\.\d+)?(?:px|rem|em)\b|font-weight:\s*\d/i;
 
-describe("token-complete SFC styles", () => {
+describe("token-complete styles", () => {
     it("has no hardcoded colors, lengths or font weights", () => {
         const offenders: string[] = [];
-        for (const file of sourceFiles.filter((f) => f.endsWith(".vue"))) {
+        for (const file of sourceFiles) {
             const raw = readFileSync(file, "utf8");
-            for (const block of raw.matchAll(STYLE_BLOCK)) {
-                for (const line of block[1].split("\n")) {
-                    if (HARDCODED.test(line)) offenders.push(`${relative(repo, file)}: ${line.trim()}`);
-                }
+            // An SFC carries CSS only inside `<style>`; a plain stylesheet *is*
+            // CSS. App-level sheets are scanned too — that is how the placeholder
+            // `apps/web/src/styles.css` (hardcoded colours) stayed invisible to
+            // this gate until the auth surface was tokenized.
+            const css = file.endsWith(".vue")
+                ? [...raw.matchAll(STYLE_BLOCK)].map((block) => block[1]).join("\n")
+                : raw;
+            for (const line of css.split("\n")) {
+                if (HARDCODED.test(line)) offenders.push(`${relative(repo, file)}: ${line.trim()}`);
             }
         }
         assert.deepEqual(offenders, []);

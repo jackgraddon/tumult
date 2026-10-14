@@ -109,9 +109,11 @@ async function signOut(): Promise<void> {
         @toggle-room-list="showRoomList = !showRoomList"
         @sign-out="signOut"
     />
-    <main v-else class="centered" role="status">
-        <h1>Tumult</h1>
-        <p class="muted">Loading…</p>
+    <main v-else class="tumult-page" role="status">
+        <section class="tumult-page-card">
+            <h1 class="tumult-page-title">Tumult</h1>
+            <p class="tumult-page-muted">Loading…</p>
+        </section>
     </main>
     <p v-if="startError" role="alert" class="tumult-start-error">{{ startError }}</p>
 </template>

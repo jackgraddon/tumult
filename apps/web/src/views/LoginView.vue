@@ -22,26 +22,35 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-    <main class="centered">
-        <h1>Tumult</h1>
-        <p class="muted">Sign in with your homeserver.</p>
+    <main class="tumult-page">
+        <section class="tumult-page-card">
+            <h1 class="tumult-page-title">Tumult</h1>
+            <p class="tumult-page-muted">
+                Sign in with your homeserver — your identity provider handles the rest.
+            </p>
 
-        <form @submit.prevent="submit">
-            <label for="homeserver">Homeserver</label>
-            <input
-                id="homeserver"
-                v-model="homeserverUrl"
-                type="text"
-                placeholder="matrix.example.com"
-                autocomplete="url"
-                required
-                :disabled="busy"
-            />
-            <button type="submit" :disabled="busy || homeserverUrl.trim() === ''">
-                {{ busy ? "Redirecting…" : "Continue" }}
-            </button>
-        </form>
+            <form class="tumult-page-form" @submit.prevent="submit">
+                <label class="tumult-page-label" for="homeserver">Homeserver</label>
+                <input
+                    id="homeserver"
+                    v-model="homeserverUrl"
+                    class="tumult-page-input"
+                    type="text"
+                    placeholder="matrix.example.com"
+                    autocomplete="url"
+                    required
+                    :disabled="busy"
+                />
+                <button
+                    type="submit"
+                    class="tumult-page-button"
+                    :disabled="busy || homeserverUrl.trim() === ''"
+                >
+                    {{ busy ? "Redirecting…" : "Continue" }}
+                </button>
+            </form>
 
-        <p v-if="error" role="alert" class="error">{{ error }}</p>
+            <p v-if="error" role="alert" class="tumult-page-error">{{ error }}</p>
+        </section>
     </main>
 </template>

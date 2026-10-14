@@ -551,8 +551,46 @@ describe("browser smoke test (fake client)", () => {
         freshPage.on("pageerror", (error) => errors.push(error.message));
 
         await freshPage.goto(`${origin}/login`, { waitUntil: "load" });
-        await freshPage.waitForSelector("main.centered", { timeout: 10_000 });
+        await freshPage.waitForSelector("main.tumult-page", { timeout: 10_000 });
         assert.ok(await freshPage.locator("form input").count(), "the login form did not render");
+
+        // The pre-shell surfaces are the app's own chrome and are token-driven
+        // like the shell, so a value that does not resolve shows up here: an
+        // unresolved surface token leaves the card transparent, an unresolved
+        // `border:` declaration falls back to the browser's own input chrome.
+        const readAuth = () =>
+            freshPage.evaluate(() => {
+                const card = document.querySelector(".tumult-page-card");
+                const input = document.querySelector(".tumult-page-input");
+                const cardStyle = card ? getComputedStyle(card) : null;
+                const inputStyle = input ? getComputedStyle(input) : null;
+                return {
+                    cardBackground: cardStyle?.backgroundColor ?? "",
+                    cardShadow: cardStyle?.boxShadow ?? "",
+                    // The longhands, not the shorthand: an unresolved var makes
+                    // the whole `border:` declaration invalid at computed-value
+                    // time, so the input falls back to the UA default (`inset`).
+                    inputBorderStyle: inputStyle?.borderTopStyle ?? "",
+                    inputBorderWidth: inputStyle?.borderTopWidth ?? "",
+                    font: getComputedStyle(document.documentElement).fontFamily,
+                };
+            });
+
+        const dark = await readAuth();
+        assert.notEqual(dark.cardBackground, "rgba(0, 0, 0, 0)", "the login card surface did not resolve");
+        assert.notEqual(dark.cardShadow, "none", "the login card shadow did not resolve");
+        assert.equal(dark.inputBorderStyle, "solid", "the login input border did not resolve to the token rule");
+        assert.equal(dark.inputBorderWidth, "1px", "the login input border width did not resolve to the token");
+        assert.match(dark.font, /system-ui/, "the document font did not come from the font token");
+
+        // Light mode reaches the auth surface through the same tokens, not a
+        // second hardcoded palette.
+        await freshPage.evaluate(() => {
+            document.documentElement.dataset.mode = "light";
+        });
+        const light = await readAuth();
+        assert.notEqual(light.cardBackground, dark.cardBackground, "light mode did not reach the auth surface");
+
         assert.deepEqual(errors, [], "the login view threw");
 
         await fresh.close();

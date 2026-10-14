@@ -22,12 +22,14 @@ onMounted(async () => {
 </script>
 
 <template>
-    <main class="centered">
-        <template v-if="error">
-            <h1>Sign-in failed</h1>
-            <p role="alert" class="error">{{ error }}</p>
-            <RouterLink to="/login">Try again</RouterLink>
-        </template>
-        <p v-else class="muted">Completing sign-in…</p>
+    <main class="tumult-page">
+        <section class="tumult-page-card">
+            <template v-if="error">
+                <h1 class="tumult-page-title">Sign-in failed</h1>
+                <p role="alert" class="tumult-page-error">{{ error }}</p>
+                <RouterLink class="tumult-page-link" to="/login">Try again</RouterLink>
+            </template>
+            <p v-else class="tumult-page-muted" role="status">Completing sign-in…</p>
+        </section>
     </main>
 </template>

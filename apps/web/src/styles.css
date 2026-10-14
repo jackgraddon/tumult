@@ -1,75 +1,137 @@
 /*
- * Placeholder only. Real styling arrives with @tumult/theme in slice 2, where
- * every value here becomes a token. Nothing in this file should be treated as
- * a precedent for how components get styled.
+ * The app shell's own base — document defaults plus the pre-shell surfaces
+ * (login, OAuth callback, the start-up placeholder) that render before any pane
+ * exists.
+ *
+ * `@tumult/theme`'s `base.css` defines the token *values* and nothing else: no
+ * reset, no document defaults. That used to be covered by a placeholder sheet
+ * with hardcoded colours and a global `input, button` rule that leaked into the
+ * signed-in shell. Everything here is token-driven instead, and the coverage
+ * test scans this file for hardcoded colours, lengths and font weights — so an
+ * app-level value can no longer escape the token contract.
  */
 :root {
+    /* Native controls (scrollbars, form widgets, the caret) follow the mode. */
     color-scheme: dark;
-    font-family: system-ui, sans-serif;
-    background: #1a1b1e;
-    color: #e8e8ea;
+    font-family: var(--font-sans);
+    background: var(--surface-base);
+    color: var(--text-primary);
+}
+
+:root[data-mode="light"] {
+    color-scheme: light;
 }
 
 body {
     margin: 0;
 }
 
-.centered {
-    display: grid;
-    gap: 1rem;
-    place-content: center;
+/* --- Pre-shell surfaces: one centered column, one card --- */
+
+.tumult-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
     min-height: 100dvh;
-    padding: 1.5rem;
+    padding: var(--space-5);
     text-align: center;
 }
 
-form {
+.tumult-page-card {
     display: grid;
-    gap: 0.5rem;
-    justify-items: stretch;
-    min-width: min(24rem, 100%);
-}
-
-input,
-button {
-    padding: 0.6rem 0.8rem;
-    border: 1px solid #3a3b40;
-    border-radius: 0.375rem;
-    background: #26272b;
-    color: inherit;
-    font: inherit;
-}
-
-button {
-    cursor: pointer;
-}
-
-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-dl {
-    display: grid;
-    grid-template-columns: auto auto;
-    gap: 0.25rem 1rem;
-    margin: 0;
+    gap: var(--space-4);
+    width: min(var(--layout-dialog-width), 100%);
+    padding: var(--space-5);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-md);
     text-align: left;
 }
 
-dt {
-    color: #9a9aa2;
-}
-
-dd {
+.tumult-page-title {
     margin: 0;
-    font-family: ui-monospace, monospace;
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
 }
 
-.muted {
-    color: #9a9aa2;
+.tumult-page-muted {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
 }
 
-.error {
-    color: #ff8080;
+.tumult-page-error {
+    margin: 0;
+    color: var(--danger);
+    font-size: var(--text-sm);
+}
+
+.tumult-page-form {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.tumult-page-label {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.tumult-page-input {
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-width) solid var(--input-border);
+    border-radius: var(--control-radius);
+    background: var(--input-bg);
+    color: var(--input-text);
+    font: inherit;
+    font-size: var(--text-sm);
+}
+
+.tumult-page-input::placeholder {
+    color: var(--input-placeholder);
+}
+
+.tumult-page-input:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--hairline) * -1);
+}
+
+.tumult-page-button {
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-width) solid transparent;
+    border-radius: var(--control-radius);
+    background: var(--button-primary-bg);
+    color: var(--button-primary-text);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+}
+
+.tumult-page-button:hover:not(:disabled) {
+    background: var(--button-primary-bg-hover);
+}
+
+.tumult-page-button:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--space-0-5);
+}
+
+.tumult-page-button:disabled {
+    cursor: not-allowed;
+    opacity: var(--state-disabled-opacity);
+}
+
+.tumult-page-link {
+    color: var(--accent);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    text-decoration: none;
+}
+
+.tumult-page-link:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
 }

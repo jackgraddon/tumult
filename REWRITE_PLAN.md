@@ -63,18 +63,33 @@ Design: per-shell, injection-based, isolated, CSP-safe. No external code executi
 
 ## 7. Phase 4 — Visual Redesign (Discord-like, token-driven)
 
-- [ ] Guild rail: parentless spaces only. Nested spaces render as collapsible categories (icon+title), nestable down to channels. Unread/highlight states via tokens.
-- [ ] DMs: orphans (rooms with no parent spaces) in DMs tab. Document rule (uses `m.direct` where applicable).
-- [ ] Room list: channels under categories/spaces, dividers, active/hover, badges via tokens.
-- [ ] Timeline: message grouping (by day), compact/cozy (density token), reactions, replies, edits, read markers, typing all token-driven.
-- [ ] Members: lazy loaded, virtualized, roles (power levels) as sections, presence dots, badges.
-- [ ] Shell chrome: toolbars, banners, dialogs use Reka, fully tokenized. Collapsible panes (0-width+inert) preserved.
-- [ ] Design tokens for elevation/shadows, focus rings, transitions.
+Most of this phase's *structure* landed with the slices themselves, so the
+checklist below separates what already exists (verified in the source) from what
+is genuinely outstanding. What is still open is a visual **parity review** (does
+it look right — needs eyes on the build) and density.
+
+- [x] Guild rail: parentless spaces only, nested spaces as collapsible categories (icon+title), nestable down to channels, unread/highlight via tokens. → `selectSpaceTree` + `rail/GuildRail*.vue` + `roomlist/SpaceCategory.vue` (slices 2–3).
+- [x] DMs: orphans (rooms with no parent spaces) in the DMs tab, `m.direct` as a hint only. → the orphan rule in `snapshotRooms` (slice 3).
+- [x] Room list: channels under categories/spaces, dividers, active/hover, badges — all token-driven (`--roomlist-*`). → slices 2–3.
+- [~] Timeline: day dividers, consecutive-sender grouping, reactions, replies, edits, read markers ("New messages"), typing are all in and token-driven (`--timeline-*`). **Outstanding: compact/cozy density** (§7.1).
+- [x] Members: lazy loaded, virtualized, power-level sections (Admins/Moderators/Members/Invited), presence dots, badges. → slice 21.
+- [~] Shell chrome: Reka dialogs/menus, fully tokenized, collapsible panes (0-width + `inert`) preserved. The pre-shell auth surface was the last non-tokenized chrome — done in Phase 4a below.
+- [x] Design tokens for elevation/shadows, focus rings, transitions. → Phase 1: `shadow-{sm,md,panel}`, `focus-ring-{color,width,outline,offset}`, `motion-{fast,base,slow,ease}`.
+- [ ] Visual parity review against the pre-rewrite shell (grid tracks, chrome vs panes) and the polish pass on top of it. *(Blocked on looking at a running build — the agent could not review rendered screenshots.)*
+
+### 7.1 Density (open question from §7 of the Phase 0 audit)
+
+One `--density` multiplier or explicit compact/cozy tokens? Explicit tokens are
+the answer the virtualizer forces: `TimelineViewport` estimates row heights in
+TS (`estimateSize`), so a pure CSS multiplier would leave the estimates lying
+until every row has been measured. The shape to build: a `data-density`
+attribute on the root, per-density values for the row/room/member component
+tokens, and a settings control that mirrors the theme controller's seam.
 
 ## 8. Phase 5 — Testing & Parity
 
 - [ ] Unit: selectors, theme validator/compiler, plugin registry, token expansion.
-- [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → both coverage halves landed early in Phase 1 (`packages/theme/test/coverage.test.ts`: no orphan component/role tokens, no unresolved `var(--…)`, no hardcoded values in SFC style blocks). Still missing: the theme v2 roundtrip.
+- [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → both coverage halves landed early in Phase 1 (`packages/theme/test/coverage.test.ts`: no orphan component/role tokens, no unresolved `var(--…)`, no hardcoded values in SFC style blocks — widened in Phase 4a to every `.css` file under `packages/ui/src` and `apps/web/src`). Still missing: the theme v2 roundtrip.
 - [ ] Integration: MAS login/sync/E2EE still work (no core contract changes). Fake/real swap unchanged.
 - [ ] Visual regression: compare shell layout against existing (grid tracks, chrome vs panes).
 - [ ] Linux target smoke: Wayland/X11, secret storage fallback messaging, packaging notes.
@@ -115,5 +130,6 @@ Design: per-shell, injection-based, isolated, CSP-safe. No external code executi
 - Phase 3 (Theming Loader & UX) DONE 2026-10-14, two commits. 3a (`9fcbc1b`) is the library half: `loader.ts` (`loadTheme`/`loadThemeText` → `LoadedTheme`; `css: null` is the refusal contract), `store.ts` (`ThemeStore` = the only writer of the single `tumult.themes` localStorage key: list/select/save/remove/mode/advanced-CSS/reset; cached CSS is a boot fast path re-validated on load; malformed entries degrade to the built-in theme but stay listed; `default` reserved), `runtime.ts` (`@tumult/theme/runtime` — registry-free persisted shape + readers + the CSS guard, so boot applies a stored theme before first paint without the ~50 kB registry in the entry chunk), validator hardening for user-supplied documents (`invalid-name`/`invalid-mode` — the name and mode keys are interpolated into `:root[data-theme="…"]` — and `unsafe-value`), `css-guard.ts` moved out of `packages/ui/src/plugins/styles.ts` into the theme package so advanced CSS and plugin sheets share one rule, and `docs/themes.md`. Theme suite 33 → 68.
 - Phase 3b DONE 2026-10-14 (this commit) is the UI + app half: `packages/ui/src/theme/controls.ts` (`ThemeControls`/`ThemeKey` — the app↔UI seam; the UI never reads storage or the document element) + `theme/color.ts` (`toHexColor` rejects alpha/`var()`, `resolveTokenValue` with a cycle/depth guard), `settings/AppearanceTab.vue` (active-theme select + mode select derived from the active theme's declared modes, install-by-paste/file, your-themes list with Edit/JSON/Delete, advanced-CSS checkbox + textarea + Apply, two-step reset) and `settings/ThemeEditor.vue` (sparse draft — an omitted token shows the registry default as a placeholder and is inherited; search + tier + only-changed filters; colour pickers for `color` kinds; per-token reset deletes the key; read-only JSON view; live preview via `preview()`/`endPreview()`, invalid drafts keep the last valid preview and show issues; Discard/Cancel/Save). `TumultShell.vue` registers the tab **conditionally** on `tryUseTheme()` (`priority: 10`, so Appearance sorts first). App side: `theme/apply.ts` (`setThemeSlot` re-appends active→preview→advanced on every change, `data-theme`/`data-mode` on `<html>`, `applyAdvancedCss` reports the offending declaration, `bootTheme()` runs from `main.ts` before mount off the *cached* CSS) and `theme/controller.ts` (the app's `ThemeControls`; refuses a draft named `default` — it would collide with the build-time block — and applies advanced CSS only through the shared guard). `AppView.vue` provides it. Covered by `packages/ui/test/theme-color.test.ts` (5) plus 6 new browser assertions (install → live swap → Cancel restores; mode switch with declared modes; boot restore at `domcontentloaded` incl. the cached-CSS slot; advanced apply/refuse/uncheck; invalid install refused; reset to default) — core(310)/theme(68)/ui(49)/browser(19) green, typecheck + build green.
 - VERIFIED Phase-3 traps: the Appearance tab's `priority: 10` makes it the **first** settings tab, and `SettingsDialog`'s follow-the-registry selection picks the first — the browser test's plugin-tab assertion had been relying on Plugins being first and landed on the wrong pane, so it never pressed Escape and left the overlay open for every later test (an intercepted `.tumult-account` click); the fix is one explicit `getByRole("tab", { name: "Plugins" })` click. The entry chunk is 41.63 kB gzip (was 40.66 — +0.97 kB for the boot-path runtime + guard, still registry-free); the shell chunk legitimately carries the registry + editor (332 → the fake-build "no SDK" guard cap moved 300 kB → 400 kB, the SDK being ~890 kB so a leak still blows past it). `packages/ui` gained a real dependency on `@tumult/theme`, which resolves through `dist` — build theme before ui tests, same as core.
+- Phase 4a (pre-shell surfaces on tokens) DONE 2026-10-14: the audit's one sanctioned exception is gone. `apps/web/src/styles.css` was a placeholder with hardcoded colours (`#1a1b1e`/`#e8e8ea`/`#3a3b40`/`#26272b`/`#9a9aa2`/`#ff8080`) and a **global `input, button` rule that leaked into the signed-in shell** (padding/border/radius/background applied to every control that did not set those properties itself); it is now the app's own token-driven base — document defaults (`color-scheme` per mode, `font-family: var(--font-sans)`, `background: var(--surface-base)`, `color: var(--text-primary)`, `body { margin: 0 }`) plus `.tumult-page*` classes for the three pre-shell surfaces (login, OAuth callback, the start-up placeholder), all built from `--surface-*`/`--input-*`/`--button-*`/`--focus-ring-*`/`--shadow-md`/`--layout-dialog-width`. `LoginView`/`CallbackView`/`AppView`'s boot state use them; no element-selector leakage, no scoped duplication. The coverage gate now scans plain `.css` files too (it only inspected `<style>` blocks in `.vue` before, which is exactly how that sheet stayed invisible), verified by a probe file that fails the gate. Entry CSS 20.04 → 21.56 kB raw (3.30 → 3.50 kB gzip) — deliberately kept in the entry rather than a lazy route chunk so the login surface never paints unstyled. 68 theme tests, 19 browser tests (the login test now asserts the card surface/shadow and the input's token border resolve, and that light mode reaches them), typecheck + build green.
 
 Created: 2026-10-13
