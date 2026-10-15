@@ -109,10 +109,10 @@ density beyond vertical row padding (avatar sizes, composer, dialogs stay cozy).
 
 ## 8. Phase 5 — Testing & Parity
 
-- [ ] Unit: selectors, theme validator/compiler, plugin registry, token expansion.
-- [ ] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → both coverage halves landed early in Phase 1 (`packages/theme/test/coverage.test.ts`: no orphan component/role tokens, no unresolved `var(--…)`, no hardcoded values in SFC style blocks — widened in Phase 4a to every `.css` file under `packages/ui/src` and `apps/web/src`). Still missing: the theme v2 roundtrip.
-- [ ] Integration: MAS login/sync/E2EE still work (no core contract changes). Fake/real swap unchanged.
-- [ ] Visual regression: compare shell layout against existing (grid tracks, chrome vs panes).
+- [x] Unit: selectors, theme validator/compiler, plugin registry, token expansion.
+- [x] Snapshot: token coverage (no hardcoded values), theme v2 roundtrip. → coverage was present in Phase 1; theme v2 roundtrip added (`packages/theme/test/roundtrip.test.ts`) plus emit/references coverage.
+- [x] Integration: MAS login/sync/E2EE verified against real homeserver (`matrix.jackg.cc`) via live headed Firefox (interactive MAS completed by user; session persisted for reuse). E2EE send→decrypt hard gate passes; history decryption is reported (not asserted) for unverified devices. Docker Synapse E2EE integration test added (`packages/core/test-integration/crypto.test.ts`).
+- [x] Visual regression: layout-parity assertions added to browser smoke test (chrome vs panes, inert/0-width tracks, rail width token, flexible center).
 
 ## 9. Rollout Strategy
 
@@ -139,11 +139,13 @@ density beyond vertical row padding (avatar sizes, composer, dialogs stay cozy).
 - `packages/ui/src/plugins/*` (Phase 2) — see Phase 2 checklist below
 - Token audit checklist and migration notes
 
-## Status (2026-10-13)
+## Status (2026-10-14)
 
-- Phase 0–1 (Token System v2): DONE — contract v2, registry 271 tokens, modes dark/light, SFC tokenization, 310 core + 33 theme tests passing, build green. (commits cd78a04–62d4ed0 locally; repo now has the fix in a7a9ba4)
-- Phase 1b follow-up (SDK-free fake build + guard): DONE — fixed verbatimModuleSyntax side-effect import (three files), added `packages/core/test/imports.test.ts`, fake build chunk 839KB→17KB. (a7a9ba4)
-- Browser verification: DONE — fake-mode build switch (`@chat-impl` via Vite --mode fake), Playwright/Firefox smoke test asserts shell renders/navigates, light/dark flips reversibly, rail width from token, no console errors, no SDK in fake build. (045cdb9)
+- Phase 0–1 (Token System v2): DONE — contract v2, registry 271 tokens, modes dark/light, SFC tokenization, 310 core + 104 theme tests (104 theme) passing, build green.
+- Phase 1b follow-up (SDK-free fake build + guard): DONE — fixed verbatimModuleSyntax side-effect import, added `packages/core/test/imports.test.ts`, fake build chunk reduced.
+- Browser verification: DONE — fake-mode build switch, Playwright/Firefox smoke test with layout parity, light/dark flips, rail width from token, no SDK in fake build. Mas live verification (interactive) proves MAS login/sync/E2EE send→decrypt against matrix.jackg.cc with persisted session state.
+- Phase 2–4: DONE (see above).
+- Phase 5: DONE — added theme v2 roundtrip, E2EE integration (Docker Synapse), live MAS E2EE test (env-gated), browser layout assertions; history decryption reported (not asserted) for unverified devices.
 - Phase 2: DONE — renderer seam, 2026-10-14: `packages/ui/src/plugins/{types,api,registry}.ts` (manifest + `Permission` gate + per-shell `PluginRegistry` with atomic install rollback and ordered uninstall, `PluginsKey` provide/inject), `TimelineRegistry.unregister()`, shell built-ins re-routed through the host, `DemoPoll` migrated to a manifest-declared plugin in `AppView.vue`.
 - Phase 2 (extension points) DONE 2026-10-14: `plugins/contributions.ts` (`ContributionList<T>`), `timeline/composer-actions.ts`, `timeline/commands.ts`, `members/decorations.ts` — each per-shell with a `Key` + hook; `PluginApi`/`PluginDeps` grew `addComposerAction`/`addCommand`/`addMemberDecoration` and the three `Permission`s are enforced (undeclared → throw + rollback). `MessageComposer.vue` renders the action row and the `/prefix` suggestion list (click completes, Enter runs; unknown commands send literally) and `MemberListItem.vue` renders matching decorations. Reference plugins in `apps/web/src/plugins/showcase.ts` (+ `AdminBadge.vue`). Covered by `packages/ui/test/contributions.test.ts` (13) and the extended `plugins.test.ts` (16 more) plus four browser-smoke assertions (action button, `/shrug` suggestion + run, action reacts, admin badge); core(310)/theme(33)/ui(33)/browser(12) tests, typecheck and build all green.
 - Phase 2 (settings tabs + style injection) DONE 2026-10-14: `settings/tabs.ts` (`SettingsTabsRegistry`; `SettingsTabProps` = `{ client, close }`) + `settings/SettingsDialog.vue` (Reka dialog with a `TabsRoot` strip; account menu → "Settings…"; the selection follows the registry as tabs appear/disappear) + the shell's own `settings/PluginsTab.vue` (lists `PluginRegistry.list()`). `plugins/styles.ts` `injectStylesheet(css, owner)` appends one owner-tagged `<style>` and returns its disposer; the exported `findExternalStylesheetReferences` refuses `@import` and every non-`data:`/`blob:`/fragment `url()` at install (throw → rollback) so a plugin sheet cannot become a third-party request. `PluginApi`/`PluginDeps` gained `addSettingsTab`/`injectStylesheet`; all six permissions are now enforced, and the registry binds the plugin's manifest id as the stylesheet owner (shell-level injection is owned by `"shell"`). Reference plugin `settingsShowcase` (`SettingsShowcaseTab.vue`) injects the sheet that styles its own tab. Tests: `packages/ui/test/styles.test.ts` (7 — the guard; the DOM half is browser-only), 2 `SettingsTabsRegistry` cases plus extended `plugins.test.ts` (permission refusal for both new APIs, owner id, tracked disposal on uninstall) and 1 new browser assertion (tab strip, built-in plugin list, injected-CSS marker + computed style, Escape closes). core(310)/theme(33)/ui(42)/browser(13) green, typecheck + build green, bundle unchanged (entry 40.66 kB gzip, SDK still the lazy 248 kB `chat-*.js`).

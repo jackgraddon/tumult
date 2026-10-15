@@ -11,7 +11,7 @@ export function extractRefs(value: string): string[] {
 }
 
 export function hasUrl(value: string): boolean {
-    return /(^|[^\w-])url\(/i.test(value);
+    return /(^|[^\w-])url\(/i.test(value) || /@import\b/i.test(value);
 }
 
 /** Find a cycle reachable from `start` through `edges`. Returns the cycle path or null. */

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc -p tsconfig.json",
     "pretest:browser": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
-    "test:browser": "node --test --import tsx test/browser.test.ts"
+    "test:browser": "node --test --import tsx test/browser.test.ts",
+    "test:live": "MAS_LIVE=1 node --test --import tsx test/mas-live.test.ts"
   },
   "dependencies": {
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",

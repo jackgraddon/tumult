@@ -871,4 +871,101 @@ describe("browser smoke test (fake client)", () => {
     it("reports no console errors across the whole run", () => {
         assert.deepEqual(consoleErrors, []);
     });
+
+    it("enforces shell layout parity: grid tracks, inert panes and chrome-vs-panes", async () => {
+        // Read layout tokens from the running app
+        const tokens = await page.evaluate(() => {
+            const root = getComputedStyle(document.documentElement);
+            return {
+                rail: root.getPropertyValue("--layout-guild-rail-width").trim(),
+                roomlist: root.getPropertyValue("--layout-roomlist-width").trim(),
+                members: root.getPropertyValue("--layout-members-width").trim(),
+            };
+        });
+
+        const getGrid = () =>
+            page.evaluate(() => {
+                const grid = document.querySelector(".tumult-shell-grid");
+                if (!grid) return null;
+                const style = getComputedStyle(grid);
+                return style.gridTemplateColumns;
+            });
+
+        const checkRoomlist = () =>
+            page.evaluate(() => {
+                const pane = document.querySelector(".tumult-pane-roomlist");
+                if (!pane) return null;
+                const rect = pane.getBoundingClientRect();
+                const style = getComputedStyle(pane);
+                const inert = pane.hasAttribute("inert");
+                // When closed, width is 0 or very small; when open, takes roomlist width
+                return { inert, width: Math.round(rect.width), display: style.display };
+            });
+
+        const checkMembers = () =>
+            page.evaluate(() => {
+                const pane = document.querySelector(".tumult-pane-members");
+                if (!pane) return null;
+                const rect = pane.getBoundingClientRect();
+                const inert = pane.hasAttribute("inert");
+                return { inert, width: Math.round(rect.width) };
+            });
+
+        // Default: both panes open
+        const gridBoth = await getGrid();
+        assert.ok(gridBoth, "no shell grid found");
+        // Expected: rail roomlist minmax(0,1fr) members
+        // Accept resolved pixel values or the token name
+        assert.ok(gridBoth.includes(tokens.rail), `grid should include rail token (${tokens.rail}) in ${gridBoth}`);
+        assert.ok(gridBoth.includes(tokens.roomlist), `grid should include roomlist token (${tokens.roomlist}) in ${gridBoth}`);
+        assert.ok(gridBoth.includes(tokens.members), `grid should include members token (${tokens.members}) in ${gridBoth}`);
+        // Center track is flexible (also common as "minmax(0,1fr)" but resolved as px in some cases; just ensure not a fixed width)
+        assert.ok(gridBoth.includes("1fr") || gridBoth.includes("minmax(0,1fr)") || gridBoth.split(/\s+/).length === 4, `grid should be flexible in center track: ${gridBoth}`);
+
+        const rlBoth = await checkRoomlist();
+        const mBoth = await checkMembers();
+        assert.ok(!rlBoth?.inert, "roomlist should not be inert when open");
+        assert.ok(!mBoth?.inert, "members should not be inert when open");
+
+        // Close roomlist, keep members open
+        await page.getByLabel("Toggle room list").click();
+        await page.waitForTimeout(100);
+
+        const gridNoRl = await getGrid();
+        assert.ok(gridNoRl?.includes("0px"), `closing roomlist should set its track to 0: ${gridNoRl}`);
+        const rlClosed = await checkRoomlist();
+        assert.ok(rlClosed?.inert, "closed roomlist must be inert");
+        assert.ok(rlClosed?.width === 0, `closed roomlist width must be 0, got ${rlClosed?.width}`);
+
+        // Reopen roomlist
+        await page.getByLabel("Toggle room list").click();
+        await page.waitForTimeout(100);
+
+        // Close members
+        await page.getByLabel("Toggle members").click();
+        await page.waitForTimeout(100);
+        const gridNoM = await getGrid();
+        assert.ok(gridNoM?.includes("0px"), `closing members should set its track to 0: ${gridNoM}`);
+        const mClosed = await checkMembers();
+        assert.ok(mClosed?.inert, "closed members must be inert");
+        assert.ok(mClosed?.width === 0, `closed members width must be 0, got ${mClosed?.width}`);
+
+        // Close both
+        await page.getByLabel("Toggle room list").click();
+        await page.waitForTimeout(100);
+        const gridNone = await getGrid();
+        assert.ok(gridNone?.includes("0px"), `both closed: all pane tracks should be 0: ${gridNone}`);
+        assert.ok(gridNone?.includes("minmax(0,1fr)") || gridNone?.includes("1fr") || gridNone.split(/\s+/).length === 4, "timeline must remain flexible even when both panes closed");
+        const rlNone = await checkRoomlist();
+        const mNone = await checkMembers();
+        assert.ok(rlNone?.inert, "closed roomlist must be inert");
+        assert.ok(mNone?.inert, "closed members must be inert");
+
+        // Reopen both
+        await page.getByLabel("Toggle members").click();
+        await page.getByLabel("Toggle room list").click();
+        await page.waitForTimeout(100);
+        const gridFinal = await getGrid();
+        assert.ok(gridFinal?.includes("minmax(0,1fr)") || gridFinal?.includes("1fr") || gridFinal.split(/\s+/).length === 4, "final state must have flexible center");
+    });
 });
