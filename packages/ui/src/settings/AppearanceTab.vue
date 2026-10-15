@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
 import { DEFAULT_THEME_NAME, TOKEN_CONTRACT_VERSION } from "@tumult/theme";
 import type { ThemeEntry, ThemeJson, ValidationIssue } from "@tumult/theme";
 
 import { useTheme } from "../theme/controls.ts";
+import { toHexColor } from "../theme/color.ts";
 import type { SettingsTabProps } from "./tabs.ts";
 import ThemeEditor from "./ThemeEditor.vue";
 
@@ -36,6 +37,34 @@ const activeIssues = computed(() => activeEntry.value?.validation.issues ?? []);
 const installErrors = computed(() => installIssues.value.filter((issue) => issue.severity === "error"));
 const installNotes = computed(() => installIssues.value.filter((issue) => issue.severity !== "error"));
 const advancedErrors = computed(() => advancedIssues.value.filter((issue) => issue.severity === "error"));
+
+const galleryIssues = shallowRef<ValidationIssue[]>([]);
+/** Id of the gallery theme whose document is in flight, or null. */
+const galleryBusy = ref<string | null>(null);
+
+const gallery = computed(() => theme.gallery.value);
+/** Gallery rows the user has already installed show "Use" instead of "Install". */
+const installed = computed(() => new Set(userThemes.value.map((entry) => entry.name)));
+
+// The index is a static asset the app ships; fetching it on open keeps the cost
+// off users who never look at theming (the controller fetches it once, ever).
+onMounted(() => theme.loadGallery());
+
+/**
+ * A gallery swatch is a theme-authored colour, resolved to a hex for the chip.
+ * The fallback is only reachable if the shipped index drifts from the document
+ * it points at (the guard test pins them together).
+ */
+function swatchHex(colour: string): string {
+    return toHexColor(colour) ?? "transparent";
+}
+
+async function installGallery(id: string): Promise<void> {
+    galleryBusy.value = id;
+    const result = await theme.installGallery(id);
+    galleryBusy.value = null;
+    galleryIssues.value = result.ok ? [] : result.issues;
+}
 
 const shownJson = computed(() => {
     const name = jsonShown.value;
@@ -193,6 +222,63 @@ function reset(): void {
                 {{ issue.message }}
             </li>
         </ul>
+
+        <template v-if="gallery.length > 0">
+            <h3 class="tumult-settings-heading">Theme gallery</h3>
+            <p class="tumult-settings-note">
+                Accent themes that ship with Tumult. Installing stores a copy of the document you
+                can edit or delete like any other.
+            </p>
+            <ul class="tumult-appearance-list">
+                <li
+                    v-for="item in gallery"
+                    :key="item.id"
+                    class="tumult-appearance-row"
+                    :data-gallery-theme="item.id"
+                >
+                    <span class="tumult-appearance-name">
+                        <span class="tumult-gallery-swatches" aria-hidden="true">
+                            <span
+                                v-for="(colour, index) in item.swatch"
+                                :key="index"
+                                class="tumult-gallery-swatch"
+                                :style="{ background: swatchHex(colour) }"
+                            />
+                        </span>
+                        <span class="tumult-gallery-text">
+                            <span class="tumult-gallery-title">{{ item.title }}</span>
+                            <span class="tumult-appearance-detail">{{ item.description }}</span>
+                        </span>
+                    </span>
+                    <span class="tumult-appearance-actions">
+                        <button
+                            v-if="installed.has(item.id)"
+                            type="button"
+                            class="tumult-dialog-button"
+                            :data-gallery-use="item.id"
+                            @click="theme.select(item.id)"
+                        >
+                            Use
+                        </button>
+                        <button
+                            v-else
+                            type="button"
+                            class="tumult-dialog-button tumult-dialog-primary"
+                            :data-gallery-install="item.id"
+                            :disabled="galleryBusy !== null"
+                            @click="installGallery(item.id)"
+                        >
+                            {{ galleryBusy === item.id ? "Installing…" : "Install" }}
+                        </button>
+                    </span>
+                </li>
+            </ul>
+            <ul v-if="galleryIssues.length > 0" class="tumult-appearance-issues">
+                <li v-for="(issue, index) in galleryIssues" :key="index" class="tumult-dialog-error">
+                    {{ issue.message }}
+                </li>
+            </ul>
+        </template>
 
         <h3 class="tumult-settings-heading">Install a theme</h3>
         <p class="tumult-settings-note">
@@ -409,6 +495,33 @@ function reset(): void {
 .tumult-appearance-badge {
     color: var(--danger);
     font-size: var(--text-xs);
+}
+.tumult-appearance-detail {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+.tumult-gallery-swatches {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+.tumult-gallery-swatch {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+}
+.tumult-gallery-swatch + .tumult-gallery-swatch {
+    /* The hover colour tucks under the accent, Discord-avatar style. */
+    margin-left: calc(var(--space-1) * -1 + var(--space-px));
+}
+.tumult-gallery-text {
+    display: flex;
+    flex-direction: column;
+}
+.tumult-gallery-title {
+    color: var(--text-primary);
+    font-size: var(--text-md);
 }
 .tumult-appearance-actions {
     display: inline-flex;

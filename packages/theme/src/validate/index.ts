@@ -132,16 +132,19 @@ function validateScope(
                     code: "missing-token",
                     severity: "info",
                     token: name,
-                    message: `Token "${name}" not set; structural default applies.`,
+                    message: `Token "${name}" not set; the built-in theme's value applies.`,
                 });
             }
         }
     }
 
-    // Effective values in this scope: scope override ?? base override ?? registry default.
+    // Effective values in this scope: scope override ?? base override ??
+    // registry structural default. Tokens with no structural default (primitives,
+    // literal defaults) contribute no edges — their real values live in the
+    // built-in theme document, which is what base.css is compiled from.
     const effective = new Map<string, string>();
     for (const [name, def] of TOKEN_MAP) {
-        effective.set(name, tokens[name] ?? opts.base?.[name] ?? def.value);
+        effective.set(name, tokens[name] ?? opts.base?.[name] ?? def.value ?? "");
     }
     const edges = new Map<string, string[]>();
     for (const [name, value] of effective) edges.set(name, extractRefs(value));

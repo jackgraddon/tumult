@@ -38,11 +38,11 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "timeline-flash-duration", tier: "component", kind: "motion", value: v("motion-slow"), description: "Jump-to-message flash." },
 
     // Media renderer
-    { name: "media-image-max-width", tier: "component", kind: "size", value: "320px", description: "Inline image max width." },
-    { name: "media-image-max-height", tier: "component", kind: "size", value: "240px", description: "Inline image max height." },
-    { name: "media-video-max-width", tier: "component", kind: "size", value: "360px", description: "Inline video max width." },
-    { name: "media-video-max-height", tier: "component", kind: "size", value: "280px", description: "Inline video max height." },
-    { name: "media-audio-max-width", tier: "component", kind: "size", value: "320px", description: "Inline audio max width." },
+    { name: "media-image-max-width", tier: "component", kind: "size", description: "Inline image max width." },
+    { name: "media-image-max-height", tier: "component", kind: "size", description: "Inline image max height." },
+    { name: "media-video-max-width", tier: "component", kind: "size", description: "Inline video max width." },
+    { name: "media-video-max-height", tier: "component", kind: "size", description: "Inline video max height." },
+    { name: "media-audio-max-width", tier: "component", kind: "size", description: "Inline audio max width." },
 
     // Composer
     { name: "composer-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Composer background." },
@@ -72,7 +72,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "input-border", tier: "component", kind: "color", value: v("border-default"), description: "Text field border." },
     { name: "input-text", tier: "component", kind: "color", value: v("text-primary"), description: "Text field text." },
     { name: "input-placeholder", tier: "component", kind: "color", value: v("text-muted"), description: "Text field placeholder." },
-    { name: "input-textarea-min-height", tier: "component", kind: "size", value: "4.5rem", description: "Textarea minimum height." },
+    { name: "input-textarea-min-height", tier: "component", kind: "size", description: "Textarea minimum height." },
 
     // Badges
     { name: "badge-bg", tier: "component", kind: "color", value: v("danger"), description: "Unread badge." },
@@ -82,7 +82,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     // Avatars
     { name: "avatar-bg", tier: "component", kind: "color", value: v("accent"), description: "Avatar fallback." },
     { name: "avatar-text", tier: "component", kind: "color", value: v("accent-contrast"), description: "Avatar initials." },
-    { name: "avatar-initials-size", tier: "component", kind: "size", value: "0.5rem", description: "Avatar initials font size." },
+    { name: "avatar-initials-size", tier: "component", kind: "size", description: "Avatar initials font size." },
 
     // Overlays / dialogs / menus
     { name: "overlay-bg", tier: "component", kind: "color", value: v("surface-overlay"), description: "Dialog backdrop." },
@@ -93,7 +93,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "menu-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "Menu background." },
     { name: "menu-border", tier: "component", kind: "color", value: v("border-default"), description: "Menu border." },
     { name: "menu-min-width", tier: "component", kind: "layout", value: v("layout-menu-min-width"), description: "Menu minimum width." },
-    { name: "menu-devices-max-height", tier: "component", kind: "size", value: "160px", description: "Device list max height." },
+    { name: "menu-devices-max-height", tier: "component", kind: "size", description: "Device list max height." },
     { name: "popover-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "Popover background." },
     { name: "popover-border", tier: "component", kind: "color", value: v("border-default"), description: "Popover border." },
     { name: "popover-shadow", tier: "component", kind: "shadow", value: v("shadow-md"), description: "Popover elevation." },
@@ -113,5 +113,5 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "banner-action-hover", tier: "component", kind: "color", value: v("surface-hover-contrast"), description: "Banner action hover." },
 
     // Pickers
-    { name: "picker-results-max-height", tier: "component", kind: "size", value: "12rem", description: "User picker results height." },
+    { name: "picker-results-max-height", tier: "component", kind: "size", description: "User picker results height." },
 ];

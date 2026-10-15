@@ -1,5 +1,13 @@
 import type { TokenDef } from "../types.ts";
 
+/**
+ * Semantic tier — *structure only*: every `value` is a `var()` reference, and a
+ * token whose default is a literal (an overlay wash, a dialog width) carries no
+ * value at all. Literal defaults live in the default theme document; a theme
+ * that omits one inherits whatever `themes/default.json` supplies. Keeping the
+ * references here is what makes a sparse theme work: it overrides a token and
+ * everything pointing at that token follows.
+ */
 const v = (name: string): string => `var(--${name})`;
 
 export const SEMANTIC_TOKENS: TokenDef[] = [
@@ -9,10 +17,10 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "surface-raised", tier: "semantic", kind: "color", value: v("surface-pane"), description: "Menus / popovers / dialogs." },
     { name: "surface-rail", tier: "semantic", kind: "color", value: v("prim-neutral-7"), description: "Guild rail background." },
     { name: "surface-inset", tier: "semantic", kind: "color", value: v("surface-base"), description: "Inputs and wells inside a pane." },
-    { name: "surface-overlay", tier: "semantic", kind: "color", value: "rgba(0, 0, 0, 0.6)", description: "Dialog backdrop." },
-    { name: "surface-hover", tier: "semantic", kind: "color", value: "rgba(255, 255, 255, 0.06)", description: "Hover wash." },
-    { name: "surface-active", tier: "semantic", kind: "color", value: "rgba(255, 255, 255, 0.1)", description: "Active / selected wash." },
-    { name: "surface-hover-contrast", tier: "semantic", kind: "color", value: "rgba(0, 0, 0, 0.08)", description: "Hover wash on a bright (banner) surface." },
+    { name: "surface-overlay", tier: "semantic", kind: "color", description: "Dialog backdrop." },
+    { name: "surface-hover", tier: "semantic", kind: "color", description: "Hover wash." },
+    { name: "surface-active", tier: "semantic", kind: "color", description: "Active / selected wash." },
+    { name: "surface-hover-contrast", tier: "semantic", kind: "color", description: "Hover wash on a bright (banner) surface." },
 
     // Text
     { name: "text-primary", tier: "semantic", kind: "color", value: v("prim-neutral-1"), description: "Primary text." },
@@ -22,8 +30,8 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "text-on-danger", tier: "semantic", kind: "color", value: v("prim-neutral-0"), description: "Text on danger surfaces." },
 
     // Accent / status
-    { name: "accent", tier: "semantic", kind: "color", value: v("prim-indigo-3"), description: "Primary accent." },
-    { name: "accent-hover", tier: "semantic", kind: "color", value: v("prim-indigo-4"), description: "Accent hover." },
+    { name: "accent", tier: "semantic", kind: "color", value: v("prim-brand-3"), description: "Primary accent." },
+    { name: "accent-hover", tier: "semantic", kind: "color", value: v("prim-brand-4"), description: "Accent hover." },
     { name: "accent-contrast", tier: "semantic", kind: "color", value: v("prim-neutral-0"), description: "Text on accent." },
     { name: "danger", tier: "semantic", kind: "color", value: v("prim-red-3"), description: "Danger." },
     { name: "danger-hover", tier: "semantic", kind: "color", value: v("prim-red-4"), description: "Danger hover." },
@@ -37,9 +45,9 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "state-selected", tier: "semantic", kind: "color", value: v("surface-active"), description: "Selected background." },
     { name: "state-disabled-opacity", tier: "semantic", kind: "opacity", value: v("prim-opacity-disabled"), description: "Disabled controls." },
     { name: "state-muted-opacity", tier: "semantic", kind: "opacity", value: v("prim-opacity-muted"), description: "Busy / de-emphasised." },
-    { name: "focus-ring", tier: "semantic", kind: "color", value: v("prim-indigo-3"), description: "Focus ring colour." },
+    { name: "focus-ring", tier: "semantic", kind: "color", value: v("prim-brand-3"), description: "Focus ring colour." },
     { name: "focus-ring-width", tier: "semantic", kind: "border-width", value: v("prim-border-width-strong"), description: "Focus ring thickness." },
-    { name: "focus-ring-offset", tier: "semantic", kind: "border-width", value: "2px", description: "Default focus ring offset." },
+    { name: "focus-ring-offset", tier: "semantic", kind: "border-width", description: "Default focus ring offset." },
 
     // Spacing
     { name: "space-px", tier: "semantic", kind: "spacing", value: v("prim-space-px"), description: "Hairline space (1px)." },
@@ -96,7 +104,7 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "scrollbar-width", tier: "semantic", kind: "size", value: v("prim-size-scrollbar"), description: "Scrollbar thickness." },
     { name: "rail-pill-width", tier: "semantic", kind: "size", value: v("prim-size-indicator"), description: "Guild selection pill." },
     { name: "rail-item-size", tier: "semantic", kind: "size", value: v("prim-size-xl"), description: "Rail button size." },
-    { name: "rail-favourite-min-width", tier: "semantic", kind: "size", value: "30px", description: "Favourite band item." },
+    { name: "rail-favourite-min-width", tier: "semantic", kind: "size", description: "Favourite band item." },
     { name: "timeline-gutter-width", tier: "semantic", kind: "size", value: v("prim-size-md"), description: "Message gutter." },
     { name: "badge-min-size", tier: "semantic", kind: "size", value: v("prim-size-xs"), description: "Unread badge." },
     { name: "presence-dot-size", tier: "semantic", kind: "size", value: v("prim-size-2xs"), description: "Presence dot." },
@@ -131,5 +139,5 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-members-width", tier: "semantic", kind: "layout", value: v("prim-layout-members"), description: "Members width." },
     { name: "layout-slideover-width", tier: "semantic", kind: "layout", value: v("prim-layout-slideover"), description: "Search / thread panel width." },
     { name: "layout-menu-min-width", tier: "semantic", kind: "layout", value: v("prim-layout-menu-min"), description: "Menu minimum width." },
-    { name: "layout-dialog-width", tier: "semantic", kind: "layout", value: "28rem", description: "Dialog width before viewport clamp." },
+    { name: "layout-dialog-width", tier: "semantic", kind: "layout", description: "Dialog width before viewport clamp." },
 ];

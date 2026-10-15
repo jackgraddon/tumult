@@ -1,0 +1,34 @@
+{
+  "themes": [
+    {
+      "id": "forest",
+      "title": "Forest",
+      "description": "Deep green with a teal lift on hover.",
+      "swatch": ["oklch(60% 0.15 145)", "oklch(70% 0.12 180)"]
+    },
+    {
+      "id": "sunset",
+      "title": "Sunset",
+      "description": "Warm orange into gold.",
+      "swatch": ["oklch(65% 0.22 35)", "oklch(75% 0.18 70)"]
+    },
+    {
+      "id": "midnight",
+      "title": "Midnight",
+      "description": "Cool blue with a violet hover.",
+      "swatch": ["oklch(50% 0.12 250)", "oklch(60% 0.15 280)"]
+    },
+    {
+      "id": "lava",
+      "title": "Lava",
+      "description": "Saturated red-orange, high energy.",
+      "swatch": ["oklch(55% 0.25 25)", "oklch(65% 0.2 45)"]
+    },
+    {
+      "id": "crimson",
+      "title": "Crimson",
+      "description": "Red with a warmer hover.",
+      "swatch": ["oklch(55% 0.2 2)", "oklch(65% 0.15 15)"]
+    }
+  ]
+}

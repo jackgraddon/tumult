@@ -36,6 +36,10 @@ export default defineConfig(({ mode }) => {
                     "script-src 'self' 'wasm-unsafe-eval'",
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob: https:",
+                    // The self-hosted Figtree faces are same-origin; naming the
+                    // directive keeps a future default-src tightening from
+                    // silently dropping the UI font.
+                    "font-src 'self'",
                     // Inline <video>/<audio> playback is a blob: URL, which
                     // media-src would otherwise inherit from default-src 'self'.
                     "media-src 'self' blob:",

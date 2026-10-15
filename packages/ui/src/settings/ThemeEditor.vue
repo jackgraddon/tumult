@@ -18,7 +18,7 @@ import { useTheme } from "../theme/controls.ts";
  * wearing a half-applied theme.
  *
  * The draft is intentionally sparse: a token that is not in `tokens` is shown
- * with its structural default as the placeholder and simply inherits it, so
+ * with the built-in theme's value as the placeholder and simply inherits it, so
  * saving a theme writes only what was actually changed. Mode overrides
  * (`modes.*`) come along for the ride when editing an existing theme but are
  * not editable here — author those by pasting JSON into the Install box in the
@@ -86,7 +86,7 @@ function onPick(name: string, event: Event): void {
 }
 
 function swatch(name: string): string {
-    return tokenHex(name, draft.value.tokens) ?? "#000000";
+    return tokenHex(name, draft.value.tokens, theme.defaults) ?? "#000000";
 }
 
 /** Throw the edits away and go back to the document this editor opened with. */
@@ -185,7 +185,7 @@ theme.preview(draft.value);
                     type="text"
                     spellcheck="false"
                     :value="valueOf(def.name)"
-                    :placeholder="def.value"
+                    :placeholder="theme.defaults[def.name] ?? def.value ?? ''"
                     :data-token="def.name"
                     :aria-label="`Value for --${def.name}`"
                     @input="onText"

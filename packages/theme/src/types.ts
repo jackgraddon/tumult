@@ -16,12 +16,17 @@ export type TokenKind =
     | "opacity";
 
 export interface TokenDef {
-    /** CSS custom property name without the leading `--`, e.g. `prim-indigo-3`. */
+    /** CSS custom property name without the leading `--`, e.g. `prim-brand-3`. */
     name: string;
     tier: TokenTier;
     kind: TokenKind;
-    /** Default value. Semantic/component defaults are `var(--…)` refs (structural). */
-    value: string;
+    /**
+     * Structural default, when the tier has one: a `var(--…)` reference for a
+     * semantic/component token. Primitives (the leaves) and tokens whose default
+     * is a literal — an overlay wash, a dialog width — have no value at all;
+     * their values live in the theme document (`themes/default.json`).
+     */
+    value?: string;
     description: string;
 }
 

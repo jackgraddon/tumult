@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "forest",
+  "tokens": {
+    "accent": "oklch(60% 0.15 145)",
+    "accent-hover": "oklch(70% 0.12 180)"
+  },
+  "modes": {
+    "light": {
+      "accent": "oklch(60% 0.15 145)",
+      "accent-hover": "oklch(70% 0.12 180)"
+    }
+  }
+}

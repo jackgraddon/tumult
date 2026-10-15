@@ -46,13 +46,13 @@ describe("theme modes", () => {
     const base = {
         version: TOKEN_CONTRACT_VERSION,
         name: "t",
-        tokens: { accent: "var(--prim-indigo-3)" },
+        tokens: { accent: "var(--prim-brand-3)" },
     };
 
     it("accepts a valid light-mode override", () => {
         const r = validateTheme({
             ...base,
-            modes: { light: { accent: "var(--prim-indigo-4)" } },
+            modes: { light: { accent: "var(--prim-brand-4)" } },
         });
         assert.equal(r.valid, true);
     });
@@ -74,7 +74,7 @@ describe("theme modes", () => {
     it("errors on tier violation inside a mode", () => {
         const r = validateTheme({
             ...base,
-            modes: { light: { "button-primary-bg": "var(--prim-indigo-3)" } },
+            modes: { light: { "button-primary-bg": "var(--prim-brand-3)" } },
         });
         assert.ok(r.issues.some((i) => i.code === "tier-violation" && i.mode === "light"));
     });
@@ -155,14 +155,14 @@ describe("serializeTheme modes", () => {
         const input = {
             version: TOKEN_CONTRACT_VERSION,
             name: "default",
-            tokens: { accent: "var(--prim-indigo-3)" },
-            modes: { light: { accent: "var(--prim-indigo-4)" } },
+            tokens: { accent: "var(--prim-brand-3)" },
+            modes: { light: { accent: "var(--prim-brand-4)" } },
         };
         const validation = validateTheme(input);
         const css = serializeTheme({ name: "default", tokens: input.tokens, modes: input.modes, validation });
         assert.match(css, /:root\[data-theme="default"\] \{/);
         assert.match(css, /:root\[data-theme="default"\]\[data-mode="light"\] \{/);
-        assert.match(css, /--accent: var\(--prim-indigo-4\);/);
+        assert.match(css, /--accent: var\(--prim-brand-4\);/);
     });
 
     it("refuses to emit an invalid theme", () => {

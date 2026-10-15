@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "crimson",
+  "tokens": {
+    "accent": "oklch(55% 0.2 2)",
+    "accent-hover": "oklch(65% 0.15 15)"
+  },
+  "modes": {
+    "light": {
+      "accent": "oklch(55% 0.2 2)",
+      "accent-hover": "oklch(65% 0.15 15)"
+    }
+  }
+}

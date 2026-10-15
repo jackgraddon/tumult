@@ -1,7 +1,13 @@
 import type { TokenKind } from "../types.ts";
 
 const NUMBER = "[0-9]*\\.?[0-9]+";
-const COLOR = /^(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|color-mix\([^)]*\)|[a-z]+|var\(--[\w-]+.*\))$/;
+// Functional colour forms: sRGB plus the CSS Color 4 spaces (oklch/oklab/lch/
+// lab). Themes author in oklch, so refusing it would force every document
+// through a lossy conversion before it can be stored.
+const COLOR_SPACE = "(?:oklch|oklab|lch|lab)\\([^)]*\\)";
+const COLOR = new RegExp(
+    `^(#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)|hsla?\\([^)]*\\)|color-mix\\([^)]*\\)|${COLOR_SPACE}|[a-z]+|var\\(--[\\w-]+.*\\))$`,
+);
 const LENGTH = new RegExp(`^${NUMBER}(px|rem|em|%|dvh|dvw|ch|ex)?$`);
 const SIGNED_LENGTH = new RegExp(`^-?${NUMBER}(px|rem|em|%|dvh|dvw|ch|ex)?$`);
 const SPACING = new RegExp(`^(0|var\\(--[\\w-]+.*\\)|${LENGTH.source}(\\s+${LENGTH.source}){0,3})$`);
@@ -15,7 +21,7 @@ const BORDER_WIDTH = new RegExp(`^(0|thin|medium|thick|-?${NUMBER}(px|rem|em))$`
 const OPACITY = new RegExp(`^${NUMBER}$`);
 // One shadow layer: optional `inset`, 1–4 lengths (unitless 0 allowed), optional colour.
 const SHADOW_PART = new RegExp(
-    `^(inset\\s+)?((0|-?${NUMBER}(px|rem|em))\\s+){1,4}(#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)|hsla?\\([^)]*\\))?$`,
+    `^(inset\\s+)?((0|-?${NUMBER}(px|rem|em))\\s+){1,4}(#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)|hsla?\\([^)]*\\)|${COLOR_SPACE})?$`,
 );
 
 /**

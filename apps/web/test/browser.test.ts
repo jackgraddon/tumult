@@ -9,6 +9,10 @@ import { firefox } from "playwright";
 import type { PreviewServer } from "vite";
 import { build, preview } from "vite";
 
+// The app's own colour conversion, so the luminance checks below agree with
+// what the theme editor believes a value resolves to.
+import { toHexColor } from "../../../packages/ui/src/theme/color.ts";
+
 /**
  * Browser smoke test for the shell, run against a `--mode fake` build.
  *
@@ -41,8 +45,16 @@ const SESSION = {
     accessToken: "fake-token",
 };
 
-/** Semantic colour tokens: every one of these must differ between the two modes. */
+/**
+ * Semantic colour tokens: every one of these must differ between the two modes.
+ * `--accent` included: the built-in theme uses a light brand colour in dark
+ * mode and a darker one in light mode (white text has to stay readable on it),
+ * so the brand is mode-dependent like everything else.
+ */
 const COLOUR_TOKENS = [
+    "--accent",
+    "--accent-hover",
+    "--accent-contrast",
     "--surface-base",
     "--surface-pane",
     "--surface-rail",
@@ -54,8 +66,8 @@ const COLOUR_TOKENS = [
     "--border-default",
 ];
 
-/** Mode-independent by design — brand colour and geometry. */
-const STABLE_TOKENS = ["--accent", "--layout-guild-rail-width", "--layout-roomlist-width"];
+/** Mode-independent by design — geometry. */
+const STABLE_TOKENS = ["--layout-guild-rail-width", "--layout-roomlist-width"];
 
 /** The theme documents the Appearance-tab tests install and assert on. */
 const THEME_NAME = "browser-theme";
@@ -99,12 +111,19 @@ async function readState(page: Page) {
     );
 }
 
-/** sRGB relative luminance of a resolved `rgb(...)`/`rgba(...)` colour. */
+/**
+ * sRGB relative luminance of a CSS colour.
+ *
+ * The theme authors in OKLCH, and a computed colour serializes in the space it
+ * was authored in (`oklch(0.16 0 0)`, not `rgb(…)`), so this resolves through
+ * the same conversion the theme editor uses — `packages/ui/src/theme/color.ts` —
+ * instead of assuming `rgb()` and failing on a colour the app can display.
+ */
 function luminance(colour: string | null): number {
-    const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(colour ?? "");
-    assert.ok(match, `not a resolved colour: ${colour}`);
-    const [r, g, b] = [match[1], match[2], match[3]].map((channel) => {
-        const value = Number(channel) / 255;
+    const hex = toHexColor(colour ?? "");
+    assert.ok(hex, `not a resolvable colour: ${colour}`);
+    const [r, g, b] = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)].map((part) => {
+        const value = Number.parseInt(part, 16) / 255;
         return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
     });
     assert.ok(r !== undefined && g !== undefined && b !== undefined);
@@ -562,7 +581,12 @@ describe("browser smoke test (fake client)", () => {
         const state = await readState(page);
         assert.equal(state.theme, "default");
         assert.equal(state.mode, null);
-        assert.equal(await page.locator(".tumult-appearance-row").count(), 0, "themes survived a reset");
+        // Installed themes only: gallery rows share the styling class.
+        assert.equal(
+            await page.locator(".tumult-appearance-row[data-theme-name]").count(),
+            0,
+            "themes survived a reset",
+        );
 
         await closeSettings();
         assert.equal(
@@ -763,6 +787,7 @@ describe("browser smoke test (fake client)", () => {
                 const input = document.querySelector(".tumult-page-input");
                 const cardStyle = card ? getComputedStyle(card) : null;
                 const inputStyle = input ? getComputedStyle(input) : null;
+                const rootStyle = getComputedStyle(document.documentElement);
                 return {
                     cardBackground: cardStyle?.backgroundColor ?? "",
                     cardShadow: cardStyle?.boxShadow ?? "",
@@ -771,7 +796,11 @@ describe("browser smoke test (fake client)", () => {
                     // time, so the input falls back to the UA default (`inset`).
                     inputBorderStyle: inputStyle?.borderTopStyle ?? "",
                     inputBorderWidth: inputStyle?.borderTopWidth ?? "",
-                    font: getComputedStyle(document.documentElement).fontFamily,
+                    font: rootStyle.fontFamily,
+                    // The theme's own stack, for comparison — the document font
+                    // must be this, not the UA default. Read it rather than
+                    // pinning a family name: the stack is theme-owned.
+                    fontToken: rootStyle.getPropertyValue("--font-sans").trim(),
                 };
             });
 
@@ -780,7 +809,7 @@ describe("browser smoke test (fake client)", () => {
         assert.notEqual(dark.cardShadow, "none", "the login card shadow did not resolve");
         assert.equal(dark.inputBorderStyle, "solid", "the login input border did not resolve to the token rule");
         assert.equal(dark.inputBorderWidth, "1px", "the login input border width did not resolve to the token");
-        assert.match(dark.font, /system-ui/, "the document font did not come from the font token");
+        assert.equal(dark.font, dark.fontToken, "the document font did not come from the font token");
 
         // Light mode reaches the auth surface through the same tokens, not a
         // second hardcoded palette.

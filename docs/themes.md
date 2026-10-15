@@ -1,10 +1,9 @@
 # Themes — documents, validation and the loader
 
 Created: 2026-10-14
-Scope: `REWRITE_PLAN.md` §6 (Phase 3 — Theming Loader & UX). Companion to
-`docs/theme-migration-v1-to-v2.md` (the token contract v1 → v2 that Phase 3
-builds on) and `docs/phase0-audit.md` (the pre-theme inventory and the CSP
-findings).
+Scope: theme documents, validation and the loader. Companion to
+`docs/tokens.md` (generated reference to all 273 tokens) and `docs/plugins.md`
+(the sibling extension API).
 
 ## TL;DR
 
@@ -18,26 +17,109 @@ findings).
 - The built-in theme is `default` (`packages/theme/themes/default.json`,
   compiled at build time into `base.css` + `default.css`). Its name is reserved
   and cannot be replaced or shadowed by a user theme.
-- A theme writes **only what it changes**; every token it omits falls back to
-  the structural default in `base.css`.
+- A theme writes **only what it changes**; every token it omits inherits the
+  **built-in document's** value (`packages/theme/themes/default.json`, which
+  covers all 273 registry tokens — a missing one is a build error, not a silent
+  blank).
+- Five **accent themes** ship as data (`apps/web/public/themes/`) and are
+  offered in the Appearance tab's gallery. They are sparse overlays — accent
+  only — which is the clearest demonstration of the inheritance rule above (see
+  §11).
+- New to this? **[Authoring quickstart](#authoring-quickstart)** (build a theme in
+  four steps) and the generated **[token reference](./tokens.md)** (every token
+  with its type and built-in value). Reference for the envelope: §3.
+
+## Screenshots
+
+Captured from the built app in a real browser (Chromium, `mode fake`, 1440×900
+@2x) by driving the actual install flow — not mocked. Each was validated
+pixel-by-pixel: every accent shot paints ~108k pixels of *its own* theme's
+accent colour and essentially none of the others.
+
+The built-in theme, `default`:
+
+| dark (the app default) | light |
+|---|---|
+| ![Tumult's built-in theme, dark](images/theme-default-dark.png) | ![Tumult's built-in theme, light](images/theme-default-light.png) |
+
+The Appearance tab shows the gallery — title, blurb and swatch, no tokens until
+you install one:
+
+![The Appearance tab's theme gallery](images/theme-gallery.png)
+
+Installing an accent replaces only `accent` (and its hover); the surfaces, text,
+radii and font all come from the built-in document:
+
+| theme | dark | light |
+|---|---|---|
+| Forest | ![Forest accent, dark](images/accent-forest-dark.png) | ![Forest accent, light](images/accent-forest-light.png) |
+| Sunset | ![Sunset accent, dark](images/accent-sunset-dark.png) | |
+| Midnight | ![Midnight accent, dark](images/accent-midnight-dark.png) | |
+| Lava | ![Lava accent, dark](images/accent-lava-dark.png) | |
+| Crimson | ![Crimson accent, dark](images/accent-crimson-dark.png) | |
+
+`accent-forest-light` is the regression witness for §5: *forest* declares a
+`light` map, and the **surfaces** still flip because the built-in light values
+are inherited. Before the attribute-presence fix in `emitBaseCss`, that shot
+was black surfaces with a green accent.
+
+## Authoring quickstart
+
+A theme is **only the tokens it changes** — everything else is inherited from
+the built-in document (§5), so the smallest useful theme is three keys:
+
+1. **Write the document.** Save it as `<name>.json`:
+
+   ```json
+   {
+     "$schema": "./theme.schema.json",
+     "version": 2,
+     "name": "my-theme",
+     "tokens": { "accent": "#7aa2f7", "accent-hover": "#6b8fe0" }
+   }
+   ```
+
+2. **Find token names** in the generated [`tokens.md`](./tokens.md) — it lists
+   all 273 with their tier, kind and built-in value. Prefer a *semantic* role
+   (`accent`, `surface-pane`, `danger`) over a primitive: overriding a primitive
+   moves every role built on it (§2).
+
+3. **Install it** from **Settings → Appearance**: paste the JSON into *Install a
+   theme* or pick the file with the file button. It is validated on install, and
+   a document with any **error** is refused whole — nothing half-applies (§4).
+   The shipped accent themes can also be installed from the gallery with one
+   click (§11).
+
+4. **It applies immediately** and is stored in this browser only (§6). Switching
+   theme or *Reset* returns to the built-in `default`; nothing is uploaded and
+   no theme is ever fetched from a URL.
+
+Live editing without saving is the editor's job: a sparse draft writes only the
+tokens you change, previews on the document, and shows the issues while you
+type (§8).
 
 ## 1. Where theming lives
 
 | path | holds |
 |---|---|
-| `packages/theme/src/registry/` | the token registry: 271 `TokenDef`s (name, tier, kind, default, description) |
+| `packages/theme/src/registry/` | the token registry: 273 `TokenDef`s (name, tier, kind, description; a structural `value` only where one exists) — **structure, no literal values** |
 | `packages/theme/src/validate/` | the hand-rolled validator (envelope, names, values, references, tiers, cycles) |
 | `packages/theme/src/emit/` | registry → CSS: `base.css`, a theme's override block, serialization |
 | `packages/theme/src/loader.ts` | `loadTheme` / `loadThemeText` — untrusted document in, validated document + CSS (or a refusal) out |
 | `packages/theme/src/store.ts` | `ThemeStore` — persistence, selection, modes, advanced CSS; the **only writer** of the persisted state |
 | `packages/theme/src/runtime.ts` | the registry-free half: persisted shape, readers, boot helpers, the CSS guard (`@tumult/theme/runtime`) |
 | `packages/theme/src/css-guard.ts` | `findExternalStylesheetReferences` — the shared refusal rule for injected CSS |
-| `packages/theme/themes/default.json` | the shipped theme (base + `light` overrides) |
-| `apps/web/src/theme/apply.ts` | DOM application: `data-theme` / `data-mode` and the ordered `<style>` slots |
-| `apps/web/src/theme/controller.ts` | the app's `ThemeControls` implementation (store + DOM + a reactive snapshot) |
-| `packages/ui/src/settings/AppearanceTab.vue` | the UI: select/install/edit/reset, advanced CSS |
+| `packages/theme/src/build/` | node-only build: `compile.ts` (themes → `dist/themes/*.css`), `emit-docs.ts`, and `cli.ts` — the single entry that runs both, so compiling also regenerates the authored docs |
+| `packages/theme/themes/default.json` | the built-in theme's **values**: all 273 tokens + the `light` mode and `compact`/`spacious` density maps. This is the inheritance base an installed theme overlays |
+| `docs/tokens.md` | **generated** token reference (kind, built-in value, description per token) — the list to author against; rebuilt by the theme build, guarded by `test/docs.test.ts` |
+| `docs/theme.schema.json` | **generated** JSON Schema for the envelope — point a theme document's `$schema` at it for editor completion |
+| `apps/web/src/theme/apply.ts` | DOM application: `data-theme` / `data-mode` / `data-density` and the ordered `<style>` slots |
+| `apps/web/src/theme/controller.ts` | the app's `ThemeControls` implementation (store + DOM + a reactive snapshot, plus the gallery fetch) |
+| `apps/web/public/themes/` | the shipped accent **gallery** as data: `index.json` (title/blurb/swatch only) + one document per theme |
+| `packages/ui/src/settings/AppearanceTab.vue` | the UI: select/install/edit/reset, the gallery, advanced CSS |
 | `packages/ui/src/settings/ThemeEditor.vue` | the token-tree editor with live preview |
 | `packages/ui/src/theme/controls.ts` | the `ThemeControls` / `ThemeKey` seam between the two |
+| `apps/web/public/fonts/` | self-hosted Figtree (the family `font-sans` names) + `OFL.txt` |
 
 The split matters: `packages/ui` never touches storage or the document element,
 and `apps/web` never renders a token row. `main.ts`'s boot path imports only
@@ -81,9 +163,11 @@ Two house rules worth internalising:
    component styles; `50%` circles use `var(--radius-full)`. This is enforced
    mechanically over every `.vue` `<style>` block.
 
-The registry is the source of truth: read `packages/theme/src/registry/` for the
-exact name, tier, kind and default of any token. The editor's token tree is a
-view of the same list.
+The registry is the source of truth for **structure**: read
+`packages/theme/src/registry/` for the exact name, tier, kind and description of
+any token. Values are not there — the built-in theme's values live in
+`packages/theme/themes/default.json` (see §5), and the editor's token tree shows
+the effective built-in value as each field's placeholder.
 
 ## 3. A theme document
 
@@ -102,6 +186,32 @@ view of the same list.
 | `name` | yes | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` — it becomes the `data-theme` value inside a selector, so a name that could close `:root[data-theme="…"]` is an error. `default` is **reserved** (see §6). |
 | `tokens` | yes | flat map of token name → value. Unknown names are **errors** with a did-you-mean suggestion, because CSS silently drops a token that does not exist. |
 | `modes` | no | map of mode name → partial token map. Mode keys match `^[A-Za-z0-9-]{1,32}$`. |
+| `densities` | no | map of density name → partial token map, same rules and same key grammar as `modes`. Emitted after the modes, so a density wins a tie. Base density `cozy` means *no attribute*. |
+
+### Authoring aids
+
+Both are **generated by the theme build** (`pnpm --filter @tumult/theme build`,
+which also compiles the CSS) and committed so they render on GitHub; the test
+(`packages/theme/test/docs.test.ts`) fails if either drifts from the builders,
+so they cannot document a token that no longer exists.
+
+| file | what it gives you |
+|---|---|
+| [`tokens.md`](./tokens.md) | every token — kind, **built-in value** and description — grouped by tier. This is the list to pick names from. |
+| [`theme.schema.json`](./theme.schema.json) | JSON Schema for the envelope (in the repo at `docs/theme.schema.json`, next to this file). Point your document at it — copy it beside your `.json`, or use a path relative to wherever you save it — and your editor completes token names and flags typos: |
+
+```json
+{
+  "$schema": "./theme.schema.json",
+  "version": 2,
+  "name": "my-theme",
+  "tokens": { "accent": "#7aa2f7" }
+}
+```
+
+`$schema` is not part of the contract — the validator reads only `version`,
+`name`, `tokens`, `modes` and `densities`, so an editor hint is ignored (it is
+dropped when the app re-serializes a saved theme).
 
 ### Modes
 
@@ -119,7 +229,7 @@ Consequences worth knowing:
 - Don't write a `modes.dark` block. It is accepted and valid, but `data-mode`
   is never set to `dark`, so it can never apply.
 - A mode map is an **override** map: a token it omits is not reported (unlike
-  the base map, where a missing token is an `info` "structural default
+  the base map, where a missing token is an `info` — "the built-in theme's value
   applies").
 - A theme declares its own modes. The app offers exactly what the active theme
   implements, and switching themes re-checks the current mode — a mode the new
@@ -128,6 +238,14 @@ Consequences worth knowing:
 - If you want `light` to mean anything, override the **semantic** roles
   (surfaces, text, borders) as `default.json` does. Overriding only primitives
   means a light label with a dark palette.
+
+### Densities
+
+A density is the same mechanism on `data-density` (`cozy` = base = no
+attribute; the built-in theme offers `compact` and `spacious`). Density blocks
+are emitted after the mode blocks so they win a same-specificity tie, and the
+virtualizers carry a per-density pixel delta — they *estimate* row height in TS
+and re-measure rendered rows, so the CSS stays the source of truth.
 
 ### Examples
 
@@ -208,11 +326,12 @@ declaration or its own selector.
 
 ## 5. How a theme reaches the document
 
-Two dataset attributes plus three ordered `<style>` slots:
+Three dataset attributes plus three ordered `<style>` slots:
 
 ```
 data-theme="my-theme"        scopes the theme's emitted CSS
 data-mode="light"            selects a mode override block (absent = dark)
+data-density="compact"       selects a density override block (absent = cozy)
 
 <style data-tumult-theme="active">    the stored theme's emitted CSS
 <style data-tumult-theme="preview">   an unsaved draft from the editor
@@ -223,6 +342,29 @@ Later slots win, and the slots are re-appended in that order on every change so
 the cascade never depends on insertion timing. The theme's CSS is scoped to the
 `data-theme` value, so only one theme is ever live; the built-in `default` theme
 is just another value of the attribute.
+
+### The built-in document is the inheritance base
+
+`emitBaseCss` (build time) writes the built-in **tokens** to `:root` *and* its
+`modes` / `densities` maps to the **attribute-presence** selectors
+`:root[data-theme][data-mode="light"]` and
+`:root[data-theme][data-density="…"]` — not to `[data-theme="default"]`. That
+matters because an installed theme is *sparse*: it usually declares no
+`light` map at all, so without the inherited block installing an accent would
+drop light mode (black surfaces under a green accent).
+
+The presence attribute is load-bearing for the cascade:
+
+| selector | specificity | role |
+|---|---|---|
+| `:root[data-theme][data-mode="light"]` (built-in sheet) | 0,2,1 | inherited light values |
+| `:root[data-theme="x"]` (an installed theme's base block) | 0,1,1 | a theme's dark values |
+| `:root[data-theme="x"][data-mode="light"]` (the theme's own map) | 0,2,1 | ties the inherited block, wins on order |
+
+So a theme's own `light` map overrides the built-in one, a built-in light value
+can never bleed into a theme's dark mode, and a theme that says nothing still
+gets a working light mode. Density blocks are emitted last, so they win a
+same-specificity tie with a mode.
 
 Boot (`apps/web/src/theme/apply.ts`, called from `main.ts` **before mount**)
 applies the **cached** CSS straight from storage, without touching the registry
@@ -304,9 +446,10 @@ token, an experiment). Advanced CSS is the explicit escape hatch:
 It is deliberately **not scoped** (the shell has no shadow root), so advanced CSS
 can restyle anything in the app — that is the point, and the warning in the UI
 says so. A plugin stylesheet and advanced CSS are at the same trust level: code
-the user chose to run.
+the user chose to run. (A plugin injects one through `ctx.injectStylesheet()` —
+the same guard, the same rule; see `docs/plugins.md` §5.6.)
 
-Production CSP is still an open question (`docs/phase0-audit.md` §4): the dev
+Production CSP is still an open question: the dev
 policy is `style-src 'self' 'unsafe-inline'`, and a shipped header is the
 recommended delivery. Advanced CSS depends on that decision — a nonce-based
 policy would need the injected `<style>` elements to carry the nonce.
@@ -332,15 +475,15 @@ renders `TumultShell` without a theme controller gets no Appearance tab — ther
 is nothing for it to manage — and that is a supported configuration.
 
 `ThemeEditor.vue` edits a **draft**: it starts sparse (an omitted token shows the
-registry default as a placeholder and is simply inherited), `preview()` applies
-it to the document without storing anything, `install()` is Save, and Cancel or
-unmounting calls `endPreview()`. An invalid draft keeps the last valid preview
+built-in theme's value as a placeholder and is simply inherited), `preview()`
+applies it to the document without storing anything, `install()` is Save, and
+Cancel or unmounting calls `endPreview()`. An invalid draft keeps the last valid preview
 applied and shows the issues — typing into a hex field never blanks the app.
 
 ## 9. Migrating a v1 theme
 
 Short version: change `version` to `2`, add a `name` if you have not, and ship
-it. See `docs/theme-migration-v1-to-v2.md` for the full delta. In brief:
+it. The v1 → v2 delta, in brief:
 
 - Every v1 token still exists except the never-referenced `shell-gap`.
 - There are **no renames**.
@@ -354,11 +497,16 @@ it. See `docs/theme-migration-v1-to-v2.md` for the full delta. In brief:
 ## 10. Verifying a theme
 
 ```sh
-pnpm --filter @tumult/theme build    # compiles themes/*.json -> dist/themes/*.css
-pnpm --filter @tumult/theme test     # validator + loader + store + coverage + default drift
+pnpm --filter @tumult/theme build    # compiles themes/*.json -> dist/themes/*.css AND regenerates docs/tokens.md + docs/theme.schema.json
+pnpm --filter @tumult/theme test     # validator + loader + store + coverage + default drift + the generated-docs guard
 pnpm --filter @tumult/ui test        # color helpers used by the editor
 pnpm --filter @tumult/web test:browser   # the whole loader/UX flow in a real browser
 ```
+
+The theme build writes the authored reference docs as well as the CSS: if you
+change the registry or a built-in value, run the build and commit
+`docs/tokens.md` and `docs/theme.schema.json`. `test/docs.test.ts` re-renders
+both and fails on any drift, so a stale reference cannot be merged.
 
 Or programmatically:
 
@@ -373,10 +521,49 @@ if (loaded.css === null) {
 }
 ```
 
-## 11. Deliberately not supported
+## 11. The shipped gallery
+
+Five accent themes ship **as data** in `apps/web/public/themes/`:
+
+```
+index.json         [{ id, title, description, swatch: [accent, hover] }, …]
+forest.json        one document per id — a sparse overlay (see below)
+sunset.json
+midnight.json
+lava.json
+crimson.json
+```
+
+The index carries **no tokens**, only presentation: `AppearanceTab` can render
+every row (title, blurb, swatch chips) before a single document is fetched, and
+the documents are fetched one at a time, on install. A gallery document is a
+deliberately tiny overlay — `accent` + `accent-hover`, in the base map *and* in
+`modes.light` — so it is the concrete illustration of §5's inheritance base:
+everything else (surfaces, text, radii, the font) comes from the built-in
+document.
+
+The UI never fetches. The seam is on `ThemeControls`:
+
+```ts
+readonly gallery: Ref<ThemeGalleryEntry[]>;      // empty until loadGallery resolves
+loadGallery(): Promise<void>;                    // idempotent; failure leaves it empty
+installGallery(id: string): Promise<void>;       // fetch one document + install it
+```
+
+`apps/web/src/theme/controller.ts` owns the fetches (same-origin, static), so
+`@tumult/ui` stays free of network access and a host that provides its own
+controller simply has no gallery. `packages/theme/test/gallery.test.ts` pins the
+index against the documents against the validator: every advertised id exists,
+its document validates, and its name matches the id.
+
+To add one: drop `public/themes/<id>.json` and an `index.json` entry — no code.
+
+## 12. Deliberately not supported
 
 - **Remote themes.** No URL, no registry, no auto-update. Themes are pasted or
-  imported from a local file.
+  imported from a local file. (The shipped gallery in §11 is same-origin app
+  data fetched by the app's own controller, not a theme registry a user can
+  point at.)
 - **JavaScript.** No scripts, no templating, no computed values. Where the
   token contract does not reach, advanced CSS does.
 - **Fonts and images.** Token values reject `url()` outright, and advanced CSS
@@ -384,9 +571,6 @@ if (loaded.css === null) {
   fonts your own way; a theme can name a family (`font-sans`) but not a source.
 - **Per-room or per-space themes.** One theme per document.
 - **Sync.** Themes live in this browser's localStorage.
-- **Density** (compact/cozy row heights). Virtualizer row heights are computed
-  in TS, so a token cannot drive them; parked for the visual redesign
-  (Phase 4).
 - **Auto light/dark** from `prefers-color-scheme`. Modes are an explicit choice;
   wiring a media-query hook is a small future addition to the controller, not a
   change to the document format.

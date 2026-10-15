@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "lava",
+  "tokens": {
+    "accent": "oklch(55% 0.25 25)",
+    "accent-hover": "oklch(65% 0.2 45)"
+  },
+  "modes": {
+    "light": {
+      "accent": "oklch(55% 0.25 25)",
+      "accent-hover": "oklch(65% 0.2 45)"
+    }
+  }
+}

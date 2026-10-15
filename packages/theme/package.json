@@ -16,13 +16,14 @@
       "types": "./dist/compiler.d.ts",
       "import": "./dist/compiler.js"
     },
+    "./themes/*.json": "./themes/*.json",
     "./dist/themes/*.css": "./dist/themes/*.css"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": ["dist", "themes"],
   "scripts": {
-    "build": "tsc -b && node ./dist/build/compile.js",
+    "build": "tsc -b && node ./dist/build/cli.js",
     "typecheck": "tsc -b",
     "test": "node --test \"test/**/*.test.ts\""
   },

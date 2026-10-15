@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "midnight",
+  "tokens": {
+    "accent": "oklch(50% 0.12 250)",
+    "accent-hover": "oklch(60% 0.15 280)"
+  },
+  "modes": {
+    "light": {
+      "accent": "oklch(50% 0.12 250)",
+      "accent-hover": "oklch(60% 0.15 280)"
+    }
+  }
+}

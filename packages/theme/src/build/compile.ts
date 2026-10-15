@@ -3,40 +3,33 @@
  * through the public validator, and writes `dist/themes/*.css`.
  *
  * Never imported from `src/index.ts` — one transitive node:fs import breaks
- * the Vite browser build.
+ * the Vite browser build. Library only: the side effects (including the docs
+ * regeneration) live in `cli.ts`, so importing this module compiles nothing.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { emitBaseCss } from "../emit/base-css.ts";
 import { serializeTheme } from "../emit/serialize.ts";
 import { validateTheme } from "../validate/index.ts";
+import { requireDefaultTheme, themesDir, type RawTheme } from "./default-theme.ts";
 
-const here = dirname(fileURLToPath(import.meta.url));
-// dist/build/compile.js -> package root is ../../ from dist/build.
-const root = join(here, "..", "..");
-const themesDir = join(root, "themes");
-const outDir = join(root, "dist", "themes");
+const outDir = join(themesDir, "..", "dist", "themes");
 
 export function compileThemes(): void {
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "base.css"), emitBaseCss());
 
+    const docs: RawTheme[] = [];
     for (const file of readdirSync(themesDir)) {
         if (!file.endsWith(".json")) continue;
         const raw = readFileSync(join(themesDir, file), "utf8");
         const validation = validateTheme(JSON.parse(raw) as unknown);
         if (!validation.valid) {
-            const errors = validation.issues.filter((i) => i.severity === "error");
-            throw new Error(`Theme ${file} invalid:\n${errors.map((e) => `- ${e.message}`).join("\n")}`);
+            const issues = validation.issues.filter((issue) => issue.severity === "error");
+            throw new Error(`Theme ${file} invalid:\n${issues.map((issue) => `- ${issue.message}`).join("\n")}`);
         }
-        const parsed = JSON.parse(raw) as {
-            name: string;
-            tokens: Record<string, string>;
-            modes?: Record<string, Record<string, string>>;
-            densities?: Record<string, Record<string, string>>;
-        };
+        const parsed = JSON.parse(raw) as RawTheme;
+        docs.push(parsed);
         writeFileSync(
             join(outDir, `${parsed.name}.css`),
             serializeTheme({
@@ -48,7 +41,6 @@ export function compileThemes(): void {
             }),
         );
     }
-}
 
-// CLI entry: `node ./dist/build/compile.js`
-compileThemes();
+    writeFileSync(join(outDir, "base.css"), emitBaseCss(requireDefaultTheme(docs)));
+}

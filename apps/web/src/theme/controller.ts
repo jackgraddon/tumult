@@ -17,9 +17,12 @@ import {
     loadThemeText,
 } from "@tumult/theme";
 import type { ThemeDensity, ThemeJson, ThemeMode, ValidationIssue } from "@tumult/theme";
-import type { ThemeControls, ThemeResult, ThemeState } from "@tumult/ui";
+import type { ThemeControls, ThemeGalleryEntry, ThemeResult, ThemeState } from "@tumult/ui";
+
+import defaultThemeDocument from "@tumult/theme/themes/default.json";
 
 import { applyAdvancedCss, setDocumentTheme, setThemeSlot } from "./apply.ts";
+import { parseGallery } from "./gallery.ts";
 
 const RESERVED_NAME_ISSUE: ValidationIssue = {
     code: "invalid-name",
@@ -27,8 +30,29 @@ const RESERVED_NAME_ISSUE: ValidationIssue = {
     message: `"${DEFAULT_THEME_NAME}" is reserved for the built-in theme; rename this one to preview it.`,
 };
 
+function refused(message: string): ThemeResult {
+    return { ok: false, issues: [{ code: "invalid-envelope", severity: "error", message }] };
+}
+
 class AppThemeController implements ThemeControls {
     public readonly state: Ref<ThemeState>;
+
+    /**
+     * The built-in theme document, imported as JSON (not hardcoded): the editor
+     * resolves swatches and placeholders against it, since the registry carries
+     * structure only and `base.css` — compiled from this same file — is what the
+     * app actually wears.
+     */
+    public readonly defaults: Record<string, string> = { ...defaultThemeDocument.tokens };
+
+    /**
+     * Shipped gallery themes, fetched from the app's own static assets. The
+     * fetch lives here because the gallery is app data; the tab only sees the
+     * parsed list.
+     */
+    public readonly gallery: Ref<ThemeGalleryEntry[]> = shallowRef<ThemeGalleryEntry[]>([]);
+
+    private galleryRequested = false;
 
     private readonly store: ThemeStore;
 
@@ -93,6 +117,32 @@ class AppThemeController implements ThemeControls {
         this.endPreview();
         this.paint();
         this.sync();
+    }
+
+    public loadGallery(): void {
+        // Idempotent: the tab mounts every time it opens, the index is static.
+        if (this.galleryRequested) return;
+        this.galleryRequested = true;
+        void fetch("/themes/index.json")
+            .then((response) => (response.ok ? response.json() : null))
+            .then((data) => {
+                const entries = parseGallery(data);
+                if (entries.length > 0) this.gallery.value = entries;
+            })
+            .catch(() => {
+                // A gallery that will not load is not an error the user must
+                // see: the section simply has nothing to offer.
+            });
+    }
+
+    public async installGallery(id: string): Promise<ThemeResult> {
+        try {
+            const response = await fetch(`/themes/${encodeURIComponent(id)}.json`);
+            if (!response.ok) return refused(`Could not load the “${id}” theme (HTTP ${response.status}).`);
+            return this.install(await response.text());
+        } catch {
+            return refused(`Could not load the “${id}” theme.`);
+        }
     }
 
     public preview(input: unknown): ThemeResult {

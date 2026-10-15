@@ -4,7 +4,7 @@
  * This module is deliberately registry-free: it imports only
  * `@tumult/theme/runtime` (the persisted shape plus the CSS guard), so
  * `main.ts` can apply the stored theme before the first paint without pulling
- * the 271-token registry or `@tumult/ui` into the entry chunk.
+ * the 273-token registry or `@tumult/ui` into the entry chunk.
  *
  * Two dataset attributes plus three ordered `<style>` slots carry the whole
  * state. Attribute `data-theme` scopes the emitted theme CSS

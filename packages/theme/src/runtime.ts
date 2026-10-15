@@ -2,7 +2,7 @@
  * The registry-free runtime half of theming.
  *
  * Applying a stored theme has to happen *before* the first paint, and the
- * 271-token registry plus the validator are ~50 kB — too much to put in the
+ * 273-token registry plus the validator are ~50 kB — too much to put in the
  * entry chunk for a `JSON.parse` and a `<style>` append. So the persisted
  * shape, its readers/writers and the injected-CSS guard live in this module,
  * which the app imports as `@tumult/theme/runtime`. The full entry point adds

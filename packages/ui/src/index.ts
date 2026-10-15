@@ -33,7 +33,7 @@ export { default as SettingsDialog } from "./settings/SettingsDialog.vue";
 export { default as PluginsTab } from "./settings/PluginsTab.vue";
 export { default as AppearanceTab } from "./settings/AppearanceTab.vue";
 export { ThemeKey, useTheme, tryUseTheme } from "./theme/controls.ts";
-export type { ThemeControls, ThemeState, ThemeResult } from "./theme/controls.ts";
+export type { ThemeControls, ThemeState, ThemeResult, ThemeGalleryEntry } from "./theme/controls.ts";
 export { resolveTokenValue, toHexColor, tokenHex } from "./theme/color.ts";
 export { default as TumultShell } from "./shell/TumultShell.vue";
 export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";

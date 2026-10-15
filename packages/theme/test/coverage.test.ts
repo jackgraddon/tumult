@@ -60,7 +60,7 @@ const sourceFiles = [
 const names = new Set(ALL_TOKENS.map((t) => t.name));
 const referenced = new Set<string>();
 for (const token of ALL_TOKENS) {
-    for (const m of token.value.matchAll(REF)) referenced.add(m[1]);
+    for (const m of (token.value ?? "").matchAll(REF)) referenced.add(m[1]);
 }
 for (const file of walk(join(repo, "packages", "theme", "themes"), [".json"])) {
     const raw = readFileSync(file, "utf8");

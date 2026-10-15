@@ -1,12 +1,31 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { emitBaseCss } from "../src/emit/base-css.ts";
 import { emitThemeCss } from "../src/emit/theme-css.ts";
 import { serializeTheme } from "../src/emit/serialize.ts";
 import { ALL_TOKENS } from "../src/registry/index.ts";
 import { buildThemeSchema } from "../src/build/schema.ts";
-import { buildTokenDocs } from "../src/build/docs.ts";
 import { validateTheme } from "../src/validate/index.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+// base.css is compiled from the default theme document — the registry has no
+// primitive values to fall back on, so every test below feeds it the JSON.
+const theme = JSON.parse(readFileSync(join(here, "..", "themes", "default.json"), "utf8")) as {
+    tokens: Record<string, string>;
+    modes?: Record<string, Record<string, string>>;
+    densities?: Record<string, Record<string, string>>;
+};
+const defaults = theme.tokens;
+
+/** The `:root { … }` block alone: the mode/density blocks repeat token names. */
+function rootBlock(css: string): string {
+    const start = css.indexOf(":root {");
+    const end = css.indexOf("}", start);
+    return css.slice(start, end);
+}
 
 function tokenNamesInBaseCss(css: string): Set<string> {
     const names = new Set<string>();
@@ -20,8 +39,8 @@ function tokenNamesInBaseCss(css: string): Set<string> {
 
 describe("emitBaseCss", () => {
     it("emits every token from the registry exactly once", () => {
-        const css = emitBaseCss();
-        const names = tokenNamesInBaseCss(css);
+        const css = emitBaseCss(theme);
+        const names = tokenNamesInBaseCss(rootBlock(css));
         assert.equal(css.trimStart().startsWith(":root {"), true);
         assert.ok(css.includes("}"));
         const expected = new Set<string>(ALL_TOKENS.map((t) => t.name));
@@ -37,7 +56,7 @@ describe("emitBaseCss", () => {
     });
 
     it("emits tokens in sorted order", () => {
-        const css = emitBaseCss();
+        const css = rootBlock(emitBaseCss(theme));
         const re = /^\s*--([\w-]+):/gm;
         const listed: string[] = [];
         let m: RegExpExecArray | null;
@@ -46,6 +65,24 @@ describe("emitBaseCss", () => {
         }
         const sorted = [...ALL_TOKENS].map((t) => t.name).sort((a, b) => a.localeCompare(b));
         assert.deepEqual(listed, sorted);
+    });
+
+    it("emits the built-in mode maps for every theme to inherit", () => {
+        // Attribute-presence selector, not the built-in theme's name: an
+        // installed sparse theme inherits light mode from this block.
+        const css = emitBaseCss(theme);
+        assert.ok(css.includes(':root[data-theme][data-mode="light"] {'), "no inherited light block");
+        const lightStart = css.indexOf(':root[data-theme][data-mode="light"] {');
+        const lightBlock = css.slice(lightStart, css.indexOf("}", lightStart));
+        const surface = theme.modes?.["light"]?.["surface-base"];
+        assert.ok(surface, "the shipped default theme must declare a light surface");
+        assert.ok(lightBlock.includes(`--surface-base: ${surface};`), "light block must carry the built-in values");
+        assert.ok(css.includes(':root[data-theme][data-density="compact"] {'), "no inherited density block");
+    });
+
+    it("refuses a mode name that could escape the selector", () => {
+        const modes = { 'light"] { --x': { "space-4": "1px" } };
+        assert.throws(() => emitBaseCss({ tokens: theme.tokens, modes }));
     });
 });
 
@@ -119,14 +156,3 @@ describe("buildThemeSchema", () => {
     });
 });
 
-describe("buildTokenDocs", () => {
-    it("lists every token", () => {
-        const doc = buildTokenDocs();
-        const namesInDocs = new Set<string>();
-        for (const t of ALL_TOKENS) {
-            assert.ok(doc.includes(`--${t.name}`), `missing in docs: ${t.name}`);
-        }
-        // Also ensure no unknown extra non-header lines we don't expect
-        assert.equal(doc.includes("Tumult tokens") || doc.includes("Tumult Token Reference"), true);
-    });
-});

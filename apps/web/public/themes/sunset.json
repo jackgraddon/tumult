@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "sunset",
+  "tokens": {
+    "accent": "oklch(65% 0.22 35)",
+    "accent-hover": "oklch(75% 0.18 70)"
+  },
+  "modes": {
+    "light": {
+      "accent": "oklch(65% 0.22 35)",
+      "accent-hover": "oklch(75% 0.18 70)"
+    }
+  }
+}

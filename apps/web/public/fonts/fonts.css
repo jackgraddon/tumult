@@ -1,0 +1,22 @@
+/*
+ * Figtree, self-hosted (SIL Open Font License 1.1 — see OFL.txt beside this
+ * file). The variable face carries the whole 300–900 weight axis, so the theme's
+ * weight tokens (400/600/700) all come from one 62 kB file per style. Values are
+ * deliberately literal here: this is the font pipeline, not app CSS, and it is
+ * served verbatim from public/ so it stays outside the token gate.
+ */
+@font-face {
+    font-family: "Figtree";
+    src: url("/fonts/Figtree.ttf") format("truetype");
+    font-weight: 300 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Figtree";
+    src: url("/fonts/Figtree-Italic.ttf") format("truetype");
+    font-weight: 300 900;
+    font-style: italic;
+    font-display: swap;
+}

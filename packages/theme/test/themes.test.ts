@@ -33,16 +33,17 @@ describe("shipped themes", () => {
 });
 
 describe("default theme", () => {
-    it("is a complete snapshot of the registry structural defaults", () => {
+    it("is a complete snapshot of the token registry", () => {
+        // Completeness is the whole contract now: the registry carries names,
+        // kinds, tiers and structural var() references, so every *value* the
+        // app can ever render comes from this one document.
         const raw = JSON.parse(readFileSync(join(themesDir, "default.json"), "utf8")) as {
             tokens: Record<string, string>;
         };
         const missing = ALL_TOKENS.filter((t) => !(t.name in raw.tokens)).map((t) => `--${t.name}`);
         assert.deepEqual(missing, [], "default theme is missing registered tokens");
-        const drift = ALL_TOKENS.filter((t) => raw.tokens[t.name] !== t.value).map(
-            (t) => `${t.name}: ${JSON.stringify(raw.tokens[t.name])} != ${JSON.stringify(t.value)}`,
-        );
-        assert.deepEqual(drift, [], "default theme drifted from the registry defaults");
+        const blank = ALL_TOKENS.filter((t) => !raw.tokens[t.name]).map((t) => `--${t.name}`);
+        assert.deepEqual(blank, [], "default theme must give every token a value");
     });
 
     it("declares exactly the modes the app offers for it", () => {
@@ -77,6 +78,28 @@ describe("token registry", () => {
         for (const t of ALL_TOKENS) {
             assert.ok(!seen.has(t.name), `duplicate token ${t.name}`);
             seen.add(t.name);
+        }
+    });
+
+    it("carries structure only — no values hardcoded in code", () => {
+        // Primitives are the leaves, so they have no var() to fall back on and
+        // must not smuggle a value either: their values live in themes/*.json
+        // (base.css is compiled from the default document). Everything else may
+        // carry exactly one thing — a structural var() reference.
+        for (const t of ALL_TOKENS) {
+            if (t.tier === "primitive") {
+                assert.equal(
+                    t.value,
+                    undefined,
+                    `primitive --${t.name} must not carry a value; it belongs in the default theme document`,
+                );
+            } else if (t.value !== undefined) {
+                assert.match(
+                    t.value,
+                    /^var\(--[\w-]+\)$/,
+                    `--${t.name} structural default must be a bare var() reference, got ${JSON.stringify(t.value)}`,
+                );
+            }
         }
     });
 

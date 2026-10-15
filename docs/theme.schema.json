@@ -1,0 +1,3327 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Tumult theme",
+    "type": "object",
+    "required": [
+        "version",
+        "name",
+        "tokens"
+    ],
+    "properties": {
+        "version": {
+            "type": "number",
+            "enum": [
+                1,
+                2
+            ],
+            "description": "Token contract version; current is 2."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1
+        },
+        "tokens": {
+            "type": "object",
+            "properties": {
+                "prim-brand-0": {
+                    "type": "string",
+                    "description": "Lightest brand tint."
+                },
+                "prim-brand-1": {
+                    "type": "string",
+                    "description": "Light brand."
+                },
+                "prim-brand-2": {
+                    "type": "string",
+                    "description": "Mid brand."
+                },
+                "prim-brand-3": {
+                    "type": "string",
+                    "description": "Primary accent."
+                },
+                "prim-brand-4": {
+                    "type": "string",
+                    "description": "Accent hover."
+                },
+                "prim-brand-5": {
+                    "type": "string",
+                    "description": "Accent active."
+                },
+                "prim-neutral-0": {
+                    "type": "string",
+                    "description": "Pure white."
+                },
+                "prim-neutral-1": {
+                    "type": "string",
+                    "description": "Primary text on dark."
+                },
+                "prim-neutral-2": {
+                    "type": "string",
+                    "description": "Secondary text."
+                },
+                "prim-neutral-3": {
+                    "type": "string",
+                    "description": "Muted text."
+                },
+                "prim-neutral-4": {
+                    "type": "string",
+                    "description": "Borders."
+                },
+                "prim-neutral-5": {
+                    "type": "string",
+                    "description": "Pane background."
+                },
+                "prim-neutral-6": {
+                    "type": "string",
+                    "description": "Deep background."
+                },
+                "prim-neutral-7": {
+                    "type": "string",
+                    "description": "Rail background."
+                },
+                "prim-neutral-8": {
+                    "type": "string",
+                    "description": "Light-mode surface."
+                },
+                "prim-neutral-9": {
+                    "type": "string",
+                    "description": "Light-mode pane."
+                },
+                "prim-neutral-10": {
+                    "type": "string",
+                    "description": "Light-mode border."
+                },
+                "prim-neutral-11": {
+                    "type": "string",
+                    "description": "Secondary text on light."
+                },
+                "prim-neutral-12": {
+                    "type": "string",
+                    "description": "Muted text on light."
+                },
+                "prim-green-3": {
+                    "type": "string",
+                    "description": "Success / online."
+                },
+                "prim-red-3": {
+                    "type": "string",
+                    "description": "Danger."
+                },
+                "prim-red-4": {
+                    "type": "string",
+                    "description": "Danger hover."
+                },
+                "prim-amber-3": {
+                    "type": "string",
+                    "description": "Warning / pending."
+                },
+                "prim-mention-3": {
+                    "type": "string",
+                    "description": "Mention highlight base."
+                },
+                "prim-black": {
+                    "type": "string",
+                    "description": "Black."
+                },
+                "prim-space-px": {
+                    "type": "string",
+                    "description": "1px."
+                },
+                "prim-space-0-5": {
+                    "type": "string",
+                    "description": "2px."
+                },
+                "prim-space-1": {
+                    "type": "string",
+                    "description": "4px."
+                },
+                "prim-space-1-5": {
+                    "type": "string",
+                    "description": "6px."
+                },
+                "prim-space-2": {
+                    "type": "string",
+                    "description": "8px."
+                },
+                "prim-space-3": {
+                    "type": "string",
+                    "description": "12px."
+                },
+                "prim-space-4": {
+                    "type": "string",
+                    "description": "16px."
+                },
+                "prim-space-5": {
+                    "type": "string",
+                    "description": "24px."
+                },
+                "prim-space-6": {
+                    "type": "string",
+                    "description": "32px."
+                },
+                "prim-radius-xs": {
+                    "type": "string",
+                    "description": "2px radius."
+                },
+                "prim-radius-sm": {
+                    "type": "string",
+                    "description": "Small radius."
+                },
+                "prim-radius-md": {
+                    "type": "string",
+                    "description": "Default radius."
+                },
+                "prim-radius-lg": {
+                    "type": "string",
+                    "description": "Large radius."
+                },
+                "prim-radius-full": {
+                    "type": "string",
+                    "description": "Pills / avatars."
+                },
+                "prim-font-sans": {
+                    "type": "string",
+                    "description": "UI font stack."
+                },
+                "prim-font-mono": {
+                    "type": "string",
+                    "description": "Mono stack."
+                },
+                "prim-text-2xs": {
+                    "type": "string",
+                    "description": "9px."
+                },
+                "prim-text-xs": {
+                    "type": "string",
+                    "description": "12px."
+                },
+                "prim-text-sm": {
+                    "type": "string",
+                    "description": "14px."
+                },
+                "prim-text-md": {
+                    "type": "string",
+                    "description": "16px."
+                },
+                "prim-text-lg": {
+                    "type": "string",
+                    "description": "20px."
+                },
+                "prim-text-xl": {
+                    "type": "string",
+                    "description": "24px."
+                },
+                "prim-weight-normal": {
+                    "type": "string",
+                    "description": "Regular weight."
+                },
+                "prim-weight-semibold": {
+                    "type": "string",
+                    "description": "Semibold."
+                },
+                "prim-weight-bold": {
+                    "type": "string",
+                    "description": "Bold."
+                },
+                "prim-leading-none": {
+                    "type": "string",
+                    "description": "Tight glyph leading."
+                },
+                "prim-leading-tight": {
+                    "type": "string",
+                    "description": "Tight leading."
+                },
+                "prim-leading-normal": {
+                    "type": "string",
+                    "description": "Body leading."
+                },
+                "prim-tracking-wide": {
+                    "type": "string",
+                    "description": "Small-caps label tracking."
+                },
+                "prim-tracking-wider": {
+                    "type": "string",
+                    "description": "Rail heading tracking."
+                },
+                "prim-tracking-emoji": {
+                    "type": "string",
+                    "description": "Verification digit spacing."
+                },
+                "prim-tracking-emoji-lg": {
+                    "type": "string",
+                    "description": "Verification emoji spacing."
+                },
+                "prim-size-2xs": {
+                    "type": "string",
+                    "description": "Presence dot / spacer."
+                },
+                "prim-size-xs": {
+                    "type": "string",
+                    "description": "Small icon / badge."
+                },
+                "prim-size-sm": {
+                    "type": "string",
+                    "description": "Small glyph."
+                },
+                "prim-size-sm-plus": {
+                    "type": "string",
+                    "description": "Compact control."
+                },
+                "prim-size-md": {
+                    "type": "string",
+                    "description": "Row gutter / avatar sm."
+                },
+                "prim-size-lg": {
+                    "type": "string",
+                    "description": "Icon button / avatar md."
+                },
+                "prim-size-xl": {
+                    "type": "string",
+                    "description": "Rail item / avatar lg."
+                },
+                "prim-size-hairline": {
+                    "type": "string",
+                    "description": "Divider / separator."
+                },
+                "prim-size-scrollbar": {
+                    "type": "string",
+                    "description": "Scrollbar thickness."
+                },
+                "prim-size-indicator": {
+                    "type": "string",
+                    "description": "Selection pill width."
+                },
+                "prim-size-stack-overlap": {
+                    "type": "string",
+                    "description": "Read-receipt avatar stack overlap."
+                },
+                "prim-shadow-sm": {
+                    "type": "string",
+                    "description": "Subtle elevation."
+                },
+                "prim-shadow-md": {
+                    "type": "string",
+                    "description": "Popover / chip palette."
+                },
+                "prim-shadow-panel": {
+                    "type": "string",
+                    "description": "Slide-over panel edge."
+                },
+                "prim-z-panel": {
+                    "type": "string",
+                    "description": "In-pane slide-over."
+                },
+                "prim-z-dropdown": {
+                    "type": "string",
+                    "description": "Menus / popovers."
+                },
+                "prim-z-overlay": {
+                    "type": "string",
+                    "description": "Dialog backdrop."
+                },
+                "prim-z-modal": {
+                    "type": "string",
+                    "description": "Dialog surface."
+                },
+                "prim-z-toast": {
+                    "type": "string",
+                    "description": "Toasts."
+                },
+                "prim-opacity-disabled": {
+                    "type": "string",
+                    "description": "Disabled controls."
+                },
+                "prim-opacity-muted": {
+                    "type": "string",
+                    "description": "Busy / de-emphasised."
+                },
+                "prim-border-width": {
+                    "type": "string",
+                    "description": "Default border."
+                },
+                "prim-border-width-medium": {
+                    "type": "string",
+                    "description": "Thin ring / hollow marker."
+                },
+                "prim-border-width-strong": {
+                    "type": "string",
+                    "description": "Emphasis border / ring."
+                },
+                "prim-border-width-accent": {
+                    "type": "string",
+                    "description": "Quote / reply accent bar."
+                },
+                "prim-motion-fast": {
+                    "type": "string",
+                    "description": "Hover fades."
+                },
+                "prim-motion-base": {
+                    "type": "string",
+                    "description": "Default transition."
+                },
+                "prim-motion-slow": {
+                    "type": "string",
+                    "description": "Jump-to-message flash."
+                },
+                "prim-motion-ease": {
+                    "type": "string",
+                    "description": "Default easing."
+                },
+                "prim-layout-rail": {
+                    "type": "string",
+                    "description": "Guild rail width."
+                },
+                "prim-layout-roomlist": {
+                    "type": "string",
+                    "description": "Room list width."
+                },
+                "prim-layout-members": {
+                    "type": "string",
+                    "description": "Members width."
+                },
+                "prim-layout-slideover": {
+                    "type": "string",
+                    "description": "Search / thread slide-over width."
+                },
+                "prim-layout-menu-min": {
+                    "type": "string",
+                    "description": "Dropdown menu minimum width."
+                },
+                "surface-base": {
+                    "type": "string",
+                    "description": "App background."
+                },
+                "surface-pane": {
+                    "type": "string",
+                    "description": "Pane background."
+                },
+                "surface-raised": {
+                    "type": "string",
+                    "description": "Menus / popovers / dialogs."
+                },
+                "surface-rail": {
+                    "type": "string",
+                    "description": "Guild rail background."
+                },
+                "surface-inset": {
+                    "type": "string",
+                    "description": "Inputs and wells inside a pane."
+                },
+                "surface-overlay": {
+                    "type": "string",
+                    "description": "Dialog backdrop."
+                },
+                "surface-hover": {
+                    "type": "string",
+                    "description": "Hover wash."
+                },
+                "surface-active": {
+                    "type": "string",
+                    "description": "Active / selected wash."
+                },
+                "surface-hover-contrast": {
+                    "type": "string",
+                    "description": "Hover wash on a bright (banner) surface."
+                },
+                "text-primary": {
+                    "type": "string",
+                    "description": "Primary text."
+                },
+                "text-secondary": {
+                    "type": "string",
+                    "description": "Secondary text."
+                },
+                "text-muted": {
+                    "type": "string",
+                    "description": "Muted text."
+                },
+                "text-on-warning": {
+                    "type": "string",
+                    "description": "Text on warning surfaces."
+                },
+                "text-on-danger": {
+                    "type": "string",
+                    "description": "Text on danger surfaces."
+                },
+                "accent": {
+                    "type": "string",
+                    "description": "Primary accent."
+                },
+                "accent-hover": {
+                    "type": "string",
+                    "description": "Accent hover."
+                },
+                "accent-contrast": {
+                    "type": "string",
+                    "description": "Text on accent."
+                },
+                "danger": {
+                    "type": "string",
+                    "description": "Danger."
+                },
+                "danger-hover": {
+                    "type": "string",
+                    "description": "Danger hover."
+                },
+                "success": {
+                    "type": "string",
+                    "description": "Success / online."
+                },
+                "warning": {
+                    "type": "string",
+                    "description": "Warning / pending."
+                },
+                "mention": {
+                    "type": "string",
+                    "description": "Mention highlight."
+                },
+                "border-default": {
+                    "type": "string",
+                    "description": "Default border."
+                },
+                "state-hover": {
+                    "type": "string",
+                    "description": "Generic hover background."
+                },
+                "state-selected": {
+                    "type": "string",
+                    "description": "Selected background."
+                },
+                "state-disabled-opacity": {
+                    "type": "string",
+                    "description": "Disabled controls."
+                },
+                "state-muted-opacity": {
+                    "type": "string",
+                    "description": "Busy / de-emphasised."
+                },
+                "focus-ring": {
+                    "type": "string",
+                    "description": "Focus ring colour."
+                },
+                "focus-ring-width": {
+                    "type": "string",
+                    "description": "Focus ring thickness."
+                },
+                "focus-ring-offset": {
+                    "type": "string",
+                    "description": "Default focus ring offset."
+                },
+                "space-px": {
+                    "type": "string",
+                    "description": "Hairline space (1px)."
+                },
+                "space-0-5": {
+                    "type": "string",
+                    "description": "Semantic space 0.5 (2px)."
+                },
+                "space-1": {
+                    "type": "string",
+                    "description": "Semantic space 1 (4px)."
+                },
+                "space-1-5": {
+                    "type": "string",
+                    "description": "Semantic space 1.5 (6px)."
+                },
+                "space-2": {
+                    "type": "string",
+                    "description": "Semantic space 2 (8px)."
+                },
+                "space-3": {
+                    "type": "string",
+                    "description": "Semantic space 3 (12px)."
+                },
+                "space-4": {
+                    "type": "string",
+                    "description": "Semantic space 4 (16px)."
+                },
+                "space-5": {
+                    "type": "string",
+                    "description": "Semantic space 5 (24px)."
+                },
+                "space-6": {
+                    "type": "string",
+                    "description": "Semantic space 6 (32px)."
+                },
+                "radius-xs": {
+                    "type": "string",
+                    "description": "Semantic radius xs."
+                },
+                "radius-sm": {
+                    "type": "string",
+                    "description": "Semantic radius sm."
+                },
+                "radius-md": {
+                    "type": "string",
+                    "description": "Semantic radius md."
+                },
+                "radius-lg": {
+                    "type": "string",
+                    "description": "Semantic radius lg."
+                },
+                "radius-full": {
+                    "type": "string",
+                    "description": "Semantic radius full."
+                },
+                "font-sans": {
+                    "type": "string",
+                    "description": "UI font."
+                },
+                "font-mono": {
+                    "type": "string",
+                    "description": "Mono font."
+                },
+                "text-2xs": {
+                    "type": "string",
+                    "description": "9px."
+                },
+                "text-xs": {
+                    "type": "string",
+                    "description": "12px."
+                },
+                "text-sm": {
+                    "type": "string",
+                    "description": "14px."
+                },
+                "text-md": {
+                    "type": "string",
+                    "description": "16px."
+                },
+                "text-lg": {
+                    "type": "string",
+                    "description": "20px."
+                },
+                "text-xl": {
+                    "type": "string",
+                    "description": "24px."
+                },
+                "weight-normal": {
+                    "type": "string",
+                    "description": "Regular."
+                },
+                "weight-semibold": {
+                    "type": "string",
+                    "description": "Semibold."
+                },
+                "weight-bold": {
+                    "type": "string",
+                    "description": "Bold."
+                },
+                "leading-none": {
+                    "type": "string",
+                    "description": "Glyph leading."
+                },
+                "leading-tight": {
+                    "type": "string",
+                    "description": "Tight leading."
+                },
+                "leading-normal": {
+                    "type": "string",
+                    "description": "Body leading."
+                },
+                "tracking-wide": {
+                    "type": "string",
+                    "description": "Label tracking."
+                },
+                "tracking-wider": {
+                    "type": "string",
+                    "description": "Rail heading tracking."
+                },
+                "tracking-emoji": {
+                    "type": "string",
+                    "description": "Verification digits."
+                },
+                "tracking-emoji-lg": {
+                    "type": "string",
+                    "description": "Verification emoji."
+                },
+                "icon-xs": {
+                    "type": "string",
+                    "description": "8px glyph / dot."
+                },
+                "icon-sm": {
+                    "type": "string",
+                    "description": "16px glyph."
+                },
+                "icon-md": {
+                    "type": "string",
+                    "description": "20px glyph."
+                },
+                "icon-lg": {
+                    "type": "string",
+                    "description": "22px glyph."
+                },
+                "control-sm": {
+                    "type": "string",
+                    "description": "22px control."
+                },
+                "control-md": {
+                    "type": "string",
+                    "description": "32px control."
+                },
+                "control-lg": {
+                    "type": "string",
+                    "description": "48px control."
+                },
+                "avatar-xs": {
+                    "type": "string",
+                    "description": "16px avatar."
+                },
+                "avatar-sm": {
+                    "type": "string",
+                    "description": "24px avatar."
+                },
+                "avatar-md": {
+                    "type": "string",
+                    "description": "32px avatar."
+                },
+                "avatar-lg": {
+                    "type": "string",
+                    "description": "48px avatar."
+                },
+                "avatar-stack-overlap": {
+                    "type": "string",
+                    "description": "Read-receipt stack overlap."
+                },
+                "hairline": {
+                    "type": "string",
+                    "description": "Divider thickness."
+                },
+                "scrollbar-width": {
+                    "type": "string",
+                    "description": "Scrollbar thickness."
+                },
+                "rail-pill-width": {
+                    "type": "string",
+                    "description": "Guild selection pill."
+                },
+                "rail-item-size": {
+                    "type": "string",
+                    "description": "Rail button size."
+                },
+                "rail-favourite-min-width": {
+                    "type": "string",
+                    "description": "Favourite band item."
+                },
+                "timeline-gutter-width": {
+                    "type": "string",
+                    "description": "Message gutter."
+                },
+                "badge-min-size": {
+                    "type": "string",
+                    "description": "Unread badge."
+                },
+                "presence-dot-size": {
+                    "type": "string",
+                    "description": "Presence dot."
+                },
+                "border-width": {
+                    "type": "string",
+                    "description": "Default border."
+                },
+                "border-width-medium": {
+                    "type": "string",
+                    "description": "Thin ring (hollow presence dot)."
+                },
+                "border-width-strong": {
+                    "type": "string",
+                    "description": "Emphasis border."
+                },
+                "border-width-accent": {
+                    "type": "string",
+                    "description": "Quote / reply accent bar."
+                },
+                "shadow-sm": {
+                    "type": "string",
+                    "description": "Subtle elevation."
+                },
+                "shadow-md": {
+                    "type": "string",
+                    "description": "Popover elevation."
+                },
+                "shadow-panel": {
+                    "type": "string",
+                    "description": "Slide-over edge."
+                },
+                "z-panel": {
+                    "type": "string",
+                    "description": "In-pane slide-over."
+                },
+                "z-dropdown": {
+                    "type": "string",
+                    "description": "Menus / popovers."
+                },
+                "z-overlay": {
+                    "type": "string",
+                    "description": "Dialog backdrop."
+                },
+                "z-modal": {
+                    "type": "string",
+                    "description": "Dialog surface."
+                },
+                "z-toast": {
+                    "type": "string",
+                    "description": "Toasts."
+                },
+                "motion-fast": {
+                    "type": "string",
+                    "description": "Fast motion."
+                },
+                "motion-base": {
+                    "type": "string",
+                    "description": "Base motion."
+                },
+                "motion-slow": {
+                    "type": "string",
+                    "description": "Flash motion."
+                },
+                "motion-ease": {
+                    "type": "string",
+                    "description": "Easing."
+                },
+                "layout-guild-rail-width": {
+                    "type": "string",
+                    "description": "Guild rail width."
+                },
+                "layout-roomlist-width": {
+                    "type": "string",
+                    "description": "Room list width."
+                },
+                "layout-members-width": {
+                    "type": "string",
+                    "description": "Members width."
+                },
+                "layout-slideover-width": {
+                    "type": "string",
+                    "description": "Search / thread panel width."
+                },
+                "layout-menu-min-width": {
+                    "type": "string",
+                    "description": "Menu minimum width."
+                },
+                "layout-dialog-width": {
+                    "type": "string",
+                    "description": "Dialog width before viewport clamp."
+                },
+                "control-radius": {
+                    "type": "string",
+                    "description": "Inputs / buttons / rows."
+                },
+                "focus-ring-color": {
+                    "type": "string",
+                    "description": "Focus outline colour."
+                },
+                "focus-ring-outline": {
+                    "type": "string",
+                    "description": "Focus outline thickness."
+                },
+                "rail-indicator": {
+                    "type": "string",
+                    "description": "Selected guild indicator."
+                },
+                "rail-item-bg-hover": {
+                    "type": "string",
+                    "description": "Rail item hover."
+                },
+                "rail-item-bg-active": {
+                    "type": "string",
+                    "description": "Rail item active."
+                },
+                "roomlist-bg": {
+                    "type": "string",
+                    "description": "Room list background."
+                },
+                "roomlist-item-bg-hover": {
+                    "type": "string",
+                    "description": "Room item hover."
+                },
+                "roomlist-item-bg-active": {
+                    "type": "string",
+                    "description": "Room item active."
+                },
+                "roomlist-item-text": {
+                    "type": "string",
+                    "description": "Room item text."
+                },
+                "roomlist-item-text-active": {
+                    "type": "string",
+                    "description": "Active room text."
+                },
+                "roomlist-item-radius": {
+                    "type": "string",
+                    "description": "Room item radius."
+                },
+                "roomlist-item-padding-y": {
+                    "type": "string",
+                    "description": "Room item vertical padding (density anchor)."
+                },
+                "timeline-bg": {
+                    "type": "string",
+                    "description": "Timeline background."
+                },
+                "timeline-day-divider": {
+                    "type": "string",
+                    "description": "Day divider text."
+                },
+                "timeline-unread-divider": {
+                    "type": "string",
+                    "description": "Unread divider."
+                },
+                "timeline-mention-bg": {
+                    "type": "string",
+                    "description": "Mention / jump flash highlight."
+                },
+                "timeline-row-gap": {
+                    "type": "string",
+                    "description": "Message gap."
+                },
+                "timeline-row-padding-x": {
+                    "type": "string",
+                    "description": "Message horizontal padding."
+                },
+                "timeline-row-padding-y": {
+                    "type": "string",
+                    "description": "Message vertical padding."
+                },
+                "timeline-quote-bar-width": {
+                    "type": "string",
+                    "description": "Quote / reply accent bar."
+                },
+                "timeline-flash-duration": {
+                    "type": "string",
+                    "description": "Jump-to-message flash."
+                },
+                "media-image-max-width": {
+                    "type": "string",
+                    "description": "Inline image max width."
+                },
+                "media-image-max-height": {
+                    "type": "string",
+                    "description": "Inline image max height."
+                },
+                "media-video-max-width": {
+                    "type": "string",
+                    "description": "Inline video max width."
+                },
+                "media-video-max-height": {
+                    "type": "string",
+                    "description": "Inline video max height."
+                },
+                "media-audio-max-width": {
+                    "type": "string",
+                    "description": "Inline audio max width."
+                },
+                "composer-bg": {
+                    "type": "string",
+                    "description": "Composer background."
+                },
+                "composer-input-bg": {
+                    "type": "string",
+                    "description": "Composer input background."
+                },
+                "composer-input-border": {
+                    "type": "string",
+                    "description": "Composer input border."
+                },
+                "members-bg": {
+                    "type": "string",
+                    "description": "Members pane."
+                },
+                "member-dot-size": {
+                    "type": "string",
+                    "description": "Presence dot."
+                },
+                "member-badge-radius": {
+                    "type": "string",
+                    "description": "Member role badge."
+                },
+                "member-item-padding-y": {
+                    "type": "string",
+                    "description": "Member row vertical padding (density anchor)."
+                },
+                "button-primary-bg": {
+                    "type": "string",
+                    "description": "Primary button."
+                },
+                "button-primary-bg-hover": {
+                    "type": "string",
+                    "description": "Primary button hover."
+                },
+                "button-primary-text": {
+                    "type": "string",
+                    "description": "Primary button text."
+                },
+                "button-secondary-bg": {
+                    "type": "string",
+                    "description": "Secondary button."
+                },
+                "button-secondary-bg-hover": {
+                    "type": "string",
+                    "description": "Secondary button hover."
+                },
+                "button-secondary-text": {
+                    "type": "string",
+                    "description": "Secondary button text."
+                },
+                "button-secondary-border": {
+                    "type": "string",
+                    "description": "Secondary button border."
+                },
+                "button-danger-bg": {
+                    "type": "string",
+                    "description": "Danger button."
+                },
+                "button-danger-bg-hover": {
+                    "type": "string",
+                    "description": "Danger button hover."
+                },
+                "button-danger-text": {
+                    "type": "string",
+                    "description": "Danger button text."
+                },
+                "input-bg": {
+                    "type": "string",
+                    "description": "Text field background."
+                },
+                "input-border": {
+                    "type": "string",
+                    "description": "Text field border."
+                },
+                "input-text": {
+                    "type": "string",
+                    "description": "Text field text."
+                },
+                "input-placeholder": {
+                    "type": "string",
+                    "description": "Text field placeholder."
+                },
+                "input-textarea-min-height": {
+                    "type": "string",
+                    "description": "Textarea minimum height."
+                },
+                "badge-bg": {
+                    "type": "string",
+                    "description": "Unread badge."
+                },
+                "badge-highlight-bg": {
+                    "type": "string",
+                    "description": "Mention badge."
+                },
+                "badge-text": {
+                    "type": "string",
+                    "description": "Badge text."
+                },
+                "avatar-bg": {
+                    "type": "string",
+                    "description": "Avatar fallback."
+                },
+                "avatar-text": {
+                    "type": "string",
+                    "description": "Avatar initials."
+                },
+                "avatar-initials-size": {
+                    "type": "string",
+                    "description": "Avatar initials font size."
+                },
+                "overlay-bg": {
+                    "type": "string",
+                    "description": "Dialog backdrop."
+                },
+                "dialog-bg": {
+                    "type": "string",
+                    "description": "Dialog surface."
+                },
+                "dialog-border": {
+                    "type": "string",
+                    "description": "Dialog border."
+                },
+                "dialog-width": {
+                    "type": "string",
+                    "description": "Dialog width before clamp."
+                },
+                "dialog-gutter": {
+                    "type": "string",
+                    "description": "Dialog viewport clamp gutter."
+                },
+                "menu-bg": {
+                    "type": "string",
+                    "description": "Menu background."
+                },
+                "menu-border": {
+                    "type": "string",
+                    "description": "Menu border."
+                },
+                "menu-min-width": {
+                    "type": "string",
+                    "description": "Menu minimum width."
+                },
+                "menu-devices-max-height": {
+                    "type": "string",
+                    "description": "Device list max height."
+                },
+                "popover-bg": {
+                    "type": "string",
+                    "description": "Popover background."
+                },
+                "popover-border": {
+                    "type": "string",
+                    "description": "Popover border."
+                },
+                "popover-shadow": {
+                    "type": "string",
+                    "description": "Popover elevation."
+                },
+                "panel-bg": {
+                    "type": "string",
+                    "description": "Slide-over background."
+                },
+                "panel-border": {
+                    "type": "string",
+                    "description": "Slide-over border."
+                },
+                "panel-width": {
+                    "type": "string",
+                    "description": "Slide-over width."
+                },
+                "panel-shadow": {
+                    "type": "string",
+                    "description": "Slide-over edge shadow."
+                },
+                "panel-z": {
+                    "type": "string",
+                    "description": "In-pane slide-over stacking."
+                },
+                "banner-error-bg": {
+                    "type": "string",
+                    "description": "Error banner."
+                },
+                "banner-error-text": {
+                    "type": "string",
+                    "description": "Error banner text."
+                },
+                "banner-reconnect-bg": {
+                    "type": "string",
+                    "description": "Warning banner."
+                },
+                "banner-reconnect-text": {
+                    "type": "string",
+                    "description": "Warning banner text."
+                },
+                "banner-action-hover": {
+                    "type": "string",
+                    "description": "Banner action hover."
+                },
+                "picker-results-max-height": {
+                    "type": "string",
+                    "description": "User picker results height."
+                }
+            },
+            "additionalProperties": false
+        },
+        "modes": {
+            "type": "object",
+            "description": "Per-mode token overrides (e.g. `light`), applied via :root[data-theme][data-mode].",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "prim-brand-0": {
+                        "type": "string",
+                        "description": "Lightest brand tint."
+                    },
+                    "prim-brand-1": {
+                        "type": "string",
+                        "description": "Light brand."
+                    },
+                    "prim-brand-2": {
+                        "type": "string",
+                        "description": "Mid brand."
+                    },
+                    "prim-brand-3": {
+                        "type": "string",
+                        "description": "Primary accent."
+                    },
+                    "prim-brand-4": {
+                        "type": "string",
+                        "description": "Accent hover."
+                    },
+                    "prim-brand-5": {
+                        "type": "string",
+                        "description": "Accent active."
+                    },
+                    "prim-neutral-0": {
+                        "type": "string",
+                        "description": "Pure white."
+                    },
+                    "prim-neutral-1": {
+                        "type": "string",
+                        "description": "Primary text on dark."
+                    },
+                    "prim-neutral-2": {
+                        "type": "string",
+                        "description": "Secondary text."
+                    },
+                    "prim-neutral-3": {
+                        "type": "string",
+                        "description": "Muted text."
+                    },
+                    "prim-neutral-4": {
+                        "type": "string",
+                        "description": "Borders."
+                    },
+                    "prim-neutral-5": {
+                        "type": "string",
+                        "description": "Pane background."
+                    },
+                    "prim-neutral-6": {
+                        "type": "string",
+                        "description": "Deep background."
+                    },
+                    "prim-neutral-7": {
+                        "type": "string",
+                        "description": "Rail background."
+                    },
+                    "prim-neutral-8": {
+                        "type": "string",
+                        "description": "Light-mode surface."
+                    },
+                    "prim-neutral-9": {
+                        "type": "string",
+                        "description": "Light-mode pane."
+                    },
+                    "prim-neutral-10": {
+                        "type": "string",
+                        "description": "Light-mode border."
+                    },
+                    "prim-neutral-11": {
+                        "type": "string",
+                        "description": "Secondary text on light."
+                    },
+                    "prim-neutral-12": {
+                        "type": "string",
+                        "description": "Muted text on light."
+                    },
+                    "prim-green-3": {
+                        "type": "string",
+                        "description": "Success / online."
+                    },
+                    "prim-red-3": {
+                        "type": "string",
+                        "description": "Danger."
+                    },
+                    "prim-red-4": {
+                        "type": "string",
+                        "description": "Danger hover."
+                    },
+                    "prim-amber-3": {
+                        "type": "string",
+                        "description": "Warning / pending."
+                    },
+                    "prim-mention-3": {
+                        "type": "string",
+                        "description": "Mention highlight base."
+                    },
+                    "prim-black": {
+                        "type": "string",
+                        "description": "Black."
+                    },
+                    "prim-space-px": {
+                        "type": "string",
+                        "description": "1px."
+                    },
+                    "prim-space-0-5": {
+                        "type": "string",
+                        "description": "2px."
+                    },
+                    "prim-space-1": {
+                        "type": "string",
+                        "description": "4px."
+                    },
+                    "prim-space-1-5": {
+                        "type": "string",
+                        "description": "6px."
+                    },
+                    "prim-space-2": {
+                        "type": "string",
+                        "description": "8px."
+                    },
+                    "prim-space-3": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "prim-space-4": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "prim-space-5": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "prim-space-6": {
+                        "type": "string",
+                        "description": "32px."
+                    },
+                    "prim-radius-xs": {
+                        "type": "string",
+                        "description": "2px radius."
+                    },
+                    "prim-radius-sm": {
+                        "type": "string",
+                        "description": "Small radius."
+                    },
+                    "prim-radius-md": {
+                        "type": "string",
+                        "description": "Default radius."
+                    },
+                    "prim-radius-lg": {
+                        "type": "string",
+                        "description": "Large radius."
+                    },
+                    "prim-radius-full": {
+                        "type": "string",
+                        "description": "Pills / avatars."
+                    },
+                    "prim-font-sans": {
+                        "type": "string",
+                        "description": "UI font stack."
+                    },
+                    "prim-font-mono": {
+                        "type": "string",
+                        "description": "Mono stack."
+                    },
+                    "prim-text-2xs": {
+                        "type": "string",
+                        "description": "9px."
+                    },
+                    "prim-text-xs": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "prim-text-sm": {
+                        "type": "string",
+                        "description": "14px."
+                    },
+                    "prim-text-md": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "prim-text-lg": {
+                        "type": "string",
+                        "description": "20px."
+                    },
+                    "prim-text-xl": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "prim-weight-normal": {
+                        "type": "string",
+                        "description": "Regular weight."
+                    },
+                    "prim-weight-semibold": {
+                        "type": "string",
+                        "description": "Semibold."
+                    },
+                    "prim-weight-bold": {
+                        "type": "string",
+                        "description": "Bold."
+                    },
+                    "prim-leading-none": {
+                        "type": "string",
+                        "description": "Tight glyph leading."
+                    },
+                    "prim-leading-tight": {
+                        "type": "string",
+                        "description": "Tight leading."
+                    },
+                    "prim-leading-normal": {
+                        "type": "string",
+                        "description": "Body leading."
+                    },
+                    "prim-tracking-wide": {
+                        "type": "string",
+                        "description": "Small-caps label tracking."
+                    },
+                    "prim-tracking-wider": {
+                        "type": "string",
+                        "description": "Rail heading tracking."
+                    },
+                    "prim-tracking-emoji": {
+                        "type": "string",
+                        "description": "Verification digit spacing."
+                    },
+                    "prim-tracking-emoji-lg": {
+                        "type": "string",
+                        "description": "Verification emoji spacing."
+                    },
+                    "prim-size-2xs": {
+                        "type": "string",
+                        "description": "Presence dot / spacer."
+                    },
+                    "prim-size-xs": {
+                        "type": "string",
+                        "description": "Small icon / badge."
+                    },
+                    "prim-size-sm": {
+                        "type": "string",
+                        "description": "Small glyph."
+                    },
+                    "prim-size-sm-plus": {
+                        "type": "string",
+                        "description": "Compact control."
+                    },
+                    "prim-size-md": {
+                        "type": "string",
+                        "description": "Row gutter / avatar sm."
+                    },
+                    "prim-size-lg": {
+                        "type": "string",
+                        "description": "Icon button / avatar md."
+                    },
+                    "prim-size-xl": {
+                        "type": "string",
+                        "description": "Rail item / avatar lg."
+                    },
+                    "prim-size-hairline": {
+                        "type": "string",
+                        "description": "Divider / separator."
+                    },
+                    "prim-size-scrollbar": {
+                        "type": "string",
+                        "description": "Scrollbar thickness."
+                    },
+                    "prim-size-indicator": {
+                        "type": "string",
+                        "description": "Selection pill width."
+                    },
+                    "prim-size-stack-overlap": {
+                        "type": "string",
+                        "description": "Read-receipt avatar stack overlap."
+                    },
+                    "prim-shadow-sm": {
+                        "type": "string",
+                        "description": "Subtle elevation."
+                    },
+                    "prim-shadow-md": {
+                        "type": "string",
+                        "description": "Popover / chip palette."
+                    },
+                    "prim-shadow-panel": {
+                        "type": "string",
+                        "description": "Slide-over panel edge."
+                    },
+                    "prim-z-panel": {
+                        "type": "string",
+                        "description": "In-pane slide-over."
+                    },
+                    "prim-z-dropdown": {
+                        "type": "string",
+                        "description": "Menus / popovers."
+                    },
+                    "prim-z-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "prim-z-modal": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "prim-z-toast": {
+                        "type": "string",
+                        "description": "Toasts."
+                    },
+                    "prim-opacity-disabled": {
+                        "type": "string",
+                        "description": "Disabled controls."
+                    },
+                    "prim-opacity-muted": {
+                        "type": "string",
+                        "description": "Busy / de-emphasised."
+                    },
+                    "prim-border-width": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "prim-border-width-medium": {
+                        "type": "string",
+                        "description": "Thin ring / hollow marker."
+                    },
+                    "prim-border-width-strong": {
+                        "type": "string",
+                        "description": "Emphasis border / ring."
+                    },
+                    "prim-border-width-accent": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "prim-motion-fast": {
+                        "type": "string",
+                        "description": "Hover fades."
+                    },
+                    "prim-motion-base": {
+                        "type": "string",
+                        "description": "Default transition."
+                    },
+                    "prim-motion-slow": {
+                        "type": "string",
+                        "description": "Jump-to-message flash."
+                    },
+                    "prim-motion-ease": {
+                        "type": "string",
+                        "description": "Default easing."
+                    },
+                    "prim-layout-rail": {
+                        "type": "string",
+                        "description": "Guild rail width."
+                    },
+                    "prim-layout-roomlist": {
+                        "type": "string",
+                        "description": "Room list width."
+                    },
+                    "prim-layout-members": {
+                        "type": "string",
+                        "description": "Members width."
+                    },
+                    "prim-layout-slideover": {
+                        "type": "string",
+                        "description": "Search / thread slide-over width."
+                    },
+                    "prim-layout-menu-min": {
+                        "type": "string",
+                        "description": "Dropdown menu minimum width."
+                    },
+                    "surface-base": {
+                        "type": "string",
+                        "description": "App background."
+                    },
+                    "surface-pane": {
+                        "type": "string",
+                        "description": "Pane background."
+                    },
+                    "surface-raised": {
+                        "type": "string",
+                        "description": "Menus / popovers / dialogs."
+                    },
+                    "surface-rail": {
+                        "type": "string",
+                        "description": "Guild rail background."
+                    },
+                    "surface-inset": {
+                        "type": "string",
+                        "description": "Inputs and wells inside a pane."
+                    },
+                    "surface-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "surface-hover": {
+                        "type": "string",
+                        "description": "Hover wash."
+                    },
+                    "surface-active": {
+                        "type": "string",
+                        "description": "Active / selected wash."
+                    },
+                    "surface-hover-contrast": {
+                        "type": "string",
+                        "description": "Hover wash on a bright (banner) surface."
+                    },
+                    "text-primary": {
+                        "type": "string",
+                        "description": "Primary text."
+                    },
+                    "text-secondary": {
+                        "type": "string",
+                        "description": "Secondary text."
+                    },
+                    "text-muted": {
+                        "type": "string",
+                        "description": "Muted text."
+                    },
+                    "text-on-warning": {
+                        "type": "string",
+                        "description": "Text on warning surfaces."
+                    },
+                    "text-on-danger": {
+                        "type": "string",
+                        "description": "Text on danger surfaces."
+                    },
+                    "accent": {
+                        "type": "string",
+                        "description": "Primary accent."
+                    },
+                    "accent-hover": {
+                        "type": "string",
+                        "description": "Accent hover."
+                    },
+                    "accent-contrast": {
+                        "type": "string",
+                        "description": "Text on accent."
+                    },
+                    "danger": {
+                        "type": "string",
+                        "description": "Danger."
+                    },
+                    "danger-hover": {
+                        "type": "string",
+                        "description": "Danger hover."
+                    },
+                    "success": {
+                        "type": "string",
+                        "description": "Success / online."
+                    },
+                    "warning": {
+                        "type": "string",
+                        "description": "Warning / pending."
+                    },
+                    "mention": {
+                        "type": "string",
+                        "description": "Mention highlight."
+                    },
+                    "border-default": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "state-hover": {
+                        "type": "string",
+                        "description": "Generic hover background."
+                    },
+                    "state-selected": {
+                        "type": "string",
+                        "description": "Selected background."
+                    },
+                    "state-disabled-opacity": {
+                        "type": "string",
+                        "description": "Disabled controls."
+                    },
+                    "state-muted-opacity": {
+                        "type": "string",
+                        "description": "Busy / de-emphasised."
+                    },
+                    "focus-ring": {
+                        "type": "string",
+                        "description": "Focus ring colour."
+                    },
+                    "focus-ring-width": {
+                        "type": "string",
+                        "description": "Focus ring thickness."
+                    },
+                    "focus-ring-offset": {
+                        "type": "string",
+                        "description": "Default focus ring offset."
+                    },
+                    "space-px": {
+                        "type": "string",
+                        "description": "Hairline space (1px)."
+                    },
+                    "space-0-5": {
+                        "type": "string",
+                        "description": "Semantic space 0.5 (2px)."
+                    },
+                    "space-1": {
+                        "type": "string",
+                        "description": "Semantic space 1 (4px)."
+                    },
+                    "space-1-5": {
+                        "type": "string",
+                        "description": "Semantic space 1.5 (6px)."
+                    },
+                    "space-2": {
+                        "type": "string",
+                        "description": "Semantic space 2 (8px)."
+                    },
+                    "space-3": {
+                        "type": "string",
+                        "description": "Semantic space 3 (12px)."
+                    },
+                    "space-4": {
+                        "type": "string",
+                        "description": "Semantic space 4 (16px)."
+                    },
+                    "space-5": {
+                        "type": "string",
+                        "description": "Semantic space 5 (24px)."
+                    },
+                    "space-6": {
+                        "type": "string",
+                        "description": "Semantic space 6 (32px)."
+                    },
+                    "radius-xs": {
+                        "type": "string",
+                        "description": "Semantic radius xs."
+                    },
+                    "radius-sm": {
+                        "type": "string",
+                        "description": "Semantic radius sm."
+                    },
+                    "radius-md": {
+                        "type": "string",
+                        "description": "Semantic radius md."
+                    },
+                    "radius-lg": {
+                        "type": "string",
+                        "description": "Semantic radius lg."
+                    },
+                    "radius-full": {
+                        "type": "string",
+                        "description": "Semantic radius full."
+                    },
+                    "font-sans": {
+                        "type": "string",
+                        "description": "UI font."
+                    },
+                    "font-mono": {
+                        "type": "string",
+                        "description": "Mono font."
+                    },
+                    "text-2xs": {
+                        "type": "string",
+                        "description": "9px."
+                    },
+                    "text-xs": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "text-sm": {
+                        "type": "string",
+                        "description": "14px."
+                    },
+                    "text-md": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "text-lg": {
+                        "type": "string",
+                        "description": "20px."
+                    },
+                    "text-xl": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "weight-normal": {
+                        "type": "string",
+                        "description": "Regular."
+                    },
+                    "weight-semibold": {
+                        "type": "string",
+                        "description": "Semibold."
+                    },
+                    "weight-bold": {
+                        "type": "string",
+                        "description": "Bold."
+                    },
+                    "leading-none": {
+                        "type": "string",
+                        "description": "Glyph leading."
+                    },
+                    "leading-tight": {
+                        "type": "string",
+                        "description": "Tight leading."
+                    },
+                    "leading-normal": {
+                        "type": "string",
+                        "description": "Body leading."
+                    },
+                    "tracking-wide": {
+                        "type": "string",
+                        "description": "Label tracking."
+                    },
+                    "tracking-wider": {
+                        "type": "string",
+                        "description": "Rail heading tracking."
+                    },
+                    "tracking-emoji": {
+                        "type": "string",
+                        "description": "Verification digits."
+                    },
+                    "tracking-emoji-lg": {
+                        "type": "string",
+                        "description": "Verification emoji."
+                    },
+                    "icon-xs": {
+                        "type": "string",
+                        "description": "8px glyph / dot."
+                    },
+                    "icon-sm": {
+                        "type": "string",
+                        "description": "16px glyph."
+                    },
+                    "icon-md": {
+                        "type": "string",
+                        "description": "20px glyph."
+                    },
+                    "icon-lg": {
+                        "type": "string",
+                        "description": "22px glyph."
+                    },
+                    "control-sm": {
+                        "type": "string",
+                        "description": "22px control."
+                    },
+                    "control-md": {
+                        "type": "string",
+                        "description": "32px control."
+                    },
+                    "control-lg": {
+                        "type": "string",
+                        "description": "48px control."
+                    },
+                    "avatar-xs": {
+                        "type": "string",
+                        "description": "16px avatar."
+                    },
+                    "avatar-sm": {
+                        "type": "string",
+                        "description": "24px avatar."
+                    },
+                    "avatar-md": {
+                        "type": "string",
+                        "description": "32px avatar."
+                    },
+                    "avatar-lg": {
+                        "type": "string",
+                        "description": "48px avatar."
+                    },
+                    "avatar-stack-overlap": {
+                        "type": "string",
+                        "description": "Read-receipt stack overlap."
+                    },
+                    "hairline": {
+                        "type": "string",
+                        "description": "Divider thickness."
+                    },
+                    "scrollbar-width": {
+                        "type": "string",
+                        "description": "Scrollbar thickness."
+                    },
+                    "rail-pill-width": {
+                        "type": "string",
+                        "description": "Guild selection pill."
+                    },
+                    "rail-item-size": {
+                        "type": "string",
+                        "description": "Rail button size."
+                    },
+                    "rail-favourite-min-width": {
+                        "type": "string",
+                        "description": "Favourite band item."
+                    },
+                    "timeline-gutter-width": {
+                        "type": "string",
+                        "description": "Message gutter."
+                    },
+                    "badge-min-size": {
+                        "type": "string",
+                        "description": "Unread badge."
+                    },
+                    "presence-dot-size": {
+                        "type": "string",
+                        "description": "Presence dot."
+                    },
+                    "border-width": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "border-width-medium": {
+                        "type": "string",
+                        "description": "Thin ring (hollow presence dot)."
+                    },
+                    "border-width-strong": {
+                        "type": "string",
+                        "description": "Emphasis border."
+                    },
+                    "border-width-accent": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "shadow-sm": {
+                        "type": "string",
+                        "description": "Subtle elevation."
+                    },
+                    "shadow-md": {
+                        "type": "string",
+                        "description": "Popover elevation."
+                    },
+                    "shadow-panel": {
+                        "type": "string",
+                        "description": "Slide-over edge."
+                    },
+                    "z-panel": {
+                        "type": "string",
+                        "description": "In-pane slide-over."
+                    },
+                    "z-dropdown": {
+                        "type": "string",
+                        "description": "Menus / popovers."
+                    },
+                    "z-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "z-modal": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "z-toast": {
+                        "type": "string",
+                        "description": "Toasts."
+                    },
+                    "motion-fast": {
+                        "type": "string",
+                        "description": "Fast motion."
+                    },
+                    "motion-base": {
+                        "type": "string",
+                        "description": "Base motion."
+                    },
+                    "motion-slow": {
+                        "type": "string",
+                        "description": "Flash motion."
+                    },
+                    "motion-ease": {
+                        "type": "string",
+                        "description": "Easing."
+                    },
+                    "layout-guild-rail-width": {
+                        "type": "string",
+                        "description": "Guild rail width."
+                    },
+                    "layout-roomlist-width": {
+                        "type": "string",
+                        "description": "Room list width."
+                    },
+                    "layout-members-width": {
+                        "type": "string",
+                        "description": "Members width."
+                    },
+                    "layout-slideover-width": {
+                        "type": "string",
+                        "description": "Search / thread panel width."
+                    },
+                    "layout-menu-min-width": {
+                        "type": "string",
+                        "description": "Menu minimum width."
+                    },
+                    "layout-dialog-width": {
+                        "type": "string",
+                        "description": "Dialog width before viewport clamp."
+                    },
+                    "control-radius": {
+                        "type": "string",
+                        "description": "Inputs / buttons / rows."
+                    },
+                    "focus-ring-color": {
+                        "type": "string",
+                        "description": "Focus outline colour."
+                    },
+                    "focus-ring-outline": {
+                        "type": "string",
+                        "description": "Focus outline thickness."
+                    },
+                    "rail-indicator": {
+                        "type": "string",
+                        "description": "Selected guild indicator."
+                    },
+                    "rail-item-bg-hover": {
+                        "type": "string",
+                        "description": "Rail item hover."
+                    },
+                    "rail-item-bg-active": {
+                        "type": "string",
+                        "description": "Rail item active."
+                    },
+                    "roomlist-bg": {
+                        "type": "string",
+                        "description": "Room list background."
+                    },
+                    "roomlist-item-bg-hover": {
+                        "type": "string",
+                        "description": "Room item hover."
+                    },
+                    "roomlist-item-bg-active": {
+                        "type": "string",
+                        "description": "Room item active."
+                    },
+                    "roomlist-item-text": {
+                        "type": "string",
+                        "description": "Room item text."
+                    },
+                    "roomlist-item-text-active": {
+                        "type": "string",
+                        "description": "Active room text."
+                    },
+                    "roomlist-item-radius": {
+                        "type": "string",
+                        "description": "Room item radius."
+                    },
+                    "roomlist-item-padding-y": {
+                        "type": "string",
+                        "description": "Room item vertical padding (density anchor)."
+                    },
+                    "timeline-bg": {
+                        "type": "string",
+                        "description": "Timeline background."
+                    },
+                    "timeline-day-divider": {
+                        "type": "string",
+                        "description": "Day divider text."
+                    },
+                    "timeline-unread-divider": {
+                        "type": "string",
+                        "description": "Unread divider."
+                    },
+                    "timeline-mention-bg": {
+                        "type": "string",
+                        "description": "Mention / jump flash highlight."
+                    },
+                    "timeline-row-gap": {
+                        "type": "string",
+                        "description": "Message gap."
+                    },
+                    "timeline-row-padding-x": {
+                        "type": "string",
+                        "description": "Message horizontal padding."
+                    },
+                    "timeline-row-padding-y": {
+                        "type": "string",
+                        "description": "Message vertical padding."
+                    },
+                    "timeline-quote-bar-width": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "timeline-flash-duration": {
+                        "type": "string",
+                        "description": "Jump-to-message flash."
+                    },
+                    "media-image-max-width": {
+                        "type": "string",
+                        "description": "Inline image max width."
+                    },
+                    "media-image-max-height": {
+                        "type": "string",
+                        "description": "Inline image max height."
+                    },
+                    "media-video-max-width": {
+                        "type": "string",
+                        "description": "Inline video max width."
+                    },
+                    "media-video-max-height": {
+                        "type": "string",
+                        "description": "Inline video max height."
+                    },
+                    "media-audio-max-width": {
+                        "type": "string",
+                        "description": "Inline audio max width."
+                    },
+                    "composer-bg": {
+                        "type": "string",
+                        "description": "Composer background."
+                    },
+                    "composer-input-bg": {
+                        "type": "string",
+                        "description": "Composer input background."
+                    },
+                    "composer-input-border": {
+                        "type": "string",
+                        "description": "Composer input border."
+                    },
+                    "members-bg": {
+                        "type": "string",
+                        "description": "Members pane."
+                    },
+                    "member-dot-size": {
+                        "type": "string",
+                        "description": "Presence dot."
+                    },
+                    "member-badge-radius": {
+                        "type": "string",
+                        "description": "Member role badge."
+                    },
+                    "member-item-padding-y": {
+                        "type": "string",
+                        "description": "Member row vertical padding (density anchor)."
+                    },
+                    "button-primary-bg": {
+                        "type": "string",
+                        "description": "Primary button."
+                    },
+                    "button-primary-bg-hover": {
+                        "type": "string",
+                        "description": "Primary button hover."
+                    },
+                    "button-primary-text": {
+                        "type": "string",
+                        "description": "Primary button text."
+                    },
+                    "button-secondary-bg": {
+                        "type": "string",
+                        "description": "Secondary button."
+                    },
+                    "button-secondary-bg-hover": {
+                        "type": "string",
+                        "description": "Secondary button hover."
+                    },
+                    "button-secondary-text": {
+                        "type": "string",
+                        "description": "Secondary button text."
+                    },
+                    "button-secondary-border": {
+                        "type": "string",
+                        "description": "Secondary button border."
+                    },
+                    "button-danger-bg": {
+                        "type": "string",
+                        "description": "Danger button."
+                    },
+                    "button-danger-bg-hover": {
+                        "type": "string",
+                        "description": "Danger button hover."
+                    },
+                    "button-danger-text": {
+                        "type": "string",
+                        "description": "Danger button text."
+                    },
+                    "input-bg": {
+                        "type": "string",
+                        "description": "Text field background."
+                    },
+                    "input-border": {
+                        "type": "string",
+                        "description": "Text field border."
+                    },
+                    "input-text": {
+                        "type": "string",
+                        "description": "Text field text."
+                    },
+                    "input-placeholder": {
+                        "type": "string",
+                        "description": "Text field placeholder."
+                    },
+                    "input-textarea-min-height": {
+                        "type": "string",
+                        "description": "Textarea minimum height."
+                    },
+                    "badge-bg": {
+                        "type": "string",
+                        "description": "Unread badge."
+                    },
+                    "badge-highlight-bg": {
+                        "type": "string",
+                        "description": "Mention badge."
+                    },
+                    "badge-text": {
+                        "type": "string",
+                        "description": "Badge text."
+                    },
+                    "avatar-bg": {
+                        "type": "string",
+                        "description": "Avatar fallback."
+                    },
+                    "avatar-text": {
+                        "type": "string",
+                        "description": "Avatar initials."
+                    },
+                    "avatar-initials-size": {
+                        "type": "string",
+                        "description": "Avatar initials font size."
+                    },
+                    "overlay-bg": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "dialog-bg": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "dialog-border": {
+                        "type": "string",
+                        "description": "Dialog border."
+                    },
+                    "dialog-width": {
+                        "type": "string",
+                        "description": "Dialog width before clamp."
+                    },
+                    "dialog-gutter": {
+                        "type": "string",
+                        "description": "Dialog viewport clamp gutter."
+                    },
+                    "menu-bg": {
+                        "type": "string",
+                        "description": "Menu background."
+                    },
+                    "menu-border": {
+                        "type": "string",
+                        "description": "Menu border."
+                    },
+                    "menu-min-width": {
+                        "type": "string",
+                        "description": "Menu minimum width."
+                    },
+                    "menu-devices-max-height": {
+                        "type": "string",
+                        "description": "Device list max height."
+                    },
+                    "popover-bg": {
+                        "type": "string",
+                        "description": "Popover background."
+                    },
+                    "popover-border": {
+                        "type": "string",
+                        "description": "Popover border."
+                    },
+                    "popover-shadow": {
+                        "type": "string",
+                        "description": "Popover elevation."
+                    },
+                    "panel-bg": {
+                        "type": "string",
+                        "description": "Slide-over background."
+                    },
+                    "panel-border": {
+                        "type": "string",
+                        "description": "Slide-over border."
+                    },
+                    "panel-width": {
+                        "type": "string",
+                        "description": "Slide-over width."
+                    },
+                    "panel-shadow": {
+                        "type": "string",
+                        "description": "Slide-over edge shadow."
+                    },
+                    "panel-z": {
+                        "type": "string",
+                        "description": "In-pane slide-over stacking."
+                    },
+                    "banner-error-bg": {
+                        "type": "string",
+                        "description": "Error banner."
+                    },
+                    "banner-error-text": {
+                        "type": "string",
+                        "description": "Error banner text."
+                    },
+                    "banner-reconnect-bg": {
+                        "type": "string",
+                        "description": "Warning banner."
+                    },
+                    "banner-reconnect-text": {
+                        "type": "string",
+                        "description": "Warning banner text."
+                    },
+                    "banner-action-hover": {
+                        "type": "string",
+                        "description": "Banner action hover."
+                    },
+                    "picker-results-max-height": {
+                        "type": "string",
+                        "description": "User picker results height."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        "densities": {
+            "type": "object",
+            "description": "Per-density token overrides (e.g. `compact`, `spacious`), applied via :root[data-theme][data-density].",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "prim-brand-0": {
+                        "type": "string",
+                        "description": "Lightest brand tint."
+                    },
+                    "prim-brand-1": {
+                        "type": "string",
+                        "description": "Light brand."
+                    },
+                    "prim-brand-2": {
+                        "type": "string",
+                        "description": "Mid brand."
+                    },
+                    "prim-brand-3": {
+                        "type": "string",
+                        "description": "Primary accent."
+                    },
+                    "prim-brand-4": {
+                        "type": "string",
+                        "description": "Accent hover."
+                    },
+                    "prim-brand-5": {
+                        "type": "string",
+                        "description": "Accent active."
+                    },
+                    "prim-neutral-0": {
+                        "type": "string",
+                        "description": "Pure white."
+                    },
+                    "prim-neutral-1": {
+                        "type": "string",
+                        "description": "Primary text on dark."
+                    },
+                    "prim-neutral-2": {
+                        "type": "string",
+                        "description": "Secondary text."
+                    },
+                    "prim-neutral-3": {
+                        "type": "string",
+                        "description": "Muted text."
+                    },
+                    "prim-neutral-4": {
+                        "type": "string",
+                        "description": "Borders."
+                    },
+                    "prim-neutral-5": {
+                        "type": "string",
+                        "description": "Pane background."
+                    },
+                    "prim-neutral-6": {
+                        "type": "string",
+                        "description": "Deep background."
+                    },
+                    "prim-neutral-7": {
+                        "type": "string",
+                        "description": "Rail background."
+                    },
+                    "prim-neutral-8": {
+                        "type": "string",
+                        "description": "Light-mode surface."
+                    },
+                    "prim-neutral-9": {
+                        "type": "string",
+                        "description": "Light-mode pane."
+                    },
+                    "prim-neutral-10": {
+                        "type": "string",
+                        "description": "Light-mode border."
+                    },
+                    "prim-neutral-11": {
+                        "type": "string",
+                        "description": "Secondary text on light."
+                    },
+                    "prim-neutral-12": {
+                        "type": "string",
+                        "description": "Muted text on light."
+                    },
+                    "prim-green-3": {
+                        "type": "string",
+                        "description": "Success / online."
+                    },
+                    "prim-red-3": {
+                        "type": "string",
+                        "description": "Danger."
+                    },
+                    "prim-red-4": {
+                        "type": "string",
+                        "description": "Danger hover."
+                    },
+                    "prim-amber-3": {
+                        "type": "string",
+                        "description": "Warning / pending."
+                    },
+                    "prim-mention-3": {
+                        "type": "string",
+                        "description": "Mention highlight base."
+                    },
+                    "prim-black": {
+                        "type": "string",
+                        "description": "Black."
+                    },
+                    "prim-space-px": {
+                        "type": "string",
+                        "description": "1px."
+                    },
+                    "prim-space-0-5": {
+                        "type": "string",
+                        "description": "2px."
+                    },
+                    "prim-space-1": {
+                        "type": "string",
+                        "description": "4px."
+                    },
+                    "prim-space-1-5": {
+                        "type": "string",
+                        "description": "6px."
+                    },
+                    "prim-space-2": {
+                        "type": "string",
+                        "description": "8px."
+                    },
+                    "prim-space-3": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "prim-space-4": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "prim-space-5": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "prim-space-6": {
+                        "type": "string",
+                        "description": "32px."
+                    },
+                    "prim-radius-xs": {
+                        "type": "string",
+                        "description": "2px radius."
+                    },
+                    "prim-radius-sm": {
+                        "type": "string",
+                        "description": "Small radius."
+                    },
+                    "prim-radius-md": {
+                        "type": "string",
+                        "description": "Default radius."
+                    },
+                    "prim-radius-lg": {
+                        "type": "string",
+                        "description": "Large radius."
+                    },
+                    "prim-radius-full": {
+                        "type": "string",
+                        "description": "Pills / avatars."
+                    },
+                    "prim-font-sans": {
+                        "type": "string",
+                        "description": "UI font stack."
+                    },
+                    "prim-font-mono": {
+                        "type": "string",
+                        "description": "Mono stack."
+                    },
+                    "prim-text-2xs": {
+                        "type": "string",
+                        "description": "9px."
+                    },
+                    "prim-text-xs": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "prim-text-sm": {
+                        "type": "string",
+                        "description": "14px."
+                    },
+                    "prim-text-md": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "prim-text-lg": {
+                        "type": "string",
+                        "description": "20px."
+                    },
+                    "prim-text-xl": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "prim-weight-normal": {
+                        "type": "string",
+                        "description": "Regular weight."
+                    },
+                    "prim-weight-semibold": {
+                        "type": "string",
+                        "description": "Semibold."
+                    },
+                    "prim-weight-bold": {
+                        "type": "string",
+                        "description": "Bold."
+                    },
+                    "prim-leading-none": {
+                        "type": "string",
+                        "description": "Tight glyph leading."
+                    },
+                    "prim-leading-tight": {
+                        "type": "string",
+                        "description": "Tight leading."
+                    },
+                    "prim-leading-normal": {
+                        "type": "string",
+                        "description": "Body leading."
+                    },
+                    "prim-tracking-wide": {
+                        "type": "string",
+                        "description": "Small-caps label tracking."
+                    },
+                    "prim-tracking-wider": {
+                        "type": "string",
+                        "description": "Rail heading tracking."
+                    },
+                    "prim-tracking-emoji": {
+                        "type": "string",
+                        "description": "Verification digit spacing."
+                    },
+                    "prim-tracking-emoji-lg": {
+                        "type": "string",
+                        "description": "Verification emoji spacing."
+                    },
+                    "prim-size-2xs": {
+                        "type": "string",
+                        "description": "Presence dot / spacer."
+                    },
+                    "prim-size-xs": {
+                        "type": "string",
+                        "description": "Small icon / badge."
+                    },
+                    "prim-size-sm": {
+                        "type": "string",
+                        "description": "Small glyph."
+                    },
+                    "prim-size-sm-plus": {
+                        "type": "string",
+                        "description": "Compact control."
+                    },
+                    "prim-size-md": {
+                        "type": "string",
+                        "description": "Row gutter / avatar sm."
+                    },
+                    "prim-size-lg": {
+                        "type": "string",
+                        "description": "Icon button / avatar md."
+                    },
+                    "prim-size-xl": {
+                        "type": "string",
+                        "description": "Rail item / avatar lg."
+                    },
+                    "prim-size-hairline": {
+                        "type": "string",
+                        "description": "Divider / separator."
+                    },
+                    "prim-size-scrollbar": {
+                        "type": "string",
+                        "description": "Scrollbar thickness."
+                    },
+                    "prim-size-indicator": {
+                        "type": "string",
+                        "description": "Selection pill width."
+                    },
+                    "prim-size-stack-overlap": {
+                        "type": "string",
+                        "description": "Read-receipt avatar stack overlap."
+                    },
+                    "prim-shadow-sm": {
+                        "type": "string",
+                        "description": "Subtle elevation."
+                    },
+                    "prim-shadow-md": {
+                        "type": "string",
+                        "description": "Popover / chip palette."
+                    },
+                    "prim-shadow-panel": {
+                        "type": "string",
+                        "description": "Slide-over panel edge."
+                    },
+                    "prim-z-panel": {
+                        "type": "string",
+                        "description": "In-pane slide-over."
+                    },
+                    "prim-z-dropdown": {
+                        "type": "string",
+                        "description": "Menus / popovers."
+                    },
+                    "prim-z-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "prim-z-modal": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "prim-z-toast": {
+                        "type": "string",
+                        "description": "Toasts."
+                    },
+                    "prim-opacity-disabled": {
+                        "type": "string",
+                        "description": "Disabled controls."
+                    },
+                    "prim-opacity-muted": {
+                        "type": "string",
+                        "description": "Busy / de-emphasised."
+                    },
+                    "prim-border-width": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "prim-border-width-medium": {
+                        "type": "string",
+                        "description": "Thin ring / hollow marker."
+                    },
+                    "prim-border-width-strong": {
+                        "type": "string",
+                        "description": "Emphasis border / ring."
+                    },
+                    "prim-border-width-accent": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "prim-motion-fast": {
+                        "type": "string",
+                        "description": "Hover fades."
+                    },
+                    "prim-motion-base": {
+                        "type": "string",
+                        "description": "Default transition."
+                    },
+                    "prim-motion-slow": {
+                        "type": "string",
+                        "description": "Jump-to-message flash."
+                    },
+                    "prim-motion-ease": {
+                        "type": "string",
+                        "description": "Default easing."
+                    },
+                    "prim-layout-rail": {
+                        "type": "string",
+                        "description": "Guild rail width."
+                    },
+                    "prim-layout-roomlist": {
+                        "type": "string",
+                        "description": "Room list width."
+                    },
+                    "prim-layout-members": {
+                        "type": "string",
+                        "description": "Members width."
+                    },
+                    "prim-layout-slideover": {
+                        "type": "string",
+                        "description": "Search / thread slide-over width."
+                    },
+                    "prim-layout-menu-min": {
+                        "type": "string",
+                        "description": "Dropdown menu minimum width."
+                    },
+                    "surface-base": {
+                        "type": "string",
+                        "description": "App background."
+                    },
+                    "surface-pane": {
+                        "type": "string",
+                        "description": "Pane background."
+                    },
+                    "surface-raised": {
+                        "type": "string",
+                        "description": "Menus / popovers / dialogs."
+                    },
+                    "surface-rail": {
+                        "type": "string",
+                        "description": "Guild rail background."
+                    },
+                    "surface-inset": {
+                        "type": "string",
+                        "description": "Inputs and wells inside a pane."
+                    },
+                    "surface-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "surface-hover": {
+                        "type": "string",
+                        "description": "Hover wash."
+                    },
+                    "surface-active": {
+                        "type": "string",
+                        "description": "Active / selected wash."
+                    },
+                    "surface-hover-contrast": {
+                        "type": "string",
+                        "description": "Hover wash on a bright (banner) surface."
+                    },
+                    "text-primary": {
+                        "type": "string",
+                        "description": "Primary text."
+                    },
+                    "text-secondary": {
+                        "type": "string",
+                        "description": "Secondary text."
+                    },
+                    "text-muted": {
+                        "type": "string",
+                        "description": "Muted text."
+                    },
+                    "text-on-warning": {
+                        "type": "string",
+                        "description": "Text on warning surfaces."
+                    },
+                    "text-on-danger": {
+                        "type": "string",
+                        "description": "Text on danger surfaces."
+                    },
+                    "accent": {
+                        "type": "string",
+                        "description": "Primary accent."
+                    },
+                    "accent-hover": {
+                        "type": "string",
+                        "description": "Accent hover."
+                    },
+                    "accent-contrast": {
+                        "type": "string",
+                        "description": "Text on accent."
+                    },
+                    "danger": {
+                        "type": "string",
+                        "description": "Danger."
+                    },
+                    "danger-hover": {
+                        "type": "string",
+                        "description": "Danger hover."
+                    },
+                    "success": {
+                        "type": "string",
+                        "description": "Success / online."
+                    },
+                    "warning": {
+                        "type": "string",
+                        "description": "Warning / pending."
+                    },
+                    "mention": {
+                        "type": "string",
+                        "description": "Mention highlight."
+                    },
+                    "border-default": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "state-hover": {
+                        "type": "string",
+                        "description": "Generic hover background."
+                    },
+                    "state-selected": {
+                        "type": "string",
+                        "description": "Selected background."
+                    },
+                    "state-disabled-opacity": {
+                        "type": "string",
+                        "description": "Disabled controls."
+                    },
+                    "state-muted-opacity": {
+                        "type": "string",
+                        "description": "Busy / de-emphasised."
+                    },
+                    "focus-ring": {
+                        "type": "string",
+                        "description": "Focus ring colour."
+                    },
+                    "focus-ring-width": {
+                        "type": "string",
+                        "description": "Focus ring thickness."
+                    },
+                    "focus-ring-offset": {
+                        "type": "string",
+                        "description": "Default focus ring offset."
+                    },
+                    "space-px": {
+                        "type": "string",
+                        "description": "Hairline space (1px)."
+                    },
+                    "space-0-5": {
+                        "type": "string",
+                        "description": "Semantic space 0.5 (2px)."
+                    },
+                    "space-1": {
+                        "type": "string",
+                        "description": "Semantic space 1 (4px)."
+                    },
+                    "space-1-5": {
+                        "type": "string",
+                        "description": "Semantic space 1.5 (6px)."
+                    },
+                    "space-2": {
+                        "type": "string",
+                        "description": "Semantic space 2 (8px)."
+                    },
+                    "space-3": {
+                        "type": "string",
+                        "description": "Semantic space 3 (12px)."
+                    },
+                    "space-4": {
+                        "type": "string",
+                        "description": "Semantic space 4 (16px)."
+                    },
+                    "space-5": {
+                        "type": "string",
+                        "description": "Semantic space 5 (24px)."
+                    },
+                    "space-6": {
+                        "type": "string",
+                        "description": "Semantic space 6 (32px)."
+                    },
+                    "radius-xs": {
+                        "type": "string",
+                        "description": "Semantic radius xs."
+                    },
+                    "radius-sm": {
+                        "type": "string",
+                        "description": "Semantic radius sm."
+                    },
+                    "radius-md": {
+                        "type": "string",
+                        "description": "Semantic radius md."
+                    },
+                    "radius-lg": {
+                        "type": "string",
+                        "description": "Semantic radius lg."
+                    },
+                    "radius-full": {
+                        "type": "string",
+                        "description": "Semantic radius full."
+                    },
+                    "font-sans": {
+                        "type": "string",
+                        "description": "UI font."
+                    },
+                    "font-mono": {
+                        "type": "string",
+                        "description": "Mono font."
+                    },
+                    "text-2xs": {
+                        "type": "string",
+                        "description": "9px."
+                    },
+                    "text-xs": {
+                        "type": "string",
+                        "description": "12px."
+                    },
+                    "text-sm": {
+                        "type": "string",
+                        "description": "14px."
+                    },
+                    "text-md": {
+                        "type": "string",
+                        "description": "16px."
+                    },
+                    "text-lg": {
+                        "type": "string",
+                        "description": "20px."
+                    },
+                    "text-xl": {
+                        "type": "string",
+                        "description": "24px."
+                    },
+                    "weight-normal": {
+                        "type": "string",
+                        "description": "Regular."
+                    },
+                    "weight-semibold": {
+                        "type": "string",
+                        "description": "Semibold."
+                    },
+                    "weight-bold": {
+                        "type": "string",
+                        "description": "Bold."
+                    },
+                    "leading-none": {
+                        "type": "string",
+                        "description": "Glyph leading."
+                    },
+                    "leading-tight": {
+                        "type": "string",
+                        "description": "Tight leading."
+                    },
+                    "leading-normal": {
+                        "type": "string",
+                        "description": "Body leading."
+                    },
+                    "tracking-wide": {
+                        "type": "string",
+                        "description": "Label tracking."
+                    },
+                    "tracking-wider": {
+                        "type": "string",
+                        "description": "Rail heading tracking."
+                    },
+                    "tracking-emoji": {
+                        "type": "string",
+                        "description": "Verification digits."
+                    },
+                    "tracking-emoji-lg": {
+                        "type": "string",
+                        "description": "Verification emoji."
+                    },
+                    "icon-xs": {
+                        "type": "string",
+                        "description": "8px glyph / dot."
+                    },
+                    "icon-sm": {
+                        "type": "string",
+                        "description": "16px glyph."
+                    },
+                    "icon-md": {
+                        "type": "string",
+                        "description": "20px glyph."
+                    },
+                    "icon-lg": {
+                        "type": "string",
+                        "description": "22px glyph."
+                    },
+                    "control-sm": {
+                        "type": "string",
+                        "description": "22px control."
+                    },
+                    "control-md": {
+                        "type": "string",
+                        "description": "32px control."
+                    },
+                    "control-lg": {
+                        "type": "string",
+                        "description": "48px control."
+                    },
+                    "avatar-xs": {
+                        "type": "string",
+                        "description": "16px avatar."
+                    },
+                    "avatar-sm": {
+                        "type": "string",
+                        "description": "24px avatar."
+                    },
+                    "avatar-md": {
+                        "type": "string",
+                        "description": "32px avatar."
+                    },
+                    "avatar-lg": {
+                        "type": "string",
+                        "description": "48px avatar."
+                    },
+                    "avatar-stack-overlap": {
+                        "type": "string",
+                        "description": "Read-receipt stack overlap."
+                    },
+                    "hairline": {
+                        "type": "string",
+                        "description": "Divider thickness."
+                    },
+                    "scrollbar-width": {
+                        "type": "string",
+                        "description": "Scrollbar thickness."
+                    },
+                    "rail-pill-width": {
+                        "type": "string",
+                        "description": "Guild selection pill."
+                    },
+                    "rail-item-size": {
+                        "type": "string",
+                        "description": "Rail button size."
+                    },
+                    "rail-favourite-min-width": {
+                        "type": "string",
+                        "description": "Favourite band item."
+                    },
+                    "timeline-gutter-width": {
+                        "type": "string",
+                        "description": "Message gutter."
+                    },
+                    "badge-min-size": {
+                        "type": "string",
+                        "description": "Unread badge."
+                    },
+                    "presence-dot-size": {
+                        "type": "string",
+                        "description": "Presence dot."
+                    },
+                    "border-width": {
+                        "type": "string",
+                        "description": "Default border."
+                    },
+                    "border-width-medium": {
+                        "type": "string",
+                        "description": "Thin ring (hollow presence dot)."
+                    },
+                    "border-width-strong": {
+                        "type": "string",
+                        "description": "Emphasis border."
+                    },
+                    "border-width-accent": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "shadow-sm": {
+                        "type": "string",
+                        "description": "Subtle elevation."
+                    },
+                    "shadow-md": {
+                        "type": "string",
+                        "description": "Popover elevation."
+                    },
+                    "shadow-panel": {
+                        "type": "string",
+                        "description": "Slide-over edge."
+                    },
+                    "z-panel": {
+                        "type": "string",
+                        "description": "In-pane slide-over."
+                    },
+                    "z-dropdown": {
+                        "type": "string",
+                        "description": "Menus / popovers."
+                    },
+                    "z-overlay": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "z-modal": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "z-toast": {
+                        "type": "string",
+                        "description": "Toasts."
+                    },
+                    "motion-fast": {
+                        "type": "string",
+                        "description": "Fast motion."
+                    },
+                    "motion-base": {
+                        "type": "string",
+                        "description": "Base motion."
+                    },
+                    "motion-slow": {
+                        "type": "string",
+                        "description": "Flash motion."
+                    },
+                    "motion-ease": {
+                        "type": "string",
+                        "description": "Easing."
+                    },
+                    "layout-guild-rail-width": {
+                        "type": "string",
+                        "description": "Guild rail width."
+                    },
+                    "layout-roomlist-width": {
+                        "type": "string",
+                        "description": "Room list width."
+                    },
+                    "layout-members-width": {
+                        "type": "string",
+                        "description": "Members width."
+                    },
+                    "layout-slideover-width": {
+                        "type": "string",
+                        "description": "Search / thread panel width."
+                    },
+                    "layout-menu-min-width": {
+                        "type": "string",
+                        "description": "Menu minimum width."
+                    },
+                    "layout-dialog-width": {
+                        "type": "string",
+                        "description": "Dialog width before viewport clamp."
+                    },
+                    "control-radius": {
+                        "type": "string",
+                        "description": "Inputs / buttons / rows."
+                    },
+                    "focus-ring-color": {
+                        "type": "string",
+                        "description": "Focus outline colour."
+                    },
+                    "focus-ring-outline": {
+                        "type": "string",
+                        "description": "Focus outline thickness."
+                    },
+                    "rail-indicator": {
+                        "type": "string",
+                        "description": "Selected guild indicator."
+                    },
+                    "rail-item-bg-hover": {
+                        "type": "string",
+                        "description": "Rail item hover."
+                    },
+                    "rail-item-bg-active": {
+                        "type": "string",
+                        "description": "Rail item active."
+                    },
+                    "roomlist-bg": {
+                        "type": "string",
+                        "description": "Room list background."
+                    },
+                    "roomlist-item-bg-hover": {
+                        "type": "string",
+                        "description": "Room item hover."
+                    },
+                    "roomlist-item-bg-active": {
+                        "type": "string",
+                        "description": "Room item active."
+                    },
+                    "roomlist-item-text": {
+                        "type": "string",
+                        "description": "Room item text."
+                    },
+                    "roomlist-item-text-active": {
+                        "type": "string",
+                        "description": "Active room text."
+                    },
+                    "roomlist-item-radius": {
+                        "type": "string",
+                        "description": "Room item radius."
+                    },
+                    "roomlist-item-padding-y": {
+                        "type": "string",
+                        "description": "Room item vertical padding (density anchor)."
+                    },
+                    "timeline-bg": {
+                        "type": "string",
+                        "description": "Timeline background."
+                    },
+                    "timeline-day-divider": {
+                        "type": "string",
+                        "description": "Day divider text."
+                    },
+                    "timeline-unread-divider": {
+                        "type": "string",
+                        "description": "Unread divider."
+                    },
+                    "timeline-mention-bg": {
+                        "type": "string",
+                        "description": "Mention / jump flash highlight."
+                    },
+                    "timeline-row-gap": {
+                        "type": "string",
+                        "description": "Message gap."
+                    },
+                    "timeline-row-padding-x": {
+                        "type": "string",
+                        "description": "Message horizontal padding."
+                    },
+                    "timeline-row-padding-y": {
+                        "type": "string",
+                        "description": "Message vertical padding."
+                    },
+                    "timeline-quote-bar-width": {
+                        "type": "string",
+                        "description": "Quote / reply accent bar."
+                    },
+                    "timeline-flash-duration": {
+                        "type": "string",
+                        "description": "Jump-to-message flash."
+                    },
+                    "media-image-max-width": {
+                        "type": "string",
+                        "description": "Inline image max width."
+                    },
+                    "media-image-max-height": {
+                        "type": "string",
+                        "description": "Inline image max height."
+                    },
+                    "media-video-max-width": {
+                        "type": "string",
+                        "description": "Inline video max width."
+                    },
+                    "media-video-max-height": {
+                        "type": "string",
+                        "description": "Inline video max height."
+                    },
+                    "media-audio-max-width": {
+                        "type": "string",
+                        "description": "Inline audio max width."
+                    },
+                    "composer-bg": {
+                        "type": "string",
+                        "description": "Composer background."
+                    },
+                    "composer-input-bg": {
+                        "type": "string",
+                        "description": "Composer input background."
+                    },
+                    "composer-input-border": {
+                        "type": "string",
+                        "description": "Composer input border."
+                    },
+                    "members-bg": {
+                        "type": "string",
+                        "description": "Members pane."
+                    },
+                    "member-dot-size": {
+                        "type": "string",
+                        "description": "Presence dot."
+                    },
+                    "member-badge-radius": {
+                        "type": "string",
+                        "description": "Member role badge."
+                    },
+                    "member-item-padding-y": {
+                        "type": "string",
+                        "description": "Member row vertical padding (density anchor)."
+                    },
+                    "button-primary-bg": {
+                        "type": "string",
+                        "description": "Primary button."
+                    },
+                    "button-primary-bg-hover": {
+                        "type": "string",
+                        "description": "Primary button hover."
+                    },
+                    "button-primary-text": {
+                        "type": "string",
+                        "description": "Primary button text."
+                    },
+                    "button-secondary-bg": {
+                        "type": "string",
+                        "description": "Secondary button."
+                    },
+                    "button-secondary-bg-hover": {
+                        "type": "string",
+                        "description": "Secondary button hover."
+                    },
+                    "button-secondary-text": {
+                        "type": "string",
+                        "description": "Secondary button text."
+                    },
+                    "button-secondary-border": {
+                        "type": "string",
+                        "description": "Secondary button border."
+                    },
+                    "button-danger-bg": {
+                        "type": "string",
+                        "description": "Danger button."
+                    },
+                    "button-danger-bg-hover": {
+                        "type": "string",
+                        "description": "Danger button hover."
+                    },
+                    "button-danger-text": {
+                        "type": "string",
+                        "description": "Danger button text."
+                    },
+                    "input-bg": {
+                        "type": "string",
+                        "description": "Text field background."
+                    },
+                    "input-border": {
+                        "type": "string",
+                        "description": "Text field border."
+                    },
+                    "input-text": {
+                        "type": "string",
+                        "description": "Text field text."
+                    },
+                    "input-placeholder": {
+                        "type": "string",
+                        "description": "Text field placeholder."
+                    },
+                    "input-textarea-min-height": {
+                        "type": "string",
+                        "description": "Textarea minimum height."
+                    },
+                    "badge-bg": {
+                        "type": "string",
+                        "description": "Unread badge."
+                    },
+                    "badge-highlight-bg": {
+                        "type": "string",
+                        "description": "Mention badge."
+                    },
+                    "badge-text": {
+                        "type": "string",
+                        "description": "Badge text."
+                    },
+                    "avatar-bg": {
+                        "type": "string",
+                        "description": "Avatar fallback."
+                    },
+                    "avatar-text": {
+                        "type": "string",
+                        "description": "Avatar initials."
+                    },
+                    "avatar-initials-size": {
+                        "type": "string",
+                        "description": "Avatar initials font size."
+                    },
+                    "overlay-bg": {
+                        "type": "string",
+                        "description": "Dialog backdrop."
+                    },
+                    "dialog-bg": {
+                        "type": "string",
+                        "description": "Dialog surface."
+                    },
+                    "dialog-border": {
+                        "type": "string",
+                        "description": "Dialog border."
+                    },
+                    "dialog-width": {
+                        "type": "string",
+                        "description": "Dialog width before clamp."
+                    },
+                    "dialog-gutter": {
+                        "type": "string",
+                        "description": "Dialog viewport clamp gutter."
+                    },
+                    "menu-bg": {
+                        "type": "string",
+                        "description": "Menu background."
+                    },
+                    "menu-border": {
+                        "type": "string",
+                        "description": "Menu border."
+                    },
+                    "menu-min-width": {
+                        "type": "string",
+                        "description": "Menu minimum width."
+                    },
+                    "menu-devices-max-height": {
+                        "type": "string",
+                        "description": "Device list max height."
+                    },
+                    "popover-bg": {
+                        "type": "string",
+                        "description": "Popover background."
+                    },
+                    "popover-border": {
+                        "type": "string",
+                        "description": "Popover border."
+                    },
+                    "popover-shadow": {
+                        "type": "string",
+                        "description": "Popover elevation."
+                    },
+                    "panel-bg": {
+                        "type": "string",
+                        "description": "Slide-over background."
+                    },
+                    "panel-border": {
+                        "type": "string",
+                        "description": "Slide-over border."
+                    },
+                    "panel-width": {
+                        "type": "string",
+                        "description": "Slide-over width."
+                    },
+                    "panel-shadow": {
+                        "type": "string",
+                        "description": "Slide-over edge shadow."
+                    },
+                    "panel-z": {
+                        "type": "string",
+                        "description": "In-pane slide-over stacking."
+                    },
+                    "banner-error-bg": {
+                        "type": "string",
+                        "description": "Error banner."
+                    },
+                    "banner-error-text": {
+                        "type": "string",
+                        "description": "Error banner text."
+                    },
+                    "banner-reconnect-bg": {
+                        "type": "string",
+                        "description": "Warning banner."
+                    },
+                    "banner-reconnect-text": {
+                        "type": "string",
+                        "description": "Warning banner text."
+                    },
+                    "banner-action-hover": {
+                        "type": "string",
+                        "description": "Banner action hover."
+                    },
+                    "picker-results-max-height": {
+                        "type": "string",
+                        "description": "User picker results height."
+                    }
+                },
+                "additionalProperties": false
+            }
+        }
+    },
+    "additionalProperties": false
+}

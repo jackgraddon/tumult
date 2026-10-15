@@ -7,8 +7,8 @@ const base = {
     version: 0,
     name: "test",
     tokens: {
-        "prim-indigo-3": "#5865f2",
-        accent: "var(--prim-indigo-3)",
+        "prim-brand-3": "#5865f2",
+        accent: "var(--prim-brand-3)",
         "button-primary-bg": "var(--accent)",
     },
 };
@@ -37,7 +37,7 @@ describe("validateTheme", () => {
     it("errors on tier violation (component -> primitive)", () => {
         const r = validateTheme({
             ...base,
-            tokens: { ...base.tokens, "button-primary-bg": "var(--prim-indigo-3)" },
+            tokens: { ...base.tokens, "button-primary-bg": "var(--prim-brand-3)" },
         });
         assert.ok(r.issues.some((i) => i.code === "tier-violation"));
         assert.equal(r.valid, false);
@@ -82,7 +82,7 @@ describe("validateTheme", () => {
             name: "t",
             tokens: {
                 acceent: "url(http://x)",
-                "button-primary-bg": "var(--prim-indigo-3)",
+                "button-primary-bg": "var(--prim-brand-3)",
             },
         });
         const codes = new Set(r.issues.map((i) => i.code));
@@ -173,7 +173,7 @@ describe("validateTheme", () => {
             const r = validateTheme({
                 version: 0,
                 name: "t",
-                tokens: { accent: "var(--prim-indigo-3)", "text-primary": "var(--prim-neutral-1, #fff)" },
+                tokens: { accent: "var(--prim-brand-3)", "text-primary": "var(--prim-neutral-1, #fff)" },
             });
             assert.ok(!r.issues.some((i) => i.code === "unsafe-value"));
         });
