@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**273 tokens** — 91 primitives, 104 semantic, 78 component.
+**274 tokens** — 91 primitives, 104 semantic, 79 component.
 
 ## Primitives
 
@@ -286,6 +286,7 @@ everything built on it.
 | `--menu-border` | color | `var(--border-default)` | Menu border. |
 | `--menu-min-width` | layout | `var(--layout-menu-min-width)` | Menu minimum width. |
 | `--menu-devices-max-height` | size | `160px` | Device list max height. |
+| `--menu-item-danger` | color | `var(--danger)` | Destructive menu item text. |
 | `--popover-bg` | color | `var(--surface-raised)` | Popover background. |
 | `--popover-border` | color | `var(--border-default)` | Popover border. |
 | `--popover-shadow` | shadow | `var(--shadow-md)` | Popover elevation. |

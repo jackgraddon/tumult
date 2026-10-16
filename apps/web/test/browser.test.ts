@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { firefox } from "playwright";
 import type { PreviewServer } from "vite";
 import { build, preview } from "vite";
@@ -223,6 +223,84 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-row", { timeout: 10_000 });
         const inRoom = await readState(page);
         assert.ok(inRoom.counts.messages > 0, "opening a channel rendered no messages");
+    });
+
+    it("reserves media boxes from event info dims, so decode cannot shift the timeline", async () => {
+        // The fake timeline's two newest rows are image events WITH `info`
+        // dims (landscape binds the width clamp, portrait the height clamp),
+        // and the fixture bytes are a fixed 100x100 SVG — so a box shaped by
+        // the EVENT's dims can only come from the pre-load reservation, never
+        // from the decoded image. Measured after load, which is exactly when
+        // an unreserved layout would have jumped.
+        await page.waitForFunction(
+            () => {
+                const images = Array.from(document.querySelectorAll("img.tumult-media-message-image"));
+                return (
+                    images.length >= 2 &&
+                    images.every((img) => img.complete && img.naturalWidth > 0)
+                );
+            },
+            undefined,
+            { timeout: 10_000 },
+        );
+        const measured = await page.evaluate(() => {
+            const root = getComputedStyle(document.documentElement);
+            const images = Array.from(document.querySelectorAll("img.tumult-media-message-image")).map(
+                (img) => ({
+                    intrinsicW: img.style.getPropertyValue("--media-intrinsic-w"),
+                    ratio: img.style.getPropertyValue("--media-intrinsic-ratio"),
+                    natural: `${img.naturalWidth}x${img.naturalHeight}`,
+                    box: img.getBoundingClientRect(),
+                }),
+            );
+            const viewport = document.querySelector(".tumult-viewport");
+            return {
+                maxWidth: root.getPropertyValue("--media-image-max-width"),
+                maxHeight: root.getPropertyValue("--media-image-max-height"),
+                anchor: viewport
+                    ? getComputedStyle(viewport).getPropertyValue("overflow-anchor")
+                    : "MISSING",
+                images,
+            };
+        });
+        const maxWidth = parseFloat(measured.maxWidth);
+        const maxHeight = parseFloat(measured.maxHeight);
+        assert.ok(
+            maxWidth > 0 && maxHeight > 0,
+            `theme media maxes missing: ${measured.maxWidth} / ${measured.maxHeight}`,
+        );
+        assert.equal(measured.images.length, 2, "both seeded image fixtures should sit at the tail");
+        for (const [index, img] of measured.images.entries()) {
+            const width = parseFloat(img.intrinsicW);
+            const ratio = parseFloat(img.ratio);
+            assert.ok(width > 0 && ratio > 0, `image ${index} carries no reservation props`);
+            assert.equal(img.natural, "100x100", "fixture bytes must not match the event dims");
+            const expectedW = Math.min(width, maxWidth, maxHeight * ratio);
+            const expectedH = expectedW / ratio;
+            assert.ok(
+                Math.abs(img.box.width - expectedW) < 1 && Math.abs(img.box.height - expectedH) < 1,
+                `image ${index}: box ${img.box.width}x${img.box.height} != reserved ` +
+                    `${expectedW}x${expectedH} (width ${width}, ratio ${ratio}, tokens ${maxWidth}x${maxHeight})`,
+            );
+        }
+        // Both min() branches are exercised by the fixtures.
+        const landscape = measured.images.find((img) => parseFloat(img.ratio) > 1);
+        const portrait = measured.images.find((img) => parseFloat(img.ratio) < 1);
+        assert.ok(
+            landscape && Math.abs(landscape.box.width - maxWidth) < 1,
+            "the landscape fixture should bind --media-image-max-width",
+        );
+        assert.ok(
+            portrait && Math.abs(portrait.box.height - maxHeight) < 1,
+            "the portrait fixture should bind --media-image-max-height",
+        );
+        // The virtualizer compensates row re-measures itself; native scroll
+        // anchoring would apply the same shift a second time.
+        assert.equal(
+            measured.anchor,
+            "none",
+            "the timeline viewport must opt out of native scroll anchoring",
+        );
     });
 
     it("renders the demo poll through the app-installed plugin", async () => {
@@ -895,6 +973,399 @@ describe("browser smoke test (fake client)", () => {
             await calm.context.close();
             await busy.context.close();
         }
+    });
+
+    // --- Message context menu ------------------------------------------------
+
+    /**
+     * Right-click the row containing `text` and wait for the message menu. A
+     * real right-click, not a synthetic `contextmenu`: Reka opens on the event
+     * and anchors the menu at the pointer.
+     */
+    async function openMessageMenu(text: string): Promise<void> {
+        const row = page.locator(".tumult-virtual-row", { hasText: text }).first();
+        await row.scrollIntoViewIfNeeded();
+        const box = await row.boundingBox();
+        assert.ok(box, `no measurable row for "${text}"`);
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
+        await page.waitForSelector(".tumult-message-menu", { timeout: 5_000 });
+    }
+
+    /** One item of the open message menu, matched by its label. */
+    function menuItem(label: string) {
+        return page.locator(".tumult-message-menu .tumult-menu-item", { hasText: label });
+    }
+
+    it("opens a message context menu, gating moderation on the room's power levels", async () => {
+        // Any guild channel room carries the full roster (alice 100, bob 50,
+        // carol 0, we are 100), so both sides of the moderation gate are
+        // reachable from a single timeline.
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+        await page.locator(".tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+
+        // Alice sits at our own level (100): there is nothing to moderate.
+        await openMessageMenu("react to this");
+        for (const label of [
+            "Add reaction",
+            "Reply",
+            "Copy text",
+            "Copy link",
+            "Copy message ID",
+            "View source",
+        ]) {
+            assert.ok(await menuItem(label).count() > 0, `the menu is missing "${label}"`);
+        }
+        assert.equal(
+            await menuItem("Delete message").count(),
+            0,
+            "an equal-ranked sender must not offer a moderation delete",
+        );
+        const quickReactions = page.locator(
+            ".tumult-message-menu .tumult-quick-reactions .tumult-reaction-pick",
+        );
+        assert.equal(
+            await quickReactions.count(),
+            4,
+            "the inline quick-reaction row should carry four emoji",
+        );
+        // The menu lives in a body-level portal, so this also proves the row's
+        // SCOPED styles travel with it (the menu chrome is global CSS).
+        assert.equal(
+            await page
+                .locator(".tumult-message-menu .tumult-quick-reactions")
+                .evaluate((el) => getComputedStyle(el).display),
+            "flex",
+            "the quick-reaction row lost its scoped layout",
+        );
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-message-menu", { state: "detached", timeout: 5_000 });
+
+        // Bob sits below us (50): the delete appears, and it looks destructive.
+        await openMessageMenu("Unsupported event");
+        assert.equal(
+            await menuItem("Delete message").count(),
+            1,
+            "a lower-ranked sender must offer Delete",
+        );
+        // `evaluate` on a locator throws unless it resolves to one element, so
+        // this also pins the item down. Compare computed colours, not token
+        // names: the theme authors colours in oklch.
+        const dangerColour = await menuItem("Delete message").evaluate(
+            (el) => getComputedStyle(el).color,
+        );
+        const plainColour = await menuItem("Copy text").evaluate(
+            (el) => getComputedStyle(el).color,
+        );
+        assert.notEqual(dangerColour, plainColour, "the destructive item must stand out");
+
+        // Escape must leave no menu behind for the next test.
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-message-menu", { state: "detached", timeout: 5_000 });
+    });
+
+    it("reacts and inspects a message through the menu", async () => {
+        // Submenu: nested one level, opened by hover like a user would.
+        await openMessageMenu("react to this");
+        await menuItem("Add reaction").hover();
+        await page.waitForSelector(".tumult-reaction-grid", { timeout: 5_000 });
+        const palette = page.locator(".tumult-reaction-grid .tumult-reaction-pick");
+        assert.equal(await palette.count(), 8, "the submenu should carry the full palette");
+        // 🎉 is deliberately not one of the fixture's reactions.
+        await palette.filter({ hasText: /^🎉$/ }).click();
+
+        const reactedRow = page.locator(".tumult-virtual-row", { hasText: "react to this" }).first();
+        await reactedRow.locator(".tumult-reaction-chip", { hasText: "🎉" }).waitFor({ timeout: 5_000 });
+
+        // View source: the row-local dialog over the shared dialog chrome.
+        await openMessageMenu("react to this");
+        // Copying is the one item whose result cannot be read back in a
+        // headless browser; a failure logs a console error, which the next
+        // test fails on — so it is asserted, just indirectly.
+        await menuItem("Copy link").click();
+        await openMessageMenu("react to this");
+        await menuItem("View source").click();
+        const dialog = page.locator(".tumult-dialog");
+        await dialog.waitFor({ timeout: 5_000 });
+        assert.equal(
+            (await dialog.locator(".tumult-dialog-title").textContent())?.trim(),
+            "Message source",
+        );
+        const source = (await dialog.locator(".tumult-source-json").textContent()) ?? "";
+        assert.ok(source.includes('"m.room.message"'), `unexpected source payload: ${source}`);
+        assert.ok(source.includes('"react to this"'), `source should carry the body: ${source}`);
+        // An unstyled dialog still renders its text, so prove the shared
+        // `.tumult-dialog` chrome reached this row-local instance.
+        assert.notEqual(
+            await dialog.evaluate((el) => getComputedStyle(el).backgroundColor),
+            "rgba(0, 0, 0, 0)",
+            "the source dialog lost its chrome",
+        );
+        await dialog.locator(".tumult-dialog-button").click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
+    it("confirms, then deletes a message from the menu when we outrank its sender", async () => {
+        // In a DM the partner sits at level 0, so what the menu offers is the
+        // moderation path rather than the own-message one.
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.locator(".tumult-dmlist .tumult-room-item", { hasText: "Alice" }).first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+
+        const tombstones = () =>
+            page
+                .locator(".tumult-virtual-row .tumult-text-message", {
+                    hasText: "Message deleted.",
+                })
+                .count();
+        const before = await tombstones();
+        const stillThere = () =>
+            page.locator(".tumult-virtual-row", { hasText: "react to this" }).count();
+
+        // Redaction is permanent, so the item opens a confirm rather than
+        // deleting straight away.
+        await openMessageMenu("react to this");
+        await menuItem("Delete message").click();
+        const dialog = page.locator(".tumult-dialog");
+        await dialog.waitFor({ timeout: 5_000 });
+        assert.equal(
+            (await dialog.locator(".tumult-dialog-title").textContent())?.trim(),
+            "Delete message?",
+        );
+        assert.equal(await stillThere(), 1, "the message must survive until the confirm");
+
+        // Backing out leaves the message alone.
+        await dialog.locator("button", { hasText: "Cancel" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+        assert.equal(await stillThere(), 1, "cancel must not delete anything");
+
+        await openMessageMenu("react to this");
+        await menuItem("Delete message").click();
+        await dialog.waitFor({ timeout: 5_000 });
+        await dialog.locator("button", { hasText: "Delete" }).click();
+
+        // The redaction tombstones the row we opened the menu on: no rendered
+        // row carries its body any more, and one more tombstone is on screen.
+        await page.waitForFunction(
+            (text) =>
+                !Array.from(document.querySelectorAll(".tumult-virtual-row")).some((row) =>
+                    (row.textContent ?? "").includes(text),
+                ),
+            "react to this",
+            { timeout: 5_000 },
+        );
+        assert.equal(
+            await tombstones(),
+            before + 1,
+            "the deleted message should render as a tombstone",
+        );
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
+    // --- Room, space and member context menus --------------------------------
+
+    /**
+     * Right-click any element and wait for its menu. The row menus are all
+     * Reka context menus anchored at the pointer, so this works the same for a
+     * room row, a guild tile and a member row.
+     */
+    async function openMenuOn(locator: Locator): Promise<void> {
+        await locator.scrollIntoViewIfNeeded();
+        const box = await locator.boundingBox();
+        assert.ok(box, "the target must be measurable to right-click it");
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
+        await page.waitForSelector(".tumult-menu", { timeout: 5_000 });
+    }
+
+    /** One item of the open menu, matched by its label. */
+    function menuEntry(scope: string, label: string) {
+        return page.locator(`${scope} .tumult-menu-item`, { hasText: label });
+    }
+
+    /**
+     * Record what the app asks the clipboard to hold. Firefox grants no
+     * clipboard-read permission, so the value cannot be read back — wrapping
+     * `writeText` observes the request while still performing the real write
+     * (the message-menu test covers the real path). The evaluated body is a
+     * STRING on purpose: a serialized function carrying a name dies in the page
+     * with `__name is not defined` (tsx/esbuild `keepNames`).
+     */
+    async function recordClipboard(): Promise<void> {
+        await page.evaluate(
+            `(() => {
+                const clip = navigator.clipboard;
+                const original = clip.writeText.bind(clip);
+                window.__copied = null;
+                clip.writeText = (text) => {
+                    window.__copied = text;
+                    return original(text);
+                };
+            })()`,
+        );
+    }
+
+    /** The last text the app asked the clipboard to hold. */
+    function lastCopied(): Promise<string | null> {
+        return page.evaluate<string | null>("window.__copied");
+    }
+
+    /** Open a row's menu, click one item, and wait for the menu to close. */
+    async function pick(target: Locator, label: string): Promise<void> {
+        await openMenuOn(target);
+        await menuEntry(".tumult-menu", label).click();
+        await page.locator(".tumult-menu").first().waitFor({ state: "detached", timeout: 5_000 });
+    }
+
+    it("marks a room read from its context menu without opening it", async () => {
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        // The rail lists guilds in name order, so the first tile is Big Guild,
+        // whose channel-07 carries a seeded 99+ badge.
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+
+        const room = page.locator(".tumult-room-item", { hasText: "channel-07" }).first();
+        // Opening the room would mark it read, so the assertion below only means
+        // something because we never clicked it.
+        await room.locator(".tumult-badge").waitFor({ timeout: 5_000 });
+
+        await openMenuOn(room);
+        for (const label of ["Mark as read", "Copy link", "Copy room ID", "Leave room"]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                1,
+                `the room menu is missing "${label}"`,
+            );
+        }
+        await menuEntry(".tumult-menu", "Mark as read").click();
+
+        // Marking read goes client -> sync -> snapshot -> tree, so the badge
+        // goes away without the room ever being opened.
+        await page
+            .locator(".tumult-room-item", { hasText: "channel-07" })
+            .first()
+            .locator(".tumult-badge")
+            .waitFor({ state: "detached", timeout: 10_000 });
+
+        // The copy items are dispatchers like any other, and a swapped link/id
+        // would still "work" — so record what the app asked to copy.
+        await recordClipboard();
+        await pick(room, "Copy room ID");
+        assert.equal(
+            await lastCopied(),
+            "!b-7:fake",
+            "Copy room ID must put the room id on the clipboard",
+        );
+        // This room carries no canonical alias, so the link falls back to its id.
+        await pick(room, "Copy link");
+        assert.equal(
+            await lastCopied(),
+            "https://matrix.to/#/!b-7:fake",
+            "Copy link must put the room's matrix.to link on the clipboard",
+        );
+    });
+
+    it("offers a space its link and id, and leave", async () => {
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.waitForSelector("a.tumult-guild-item", { timeout: 10_000 });
+
+        const guild = page.locator("a.tumult-guild-item").first();
+        await openMenuOn(guild);
+        for (const label of ["Copy link", "Copy space ID", "Leave space"]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                1,
+                `the space menu is missing "${label}"`,
+            );
+        }
+        // No mark-read here: a space means every channel in it.
+        assert.equal(await menuEntry(".tumult-menu", "Mark as read").count(), 0);
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
+
+        // The first rail tile is Big Guild, which has no canonical alias, so both
+        // the id and the link resolve to its room id.
+        await recordClipboard();
+        await pick(guild, "Copy space ID");
+        assert.equal(await lastCopied(), "!guild-b:fake", "Copy space ID must copy the space id");
+        await pick(guild, "Copy link");
+        assert.equal(
+            await lastCopied(),
+            "https://matrix.to/#/!guild-b:fake",
+            "Copy link must put the space's matrix.to link on the clipboard",
+        );
+    });
+
+    it("gates member moderation and always offers the copy pair", async () => {
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+        await page.locator(".tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-members", { timeout: 10_000 });
+        await page.waitForSelector(".tumult-member", { timeout: 10_000 });
+
+        // Bob is below us (50 < 100): the copy pair comes first, then moderation,
+        // with the destructive pair marked as such.
+        const bob = page.locator(".tumult-member", { hasText: "Bob" }).first();
+        await openMenuOn(bob);
+        for (const label of ["Copy user ID", "Copy link", "Kick Bob", "Ban Bob"]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                1,
+                `the member menu is missing "${label}"`,
+            );
+        }
+        const dangerColour = await menuEntry(".tumult-menu", "Kick Bob").evaluate(
+            (el) => getComputedStyle(el).color,
+        );
+        const plainColour = await menuEntry(".tumult-menu", "Copy user ID").evaluate(
+            (el) => getComputedStyle(el).color,
+        );
+        assert.notEqual(dangerColour, plainColour, "kick should stand out as destructive");
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
+
+        // Copy dispatches by id, so check the value the app asked for.
+        await recordClipboard();
+        await pick(bob, "Copy user ID");
+        assert.equal(await lastCopied(), "@bob:example.com", "Copy user ID must copy the id");
+        await pick(bob, "Copy link");
+        assert.equal(
+            await lastCopied(),
+            "https://matrix.to/#/@bob:example.com",
+            "Copy link must put the user's matrix.to link on the clipboard",
+        );
+
+        // Moderation items dispatch through the shell's request channel, so the
+        // set-power one must open its dialog — the id -> request mapping proven
+        // end to end.
+        await pick(bob, "Change permissions…");
+        const dialog = page.locator(".tumult-dialog");
+        await dialog.waitFor({ timeout: 5_000 });
+        assert.equal(
+            (await dialog.locator(".tumult-dialog-title").textContent())?.trim(),
+            "Change permissions",
+        );
+        await dialog.locator("button", { hasText: "Cancel" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+
+        // Alice is at our own level (100): nothing to moderate, but the id is
+        // still copyable — the menu is never empty.
+        await openMenuOn(page.locator(".tumult-member", { hasText: "Alice" }).first());
+        assert.equal(await menuEntry(".tumult-menu", "Copy user ID").count(), 1);
+        for (const label of ["Kick Alice", "Ban Alice", "Change permissions…"]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                0,
+                `an equal-ranked member must not offer "${label}"`,
+            );
+        }
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
     });
 
     it("reports no console errors across the whole run", () => {

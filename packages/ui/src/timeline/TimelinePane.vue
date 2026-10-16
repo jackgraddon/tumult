@@ -103,8 +103,10 @@ watch(
 .tumult-timeline-pane {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
     min-height: 0;
+    overflow: hidden;
     background: var(--timeline-bg);
     color: var(--text-primary);
 }

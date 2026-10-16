@@ -94,6 +94,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "menu-border", tier: "component", kind: "color", value: v("border-default"), description: "Menu border." },
     { name: "menu-min-width", tier: "component", kind: "layout", value: v("layout-menu-min-width"), description: "Menu minimum width." },
     { name: "menu-devices-max-height", tier: "component", kind: "size", description: "Device list max height." },
+    { name: "menu-item-danger", tier: "component", kind: "color", value: v("danger"), description: "Destructive menu item text." },
     { name: "popover-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "Popover background." },
     { name: "popover-border", tier: "component", kind: "color", value: v("border-default"), description: "Popover border." },
     { name: "popover-shadow", tier: "component", kind: "shadow", value: v("shadow-md"), description: "Popover elevation." },

@@ -61,7 +61,18 @@ async function onSend(body: string): Promise<void> {
             <button type="button" class="tumult-thread-btn" aria-label="Close thread" @click="emit('close')">✕</button>
         </header>
         <div class="tumult-thread-meta">{{ replyCount }} {{ replyCount === 1 ? "reply" : "replies" }}</div>
-        <TimelineViewport :messages="timeline" :load-more="loadMore" :own-user-id="session?.userId" />
+        <!--
+            No moderation handlers are wired in a thread panel, so power would
+            gate nothing — null keeps the menu to copy/inspect items (the room
+            id still builds real links).
+        -->
+        <TimelineViewport
+            :messages="timeline"
+            :room-id="roomId"
+            :power="null"
+            :load-more="loadMore"
+            :own-user-id="session?.userId"
+        />
         <MessageComposer @send="onSend" />
     </aside>
 </template>

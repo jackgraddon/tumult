@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, type CSSProperties } from "vue";
 import type { EncryptedAttachment, MessageView } from "@tumult/core";
 import { isTerminalMediaError } from "@tumult/core/media";
 
@@ -41,6 +41,37 @@ const encryptedFile = computed(() => {
     return file as unknown as EncryptedAttachment;
 });
 const body = computed(() => props.message.body);
+
+/**
+ * Intrinsic pixel size from the event's `info` block. Matrix media events
+ * carry `info.w`/`info.h` in cleartext (and inside decrypted content for
+ * E2EE), so the row can reserve its final box BEFORE the bytes arrive —
+ * without it, every decode re-measures the row and shifts the timeline
+ * under the reader.
+ */
+const dims = computed(() => {
+    const info = props.message.content["info"];
+    if (!info || typeof info !== "object") return null;
+    const { w, h } = info as { w?: unknown; h?: unknown };
+    if (typeof w !== "number" || typeof h !== "number" || !(w > 0) || !(h > 0)) return null;
+    return { w, h };
+});
+/**
+ * The reservation inputs as inline custom props: the intrinsic width as a
+ * LENGTH (the no-upscale term of the `min()`) and w/h as a bare ratio (the
+ * height-clamp term and `aspect-ratio`). The unit travels in the value on
+ * purpose — the token-completeness gate (`packages/theme`) rejects a literal
+ * pixel length in a component stylesheet, so multiplying a bare number by a
+ * pixel unit inside `calc()` is not an option.
+ */
+const reservation = computed<CSSProperties | undefined>(() => {
+    const size = dims.value;
+    if (!size) return undefined;
+    return {
+        "--media-intrinsic-w": `${size.w}px`,
+        "--media-intrinsic-ratio": String(size.w / size.h),
+    } as CSSProperties;
+});
 const label = computed(() => {
     if (kind.value === "image") return "Image";
     if (kind.value === "video") return "Video";
@@ -91,11 +122,21 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
 <template>
     <div class="tumult-media-message">
         <template v-if="kind === 'image'">
+            <!--
+                With `info` dims the box is reserved from the FIRST render:
+                `[data-dims]` pins the exact max-clamp fit box (width + ratio
+                derived from the event's own dimensions and the token maxes),
+                so the pre-load reservation equals the post-load replaced-
+                element clamp and the decode never re-measures the row under
+                the reader. Dims-less events keep text-until-decoded.
+            -->
             <img
-                v-if="src"
+                v-if="(src || dims) && status !== 'failed'"
                 class="tumult-media-message-image"
-                :src="src"
+                :src="src ?? undefined"
                 :alt="body"
+                :data-dims="dims ? 'true' : undefined"
+                :style="reservation"
                 loading="lazy"
             />
             <div v-else-if="status === 'failed'" class="tumult-media-message-failed">
@@ -109,9 +150,11 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
 
         <template v-else>
             <video
-                v-if="kind === 'video' && src"
+                v-if="kind === 'video' && (src || dims) && status !== 'failed'"
                 class="tumult-media-message-video"
-                :src="src"
+                :src="src ?? undefined"
+                :data-dims="dims ? 'true' : undefined"
+                :style="reservation"
                 controls
                 preload="metadata"
             ></video>
@@ -153,13 +196,50 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
 .tumult-media-message-image {
     max-width: var(--media-image-max-width);
     max-height: var(--media-image-max-height);
+    /* Reservation inputs from the event's `info` block; the inline style sets
+       them per message. Declared here (with a harmless fallback) so the token
+       gate can see the names. */
+    --media-intrinsic-w: var(--media-image-max-width);
+    --media-intrinsic-ratio: 1;
     border-radius: var(--radius-md);
     object-fit: contain;
+}
+/*
+ * Reserved pre-load box from the event's `info` dims: width is the exact fit
+ * the replaced-element max-clamp produces after decode (never upscaling, per
+ * max-* semantics), with the ratio pinned via aspect-ratio. Pre-load and
+ * post-load boxes are identical, so a late decode never re-measures the row
+ * and shifts the timeline under the reader. The length and the ratio arrive as
+ * inline custom props — the unit rides in the value, because this stylesheet
+ * may not name a literal pixel length (the theme's token-completeness gate
+ * scans these blocks, comments included).
+ */
+.tumult-media-message-image[data-dims] {
+    width: min(
+        var(--media-intrinsic-w),
+        var(--media-image-max-width),
+        calc(var(--media-image-max-height) * var(--media-intrinsic-ratio))
+    );
+    aspect-ratio: var(--media-intrinsic-ratio);
+    height: auto;
 }
 .tumult-media-message-video {
     max-width: var(--media-video-max-width);
     max-height: var(--media-video-max-height);
+    /* Same reservation inputs as the image (see above). */
+    --media-intrinsic-w: var(--media-video-max-width);
+    --media-intrinsic-ratio: 1;
     border-radius: var(--radius-md);
+}
+/* Same reservation as the image, against the video maxes. */
+.tumult-media-message-video[data-dims] {
+    width: min(
+        var(--media-intrinsic-w),
+        var(--media-video-max-width),
+        calc(var(--media-video-max-height) * var(--media-intrinsic-ratio))
+    );
+    aspect-ratio: var(--media-intrinsic-ratio);
+    height: auto;
 }
 .tumult-media-message-audio {
     max-width: var(--media-audio-max-width);

@@ -6,10 +6,13 @@ import {
     ContextMenuItem,
     ContextMenuPortal,
     ContextMenuRoot,
+    ContextMenuSeparator,
     ContextMenuTrigger,
 } from "reka-ui";
 
 import { useActions, type MemberModerationKind } from "../actions.ts";
+import { copyOrLog } from "../clipboard.ts";
+import { buildMemberMenu, type MemberMenuAction } from "./memberMenu.ts";
 import { useMemberDecorations } from "./decorations.ts";
 import Avatar from "../primitives/Avatar.vue";
 
@@ -47,28 +50,37 @@ function presenceTitle(): string {
     return "Presence not yet known";
 }
 
-// Moderation is the server's to enforce; these flags only spare the user an
-// obviously doomed action. Everything requires the target to be strictly
-// below us and not us: the same rule the server applies.
-const myPower = computed(() => props.power?.myPowerLevel ?? 0);
-const belowMe = computed(() => !props.member.isSelf && props.member.powerLevel < myPower.value);
-
-const canSetPower = computed(
-    () => !!props.power?.canSetPowerLevel && props.member.membership !== "ban" && belowMe.value,
-);
-const canKick = computed(() => !!props.power?.canKick && props.member.membership === "join" && belowMe.value);
-const canBan = computed(() => !!props.power?.canBan && props.member.membership === "join" && belowMe.value);
-const canUnban = computed(() => !!props.power?.canBan && props.member.membership === "ban" && belowMe.value);
-const hasActions = computed(() => canSetPower.value || canKick.value || canBan.value || canUnban.value);
+// Which moderation actions apply is `memberMenu.ts`'s call (the same rule the
+// server applies: strictly below us, never ourselves). The row only renders the
+// list it returns and routes an id back to a request.
+const menu = computed(() => buildMemberMenu(props.member, { power: props.power }));
 
 function request(kind: MemberModerationKind): void {
     actions.requestModeration({ kind, roomId: props.roomId, member: props.member });
+}
+
+function run(action: MemberMenuAction): void {
+    switch (action) {
+        case "copy-id":
+            copyOrLog(props.member.userId, "user id");
+            break;
+        case "copy-link":
+            copyOrLog(menu.value.userLink, "user link");
+            break;
+        case "set-power":
+        case "kick":
+        case "ban":
+        case "unban":
+            request(action);
+            break;
+    }
 }
 </script>
 
 <template>
     <ContextMenuRoot>
-        <ContextMenuTrigger as-child :disabled="!hasActions">
+        <!-- Copying an id needs no permission, so every row has a menu. -->
+        <ContextMenuTrigger as-child>
             <div class="tumult-member">
                 <span
                     class="tumult-member-dot"
@@ -90,41 +102,23 @@ function request(kind: MemberModerationKind): void {
                 />
             </div>
         </ContextMenuTrigger>
-        <!-- No actions for this row → no content, so a right-click shows nothing. -->
-        <ContextMenuPortal v-if="hasActions">
+        <ContextMenuPortal>
             <ContextMenuContent class="tumult-menu">
-                <ContextMenuItem
-                    v-if="canSetPower"
-                    class="tumult-menu-item"
-                    text-value="set-power"
-                    @select="request('set-power')"
-                >
-                    Change permissions…
-                </ContextMenuItem>
-                <ContextMenuItem
-                    v-if="canKick"
-                    class="tumult-menu-item"
-                    text-value="kick"
-                    @select="request('kick')"
-                >
-                    Kick {{ member.displayName }}
-                </ContextMenuItem>
-                <ContextMenuItem
-                    v-if="canBan"
-                    class="tumult-menu-item"
-                    text-value="ban"
-                    @select="request('ban')"
-                >
-                    Ban {{ member.displayName }}
-                </ContextMenuItem>
-                <ContextMenuItem
-                    v-if="canUnban"
-                    class="tumult-menu-item"
-                    text-value="unban"
-                    @select="request('unban')"
-                >
-                    Unban {{ member.displayName }}
-                </ContextMenuItem>
+                <template v-for="entry in menu.entries" :key="entry.id">
+                    <ContextMenuSeparator
+                        v-if="entry.kind === 'separator'"
+                        class="tumult-menu-separator"
+                    />
+                    <ContextMenuItem
+                        v-else
+                        class="tumult-menu-item"
+                        :class="{ 'tumult-menu-item-danger': entry.danger }"
+                        :text-value="entry.label"
+                        @select="run(entry.id)"
+                    >
+                        {{ entry.label }}
+                    </ContextMenuItem>
+                </template>
             </ContextMenuContent>
         </ContextMenuPortal>
     </ContextMenuRoot>

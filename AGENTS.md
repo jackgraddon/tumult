@@ -182,6 +182,39 @@ chat client should be.
   namespaced under our domain. No timeline rewrite. The registry gates
   decryption/status in `TimelineRow` BEFORE resolution, and is owned per-shell
   via provide/inject — never a singleton.
+- Message context menu: a pure `buildMessageMenu(message, options)` in
+  `packages/ui/src/timeline/messageMenu.ts` returns the item list as DATA
+  (labels, groups, separators, the `matrix.to` link) and `TimelineRow` only maps
+  an item id back to the handler it was given. So "who may do what" is unit
+  tested without mounting a virtualized row, and moderation mirrors the server
+  rule (strictly higher power level AND a redact bar we clear) instead of
+  offering an action the server will refuse. `TimelineViewport` takes the
+  roomId + power levels, which is why both consumers (the timeline body and the
+  thread panel) pass them explicitly — the thread panel wires no moderation
+  handlers, so it passes `power: null` rather than carrying a dead subscription.
+  Redaction is permanent, so it goes through a confirm composed from the shared
+  dialog frame (`rooms/RoomDialog.vue` — a FRAME despite the name, the same one
+  `members/ModerationConfirmDialog.vue` composes); that is why
+  `onRedactMessage` returns a `Promise` and `TimelineBody.redactMessage` does
+  NOT catch — the dialog is the error surface, and a swallowed failure would
+  report a delete that never happened.
+- Every row menu follows that split, so a menu's logic is unit-testable and its
+  component only renders + dispatches: `roomlist/roomMenu.ts`,
+  `rail/spaceMenu.ts`, `members/memberMenu.ts` (which now owns the moderation
+  gating `MemberListItem` used to compute inline). `links.ts` is the single
+  source of `matrix.to` links — an event link is id-based, a room/space link
+  prefers the canonical alias, and a user link is the id. Copy items share
+  `copyOrLog()` (`clipboard.ts`), which logs a real failure instead of
+  pretending. The room menu's "Mark as read" is the one item that needs the
+  client from a list row, so it goes through the `ActionsContext` channel the
+  shell already owns (`requestMarkRead`) — the room list pane has no client of
+  its own. Deferred, with reasons: "Favourite"/"Mute"/"Mark unread"/"Pin" need
+  contract writes (`m.tag`, push rules, read markers), a space-wide "Mark as
+  read" needs a shell action that walks a space's descendants, and the member
+  menu's "Mention" needs the composer to accept a prefill — none of them may be
+  faked by the menu itself. A member menu is never empty: the copy pair needs no
+  permission, so its trigger is never `disabled` (unlike the message menu's,
+  which can be empty).
 - Framework: Vue 3 + plain Vite (not Nuxt — Nuxt's SSR/server routes are
   unused; plain workspace expresses core/ui/theme separation). Behavior/a11y
   via Reka UI (headless, WAI-ARIA).
@@ -327,7 +360,7 @@ chat client should be.
 - **Stack pins:** Vue 3 + Vite (not Nuxt), Reka headless, `@tanstack/vue-virtual`, TypeScript 5.x (vue-tsc compatible), `rewriteRelativeImportExtensions` on for packages / off for `apps/web`, `optimizeDeps.exclude` must list `@matrix-org/matrix-sdk-crypto-wasm` and it is an explicit dependency of `apps/web`.
 - **Invariants to preserve:** one `ChatClient` per renderer, recompute-not-patch, chrome-vs-panes (`inert` + 0-width tracks), per-shell registry via provide/inject (never a module singleton), use whole-statement `import type` in SFCs (not inline `type` specifiers), CSP must allow `'wasm-unsafe-eval'` and `media-src blob:`, hover affordances in the virtualized timeline are out-of-flow (`.tumult-row-actions`, absolutely positioned at the row's top-right) — an in-flow hover control grows the row and shifts every message under the pointer.
 - **Theme v1 baseline:** registry (structure only) in `packages/theme/src/registry/`, compiler/validator/loader/store in `packages/theme/src/`, the built-in theme's *values* in `packages/theme/themes/default.json` (the inheritance base, completeness enforced by `compileThemes`), scoped on `:root[data-theme="name"]`; accent gallery data in `apps/web/public/themes/`, self-hosted Figtree in `apps/web/public/fonts/`. The node-only build lives in `packages/theme/src/build/` (`cli.ts` = `compileThemes()` → `dist/themes/*.css` **and** `emitDocs()` → `docs/tokens.md` + `docs/theme.schema.json`); `compile.ts` is a side-effect-free library (no import-time self-exec). Changing the registry or a built-in value means re-running `pnpm --filter @tumult/theme build` and committing the regenerated docs — `packages/theme/test/docs.test.ts` fails on drift.
-- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via Docker Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker may be unavailable; some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (27 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes.
+- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via Docker Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker may be unavailable; some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (34 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
 
 ## Verified traps from build-out
 
@@ -474,6 +507,19 @@ homeserver. A trap listed here has shipped broken at least once.
 - `ContextMenuTrigger`'s `disabled` prop skips `event.preventDefault()`, so a row
   with no available actions gets the native context menu — gate the trigger on
   "any action applies", not just on the content.
+- `ContextMenuRoot` → `MenuRoot` → `PopperRoot` render the slot with NO wrapper
+  element, so `ContextMenuTrigger as-child` around a virtualized timeline row
+  leaves the DOM (and every measured row box) untouched. The menu anchors on a
+  **virtual element at the pointer** (`event.clientX/clientY`), so it needs no
+  positioning CSS of its own.
+- Items open on `contextmenu`, close after `@select` unless the handler calls
+  `event.preventDefault()`, and are navigated by `useCollection` registration
+  order — so wrapping a run of items in `ContextMenuGroup` (which renders
+  `role="group"`) is safe. A bare `<div>` wrapper is NOT: it would sit inside
+  `role="menu"` and break the ARIA structure, so group the items with Reka's own
+  component instead of a styling div.
+- A highlighted item (keyboard or hover) carries `data-highlighted`, not
+  `:hover` — style both or arrow-key navigation shows no cursor.
 - The members pane virtualizes like the timeline (plain overflow scroller, header
   rows as virtual items, `as Row` casts — vue-tsc does not narrow `rows[v.index]`
   across `v-if`).
@@ -500,6 +546,31 @@ homeserver. A trap listed here has shipped broken at least once.
   sites (media, room avatar, profile avatar) go through one core wrapper gated on
   `httpStatus === 401` / `M_UNKNOWN_TOKEN`.
 - `--accent-primary` does not exist (only `--accent`).
+
+### Timeline layout (virtualized rows)
+
+- Media carrying `info.w`/`info.h` MUST reserve its final box before the bytes
+  arrive, or every decode re-measures the row and shifts the timeline under the
+  reader. `max-width`/`max-height` alone do NOT reserve: an `<img>` inside the
+  flex column stretches to the token max-width and clamps the height per-axis
+  (VERIFIED: a 1600×900 event with 320/240 token maxes measures 320×240
+  unreserved, while the correct fit is 320×180). The reservation is
+  `width: min(var(--media-intrinsic-w), max-width, calc(max-height ×
+  var(--media-intrinsic-ratio)))` + `aspect-ratio: var(--media-intrinsic-ratio)`
+  + `height: auto` on a `[data-dims]` branch, fed by inline props. The width
+  prop must carry its own unit: the theme's token-completeness gate forbids a
+  literal length in a component stylesheet, so `calc(var(--w) * 1px)` fails
+  `@tumult/theme`'s test. `width`/`height` attributes and bare inline
+  `aspect-ratio` were also tried and rejected (per-axis clamp distortion /
+  default object sizing).
+- The scroller needs `overflow-anchor: none`: `@tanstack/vue-virtual` already
+  adjusts `scrollTop` itself when a row re-measures (`measureElement`) or history
+  prepends, and native scroll anchoring applies the SAME shift a second time —
+  the view lands twice as far from where it was ("not pinned to where we load").
+- The smoke test's media fixtures resolve `mxc://fake/media/*` to a fixed 100×100
+  SVG on purpose: only a natural size that differs from the event's `info` dims
+  makes the measured box provable as the reservation rather than the decoded
+  bytes.
 
 ### Crypto
 
@@ -555,6 +626,12 @@ homeserver. A trap listed here has shipped broken at least once.
   bit `matrix-js-sdk/lib/@types/search`).
 - `node --test <dir>` broke on Node 25 (it treats the dir as a module) — always
   glob with `"test/**/*.test.ts"`.
+- A **named function inside `page.evaluate`** dies in the browser with
+  `__name is not defined`: tsx (esbuild `keepNames`) wraps `const f = () => …`
+  as `__name(f, "f")` before Playwright serializes the function, and the page
+  has no `__name`. Inline anonymous callbacks are fine, so prefer the locator
+  API (`locator.evaluate((el) => …)`, `locator.filter(…)`) over building helpers
+  inside the evaluated body.
 
 ### Known harmless
 

@@ -83,6 +83,20 @@ function msg(
     };
 }
 
+/**
+ * Loadable stand-in for `mxc://fake/media/*`: a real SVG, deliberately fixed
+ * at 100x100 so its natural size can NEVER match the event's `info` dims —
+ * the browser smoke test only proves the reserved box comes from the dims
+ * (and survives decode) if the decoded bytes cannot explain it. Anything
+ * else (notably `mxc://fake/avatar-*`) passes through untouched: avatars
+ * rely on the initials fallback.
+ */
+function fixtureMedia(uri: string): string | null {
+    if (!/^mxc:\/\/fake\/media\//.test(uri)) return null;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100%" height="100%" fill="#5d6d7e"/></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function buildRooms(): RoomSummary[] {
     const rooms: RoomSummary[] = [];
     const space = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0, favourite = false, favouriteOrder: number | null = null): void => {
@@ -257,6 +271,28 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
         }),
         msg(`${roomId}:late`, "@carol:example.com", "keys arriving shortly…", now - 60_000, {
             decryption: "pending",
+        }),
+        // Media fixtures WITH `info` dims: landscape binds the max-width clamp,
+        // portrait binds max-height — the browser smoke test pins both branches
+        // of the reserved box against the theme tokens. The fixture bytes are a
+        // fixed 100x100 SVG (fixtureMedia), so the dims are the ONLY thing that
+        // can explain the measured box. No dims on the send echo
+        // (sendMediaMessage), so that path still exercises the fallback.
+        msg(`${roomId}:image-landscape`, "@alice:example.com", "landscape fixture", now - 50_000, {
+            content: {
+                msgtype: "m.image",
+                body: "landscape fixture",
+                url: "mxc://fake/media/1600x900",
+                info: { mimetype: "image/svg+xml", size: 432, w: 1600, h: 900 },
+            },
+        }),
+        msg(`${roomId}:image-portrait`, "@bob:example.com", "portrait fixture", now - 40_000, {
+            content: {
+                msgtype: "m.image",
+                body: "portrait fixture",
+                url: "mxc://fake/media/900x1600",
+                info: { mimetype: "image/svg+xml", size: 432, w: 900, h: 1600 },
+            },
         }),
     );
 
@@ -670,8 +706,18 @@ class FakeChatClient implements ChatClient {
         return true;
     }
 
-    public async markRead(_roomId: string): Promise<void> {
-        // Fake rooms are always fully read.
+    public async markRead(roomId: string): Promise<void> {
+        // Clearing the badge is what the UI must show, so the fake does it. The
+        // `m.fully_read` marker stays where the fixture pinned it — a fake that
+        // advanced it would erase the "New messages" divider demo on the first
+        // visit to general, which is the only place it can be seen.
+        (this.rooms as Observable<RoomSummary[]>).update((cur) =>
+            cur.map((room) =>
+                room.id === roomId
+                    ? { ...room, unreadCount: 0, highlightCount: 0 }
+                    : room,
+            ),
+        );
     }
 
     public async edit(roomId: string, targetEventId: string, newBody: string): Promise<void> {
@@ -703,12 +749,12 @@ class FakeChatClient implements ChatClient {
 
     public async resolveMedia(uri: string, _size: number): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return uri;
+        return fixtureMedia(uri) ?? uri;
     }
 
     public async resolveMediaDownload(uri: string): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return uri;
+        return fixtureMedia(uri) ?? uri;
     }
 
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {

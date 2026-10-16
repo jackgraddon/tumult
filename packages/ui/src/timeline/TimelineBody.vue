@@ -3,6 +3,7 @@ import { onScopeDispose, shallowRef, watch } from "vue";
 import type { ChatClient, MessageView, Subscribable, Subscription, ThreadSummary } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
+import { useRoomPower } from "../members/power.ts";
 import TimelineViewport from "./TimelineViewport.vue";
 import MessageComposer from "./MessageComposer.vue";
 
@@ -36,6 +37,11 @@ try {
 const messages = source ? useSubscribable(source) : null;
 const session = useSubscribable(props.client.session);
 const typing = useSubscribable(props.client.typing);
+
+// Power levels gate the message menu's moderation actions. `useRoomPower`
+// resolves to null while the feed is unknown (and before start(), where
+// `powerLevels()` throws) so the menu simply offers no moderation items.
+const power = useRoomPower(props.client, () => props.roomId);
 
 // rootEventId -> reply count, for the "N replies" link on root rows. Thread
 // replies live in their thread, not this timeline, so without this a root
@@ -93,14 +99,11 @@ async function editMessage(targetEventId: string, newBody: string): Promise<void
 }
 
 async function redactMessage(targetEventId: string): Promise<void> {
-    // No confirm dialog (matches edit's immediacy): the request is one
-    // redaction, the tombstone lands on the next sync. Failure logs — the
-    // message stays intact, which is its own honest feedback.
-    try {
-        await props.client.redact(props.roomId, targetEventId);
-    } catch (error) {
-        console.error("[tumult] redact failed", error);
-    }
+    // The confirmation lives with the menu that offers the item, so this stays
+    // a plain request. It deliberately does NOT catch: the row's confirm dialog
+    // is the error surface, and a swallowed failure there would report a delete
+    // that never happened.
+    await props.client.redact(props.roomId, targetEventId);
 }
 
 async function retrySend(eventId: string): Promise<void> {
@@ -159,8 +162,8 @@ async function onSendFile(file: File): Promise<void> {
     <div v-if="!messages" class="tumult-timeline-todo" role="status">
         <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
     </div>
-    <template v-else>
-        <TimelineViewport :messages="messages" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :on-retry-send="retrySend" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
+    <div v-else class="tumult-timeline-body">
+        <TimelineViewport :messages="messages" :room-id="props.roomId" :power="power" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :on-retry-send="retrySend" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
         <MessageComposer
             :room-id="props.roomId"
             :client="props.client"
@@ -169,7 +172,7 @@ async function onSendFile(file: File): Promise<void> {
             @send-file="onSendFile"
             @cancel-reply="cancelReply"
         />
-    </template>
+    </div>
 </template>
 
 <style scoped>
@@ -180,5 +183,13 @@ async function onSendFile(file: File): Promise<void> {
     padding: var(--space-4);
     color: var(--text-muted);
     font-size: var(--text-sm);
+}
+.tumult-timeline-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
 }
 </style>

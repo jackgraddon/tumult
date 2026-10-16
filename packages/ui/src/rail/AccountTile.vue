@@ -165,4 +165,28 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
 .tumult-menu-item[data-highlighted] {
     background: var(--roomlist-item-bg-hover);
 }
+/* Submenu trigger: label left, chevron right. */
+.tumult-menu-sub-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.tumult-menu-chevron {
+    margin-left: auto;
+    color: var(--text-muted);
+}
+.tumult-menu-separator {
+    height: var(--border-width);
+    margin: var(--space-1) 0;
+    background: var(--border-default);
+}
+/* Destructive item: red label, and the highlight inverts to a danger fill —
+   the same pairing as the danger dialog button. */
+.tumult-menu-item-danger {
+    color: var(--menu-item-danger);
+}
+.tumult-menu-item-danger[data-highlighted] {
+    background: var(--danger);
+    color: var(--text-on-danger);
+}
 </style>

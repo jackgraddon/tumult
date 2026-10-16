@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import {
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuPortal,
     ContextMenuRoot,
+    ContextMenuSeparator,
     ContextMenuTrigger,
     TooltipContent,
     TooltipPortal,
@@ -14,6 +16,8 @@ import {
 
 import { useSelection, type RoomSelection } from "../selection.ts";
 import { useActions } from "../actions.ts";
+import { copyOrLog } from "../clipboard.ts";
+import { buildSpaceMenu, type SpaceMenuAction } from "./spaceMenu.ts";
 import Avatar from "../primitives/Avatar.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 
@@ -52,6 +56,25 @@ function requestLeave(): void {
     if (!props.guildId) return;
     actions.requestLeave({ id: props.guildId, name: props.name, isSpace: true });
 }
+
+// A space's canonical alias is not on the rail tile (the tile only carries what
+// it renders), so the link falls back to the space's room id — which always
+// resolves.
+const menu = computed(() => buildSpaceMenu(props.guildId ?? "", null));
+
+function run(action: SpaceMenuAction): void {
+    switch (action) {
+        case "copy-link":
+            copyOrLog(menu.value.spaceLink, "space link");
+            break;
+        case "copy-id":
+            copyOrLog(props.guildId ?? "", "space id");
+            break;
+        case "leave":
+            requestLeave();
+            break;
+    }
+}
 </script>
 
 <template>
@@ -81,9 +104,21 @@ function requestLeave(): void {
                         </ContextMenuTrigger>
                         <ContextMenuPortal>
                             <ContextMenuContent class="tumult-menu">
-                                <ContextMenuItem class="tumult-menu-item" text-value="leave" @select="requestLeave">
-                                    Leave
-                                </ContextMenuItem>
+                                <template v-for="entry in menu.entries" :key="entry.id">
+                                    <ContextMenuSeparator
+                                        v-if="entry.kind === 'separator'"
+                                        class="tumult-menu-separator"
+                                    />
+                                    <ContextMenuItem
+                                        v-else
+                                        class="tumult-menu-item"
+                                        :class="{ 'tumult-menu-item-danger': entry.danger }"
+                                        :text-value="entry.label"
+                                        @select="run(entry.id)"
+                                    >
+                                        {{ entry.label }}
+                                    </ContextMenuItem>
+                                </template>
                             </ContextMenuContent>
                         </ContextMenuPortal>
                     </ContextMenuRoot>

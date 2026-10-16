@@ -1,15 +1,19 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { RoomSummary } from "@tumult/core";
 import {
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuPortal,
     ContextMenuRoot,
+    ContextMenuSeparator,
     ContextMenuTrigger,
 } from "reka-ui";
 
 import { useSelection, type RoomSelection } from "../selection.ts";
 import { useActions } from "../actions.ts";
+import { copyOrLog } from "../clipboard.ts";
+import { buildRoomMenu, type RoomMenuAction } from "./roomMenu.ts";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 import Avatar from "../primitives/Avatar.vue";
 
@@ -38,6 +42,27 @@ function isActive(): boolean {
 function requestLeave(): void {
     actions.requestLeave({ id: props.room.id, name: props.room.name, isSpace: false });
 }
+
+const menu = computed(() => buildRoomMenu(props.room));
+
+function run(action: RoomMenuAction): void {
+    switch (action) {
+        case "mark-read":
+            // The client owns read state and this pane has no client, so the
+            // request goes through the shell — the same channel leave uses.
+            actions.requestMarkRead(props.room.id);
+            break;
+        case "copy-link":
+            copyOrLog(menu.value.roomLink, "room link");
+            break;
+        case "copy-id":
+            copyOrLog(props.room.id, "room id");
+            break;
+        case "leave":
+            requestLeave();
+            break;
+    }
+}
 </script>
 
 <template>
@@ -59,9 +84,21 @@ function requestLeave(): void {
             </ContextMenuTrigger>
             <ContextMenuPortal>
                 <ContextMenuContent class="tumult-menu">
-                    <ContextMenuItem class="tumult-menu-item" text-value="leave" @select="requestLeave">
-                        Leave
-                    </ContextMenuItem>
+                    <template v-for="entry in menu.entries" :key="entry.id">
+                        <ContextMenuSeparator
+                            v-if="entry.kind === 'separator'"
+                            class="tumult-menu-separator"
+                        />
+                        <ContextMenuItem
+                            v-else
+                            class="tumult-menu-item"
+                            :class="{ 'tumult-menu-item-danger': entry.danger }"
+                            :text-value="entry.label"
+                            @select="run(entry.id)"
+                        >
+                            {{ entry.label }}
+                        </ContextMenuItem>
+                    </template>
                 </ContextMenuContent>
             </ContextMenuPortal>
         </ContextMenuRoot>

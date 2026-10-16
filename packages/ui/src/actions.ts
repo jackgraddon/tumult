@@ -29,6 +29,12 @@ export interface MemberModeration {
 export interface ActionsContext {
     requestLeave(target: LeaveTarget): void;
     requestModeration(action: MemberModeration): void;
+    /**
+     * Mark a room read from a list row (the room list pane holds no client).
+     * `markRead` is a plain client call, not a dialog: the shell runs it and
+     * the resulting sync clears the badge.
+     */
+    requestMarkRead(roomId: string): void;
 }
 
 export const ActionsKey: InjectionKey<ActionsContext> = Symbol("tumult/actions");

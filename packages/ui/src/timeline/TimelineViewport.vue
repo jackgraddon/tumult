@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import type { MessageView } from "@tumult/core";
+import type { MessageView, RoomPowerLevelsView } from "@tumult/core";
 
 import { tryUseTheme } from "../theme/controls.ts";
 import { densityRowDelta } from "../theme/density.ts";
@@ -9,6 +9,10 @@ import TimelineRow from "./TimelineRow.vue";
 
 const props = defineProps<{
     messages: readonly MessageView[];
+    /** The room these messages came from: the room half of a message link. */
+    roomId: string;
+    /** Power levels for that room, or null while unknown (then no moderation). */
+    power: RoomPowerLevelsView | null;
     /** Paginate one history page; resolves false at the start of history. */
     loadMore: () => Promise<boolean>;
     /** Toggle our reaction; absent while the client can't react. */
@@ -20,7 +24,7 @@ const props = defineProps<{
     /** Save an edit; absent while the client can't edit. */
     onEditMessage?: ((targetEventId: string, newBody: string) => void) | undefined;
     /** Redact (delete) a message; absent while the client can't redact. */
-    onRedactMessage?: ((targetEventId: string) => void) | undefined;
+    onRedactMessage?: ((targetEventId: string) => Promise<void>) | undefined;
     /** Retry a failed send; absent while the client can't retry. */
     onRetrySend?: ((eventId: string) => void) | undefined;
     /** The room's `m.fully_read` marker; drives the "New messages" divider. */
@@ -268,8 +272,8 @@ function onScroll(): void {
 
 /**
  * Plain overflow-y scroller — NOT Reka ScrollArea. The timeline needs precise
- * scrollTop, overflow-anchor and the virtualizer on the real scroll container,
- * all of which a wrapped viewport would hide.
+ * scrollTop, `overflow-anchor: none` (see the rule below) and the virtualizer
+ * on the real scroll container, all of which a wrapped viewport would hide.
  */
 
 // Sender profiles seen in this window, newest wins, so read-receipt avatars
@@ -308,6 +312,8 @@ const profiles = computed(() => {
                         v-if="rows[v.index]?.message"
                         :message="(rows[v.index] as Row).message"
                         :grouped="(rows[v.index] as Row).grouped"
+                        :room-id="roomId"
+                        :power="power"
                         :on-toggle-reaction="onToggleReaction"
                         :own-user-id="ownUserId"
                         :on-edit-message="onEditMessage"
@@ -331,7 +337,11 @@ const profiles = computed(() => {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    overflow-anchor: auto;
+    /* MUST stay none: the virtualizer adjusts scrollTop itself when a row
+       re-measures (measureElement) or history prepends, and native scroll
+       anchoring would apply the SAME shift a second time — the view lands
+       twice as far from where it was, i.e. "not pinned to where we loaded". */
+    overflow-anchor: none;
     background: var(--timeline-bg);
     position: relative;
 }

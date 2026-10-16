@@ -261,6 +261,7 @@
     "menu-border": "var(--border-default)",
     "menu-min-width": "var(--layout-menu-min-width)",
     "menu-devices-max-height": "160px",
+    "menu-item-danger": "var(--danger)",
     "popover-bg": "var(--surface-raised)",
     "popover-border": "var(--border-default)",
     "popover-shadow": "var(--shadow-md)",

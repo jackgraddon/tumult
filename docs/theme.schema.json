@@ -1059,6 +1059,10 @@
                     "type": "string",
                     "description": "Device list max height."
                 },
+                "menu-item-danger": {
+                    "type": "string",
+                    "description": "Destructive menu item text."
+                },
                 "popover-bg": {
                     "type": "string",
                     "description": "Popover background."
@@ -2159,6 +2163,10 @@
                     "menu-devices-max-height": {
                         "type": "string",
                         "description": "Device list max height."
+                    },
+                    "menu-item-danger": {
+                        "type": "string",
+                        "description": "Destructive menu item text."
                     },
                     "popover-bg": {
                         "type": "string",
@@ -3261,6 +3269,10 @@
                     "menu-devices-max-height": {
                         "type": "string",
                         "description": "Device list max height."
+                    },
+                    "menu-item-danger": {
+                        "type": "string",
+                        "description": "Destructive menu item text."
                     },
                     "popover-bg": {
                         "type": "string",

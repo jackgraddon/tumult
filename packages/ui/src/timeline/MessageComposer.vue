@@ -245,6 +245,7 @@ function onFileSelected(event: Event): void {
 .tumult-composer {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
     background: var(--composer-bg);
     border-top: var(--border-width) solid var(--border-default);
 }

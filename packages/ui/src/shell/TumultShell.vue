@@ -97,6 +97,13 @@ const actionsCtx: ActionsContext = {
     requestModeration(moderation) {
         roomAction.value = { kind: "moderate", moderation };
     },
+    requestMarkRead(roomId) {
+        // No dialog, no state: the room list asks, the client does it, sync
+        // republishes the badge. Failure logs — the badge simply stays.
+        void props.client.markRead(roomId).catch((error: unknown) => {
+            console.error("[tumult] mark read failed", error);
+        });
+    },
 };
 provide(ActionsKey, actionsCtx);
 
@@ -666,6 +673,9 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 }
 .tumult-pane-timeline {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     background: var(--timeline-bg);
 }
 .tumult-thread-overlay {

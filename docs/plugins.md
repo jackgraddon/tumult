@@ -616,7 +616,7 @@ uses.
 | `manifest` | this plugin's own `PluginManifest` (handy for prefixing ids or reading your permissions). |
 | `client` | the `ChatClient` — `rooms`, `timeline(roomId)`, `send`, `toggleReaction`, `members`, `searchUsers`, `createChannel`, `connection`, `media` resolvers, … See `packages/core/src/contract.ts`. |
 | `selection` | `{ current, select(next), hrefFor(next) }` — the current room/guild selection and navigation. |
-| `actions` | the cross-pane dialog channel: `requestLeave(target)`, `requestModeration({ kind, roomId, member })`. |
+| `actions` | the cross-pane channel to the shell: `requestLeave(target)` and `requestModeration({ kind, roomId, member })` open its dialogs, `requestMarkRead(roomId)` calls the client (a list row has no client of its own). |
 | `media` | `resolve(mxcUri, size)`, `resolveDownload(mxcUri)`, `resolveEncrypted(file)` — `mxc://` → loadable URL. |
 
 Snapshots are read with `.get()` and watched with `.subscribe(listener)`, which
