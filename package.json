@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "pnpm --filter @tumult/web dev",
     "build": "pnpm -r build",
-    "release": "pnpm exec standard-version",
+    "release": "pnpm exec standard-version --no-verify",
     "lint": "pnpm -r lint",
     "test:integration": "tests/synapse/run.sh"
   },

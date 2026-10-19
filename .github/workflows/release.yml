@@ -3,34 +3,29 @@ name: Publish Release to Vercel
 on:
   push:
     tags:
-      # Triggers this workflow whenever a git tag (e.g., v1.0.0) is pushed
+      # Fires whenever a version tag (e.g. v0.1.1) is pushed to the repo.
       - 'v*'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+    permissions:
+      # Needed only for the GitHub Environments "deployment" tracking below.
+      deployments: write
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    # CLI mode with `--prod` and NO prebuilt artifact: Vercel builds from source
+    # at deploy time, so build-time env (e.g. VITE_CLIENT_URI) comes from the
+    # Vercel project's environment — nothing is plumbed through CI. CI on `main`
+    # already validated the build (see .github/workflows/ci.yml).
+    - name: Deploy to Vercel (production)
+      uses: amondnet/vercel-action@v42
       with:
-        node-version: '22'
-        cache: 'pnpm'
-
-    - name: Install Dependencies
-      run: pnpm install --frozen-lockfile
-
-    - name: Build Production Artifacts
-      # Re-run the build to ensure the artifact tied to this tag is available
-      run: pnpm build
-
-    - name: Deploy to Vercel
-      uses: amondnet/vercel-action@v25.0.0 # Recommended Vercel Action
-      with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }} 
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
         vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
         vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-        vercel-args: '--prod' # Ensures the deployment is a production release
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        vercel-args: --prod
+        github-deployment: true
