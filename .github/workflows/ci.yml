@@ -1,0 +1,35 @@
+name: Tumult CI Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22' # Based on package.json engines: node >=22
+        cache: 'pnpm'
+
+    - name: Install Dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Run Type Checking
+      run: pnpm typecheck
+
+    - name: Run Unit & Integration Tests
+      # Incorporates tests from core, ui, and web/browser via the root script
+      run: pnpm test:integration
+
+    - name: Run Full Build
+      # This step ensures the production artifacts can be created successfully
+      run: pnpm build
