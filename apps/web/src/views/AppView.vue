@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, provide, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ThemeKey, TumultShell, type Plugin, type PluginRegistry, type RoomSelection } from "@tumult/ui";
+import {
+    PluginInstallKey,
+    ThemeKey,
+    TumultShell,
+    type Plugin,
+    type PluginRegistry,
+    type RoomSelection,
+} from "@tumult/ui";
 import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
 import { adminBadge, reactLastAction, settingsShowcase, shrugCommand } from "../plugins/showcase.ts";
+import { pluginInstallController } from "../plugins/controller.ts";
 import { themeController } from "../theme/controller.ts";
 
 /**
@@ -35,6 +43,12 @@ const router = useRouter();
 // Provided above the shell, so `TumultShell` registers its Appearance tab only
 // when a controller exists.
 provide(ThemeKey, themeController);
+
+// The plugin-install seam: the app owns GitHub, IndexedDB and the bundle
+// imports; the UI renders the Plugins tab's install UI and the consent dialog.
+// The controller's registry is attached after `TumultShell` mounts (below),
+// because the registry is shell-owned.
+provide(PluginInstallKey, pluginInstallController);
 
 /**
  * The concrete client is a dynamic import on purpose: importing it pulls in
@@ -70,6 +84,17 @@ onMounted(async () => {
     shell.value?.plugins.install(reactLastAction);
     shell.value?.plugins.install(adminBadge);
     shell.value?.plugins.install(settingsShowcase);
+
+    // Third-party installs: hand the controller the shell's registry, then
+    // re-hash and load every enabled stored plugin. Failures are reported per
+    // plugin (the controller disables a bundle that no longer matches its hash).
+    if (shell.value) {
+        pluginInstallController.attach(shell.value.plugins);
+        const failures = await pluginInstallController.restore();
+        for (const failure of failures) {
+            console.error("[tumult] plugin restore failed:", failure.error);
+        }
+    }
 });
 
 const selection = computed<RoomSelection>(() => {

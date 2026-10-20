@@ -1,0 +1,76 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "tumult.plugin.json — a Tumult plugin release manifest",
+    "description": "Published as a release asset next to the built bundle. The installer validates against this document, requires `integrity`, and ignores unknown top-level fields; unknown permissions are refused.",
+    "type": "object",
+    "required": [
+        "id",
+        "name",
+        "version",
+        "permissions",
+        "entry"
+    ],
+    "properties": {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+$",
+            "description": "Stable, namespaced plugin id (lowercase, dot-separated)."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name."
+        },
+        "version": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display version of this release (e.g. 1.0.0)."
+        },
+        "author": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who wrote it."
+        },
+        "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One or two sentences."
+        },
+        "minCore": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Minimum @tumult/core CONTRACT_VERSION this plugin understands."
+        },
+        "minUI": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Minimum @tumult/ui PLUGIN_API_VERSION this plugin understands."
+        },
+        "permissions": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "timeline-renderers",
+                    "composer-actions",
+                    "member-decorations",
+                    "commands",
+                    "settings-tabs",
+                    "styles"
+                ]
+            },
+            "uniqueItems": true,
+            "description": "Every extension API the plugin uses. The installer shows these."
+        },
+        "entry": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "description": "Filename of the built bundle attached to the release (e.g. plugin.js)."
+        },
+        "integrity": {
+            "type": "string",
+            "pattern": "^sha256-[A-Za-z0-9+/]{43}=$",
+            "description": "sha256-<base64> of the entry bundle, added by the release workflow. Optional in the committed file, required by the installer."
+        }
+    }
+}

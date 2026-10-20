@@ -4,14 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./sandbox": "./src/plugins/sandbox/worker/shim.ts"
   },
   "files": [
     "src"
   ],
   "scripts": {
-    "typecheck": "vue-tsc -p tsconfig.json",
-    "test": "node --test \"test/**/*.test.ts\""
+    "typecheck": "vue-tsc -p tsconfig.json && pnpm test:template",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:template": "tsc -p ../../templates/plugin/tsconfig.json --noEmit && tsc -p ../../templates/plugin/tsconfig.workspace.json --noEmit",
+    "emit:schema": "node --import tsx scripts/emit-plugin-schema.ts",
+    "emit:types": "node --import tsx scripts/emit-plugin-types.ts"
   },
   "dependencies": {
     "@tanstack/vue-virtual": "^3.13.39",
@@ -21,6 +25,7 @@
     "vue": "^3.5.43"
   },
   "devDependencies": {
+    "dts-bundle-generator": "^9.5.1",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.1"
   }

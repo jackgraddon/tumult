@@ -20,10 +20,11 @@ const pluginsDoc = readFileSync(join(docsDir, "plugins.md"), "utf8");
 const typesSource = readFileSync(join(srcDir, "plugins", "types.ts"), "utf8");
 const indexSource = readFileSync(join(srcDir, "index.ts"), "utf8");
 
-/** The `Permission` union members, read out of the contract. */
+/** The `PLUGIN_PERMISSIONS` members — the single source the `Permission`
+ * union, the schema enum and the installer all derive from. */
 function permissionNames(): string[] {
-    const block = /export type Permission =([\s\S]*?);/.exec(typesSource);
-    assert.ok(block, "could not find `export type Permission` in plugins/types.ts");
+    const block = /export const PLUGIN_PERMISSIONS = \[([\s\S]*?)\]/.exec(typesSource);
+    assert.ok(block, "could not find `export const PLUGIN_PERMISSIONS` in plugins/types.ts");
     return [...block[1]!.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
 }
 

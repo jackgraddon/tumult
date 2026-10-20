@@ -16,5 +16,5 @@
       "@tumult/theme": ["../theme/src/index.ts"],
       "@tumult/theme/runtime": ["../theme/src/runtime.ts"]
     }  },
-  "include": ["src/**/*.ts", "src/**/*.vue"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "scripts/**/*.ts"]
 }

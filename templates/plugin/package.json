@@ -1,0 +1,17 @@
+{
+    "name": "tumult-plugin-template",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Template for a Tumult plugin: a manifest, a bundle, and a release workflow.",
+    "scripts": {
+        "build": "node esbuild.config.mjs",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "release:dry": "pnpm build && node scripts/make-release-manifest.mjs"
+    },
+    "devDependencies": {
+        "esbuild": "^0.25.0",
+        "typescript": "^5.9.3",
+        "vue": "^3.5.22"
+    }
+}

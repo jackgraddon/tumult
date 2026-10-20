@@ -1,7 +1,8 @@
 # Plugins — the extension API
 
 Created: 2026-10-15
-Scope: the per-shell, built-in plugin/extension API (Vencord-like).
+Scope: the per-shell plugin/extension API (Vencord-like), and how the app
+installs third-party plugins from a GitHub release.
 Companion to `docs/themes.md` (theming, which shares the same
 "structure lives in code, values live in documents" split). Reference for
 `packages/ui/src/plugins/`.
@@ -9,8 +10,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 ## TL;DR
 
 - A plugin is a plain **TypeScript module** the app registers at runtime:
-  a `manifest` plus `install(ctx)`. Nothing is fetched, parsed from a string or
-  evaluated — there is no `eval`, no remote script, no manifest file on disk.
+  a `manifest` plus `install(ctx)`. The registry never fetches, parses or
+  evaluates anything — it receives a `Plugin` object (§1–§9).
 - It extends the shell through **six** APIs — timeline renderers, composer
   actions, slash commands, member decorations, settings tabs and stylesheets.
   Each one is gated by a **permission** the manifest declares.
@@ -19,14 +20,23 @@ Companion to `docs/themes.md` (theming, which shares the same
   plugin leaves no residue.
 - The registry is **per shell** (provide/inject via `PluginsKey`), never a
   module singleton, so two shells on one page cannot share install state.
-  Installs are in-memory only: the app re-registers its plugins on every boot.
-- Trust model, stated plainly: plugins are **app-authored code** at the app's
-  own trust level (Vencord/BetterDiscord capability, first-party trust). The
-  context deliberately carries no `window`/`document` handles, but this is an
-  **extension seam, not a sandbox** against hostile code.
+  The registry itself is in-memory; **installed third-party plugins are
+  persisted by the app** and re-registered on every boot (§11).
+- **Third-party plugins are installed from a GitHub repository** (§11): the app
+  reads the release's `tumult.plugin.json`, validates it against
+  `docs/plugin.schema.json`, shows a plain-language consent screen, downloads
+  the bundle and refuses it unless its sha256 matches the manifest's
+  `integrity`. There is no central gatekeeper: any repository installs.
+- The **lane is derived, never declared** (`deriveLane`): a plugin whose
+  permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
+  loaded into a **Worker** and reaches the shell only through the bridge; a
+  plugin that contributes a live component (renderer, decoration, settings tab)
+  runs **in-page at the app's trust level**, and the consent screen says so out
+  loud. The in-page lane is an extension seam, **not** a sandbox.
 - A plugin callback is **not** a component: use `ctx` inside `install`, `run`
   and `match`. The `inject()`-based hooks (`useSelection`, `usePluginRegistry`,
   …) only work inside components — renderers, decorations and settings tabs.
+
 
 ## 1. Where plugins live
 
@@ -35,7 +45,17 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/types.ts` | the contract: `Plugin`, `PluginManifest`, `PluginContext`, `PluginApi`, `PluginDeps`, `Permission`, `Disposable` |
 | `packages/ui/src/plugins/api.ts` | the permission-checked, disposable-tracking API handed to `install(ctx)` |
 | `packages/ui/src/plugins/registry.ts` | `PluginRegistry` (lifecycle, rollback, ordering) + `PluginsKey` / `usePluginRegistry` |
+| `packages/ui/src/plugins/source.ts` | `parsePluginSource` — a pasted URL / `owner/repo` → a GitHub `PluginSource`; pure, no network |
+| `packages/ui/src/plugins/verify.ts` | `hashBundle`, `checkReleaseManifest`, `needsConsent` — the trust arithmetic, network-free |
+| `packages/ui/src/plugins/consent.ts` | `PERMISSION_SUMMARY` / `LANE_SUMMARY` — the plain-language consent copy |
+| `packages/ui/src/plugins/installControls.ts` | `PluginInstallControls` + `PluginInstallKey` — the install seam the app implements |
+| `packages/ui/src/plugins/authoring.ts` | the plugin-AUTHOR surface: an explicit re-export of exactly what a plugin may see, and the sole input to the generated `templates/plugin/types/plugin.d.ts` |
+| `packages/ui/src/plugins/InstallConsentDialog.vue` | the consent screen (a `RoomDialog` composition) |
 | `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind three of the APIs |
+| `packages/ui/src/plugins/sandbox/protocol.ts` | the Worker bridge's wire contract (message kinds, the client method/feed name lists, capability snapshot) |
+| `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle in a Worker and answers its RPCs |
+| `packages/ui/src/plugins/sandbox/worker/runtime.ts` | the Worker-side runtime factory (rebuilds `PluginContext` over RPC; tested in-process) |
+| `packages/ui/src/plugins/sandbox/worker/shim.ts` | `@tumult/ui/sandbox` — binds the runtime to the real Worker globals |
 | `packages/ui/src/plugins/styles.ts` | `injectStylesheet` — the owner-tagged `<style>` injector and its CSP guard |
 | `packages/ui/src/timeline/registry.ts` | `TimelineRegistry` — renderer resolution by event type; `addRenderer`'s target |
 | `packages/ui/src/timeline/composer-actions.ts` | `ComposerActionsRegistry` + `ComposerAction` |
@@ -44,6 +64,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/settings/tabs.ts` | `SettingsTabsRegistry` + `SettingsTab` |
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
+| `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
+| `apps/web/src/plugins/sandbox.worker.ts` | the app's Worker entry for the sandbox lane (one import of `@tumult/ui/sandbox`) |
+| `apps/web/src/plugins/store.ts` | IndexedDB persistence for installed third-party plugins |
+| `apps/web/src/plugins/controller.ts` | `PluginInstallControls` implementation — prepare → consent → commit → persist, and the boot restore |
 | `packages/ui/test/plugins.test.ts` | the registry's unit contract (lifecycle, permissions, isolation) |
 | `apps/web/test/browser.test.ts` | one end-to-end assertion per extension point, in a real browser |
 
@@ -90,8 +114,10 @@ lists):
 | `version` | yes | display only. |
 | `author` | no | display only. |
 | `description` | no | display only. |
-| `minCore` / `minUI` | no | **declared but not enforced**: nothing reads them today. They document intent for a future compatibility check; do not rely on them to gate anything. |
+| `minCore` / `minUI` | no | **enforced at install**: the registry refuses a plugin whose requirement is newer than the running build (`@tumult/core`'s `CONTRACT_VERSION` / `@tumult/ui`'s `PLUGIN_API_VERSION`), naming both versions. Compared as dotted numerics; better to omit than to guess. |
 | `permissions` | yes | the enforced part — see §4. Forgetting one makes the matching API call throw. |
+| `entry` | release only | filename of the built bundle attached to a release (e.g. `plugin.js`). Absent for plugins compiled into the app; the installer refuses a release manifest without it (§11). |
+| `integrity` | release only | `sha256-<base64>` of that bundle, added by the template's release workflow. The installer refuses a download that does not hash to it. |
 
 `Plugin` — the object itself:
 
@@ -106,9 +132,11 @@ lists):
 **Install** (`PluginRegistry.install(plugin)`):
 
 1. Refuses a duplicate `id`.
-2. Builds the permission-checked context (§4).
-3. Calls `plugin.install(ctx)`.
-4. If it throws, **every registration made so far is rolled back** before the
+2. Refuses a plugin demanding a newer `minUI`/`minCore` than this build
+   provides (§2).
+3. Builds the permission-checked context (§4).
+4. Calls `plugin.install(ctx)`.
+5. If it throws, **every registration made so far is rolled back** before the
    error is rethrown — a failed install leaves the shell exactly as it was.
 
 **Uninstall** (`PluginRegistry.uninstall(id)`), in this order, each step
@@ -127,10 +155,11 @@ re-mount starts clean.
 dropped the return value. Calling a disposable twice is a no-op, and a stale
 disposable cannot remove a replacement registered under the same key.
 
-**Nothing is persisted.** The registry is an in-memory `Map` rebuilt each boot;
-the app re-installs on mount. There is no "enable/disable a plugin" store, no
-plugin directory scan. If you want a plugin to be conditionally active, gate the
-`install()` call in the app.
+**Nothing is persisted here.** The registry is an in-memory `Map` rebuilt each
+boot; the app re-installs on mount. There is no plugin-directory scan. If you
+want a plugin to be conditionally active, gate the `install()` call in the app.
+Third-party plugins are persisted by the *app* (enable/disable, remove), which
+then re-registers the enabled ones at boot — see §11.
 
 **Reactivity.** `PluginRegistry.version` is a `Ref` bumped on every install and
 uninstall, and each contribution registry has the same version-counter shape.
@@ -161,10 +190,13 @@ rolls back:
 ```
 
 This is a **capability declaration, not a security boundary**: it makes a
-plugin's reach explicit and auditable (the Plugins tab prints the list), and it
-catches the "I forgot to declare it" bug at install time rather than producing a
-silently missing feature. Plugins are app code; the permission list is honesty,
-not enforcement against a hostile module.
+plugin's reach explicit and auditable (the Plugins tab prints the list, and the
+installer shows it before installing), and it catches the "I forgot to declare
+it" bug at install time rather than producing a silently missing feature. For a
+plugin compiled into the app it is honesty, not enforcement against a hostile
+module. For a third-party plugin it is also the input to the lane rule (§11) —
+which is why an undeclared permission is a hard failure, and an *unknown*
+permission refuses the install outright rather than being ignored.
 
 ## 5. The six APIs
 
@@ -657,6 +689,11 @@ snapshot) happens inside a callback or a floating async function you clean up in
 
 A plugin from nothing to a live affordance, end to end.
 
+This walkthrough adds a plugin **compiled into the app** (the simplest path, and
+the only one available to a plugin that renders components *and* needs no
+distribution). To ship a plugin other people can install from a URL, start from
+`templates/plugin/` instead — see §11.
+
 **1. Write the module.** One file, no build step of its own — it is app code:
 
 ```ts
@@ -813,6 +850,7 @@ Run them (build `theme` and `core` first — `ui` resolves them through `dist`):
 ```sh
 pnpm --filter @tumult/theme build && pnpm --filter @tumult/core build
 pnpm --filter @tumult/ui test        # the registry's unit contract
+pnpm --filter @tumult/ui emit:schema # after changing the manifest schema
 pnpm --filter @tumult/web test:browser   # one live assertion per extension point
 ```
 
@@ -827,26 +865,176 @@ This document is guarded too: `packages/ui/test/docs.test.ts` parses the fenced
 code here and fails if it declares a permission or calls a `ctx.*` API that does
 not exist, imports a name `@tumult/ui` does not export, or forgets to document
 one of the six permissions or six APIs. Change the API and that test names the
-stale line.
+stale line. The release schema is guarded separately:
+`packages/ui/test/plugin-schema.test.ts` fails when the committed schema files
+drift from the builder, when the schema and the runtime validator disagree, or
+when the lane rule and the permission list fall out of step.
 
 ## 10. Deliberately not supported
 
-- **No remote or user-supplied plugins.** Nothing is fetched, scanned from a
-  directory, or evaluated from a string. Plugins are TypeScript modules compiled
-  into the app; installing one means adding it to app code. (A gallery like the
-  theme one is conceivable later, but it would install *code*, which is a
-  different trust decision than a theme document.)
-- **No persistence or enable/disable UI.** The registry is per-shell and
-  in-memory; the Plugins tab lists, it does not toggle. Conditional activation
-  is the app's `install()` call.
+- **No central gatekeeper, and no gallery yet.** Any GitHub repository installs
+  (§11): there is no review queue and no allowlist. An index of *curated*
+  repositories (the theme gallery's analogue) is planned, but it can only ever
+  add a label to a hash — it will never be required to install.
+- **No silent updates.** Nothing polls or replaces an installed plugin behind
+  your back. An update is a user action, and a version that asks for **new**
+  permissions re-opens the consent screen.
 - **No shell/pane replacement.** There is no API to replace a pane, reorder the
   shell or take over a region — the extension points decorate and add, they do
   not restructure. This keeps the layout stable and predictable.
 - **No patch/hook type.** The `Patch` type from the original sketch is dropped
-  on purpose: plugins register modules; nothing rewrites code strings, so a
-  patch API would promise a surface we do not want.
+  on purpose: plugins register modules; nothing rewrites code strings on a live
+  object.
 - **No crypto/security API in the context.** A plugin gets the `ChatClient`
   surface, not verification, key backup or secret storage.
 - **No `window`/`document` in the context.** Style through `injectStylesheet`
-  (guarded, §5.6); there is no arbitrary DOM handle.
-- **`minCore`/`minUI` are not enforced** (§2). They are inert metadata today.
+  (guarded, §5.6); there is no arbitrary DOM handle. (The *in-page* lane can
+  reach the DOM by importing it directly — that is exactly why it is the
+  trusted lane and why the consent screen says so.)
+
+## 11. Third-party plugins (install, verify, persist)
+
+The extension API above does not care where a `Plugin` object came from. This
+section is about the path that produces one from a URL.
+
+### The release manifest
+
+A distributable plugin repository publishes two things on every release (the
+template's workflow does both, §12):
+
+| artifact | contents |
+|---|---|
+| the bundle | the built ESM module named by `entry` (e.g. `plugin.js`) |
+| `tumult.plugin.json` | the manifest plus `entry` and `integrity` |
+
+`docs/plugin.schema.json` describes that document; the template ships a copy as
+`tumult.plugin.schema.json` so an editor validates it while you write.
+`validatePluginManifest(value, { requireIntegrity: true })` is the runtime
+check the installer runs before downloading anything. Unknown *top-level* fields
+are tolerated (a newer template must not brick an older client); an unknown
+**permission** is refused, because consent cannot be shown for a capability the
+client cannot name.
+
+### The lane, derived from permissions
+
+```ts
+import { deriveLane } from "@tumult/ui";
+
+deriveLane({ permissions: ["commands", "styles"] });          // "sandbox"
+deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
+```
+
+| lane | how it loads | what it may declare |
+|---|---|---|
+| `sandbox` | the bundle is loaded and run **inside a Worker**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
+| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions |
+
+Nothing in the manifest chooses this. `deriveLane` reads the declared
+permissions, and the consent screen prints the resulting lane in plain words.
+
+### The install flow
+
+1. Paste a repository URL (`https://github.com/owner/repo`, `owner/repo` or a
+   `…/tree/<ref>` link). The app asks GitHub for the release's
+   `tumult.plugin.json` — the release asset if there is one, otherwise the file
+   at the tag.
+2. The manifest is validated (`requireIntegrity: true`) and the lane derived.
+3. **Consent.** The app shows the name, author, source link, version, the exact
+   permission list, the lane badge and the hash. For a `trusted` plugin the
+   screen says, without hedging, that the plugin runs as part of the app and a
+   malicious one could read what the app can read. Nothing is downloaded until
+   you accept.
+4. The bundle is fetched and hashed (`sha256-<base64>` via WebCrypto); a
+   mismatch refuses the install and names both hashes.
+5. The manifest is stored, the bundle is stored as text, and the plugin is
+   installed through `PluginRegistry.install()` — so §3's rollback and
+   disposables apply unchanged, and a throw during install means nothing was
+   persisted. Before `install()` runs, the loaded bundle's own exported
+   `manifest` is cross-checked against the one the user consented to: a bundle
+   that declares a different id, or a permission the consent screen never
+   showed, is refused. Consent is for the manifest, so the manifest has to be
+   the truth.
+
+Re-installing is the same flow, so a **changed permission list always re-asks**;
+there is no path where new capabilities arrive without a consent screen.
+
+### How the sandbox lane actually runs
+
+A `sandbox`-lane plugin never executes in the page. `loadPlugin` hands the
+verified bundle to `sandboxPlugin()`, which returns a `Plugin` facade — from
+`PluginRegistry`'s point of view an ordinary plugin, same lifecycle and same
+permission gate. Its `install(ctx)` boots a module Worker
+(`apps/web/src/plugins/sandbox.worker.ts`, which is one import of
+`@tumult/ui/sandbox`), posts the bundle text plus the consented manifest, and
+then answers the Worker's requests against the real `ctx` the shell provided.
+
+The plugin's `ctx` inside the Worker is the *same shape* as the in-page one, with
+five differences the boundary forces:
+
+- **Feeds become pushes.** `client.rooms`, `client.timeline(roomId)` and the rest
+  are opened once by key; `.get()` returns the latest snapshot the host pushed,
+  and `.subscribe()` fires on each push.
+- **`media.resolve*` mints its own URL.** A `blob:` URL made on the host is
+  unreachable in a Worker, so the resolvers fetch the bytes through the client
+  and build a Worker-local `blob:` URL. That is also why they are `async`.
+- **Functions stay in the Worker.** A command's `run` (and any other callback) is
+  kept in a Worker-side table; the contribution the host receives carries
+  `{ kind: "callback", id }` in its place, and the host calls back with `invoke`
+  when the command actually runs.
+- **The two synchronous members are snapshots.** `supportsThreads()` and
+  `hasMoreRooms()` cannot await across a boundary, so their values ride along
+  with the init/handshake messages rather than being guessed.
+- **Component permissions are refused.** `addRenderer`, `addMemberDecoration` and
+  `addSettingsTab` throw with "require the trusted lane" — the lane rule already
+  excludes a plugin that declares them, so this is a backstop, not a path.
+
+Because the host applies every contribution through the real `ctx`, a sandbox
+plugin hits the **same** `api.ts` permission gate as an in-page one; there is no
+second gate to keep in step. And because deaths are asynchronous, a Worker crash,
+a throwing `install()` or a bundle that will not import is reported through
+`SandboxHost.onFailed`, which uninstalls the plugin and disables its record —
+a dead plugin is never left registered pretending to work.
+
+### What the app stores, and why it re-verifies
+
+Each install is one record — id, repository, tag, manifest, lane, the bundle
+text and its hash, enabled flag (`apps/web/src/plugins/store.ts`, a dedicated
+IndexedDB database so a plugin install can never touch the SDK's sync or crypto
+store). On every boot the app re-hashes the stored bundle before loading it, so
+a corrupted or hand-edited store entry fails closed: the controller disables it
+rather than running it. The lane is re-derived from the stored manifest on load
+too, so editing the store cannot move a plugin from the trusted lane into the
+sandbox one. Disabling keeps the record (and the consented hash) so re-enabling
+is offline; removing drops both `@tumult/ui`'s registration and the record.
+
+Honest limitation: hashing pins *what was downloaded*, not *what the author
+meant*. A plugin that bundles something malicious and hashes it honestly is
+still malicious — the hash stops tampering and drift, not intent. That is what
+the lane badge and the consent copy are for.
+
+### What the host must allow
+
+CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL) —
+`worker-src 'self' blob:` is already there for the sandbox lane. In this repo the
+policy is one constant in `apps/web/vite.config.ts` applied to **both** the dev
+server and `vite preview`, so the browser smoke test (which runs against
+`preview`) actually exercises it. Hosts that render `TumultShell` without the
+installer simply have no install UI: the extension API itself is unchanged and
+needs no CSP relaxation.
+
+## 12. Publishing a plugin (the template)
+
+`templates/plugin/` is the canonical template repository. Copy it (or use it as
+a GitHub *template*), edit `tumult.plugin.json` and `src/index.ts`, tag a
+release, and the workflow builds the bundle, hashes it, injects `integrity` and
+attaches both artifacts. Pasting that repository URL is then the whole install
+story for your users. The template's README is the author-facing walkthrough;
+the type definitions it vendors (`types/plugin.d.ts`) are **generated** — never
+hand-edited — from `packages/ui/src/plugins/authoring.ts` by
+`packages/ui/scripts/build-plugin-types.ts`, pinned to `PLUGIN_API_VERSION`, and
+guarded three ways: `packages/ui/test/plugin-types.test.ts` fails when the
+committed file drifts from the generator, and `templates/plugin`'s two typecheck
+configurations pin the vendored surface against the real API (the author-facing
+`tsconfig.json` against the file itself, `tsconfig.workspace.json` against the
+workspace sources). Changing the plugin surface means editing `authoring.ts`,
+running `pnpm --filter @tumult/ui emit:types`, and committing the result.

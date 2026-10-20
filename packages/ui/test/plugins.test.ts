@@ -10,6 +10,8 @@ import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
 import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
+import { PLUGIN_API_VERSION, compareVersions } from "../src/plugins/compat.ts";
+import { CONTRACT_VERSION } from "@tumult/core/contract";
 import type { ActionsContext } from "../src/actions.ts";
 import type { SelectionContext } from "../src/selection.ts";
 import type { Plugin, PluginManifest } from "../src/plugins/types.ts";
@@ -268,6 +270,53 @@ describe("PluginRegistry permissions", () => {
         assert.equal(seen["actions"], deps.actions);
         assert.equal(seen["media"], deps.media);
         assert.equal(seen["id"], "test.plugin");
+    });
+});
+
+describe("PluginRegistry compatibility (minUI / minCore)", () => {
+    it("refuses an install whose minUI is newer than this build, with no residue", () => {
+        const plugins = new PluginRegistry(makeDeps());
+        const renderer: Plugin = {
+            manifest: manifest({ minUI: "999.0.0" }),
+            install() {
+                assert.fail("an incompatible plugin must never reach install()");
+            },
+        };
+        assert.throws(() => plugins.install(renderer), /requires plugin API 999\.0\.0\+.*\(minUI\)/);
+        assert.equal(plugins.has("test.plugin"), false, "refused install must not be recorded");
+        assert.equal(plugins.version.value, 0, "refused install must not bump version");
+    });
+
+    it("refuses an install whose minCore is newer than the core contract", () => {
+        const plugins = new PluginRegistry(makeDeps());
+        const renderer: Plugin = {
+            manifest: manifest({ minCore: "999.0.0" }),
+            install() {
+                assert.fail("an incompatible plugin must never reach install()");
+            },
+        };
+        assert.throws(
+            () => plugins.install(renderer),
+            /requires @tumult\/core contract 999\.0\.0\+.*\(minCore\)/,
+        );
+        assert.equal(plugins.has("test.plugin"), false);
+        assert.equal(plugins.version.value, 0);
+    });
+
+    it("installs when requirements are satisfied (equal versions count)", () => {
+        const plugins = new PluginRegistry(makeDeps());
+        plugins.install({
+            manifest: manifest({ minUI: PLUGIN_API_VERSION, minCore: CONTRACT_VERSION }),
+            install() {},
+        });
+        assert.equal(plugins.has("test.plugin"), true);
+    });
+
+    it("compareVersions compares dotted numerics, not strings", () => {
+        assert.equal(compareVersions("1.2.3", "1.2.3"), 0);
+        assert.ok(compareVersions("1.10.0", "1.9.0") > 0, "10 must beat 9");
+        assert.ok(compareVersions("1.0", "1.0.1") < 0, "a missing segment counts as 0");
+        assert.ok(compareVersions("2-beta", "1.99.99") > 0, "leading digits only");
     });
 });
 

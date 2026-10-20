@@ -12,6 +12,29 @@ export default defineConfig(({ mode }) => {
     // no filesystem path math here (and no Node types in this file).
     const alias = { "@chat-impl": mode === "fake" ? "/src/chat.fake.ts" : "/src/chat.real.ts" };
 
+    // The policy is one constant because dev and preview must not drift: the
+    // browser smoke test runs against `preview`, so a header only set on
+    // `server` would leave the plugin-blob and crypto-WASM allowances unverified
+    // (and the test would pass while a real preview deploy broke).
+    const csp = [
+        "default-src 'self'",
+        // The Rust crypto layer is WASM ('wasm-unsafe-eval'), and the
+        // trusted-lane plugin loader imports a verified bundle from a
+        // blob: URL (blob:).
+        "script-src 'self' 'wasm-unsafe-eval' blob:",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https:",
+        // The self-hosted Figtree faces are same-origin; naming the
+        // directive keeps a future default-src tightening from
+        // silently dropping the UI font.
+        "font-src 'self'",
+        // Inline <video>/<audio> playback is a blob: URL, which
+        // media-src would otherwise inherit from default-src 'self'.
+        "media-src 'self' blob:",
+        "connect-src 'self' https: wss:",
+        "worker-src 'self' blob:",
+    ].join("; ");
+
     return {
         plugins: [vue()],
         resolve: { alias },
@@ -28,25 +51,10 @@ export default defineConfig(({ mode }) => {
         },
         server: {
             port: 5173,
-            headers: {
-                // The Rust crypto layer is WASM, so script-src must allow
-                // 'wasm-unsafe-eval' or initRustCrypto() fails at load.
-                "Content-Security-Policy": [
-                    "default-src 'self'",
-                    "script-src 'self' 'wasm-unsafe-eval'",
-                    "style-src 'self' 'unsafe-inline'",
-                    "img-src 'self' data: blob: https:",
-                    // The self-hosted Figtree faces are same-origin; naming the
-                    // directive keeps a future default-src tightening from
-                    // silently dropping the UI font.
-                    "font-src 'self'",
-                    // Inline <video>/<audio> playback is a blob: URL, which
-                    // media-src would otherwise inherit from default-src 'self'.
-                    "media-src 'self' blob:",
-                    "connect-src 'self' https: wss:",
-                    "worker-src 'self' blob:",
-                ].join("; "),
-            },
+            headers: { "Content-Security-Policy": csp },
+        },
+        preview: {
+            headers: { "Content-Security-Policy": csp },
         },
     };
 });

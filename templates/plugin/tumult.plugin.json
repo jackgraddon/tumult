@@ -1,0 +1,10 @@
+{
+    "$schema": "./tumult.plugin.schema.json",
+    "id": "cc.example.shrug",
+    "name": "Shrug",
+    "version": "1.0.0",
+    "author": "You",
+    "description": "Append ¯\\_(ツ)_/¯ to a message with /shrug.",
+    "permissions": ["commands", "styles"],
+    "entry": "plugin.js"
+}

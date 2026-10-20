@@ -7,6 +7,15 @@
  * without worrying that the SDK mutated it underneath you.
  */
 
+/**
+ * Version of THIS contract — the shapes below. Bump on any change plugins or
+ * the UI could depend on (a new field is a bump only if consumers must see it;
+ * an added optional method is not). `minCore` in a plugin manifest is checked
+ * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
+ * so it must stay a value module: nothing in it may import the SDK.
+ */
+export const CONTRACT_VERSION = "1.0.0";
+
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
     unsubscribe(): void;

@@ -13,6 +13,7 @@ import type {
     PluginDeps,
     PluginManifest,
 } from "./types.ts";
+import { checkManifestCompatibility } from "./compat.ts";
 import { createPluginApi } from "./api.ts";
 
 interface InstalledPlugin {
@@ -99,14 +100,20 @@ export class PluginRegistry {
     }
 
     /**
-     * Install one plugin. Throws when the id is already installed or when
-     * `install()` itself throws — in which case everything the plugin had
-     * registered is rolled back, so a failed install leaves no residue.
+     * Install one plugin. Throws when the id is already installed, when the
+     * manifest asks for a newer API/contract than this build provides
+     * (`minUI`/`minCore`), or when `install()` itself throws — in which case
+     * everything the plugin had registered is rolled back, so a failed
+     * install leaves no residue.
      */
     public install(plugin: Plugin): void {
         const id = plugin.manifest.id;
         if (this.installed.has(id)) {
             throw new Error(`[tumult] plugin "${id}" is already installed`);
+        }
+        const incompatible = checkManifestCompatibility(plugin.manifest);
+        if (incompatible) {
+            throw new Error(`[tumult] plugin "${id}" cannot install: ${incompatible}`);
         }
 
         const disposables: Disposable[] = [];

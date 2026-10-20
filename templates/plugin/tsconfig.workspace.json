@@ -1,0 +1,30 @@
+{
+    "//": "Development-only. NOT shipped to plugin authors: it maps the Tumult",
+    "//2": "packages to their workspace SOURCES so the template example is",
+    "//3": "typechecked against the real API. `tsconfig.json` (the author-facing",
+    "//4": "one) points at the vendored `types/plugin.d.ts` instead, so the two",
+    "//5": "together pin the vendored surface to reality. Run by",
+    "//6": "packages/ui's `test:template` script.",
+    "compilerOptions": {
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "skipLibCheck": true,
+        "isolatedModules": true,
+        "allowImportingTsExtensions": true,
+        "noEmit": true,
+        "types": [],
+        "baseUrl": ".",
+        "paths": {
+            "@tumult/ui": ["../../packages/ui/src/index.ts"],
+            "@tumult/core": ["../../packages/core/src/index.ts"],
+            "@tumult/theme": ["../../packages/theme/src/index.ts"],
+            "vue": ["../../packages/ui/node_modules/vue"]
+        }
+    },
+    "include": ["src/**/*.ts", "types/workspace-shims.d.ts"]
+}

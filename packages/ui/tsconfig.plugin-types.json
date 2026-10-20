@@ -1,0 +1,24 @@
+{
+    "//": "Used only by scripts/emit-plugin-types.ts (dts-bundle-generator). The",
+    "//2": "graph rooted at src/plugins/authoring.ts reaches no .vue file, so plain",
+    "//3": "tsc options suffice — no SFC handling needed. Paths mirror tsconfig.json.",
+    "compilerOptions": {
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "noEmit": true,
+        "baseUrl": ".",
+        "paths": {
+            "@tumult/core": ["../core/src/index.ts"],
+            "@tumult/core/contract": ["../core/src/contract.ts"],
+            "@tumult/core/*": ["../core/src/*"]
+        }
+    },
+    "include": ["src/plugins/authoring.ts"]
+}

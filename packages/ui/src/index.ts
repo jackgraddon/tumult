@@ -6,6 +6,9 @@ export type { ActionsContext, LeaveTarget, MemberModeration, MemberModerationKin
 export { TimelineRegistry, RegistryKey, useTimelineRegistry } from "./timeline/registry.ts";
 export type { RendererEntry, TimelineRendererProps } from "./timeline/registry.ts";
 export { PluginRegistry, PluginsKey, usePluginRegistry } from "./plugins/registry.ts";
+export {
+    PLUGIN_PERMISSIONS,
+} from "./plugins/types.ts";
 export type {
     Disposable,
     Permission,
@@ -16,6 +19,44 @@ export type {
     PluginManifest,
     PluginMedia,
 } from "./plugins/types.ts";
+export { deriveLane, SANDBOXABLE_PERMISSIONS } from "./plugins/lane.ts";
+export type { PluginLane } from "./plugins/lane.ts";
+export { sandboxPlugin } from "./plugins/sandbox/host.ts";
+export type { SandboxEntry, SandboxHost, SandboxWorker } from "./plugins/sandbox/host.ts";
+export { SANDBOX_PROTOCOL_VERSION } from "./plugins/sandbox/protocol.ts";
+export type { SandboxCapabilities } from "./plugins/sandbox/protocol.ts";
+export { PLUGIN_API_VERSION, checkManifestCompatibility, compareVersions } from "./plugins/compat.ts";
+export {
+    parsePluginSource,
+    sourceSlug,
+    sourceUrl,
+    releaseApiUrl,
+    rawManifestUrl,
+} from "./plugins/source.ts";
+export type { PluginSource } from "./plugins/source.ts";
+export {
+    addedPermissions,
+    checkReleaseManifest,
+    hashBundle,
+    hashMismatchReason,
+    needsConsent,
+    samePermissionSet,
+} from "./plugins/verify.ts";
+export type { InstallRecordSummary, ManifestCheck } from "./plugins/verify.ts";
+export { describePermission, LANE_SUMMARY, PERMISSION_SUMMARY } from "./plugins/consent.ts";
+export { PluginInstallKey, usePluginInstall, tryUsePluginInstall } from "./plugins/installControls.ts";
+export type {
+    InstallOutcome,
+    InstalledPluginView,
+    PendingInstall,
+    PluginInstallControls,
+} from "./plugins/installControls.ts";
+export {
+    buildPluginSchema,
+    buildPluginSchemaJson,
+    validatePluginManifest,
+    REQUIRED_MANIFEST_KEYS,
+} from "./plugins/schema.ts";
 export {
     ComposerActionsKey,
     ComposerActionsRegistry,
@@ -31,6 +72,7 @@ export type { SettingsTab, SettingsTabProps } from "./settings/tabs.ts";
 export { findExternalStylesheetReferences, injectStylesheet } from "./plugins/styles.ts";
 export { default as SettingsDialog } from "./settings/SettingsDialog.vue";
 export { default as PluginsTab } from "./settings/PluginsTab.vue";
+export { default as InstallConsentDialog } from "./plugins/InstallConsentDialog.vue";
 export { default as AppearanceTab } from "./settings/AppearanceTab.vue";
 export { ThemeKey, useTheme, tryUseTheme } from "./theme/controls.ts";
 export type { ThemeControls, ThemeState, ThemeResult, ThemeGalleryEntry } from "./theme/controls.ts";

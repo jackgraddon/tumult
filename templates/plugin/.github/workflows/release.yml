@@ -1,0 +1,57 @@
+name: Release
+
+# Tag `v1.0.0` (or whatever your `tumult.plugin.json` `version` says) and this
+# builds the bundle, computes its sha256 and attaches both artifacts to the
+# release. Tumult installs from exactly these two files — one URL, no build on
+# the client. Keep the tag and the manifest's `version` in step; Tumult's
+# installer reads the tag as the release identity.
+on:
+    push:
+        tags:
+            - "v*"
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 10
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+
+            - name: Install
+              run: pnpm install --frozen-lockfile
+
+            - name: Typecheck
+              run: pnpm typecheck
+
+            - name: Build + hash
+              run: pnpm release:dry
+
+            - name: Check the manifest matches the tag
+              run: |
+                  version=$(node -p "require('./tumult.plugin.json').version")
+                  tag="${GITHUB_REF_NAME#v}"
+                  if [ "$version" != "$tag" ]; then
+                      echo "::error::tumult.plugin.json says $version but the tag is $tag"
+                      exit 1
+                  fi
+
+            - name: Release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release create "$GITHUB_REF_NAME" \
+                      "dist/plugin.js#plugin bundle" \
+                      "dist/tumult.plugin.json#release manifest" \
+                      --title "$GITHUB_REF_NAME" \
+                      --generate-notes

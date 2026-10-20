@@ -1,15 +1,21 @@
 /**
  * The plugin contract: what a plugin IS, and what its context exposes.
  *
- * Plugins are plain TypeScript modules registered at runtime by the app —
- * never evaluated from strings, never fetched from the network. Nothing in
- * this API can run `eval`/`new Function` or load a remote script, so plugins
- * are CSP-safe by construction.
+ * Plugins are plain TypeScript modules registered at runtime by the app: a
+ * manifest plus `install(ctx)`. Built-in plugins are compiled into the app;
+ * third-party plugins are downloaded as release artifacts, verified against
+ * the manifest's `integrity` hash and handed over by the app's installer
+ * (docs/plugins.md §11). Nothing in THIS module fetches, evaluates or loads a
+ * script — the registry only ever receives a `Plugin` object — so everything
+ * here stays CSP-safe by construction.
  *
- * Isolation is by API surface: a plugin only touches the shell through its
- * `PluginContext`, which carries no `window`/`document` handles. Plugins are
- * app-authored code (Vencord-style capability, first-party trust level) — this
- * is an extension seam, not a security boundary against hostile code.
+ * Isolation is two-fold: by API surface (a plugin only touches the shell
+ * through `PluginContext`, which carries no `window`/`document` handles) and
+ * by lane (`deriveLane` in lane.ts) — logic-only plugins are loaded into a
+ * Worker, while a plugin that contributes Vue components runs in-page at the
+ * app's trust level, which the installer says out loud before it installs.
+ * Neither is a guarantee against hostile code beyond what the lane promises:
+ * the in-page lane is an extension seam, not a sandbox.
  */
 
 import type { ChatClient, EncryptedAttachment } from "@tumult/core";
@@ -32,16 +38,28 @@ export type Disposable = () => void;
  *
  * All six are enforced: `timeline-renderers`, `composer-actions`, `commands`,
  * `member-decorations`, `settings-tabs` and `styles`.
+ *
+ * This array is the single runtime source: the `Permission` union is derived
+ * from it, the release schema's enum is built from it, and the installer
+ * refuses a manifest that names anything outside it. Adding a permission
+ * means adding it here first.
  */
-export type Permission =
-    | "timeline-renderers"
-    | "composer-actions"
-    | "member-decorations"
-    | "commands"
-    | "settings-tabs"
-    | "styles";
+export const PLUGIN_PERMISSIONS = [
+    "timeline-renderers",
+    "composer-actions",
+    "member-decorations",
+    "commands",
+    "settings-tabs",
+    "styles",
+] as const;
 
-/** What a plugin declares about itself. Purely descriptive (discovery UI). */
+export type Permission = (typeof PLUGIN_PERMISSIONS)[number];
+
+/**
+ * What a plugin declares about itself. Purely descriptive for built-in
+ * plugins; for a third-party plugin the same object is the release document
+ * (`tumult.plugin.json`) the installer validates and asks consent for.
+ */
 export interface PluginManifest {
     /**
      * Stable, namespaced id — e.g. `cc.jackg.tumult.demo-poll`. The registry
@@ -52,12 +70,35 @@ export interface PluginManifest {
     version: string;
     author?: string;
     description?: string;
-    /** Minimum `@tumult/core` contract version the plugin understands. */
+    /**
+     * Minimum `@tumult/core` contract version (`CONTRACT_VERSION`) the plugin
+     * understands. Enforced at install: a newer requirement refuses the
+     * install with the shortfall named.
+     */
     minCore?: string;
-    /** Minimum `@tumult/ui` version the plugin understands. */
+    /**
+     * Minimum `@tumult/ui` plugin-API version (`PLUGIN_API_VERSION`) the
+     * plugin understands. Enforced at install, same as `minCore`.
+     */
     minUI?: string;
     /** Every extension API the plugin uses. The context enforces these. */
     permissions: Permission[];
+    /**
+     * Release artifact only (`tumult.plugin.json` in a plugin repository):
+     * the filename of the built bundle attached to every release, e.g.
+     * `plugin.js`. Absent for plugins compiled into the app; the installer
+     * refuses a release manifest without it.
+     */
+    entry?: string;
+    /**
+     * Release artifact only: `sha256-<base64>` of the entry bundle, computed
+     * by the template's release workflow from the same file it attaches. The
+     * installer refuses a download that does not hash to this value and
+     * re-checks the stored copy on every boot — what runs is what was hashed.
+     * (Not required by the schema, because the file committed in the plugin
+     * repo has no hash yet; the installer requires it.)
+     */
+    integrity?: string;
 }
 
 /** Media resolution, passed through from the shell's client. */

@@ -1,6 +1,10 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # The plugin template is a workspace member so its example is typechecked
+  # against the real API (templates/plugin/tsconfig.workspace.json) with the
+  # same vue/typescript the app resolves. It publishes to a standalone repo.
+  - 'templates/*'
 
 # esbuild is Vite's bundler; its postinstall fetches the platform binary, so
 # without this the dev server and build can't run.

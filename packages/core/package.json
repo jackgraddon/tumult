@@ -12,6 +12,10 @@
       "types": "./dist/fake/index.d.ts",
       "import": "./dist/fake/index.js"
     },
+    "./contract": {
+      "types": "./dist/contract.d.ts",
+      "import": "./dist/contract.js"
+    },
     "./selectors": {
       "types": "./dist/selectors/spaceTree.d.ts",
       "import": "./dist/selectors/spaceTree.js"

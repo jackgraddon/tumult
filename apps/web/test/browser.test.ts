@@ -411,6 +411,97 @@ describe("browser smoke test (fake client)", () => {
         await dialog.waitFor({ state: "hidden", timeout: 5_000 });
     });
 
+    it("installs a third-party plugin from a repository URL, verifying its hash", async () => {
+        // The whole third-party path, end to end, with GitHub faked at the
+        // network layer. A fresh context isolates the install from the tests
+        // above (its own IndexedDB) and lets the routes be scoped to it.
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        try {
+            await isolated.addInitScript((session) => {
+                window.localStorage.setItem("tumult.session", JSON.stringify(session));
+            }, SESSION);
+
+            // A minimal, valid bundle: a logic-only plugin (sandbox lane) that
+            // registers a slash command. Its sha256 is computed below from the
+            // exact bytes served, so the hash check is exercised for real.
+            const bundle =
+                "export const plugin = { manifest: { id: \"cc.example.remote\", name: \"Remote\", " +
+                "version: \"1.0.0\", permissions: [\"commands\"] }, install(ctx) {} };\n";
+            const encoder = new TextEncoder();
+            const digest = await crypto.subtle.digest("SHA-256", encoder.encode(bundle));
+            let binary = "";
+            for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+            const integrity = `sha256-${Buffer.from(binary, "binary").toString("base64")}`;
+
+            const manifest = {
+                id: "cc.example.remote",
+                name: "Remote",
+                version: "1.0.0",
+                author: "Someone",
+                description: "A plugin installed from a repository.",
+                permissions: ["commands"],
+                entry: "plugin.js",
+                integrity,
+            };
+
+            await isolated.route("**/api.github.com/repos/example/remote/releases/latest", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        tag_name: "v1.0.0",
+                        assets: [
+                            {
+                                name: "tumult.plugin.json",
+                                browser_download_url: "https://example.invalid/tumult.plugin.json",
+                            },
+                            {
+                                name: "plugin.js",
+                                browser_download_url: "https://example.invalid/plugin.js",
+                            },
+                        ],
+                    }),
+                }),
+            );
+            await isolated.route("https://example.invalid/tumult.plugin.json", (route) =>
+                route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manifest) }),
+            );
+            await isolated.route("https://example.invalid/plugin.js", (route) =>
+                route.fulfill({ status: 200, contentType: "text/javascript", body: bundle }),
+            );
+
+            const installed = await isolated.newPage();
+            await installed.goto(origin, { waitUntil: "domcontentloaded" });
+            await installed.waitForSelector(".tumult-account", { timeout: 10_000 });
+
+            await installed.locator(".tumult-account").click();
+            await installed.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+            await installed.getByRole("tab", { name: "Plugins" }).click();
+
+            await installed.locator("#tumult-plugin-url").fill("https://github.com/example/remote");
+            await installed.getByRole("button", { name: "Check" }).click();
+
+            // The consent screen: lane badge, the permission in plain words, and
+            // the verified hash — before anything is installed.
+            const consent = installed.locator(".tumult-consent");
+            await consent.waitFor({ timeout: 10_000 });
+            const consentText = (await consent.textContent()) ?? "";
+            assert.match(consentText, /Sandboxed/, "the consent screen is missing the derived lane");
+            assert.match(consentText, /slash commands/i, "the consent screen is missing permission copy");
+            assert.ok(consentText.includes(integrity), "the consent screen is missing the verified hash");
+
+            await installed.getByRole("button", { name: "Install" }).click();
+
+            // Installed: the row appears with the lane badge and its source.
+            const row = installed.locator(".tumult-plugin", { hasText: "cc.example.remote" });
+            await row.waitFor({ timeout: 10_000 });
+            assert.match((await row.textContent()) ?? "", /Sandboxed/, "the installed row lost its lane");
+            assert.match((await row.textContent()) ?? "", /example\/remote/, "the installed row lost its source");
+        } finally {
+            await isolated.close();
+        }
+    });
+
     it("takes the guild rail width from its layout token", async () => {
         const state = await readState(page);
         const token = state.tokens["--layout-guild-rail-width"];
