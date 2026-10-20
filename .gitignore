@@ -14,6 +14,10 @@ dist-types/
 .env.local
 .env.*.local
 
+# Vercel CLI metadata — a stale .vercel/ (from a local `vercel link`) points at
+# the wrong project and silently breaks the tagged deploy; never commit it.
+.vercel/
+
 # Editors / OS
 .DS_Store
 .vscode/
