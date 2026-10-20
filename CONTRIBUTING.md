@@ -50,13 +50,19 @@ Once your work is merged into `main` and the CI passes:
     > duplicate `v0.1.0` tag appeared during setup and was removed; `v0.1.1` is the
     > canonical tag.)
 3.  **Deployment:** The new tag push triggers `.github/workflows/release.yml`,
-    which asks **Vercel to build and deploy** production (`amondnet/vercel-action`,
-    CLI mode, `--prod`, no prebuilt). Build-time env like `VITE_CLIENT_URI` comes
-    from the Vercel project's environment, so nothing is plumbed through CI. The
-    workflow needs three secrets in *repo → Settings → Secrets*: `VERCEL_TOKEN`,
-    `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. Your Vercel project must point at the
-    Vite app in `apps/web/` (framework: Vite, build: `pnpm build`, output: the
-    Vite out dir). CI on `main` is the gate that `release.yml` trusts.
+    which runs Vercel's official GitHub Actions pattern — **pull → build →
+    deploy `--prebuilt`** via the Vercel CLI (no third-party action). The build
+    runs in the Actions runner and only `.vercel/output` is uploaded, so Vercel
+    never rebuilds the same artifact. Build-time env like `VITE_CLIENT_URI`
+    comes from the Vercel project's environment via `vercel pull`, so nothing
+    is plumbed through CI. The workflow needs three secrets in *repo → Settings
+    → Secrets*: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (the two
+    IDs together let the CLI skip `vercel link`). Your Vercel project must point
+    at the Vite app in `apps/web/` (framework: Vite, build: `pnpm build`, output:
+    the Vite out dir). CI on `main` is the gate that `release.yml` trusts.
+    `release.yml` is also `workflow_dispatch`-able: because `pnpm release` tags
+    are not re-runnable, run it manually against `main` to dry-run the pipeline
+    without cutting a release.
 
 ## 🧪 What CI runs on every change
 

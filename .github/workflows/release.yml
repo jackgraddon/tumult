@@ -5,33 +5,69 @@ on:
     tags:
       # Fires whenever a version tag (e.g. v0.1.1) is pushed to the repo.
       - 'v*'
+  # Manual dry-run: `pnpm release` tags are not re-runnable, so a maintainer can
+  # validate the whole pipeline against any ref (e.g. main) without cutting a
+  # new release.
+  workflow_dispatch:
+
+# Scoping a workflow's `permissions` block defaults every other permission to
+# `none`, so grant back what we use explicitly. `contents: read` is required for
+# checkout on a private repo — on a tag push a checkout without it 404s
+# ("remote: Repository not found").
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      # Scoping a job's `permissions` block defaults every *other* permission to
-      # `none`, and on a private repo that silently revokes the `contents: read`
-      # a branch checkout gets for free. Without it the checkout 404s ("remote:
-      # Repository not found") — which is why the tag deploy failed while main's
-      # *unscoped* checkout succeeded. Grant it back explicitly.
-      contents: read
-      # GitHub Environments "deployment" tracking (github-deployment: true).
-      deployments: write
+
+    # VERCEL_ORG_ID + VERCEL_PROJECT_ID set together let the CLI target the
+    # project without `vercel link` / a `.vercel/` directory. VERCEL_TOKEN as an
+    # env var is read natively by the CLI — never pass it as `--token` (argv is
+    # visible in process listings).
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
 
-    # CLI mode with `--prod` and NO prebuilt artifact: Vercel builds from source
-    # at deploy time, so build-time env (e.g. VITE_CLIENT_URI) comes from the
-    # Vercel project's environment — nothing is plumbed through CI. CI on `main`
-    # already validated the build (see .github/workflows/ci.yml).
-    - name: Deploy to Vercel (production)
-      uses: amondnet/vercel-action@v42
+    # pnpm/action-setup reads `packageManager` (pnpm@11.13.1) from package.json
+    # so CI uses the exact pinned pnpm — same as ci.yml.
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v6
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }}
-        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        vercel-args: --prod
-        github-deployment: true
+        node-version: '22'   # package.json engines: node >=22
+        cache: 'pnpm'
+
+    - name: Install Dependencies
+      run: pnpm install --frozen-lockfile
+
+    # Vercel's official GitHub Actions pattern (vercel.com/kb/guide/
+    # how-can-i-use-github-actions-with-vercel): pull → build → deploy
+    # --prebuilt. The build runs HERE (that's why pnpm is set up above) and only
+    # .vercel/output is uploaded, so Vercel never rebuilds the same artifact.
+    # `vercel pull` fetches build-time env (e.g. VITE_CLIENT_URI) from the Vercel
+    # project's environment — nothing is plumbed through CI secrets. CI on main
+    # remains the pre-merge gate (see .github/workflows/ci.yml).
+    - name: Install Vercel CLI
+      # Pinned to the current major (64.x); the old amondnet/vercel-action
+      # bundled CLI v50 and is a single-maintainer action — the breakage source
+      # this workflow replaces.
+      run: npm install --global vercel@64
+
+    - name: Pull Vercel environment
+      run: vercel pull --yes --environment=production
+
+    - name: Build project artifacts
+      run: vercel build --prod
+
+    - name: Deploy project artifacts to Vercel (production)
+      # No --no-wait: the CLI polls until the deployment is ready and exits
+      # non-zero on failure, so a broken deploy fails the job visibly.
+      run: vercel deploy --prebuilt --prod
