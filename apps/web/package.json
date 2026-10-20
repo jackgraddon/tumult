@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "predev": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
+    "prebuild": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "build": "vue-tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc -p tsconfig.json",
