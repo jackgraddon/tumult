@@ -14,7 +14,11 @@ jobs:
       deployments: write
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
+      with:
+        # A full clone: the shallow "fetch a commit SHA into a tag ref" path can
+        # return "Repository not found" on a private repo, so depth 0 is used here.
+        fetch-depth: 0
 
     # CLI mode with `--prod` and NO prebuilt artifact: Vercel builds from source
     # at deploy time, so build-time env (e.g. VITE_CLIENT_URI) comes from the
