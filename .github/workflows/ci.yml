@@ -40,7 +40,10 @@ jobs:
     - name: Install Firefox for the browser smoke test
       # The smoke test runs a `--mode fake` build: no homeserver, no network
       # (see apps/web/test/browser.test.ts docstring), so it is safe in CI.
-      run: pnpm exec playwright install --with-deps firefox
+      # `playwright` is a devDependency of @tumult/web, not of the root, so it
+      # must be run through the filter — a root-level `pnpm exec playwright`
+      # fails with "Command not found".
+      run: pnpm --filter @tumult/web exec playwright install --with-deps firefox
 
     - name: Browser Smoke Test
       run: pnpm --filter @tumult/web test:browser
