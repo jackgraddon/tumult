@@ -5,6 +5,11 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # Manual re-run. GitHub occasionally accepts a push to `main` without
+  # creating a workflow run — observed when the push also rewrites a file under
+  # .github/workflows/ — which leaves the branch with no gate result at all.
+  # This makes that recoverable without an empty commit.
+  workflow_dispatch:
 
 jobs:
   test-and-build:
