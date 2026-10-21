@@ -82,6 +82,20 @@ export interface InstallOutcome {
 export interface PluginInstallControls {
     /** Reactive list of installed plugins, re-read on every mutation. */
     readonly installed: Ref<InstalledPluginView[]>;
+    /**
+     * Ids that are third-party RIGHT NOW, including one whose install is still
+     * completing.
+     *
+     * `installed` is read back from the store, so it only gains an id after the
+     * record is persisted — but the controller registers the plugin in the
+     * registry *before* that write (the bundle is hashed and booted first, so a
+     * broken one is never stored). For that window the id is registered but
+     * absent from `installed`, and anything classifying "registered but not
+     * installed" as a built-in renders a third-party plugin as `Built in`,
+     * without its lane badge or source. This is the synchronous truth the tab
+     * needs to classify a row correctly at every instant.
+     */
+    readonly thirdPartyIds: Ref<ReadonlySet<string>>;
     /** The install awaiting consent, or `null`. */
     readonly pending: Ref<PendingInstall | null>;
     /** True while a prepare/commit is in flight (the dialog shows "Working…"). */

@@ -493,10 +493,27 @@ describe("browser smoke test (fake client)", () => {
             await installed.getByRole("button", { name: "Install" }).click();
 
             // Installed: the row appears with the lane badge and its source.
-            const row = installed.locator(".tumult-plugin", { hasText: "cc.example.remote" });
-            await row.waitFor({ timeout: 10_000 });
-            assert.match((await row.textContent()) ?? "", /Sandboxed/, "the installed row lost its lane");
-            assert.match((await row.textContent()) ?? "", /example\/remote/, "the installed row lost its source");
+            //
+            // The installed row is located by `.tumult-plugin-lane-sandbox`, NOT
+            // by matching the plugin id in `.tumult-plugin`. Both the installed
+            // list and the built-in list render `<li class="tumult-plugin">`, and
+            // installing moves the id from one list to the other — so between the
+            // click above and the record reaching the store there are momentarily
+            // two matching candidates, and `hasText` can resolve to the built-in
+            // node that Vue is detaching. Reading it then reports `Built in` with
+            // no source, intermittently, on a loaded runner (observed at ~10-25%
+            // in a repeat loop). The lane class exists only on the installed
+            // branch, so it cannot match the wrong element.
+            const installedRow = installed.locator(".tumult-plugin", {
+                has: installed.locator(".tumult-plugin-lane-sandbox"),
+            });
+            await installedRow.waitFor({ timeout: 10_000 });
+            // One read for both assertions: two reads could straddle a re-render
+            // and disagree, which is exactly the race this replaced.
+            const rowText = (await installedRow.textContent()) ?? "";
+            assert.match(rowText, /Sandboxed/, "the installed row lost its lane");
+            assert.match(rowText, /example\/remote/, "the installed row lost its source");
+            assert.match(rowText, /cc\.example\.remote/, "the installed row is not the plugin that was installed");
         } finally {
             await isolated.close();
         }

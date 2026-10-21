@@ -33,9 +33,16 @@ const installed = computed(() => install?.installed.value ?? []);
 const pending = computed(() => install?.pending.value ?? null);
 const busy = computed(() => install?.busy.value ?? false);
 
-/** Ids the shell itself compiled in — always enabled, never removable here. */
-const builtInIds = computed(() => new Set(installed.value.map((entry) => entry.id)));
-const builtIns = computed(() => manifests.value.filter((manifest) => !builtInIds.value.has(manifest.id)));
+// A plugin the install controller knows about is third-party even when it is
+// not yet in `installed`: the controller registers a freshly installed plugin
+// before its record is written, and a record we refused to load never reaches
+// the registry at all. Classifying from `installed` alone renders such a plugin
+// through the built-ins branch below (`Built in`, no lane badge, no source) for
+// as long as that window lasts — which is what made the install test flaky.
+const thirdPartyIds = computed<ReadonlySet<string>>(() => install?.thirdPartyIds.value ?? new Set());
+const builtIns = computed(() =>
+    manifests.value.filter((manifest) => !thirdPartyIds.value.has(manifest.id)),
+);
 
 async function onInstall(): Promise<void> {
     if (!install || busy.value) return;

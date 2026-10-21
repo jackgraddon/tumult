@@ -59,6 +59,12 @@ function fail(error: unknown): InstallOutcome {
 
 export class AppPluginInstallController implements PluginInstallControls {
     public readonly installed: Ref<InstalledPluginView[]> = shallowRef<InstalledPluginView[]>([]);
+    /**
+     * Ids that are third-party as of this instant — see the contract comment.
+     * A `shallowRef` holding an immutable `Set`: Vue compares the reference, so
+     * every mutation must assign a new Set (never `.add()` in place).
+     */
+    public readonly thirdPartyIds: Ref<ReadonlySet<string>> = shallowRef<ReadonlySet<string>>(new Set());
     public readonly pending: Ref<PendingInstall | null> = shallowRef<PendingInstall | null>(null);
     public readonly busy: Ref<boolean> = shallowRef(false);
 
@@ -69,6 +75,23 @@ export class AppPluginInstallController implements PluginInstallControls {
 
     /** Ids currently loaded in the registry, so a record can show as `active`. */
     private loaded = new Set<string>();
+
+    /**
+     * Mark an id as third-party (or not) and republish.
+     *
+     * `loaded` and `thirdPartyIds` are updated together everywhere a plugin
+     * enters or leaves the registry, because they answer different questions at
+     * different speeds: `loaded` says "the code is running", `thirdPartyIds`
+     * says "the shell did not compile this in". The tab needs the second one to
+     * avoid presenting a third-party plugin as a built-in while its record is
+     * still being written.
+     */
+    private setThirdParty(id: string, present: boolean): void {
+        const next = new Set(this.thirdPartyIds.value);
+        if (present) next.add(id);
+        else next.delete(id);
+        this.thirdPartyIds.value = next;
+    }
 
     /** Attach the shell's registry once it exists (see the class comment). */
     public attach(registry: PluginHost): void {
@@ -106,6 +129,14 @@ export class AppPluginInstallController implements PluginInstallControls {
     private async refresh(): Promise<void> {
         const records = await listInstalls();
         this.installed.value = records.map((record) => this.view(record));
+        // The store is the other half of the third-party truth: a record whose
+        // bundle we refused to load (a hash mismatch, a disabled plugin at boot)
+        // never reaches `load()`, so it is absent from the registry — yet it is
+        // still an installed third-party plugin and must never render as a
+        // built-in. Union it with whatever the registry already registered.
+        const next = new Set(this.thirdPartyIds.value);
+        for (const record of records) next.add(record.id);
+        this.thirdPartyIds.value = next;
     }
 
     private view(record: InstallRecord): InstalledPluginView {
@@ -193,6 +224,12 @@ export class AppPluginInstallController implements PluginInstallControls {
             // are about to overwrite is fully torn down.
             if (registry.has(prepared.manifest.id)) registry.uninstall(prepared.manifest.id);
 
+            // Mark it third-party BEFORE registering. `registry.install()` bumps
+            // the registry's version, which invalidates the tab's computeds; if
+            // the mark came after, a render could observe "registered but not
+            // third-party" and draw the row through the built-ins branch (the
+            // `Built in` flash this ordering exists to prevent).
+            this.setThirdParty(prepared.manifest.id, true);
             registry.install(plugin);
             this.loaded.add(prepared.manifest.id);
 
@@ -245,12 +282,17 @@ export class AppPluginInstallController implements PluginInstallControls {
     }
 
     public disable(id: string): void {
+        // Still third-party: the record survives, so the tab must keep showing
+        // it in the installed list (as disabled), never as a built-in. Set
+        // before the uninstall, which bumps the registry version.
+        this.setThirdParty(id, true);
         this.registry?.uninstall(id);
         this.loaded.delete(id);
         void setInstallEnabled(id, false).then(() => this.refresh());
     }
 
     public remove(id: string): void {
+        this.setThirdParty(id, false);
         this.registry?.uninstall(id);
         this.loaded.delete(id);
         void deleteInstall(id).then(() => this.refresh());
@@ -306,6 +348,8 @@ export class AppPluginInstallController implements PluginInstallControls {
         );
 
         if (registry.has(record.id)) registry.uninstall(record.id);
+        // Before the register — see the ordering note in `confirm()`.
+        this.setThirdParty(record.id, true);
         registry.install(plugin);
         this.loaded.add(record.id);
     }
