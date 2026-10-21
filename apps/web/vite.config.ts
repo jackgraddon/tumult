@@ -1,11 +1,32 @@
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, loadEnv } from "vite";
 
+/**
+ * Absolute path of the monorepo root — TWO levels above this config's directory
+ * (`apps/web` → `apps` → the root). Env files are read from THERE, not from
+ * `apps/web`.
+ *
+ * The Vercel build is why: the project's Root Directory is `apps/web`, so
+ * `vercel` commands run from the repo root (running them inside `apps/web`
+ * would compose into `apps/web/apps/web`, which `vercel deploy` rejects), and
+ * `vercel pull` therefore writes `.vercel/.env.production.local` at the repo
+ * root. `envDir` is how Vite is told to look in the same place. Without it the
+ * production build silently loses `VITE_CLIENT_URI` — the exact failure that
+ * served a blank site.
+ *
+ * `envDir` is NOT restricted to CI: the local `.env.local` lives at the repo
+ * root too, so dev and the deployed build read env the same way.
+ *
+ * Derived from `import.meta.dirname` by string arithmetic rather than
+ * `node:path`, because this config deliberately references no Node APIs (it is
+ * typechecked under `types: ["vite/client"]`).
+ */
+const envDir = `${import.meta.dirname}/../..`;
+
 export default defineConfig(({ mode }) => {
-    // Read the same env files Vite will use for `import.meta.env`, so the check
-    // below sees exactly what the bundle will see (including a
-    // `.env.production.local` written by `vercel pull`).
-    const env = loadEnv(mode, import.meta.dirname, "");
+    // Resolved against `envDir`, so this sees exactly what `import.meta.env`
+    // will see in the bundle — the guard below cannot disagree with the build.
+    const env = loadEnv(mode, envDir, "");
 
     // `--mode fake` boots the deterministic fake client instead of the real
     // one. This is an alias, not a runtime branch in src/chat.ts, because a
@@ -27,10 +48,9 @@ export default defineConfig(({ mode }) => {
     if (mode !== "fake" && !env.VITE_CLIENT_URI) {
         throw new Error(
             "VITE_CLIENT_URI is not set. It must be a public https URL you control " +
-                "(MAS rejects http and rejects localhost). See apps/web/.env.example. " +
-                "In CI/Vercel, `vercel pull` writes .vercel/.env.production.local relative " +
-                "to the working directory, and Vite only reads env under apps/web — run " +
-                "the vercel steps from apps/web.",
+                "(MAS rejects http and rejects localhost). See .env.example. In CI/Vercel, " +
+                "`vercel pull` writes .vercel/.env.production.local into its working directory " +
+                "and Vite reads it via `envDir` (see apps/web/vite.config.ts).",
         );
     }
 
@@ -59,6 +79,9 @@ export default defineConfig(({ mode }) => {
 
     return {
         plugins: [vue()],
+        // Read env files from the repo root, where `vercel pull` writes them and
+        // where the local `.env.local` lives. See `envDir` above.
+        envDir,
         resolve: { alias },
         optimizeDeps: {
             // The crypto glue resolves its .wasm relative to itself. Vite's dep

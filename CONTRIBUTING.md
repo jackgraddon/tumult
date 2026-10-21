@@ -64,13 +64,22 @@ Once your work is merged into `main` and the CI passes:
     because `pnpm release` tags are not re-runnable, run it manually against
     `main` to dry-run the pipeline without cutting a release.
 
-    > ⚠️ **Every `vercel` step must run in `apps/web`.** `vercel pull` writes
-    > `.vercel/.env.production.local` *relative to the working directory*, and
-    > Vite only reads env files under its own root (`apps/web`). Running the
-    > steps from the repo root silently drops `VITE_CLIENT_URI`, and the app
-    > then builds without it — which is what took the production site down with
-    > a blank page (the value is required; see below). `release.yml` sets
-    > `defaults.run.working-directory: apps/web` for exactly this reason.
+    > ⚠️ **Every `vercel` step runs from the repo root**, because the Vercel
+    > project's **Root Directory is already `apps/web`** (set in the dashboard,
+    > and the canonical source of that prefix). The CLI applies that root
+    > itself, so a step whose working directory is also `apps/web` composes the
+    > two into `apps/web/apps/web` — `vercel build` tolerates that with a
+    > warning, but `vercel deploy` fails outright with *"The provided path …
+    > does not exist"*. Only one side may carry the prefix.
+    >
+    > The consequence to know: `vercel pull` writes
+    > `.vercel/.env.production.local` *relative to the working directory*, so it
+    > lands at the **repo root**, and `apps/web/vite.config.ts` therefore sets
+    > `envDir` to the repo root. If `envDir` is wrong, the build silently loses
+    > `VITE_CLIENT_URI` — which is what took the production site down with a
+    > blank page. Vite's `envDir` covers local `.env.local` too, so dev and the
+    > deployed build read env from the same place (`.env.example` sits at the
+    > repo root alongside them).
 
     > ⚠️ **`VITE_CLIENT_URI` is required to build the real client.** It cannot be
     > derived from `window.location`, because MAS rejects http and rejects
@@ -80,6 +89,7 @@ Once your work is merged into `main` and the CI passes:
     > instead of shipping an app that throws during import and renders nothing.
     > CI's own `pnpm -r build` gate therefore supplies a placeholder
     > (`https://ci.invalid`); the production value lives in the Vercel project.
+    > Copy `.env.example` to `.env.local` at the repo root for local dev.
 
 ## 🧪 What CI runs on every change
 

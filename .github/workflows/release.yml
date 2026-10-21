@@ -30,21 +30,21 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-    # EVERY `run:` step defaults to `apps/web`, because that is the Vercel
-    # project root (`apps/web/vercel.json`) and because `vercel pull` writes
-    # `.vercel/.env.production.local` RELATIVE TO THE WORKING DIRECTORY. Run it
-    # from the repo root and the file lands beside the monorepo root, where Vite
-    # — whose envDir defaults to its own root, `apps/web` — never reads it. The
-    # app then builds without `VITE_CLIENT_URI`, `chat.real.ts` throws at module
-    # scope, and the site serves a blank page while every gate stays green (the
-    # checked-in `.env.example` documents the variable but cannot supply it).
+    # Everything runs from the REPO ROOT, because the Vercel project's Root
+    # Directory is already `apps/web` (set in the dashboard). The CLI prefixes
+    # that root itself, so running a step inside `apps/web` composes the two into
+    # `apps/web/apps/web` — which `vercel build` tolerates with a warning but
+    # `vercel deploy` rejects outright ("The provided path … does not exist").
+    # One of the two has to be the single source of the prefix, and the project
+    # setting is the canonical one.
     #
-    # `uses:` steps (checkout, setup-pnpm, setup-node) ignore this, and the two
-    # steps that genuinely need the repo root opt back out explicitly below.
-    defaults:
-      run:
-        working-directory: apps/web
-
+    # The consequence to know about: `vercel pull` writes
+    # `.vercel/.env.production.local` RELATIVE TO THE WORKING DIRECTORY, so it
+    # lands at the repo root. Vite resolves env relative to `envDir`, which
+    # `apps/web/vite.config.ts` points at the repo root for exactly this reason —
+    # if it did not, the app would build without `VITE_CLIENT_URI`,
+    # `chat.real.ts` would throw at module scope, and the site would serve a
+    # blank page while every gate stayed green.
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
@@ -61,9 +61,6 @@ jobs:
         cache: 'pnpm'
 
     - name: Install Dependencies
-      # The workspace install must see pnpm-workspace.yaml, so it opts out of the
-      # `apps/web` default and runs from the repo root.
-      working-directory: .
       run: pnpm install --frozen-lockfile
 
     # Vercel's official GitHub Actions pattern (vercel.com/kb/guide/
@@ -76,14 +73,13 @@ jobs:
     - name: Install Vercel CLI
       # Pinned to the current major (64.x); the old amondnet/vercel-action
       # bundled CLI v50 and is a single-maintainer action — the breakage source
-      # this workflow replaces. Installed from the repo root so the global
-      # `node_modules` bin dir does not land inside `apps/web`.
-      working-directory: .
+      # this workflow replaces.
       run: npm install --global vercel@64
 
     - name: Pull Vercel environment
-      # Writes `apps/web/.vercel/.env.production.local`, which is where Vite
-      # (rooted at `apps/web`) looks for it at build time.
+      # Writes `.vercel/.env.production.local` at the repo root (the working
+      # directory); `apps/web/vite.config.ts` sets `envDir` there so Vite reads
+      # it. See the job comment above.
       run: vercel pull --yes --environment=production
 
     - name: Build project artifacts

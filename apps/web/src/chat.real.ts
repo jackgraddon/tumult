@@ -6,7 +6,8 @@ import type { ChatClient } from "@tumult/core";
  * derived from `window.location` during local development. It identifies the
  * *application*, not the instance, so it is configuration.
  *
- * Set `VITE_CLIENT_URI` in `apps/web/.env.local` — see `.env.example`.
+ * Set `VITE_CLIENT_URI` in `.env.local` at the repo root — see `.env.example`
+ * (Vite reads env from there via `envDir`; see `apps/web/vite.config.ts`).
  */
 const clientUri = import.meta.env.VITE_CLIENT_URI;
 
@@ -45,7 +46,7 @@ export function createChat(): ChatClient {
     if (!appClientUri) {
         throw new Error(
             "VITE_CLIENT_URI is not set. It must be a public https URL you control " +
-                "(MAS rejects http and rejects localhost). See apps/web/.env.example.",
+                "(MAS rejects http and rejects localhost). See .env.example at the repo root.",
         );
     }
     return createChatClient({
