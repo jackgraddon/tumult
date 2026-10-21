@@ -10,16 +10,19 @@ import type { ChatClient } from "@tumult/core";
  */
 const clientUri = import.meta.env.VITE_CLIENT_URI;
 
-if (!clientUri) {
-    throw new Error(
-        "VITE_CLIENT_URI is not set. It must be a public https URL you control " +
-            "(MAS rejects http and rejects localhost). See apps/web/.env.example.",
-    );
-}
-
-// Narrowed once at module scope (the guard above does not narrow inside
-// createChat's body, so keep a non-optional binding here).
-const appClientUri: string = clientUri;
+/**
+ * Narrowed once at the call site. The build is supposed to guarantee this (see
+ * `vite.config.ts`): a production build without `VITE_CLIENT_URI` fails, so a
+ * deployed bundle cannot reach the throw below. It stays as a defensive check
+ * rather than being deleted, because silently proceeding without a client URI
+ * would mis-register the app with the IdP.
+ *
+ * It is deliberately inside `createChat()` and NOT at module scope: a module
+ * scope throw runs during import, before the app mounts, so the page renders
+ * nothing at all (the failure that produced a blank site is documented in
+ * `vite.config.ts`). Here it surfaces as a mount error the shell can report.
+ */
+const appClientUri: string = clientUri ?? "";
 
 const redirectUri = `${window.location.origin}/auth/callback`;
 
@@ -39,6 +42,12 @@ const applicationType = window.location.protocol === "https:" ? "web" : "native"
  * IndexedDB will corrupt the store and break decryption.
  */
 export function createChat(): ChatClient {
+    if (!appClientUri) {
+        throw new Error(
+            "VITE_CLIENT_URI is not set. It must be a public https URL you control " +
+                "(MAS rejects http and rejects localhost). See apps/web/.env.example.",
+        );
+    }
     return createChatClient({
         clientMetadata: {
             clientName: "Tumult",

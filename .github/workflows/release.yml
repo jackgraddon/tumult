@@ -30,6 +30,21 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+    # EVERY `run:` step defaults to `apps/web`, because that is the Vercel
+    # project root (`apps/web/vercel.json`) and because `vercel pull` writes
+    # `.vercel/.env.production.local` RELATIVE TO THE WORKING DIRECTORY. Run it
+    # from the repo root and the file lands beside the monorepo root, where Vite
+    # — whose envDir defaults to its own root, `apps/web` — never reads it. The
+    # app then builds without `VITE_CLIENT_URI`, `chat.real.ts` throws at module
+    # scope, and the site serves a blank page while every gate stays green (the
+    # checked-in `.env.example` documents the variable but cannot supply it).
+    #
+    # `uses:` steps (checkout, setup-pnpm, setup-node) ignore this, and the two
+    # steps that genuinely need the repo root opt back out explicitly below.
+    defaults:
+      run:
+        working-directory: apps/web
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
@@ -46,6 +61,9 @@ jobs:
         cache: 'pnpm'
 
     - name: Install Dependencies
+      # The workspace install must see pnpm-workspace.yaml, so it opts out of the
+      # `apps/web` default and runs from the repo root.
+      working-directory: .
       run: pnpm install --frozen-lockfile
 
     # Vercel's official GitHub Actions pattern (vercel.com/kb/guide/
@@ -58,10 +76,14 @@ jobs:
     - name: Install Vercel CLI
       # Pinned to the current major (64.x); the old amondnet/vercel-action
       # bundled CLI v50 and is a single-maintainer action — the breakage source
-      # this workflow replaces.
+      # this workflow replaces. Installed from the repo root so the global
+      # `node_modules` bin dir does not land inside `apps/web`.
+      working-directory: .
       run: npm install --global vercel@64
 
     - name: Pull Vercel environment
+      # Writes `apps/web/.vercel/.env.production.local`, which is where Vite
+      # (rooted at `apps/web`) looks for it at build time.
       run: vercel pull --yes --environment=production
 
     - name: Build project artifacts

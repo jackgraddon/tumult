@@ -1,7 +1,12 @@
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
+    // Read the same env files Vite will use for `import.meta.env`, so the check
+    // below sees exactly what the bundle will see (including a
+    // `.env.production.local` written by `vercel pull`).
+    const env = loadEnv(mode, import.meta.dirname, "");
+
     // `--mode fake` boots the deterministic fake client instead of the real
     // one. This is an alias, not a runtime branch in src/chat.ts, because a
     // runtime check would still *link* chat.real.ts — and linking it is what
@@ -11,6 +16,23 @@ export default defineConfig(({ mode }) => {
     // The replacement is resolved against the project root by Vite, so it needs
     // no filesystem path math here (and no Node types in this file).
     const alias = { "@chat-impl": mode === "fake" ? "/src/chat.fake.ts" : "/src/chat.real.ts" };
+
+    // The client URI is REQUIRED by the real client, and a build without it used
+    // to produce a bundle that threw at module scope — leaving `#app` empty, so
+    // the site served a blank page while every CI gate stayed green (the throw
+    // is a runtime error, and the fake build never links it). Failing here
+    // instead makes the same mistake a failed BUILD, named at its cause.
+    //
+    // Only the real client needs it: `--mode fake` deliberately has no client.
+    if (mode !== "fake" && !env.VITE_CLIENT_URI) {
+        throw new Error(
+            "VITE_CLIENT_URI is not set. It must be a public https URL you control " +
+                "(MAS rejects http and rejects localhost). See apps/web/.env.example. " +
+                "In CI/Vercel, `vercel pull` writes .vercel/.env.production.local relative " +
+                "to the working directory, and Vite only reads env under apps/web — run " +
+                "the vercel steps from apps/web.",
+        );
+    }
 
     // The policy is one constant because dev and preview must not drift: the
     // browser smoke test runs against `preview`, so a header only set on
