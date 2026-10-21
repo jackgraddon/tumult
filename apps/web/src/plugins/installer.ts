@@ -69,15 +69,24 @@ async function fetchJson(url: string): Promise<unknown | null> {
     }
 }
 
-/** Find the release manifest asset URL on a release payload, if any. */
+async function fetchAsset(url: string): Promise<Response> {
+    // GitHub's release asset API URLs require an Accept header to return the
+    // actual binary (not a JSON redirect). Browser fetches to
+    // browser_download_url are CORS-blocked from custom origins; using the API
+    // asset URL with the octet-stream accept returns the asset with CORS
+    // headers.
+    return fetch(url, { headers: { accept: "application/octet-stream" } });
+}
+
+/** Find the release manifest asset API URL on a release payload, if any. */
 function manifestAssetUrl(release: unknown): string | null {
     if (typeof release !== "object" || release === null) return null;
     const assets = (release as { assets?: unknown }).assets;
     if (!Array.isArray(assets)) return null;
     for (const asset of assets) {
         if (typeof asset !== "object" || asset === null) continue;
-        const { name, browser_download_url: download } = asset as Record<string, unknown>;
-        if (name === "tumult.plugin.json" && typeof download === "string") return download;
+        const { name, url } = asset as Record<string, unknown>;
+        if (name === "tumult.plugin.json" && typeof url === "string") return url;
     }
     return null;
 }
@@ -89,15 +98,15 @@ function releaseTag(release: unknown): string {
     return typeof tag === "string" ? tag : "";
 }
 
-/** The bundle asset URL on a release whose manifest names `entry`. */
+/** The bundle asset API URL on a release whose manifest names `entry`. */
 function entryAssetUrl(release: unknown, entry: string): string | null {
     if (typeof release !== "object" || release === null) return null;
     const assets = (release as { assets?: unknown }).assets;
     if (!Array.isArray(assets)) return null;
     for (const asset of assets) {
         if (typeof asset !== "object" || asset === null) continue;
-        const { name, browser_download_url: download } = asset as Record<string, unknown>;
-        if (name === entry && typeof download === "string") return download;
+        const { name, url } = asset as Record<string, unknown>;
+        if (name === entry && typeof url === "string") return url;
     }
     return null;
 }
@@ -126,7 +135,14 @@ async function resolveManifest(source: PluginSource): Promise<ResolvedRelease> {
     if (release !== null) {
         const assetUrl = manifestAssetUrl(release);
         if (assetUrl) {
-            const document = await fetchJson(assetUrl);
+            const response = await fetchAsset(assetUrl);
+            if (!response.ok) throw new InstallError("Could not download tumult.plugin.json from the release.");
+            let document: unknown;
+            try {
+                document = await response.json();
+            } catch {
+                throw new InstallError("The release's tumult.plugin.json could not be read.");
+            }
             const check = checkReleaseManifest(document);
             if (!check.ok) throw new InstallError(check.reason);
             return {
@@ -180,7 +196,7 @@ async function downloadBundle(resolved: ResolvedRelease, source: PluginSource): 
 
     let response: Response;
     try {
-        response = await fetch(url);
+        response = entryAssetUrl(resolved.release, entry) ? await fetchAsset(url) : await fetch(url);
     } catch {
         throw new InstallError(`Could not download ${entry} from ${source.owner}/${source.repo}.`);
     }
