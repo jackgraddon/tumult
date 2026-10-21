@@ -51,6 +51,16 @@ jobs:
     - name: Build
       # A successful end-to-end build for every push; release.yml trusts this
       # gate and lets Vercel build the tag itself.
+      #
+      # `VITE_CLIENT_URI` is REQUIRED by the real client (apps/web/vite.config.ts
+      # fails the build without it — see the module-scope-throw incident that
+      # produced a blank production site). CI never deploys, so it only needs a
+      # valid-shaped value to compile against: the URI identifies the APPLICATION
+      # rather than the instance, is shown on the IdP consent screen, and is never
+      # fetched. The real production value comes from the Vercel project's
+      # environment via `vercel pull` in release.yml.
+      env:
+        VITE_CLIENT_URI: https://ci.invalid
       run: pnpm -r build
 
     # The Docker/Synapse integration suite (tests/synapse/run.sh, via

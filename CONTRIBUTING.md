@@ -55,14 +55,31 @@ Once your work is merged into `main` and the CI passes:
     runs in the Actions runner and only `.vercel/output` is uploaded, so Vercel
     never rebuilds the same artifact. Build-time env like `VITE_CLIENT_URI`
     comes from the Vercel project's environment via `vercel pull`, so nothing
-    is plumbed through CI. The workflow needs three secrets in *repo → Settings
-    → Secrets*: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (the two
-    IDs together let the CLI skip `vercel link`). Your Vercel project must point
-    at the Vite app in `apps/web/` (framework: Vite, build: `pnpm build`, output:
-    the Vite out dir). CI on `main` is the gate that `release.yml` trusts.
-    `release.yml` is also `workflow_dispatch`-able: because `pnpm release` tags
-    are not re-runnable, run it manually against `main` to dry-run the pipeline
-    without cutting a release.
+    is plumbed through CI secrets. The workflow needs three secrets in *repo →
+    Settings → Secrets*: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+    (the two IDs together let the CLI skip `vercel link`). Your Vercel project
+    must point at the Vite app in `apps/web/` (framework: Vite, build:
+    `pnpm build`, output: the Vite out dir). CI on `main` is the gate that
+    `release.yml` trusts. `release.yml` is also `workflow_dispatch`-able:
+    because `pnpm release` tags are not re-runnable, run it manually against
+    `main` to dry-run the pipeline without cutting a release.
+
+    > ⚠️ **Every `vercel` step must run in `apps/web`.** `vercel pull` writes
+    > `.vercel/.env.production.local` *relative to the working directory*, and
+    > Vite only reads env files under its own root (`apps/web`). Running the
+    > steps from the repo root silently drops `VITE_CLIENT_URI`, and the app
+    > then builds without it — which is what took the production site down with
+    > a blank page (the value is required; see below). `release.yml` sets
+    > `defaults.run.working-directory: apps/web` for exactly this reason.
+
+    > ⚠️ **`VITE_CLIENT_URI` is required to build the real client.** It cannot be
+    > derived from `window.location`, because MAS rejects http and rejects
+    > `localhost` under either scheme, and it identifies the *application* (it is
+    > shown on the consent screen and never fetched). `apps/web/vite.config.ts`
+    > fails the build when it is missing, so a wrong setup breaks CI loudly
+    > instead of shipping an app that throws during import and renders nothing.
+    > CI's own `pnpm -r build` gate therefore supplies a placeholder
+    > (`https://ci.invalid`); the production value lives in the Vercel project.
 
 ## 🧪 What CI runs on every change
 
@@ -71,7 +88,7 @@ Once your work is merged into `main` and the CI passes:
 1.  **Type Checking:** `pnpm -r typecheck` catches contract drift across all packages.
 2.  **Unit Tests:** `pnpm -r test` — the hermetic per-package `test/` suites (core, ui, theme).
 3.  **Browser Smoke Test:** `pnpm --filter @tumult/web test:browser` — a `--mode fake` build with **no homeserver and no network** (see the test docstring), so it is safe in plain CI.
-4.  **Build:** `pnpm -r build` compiles every package; this is the gate `release.yml` trusts.
+4.  **Build:** `pnpm -r build` compiles every package **including the real client** (so it needs a `VITE_CLIENT_URI`; CI passes a placeholder); this is the gate `release.yml` trusts.
 
 **Local-only, not in CI:** the Docker/Synapse integration suite (`pnpm test:integration`
 → `tests/synapse/run.sh`) and the live-homeserver test
