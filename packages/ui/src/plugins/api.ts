@@ -13,6 +13,7 @@ import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
 import type { SettingsTab } from "../settings/tabs.ts";
+import type { WorkspacePane } from "../panes/registry.ts";
 
 export interface PluginApiTarget {
     /** Throws when the manifest did not declare `permission`. */
@@ -23,6 +24,7 @@ export interface PluginApiTarget {
     addCommand(command: Command): Disposable;
     addMemberDecoration(decoration: MemberDecoration): Disposable;
     addSettingsTab(tab: SettingsTab): Disposable;
+    addPane(pane: WorkspacePane): Disposable;
     /** Injects under this plugin's id as the owner (the registry binds it). */
     injectStylesheet(css: string): Disposable;
     /** Record a disposable so uninstall runs it whether or not the plugin kept it. */
@@ -50,6 +52,10 @@ export function createPluginApi(target: PluginApiTarget): PluginApi {
         addSettingsTab(tab) {
             target.require("settings-tabs");
             return target.track(target.addSettingsTab(tab));
+        },
+        addPane(pane) {
+            target.require("workspace-panes");
+            return target.track(target.addPane(pane));
         },
         injectStylesheet(css) {
             target.require("styles");

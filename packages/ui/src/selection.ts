@@ -1,9 +1,11 @@
 import { inject, type InjectionKey } from "vue";
 
 export interface RoomSelection {
-    view: "dms" | "guild";
+    view: "dms" | "guild" | "pane";
     guildId?: string | undefined;
     roomId?: string | undefined;
+    /** The workspace pane's id — set only when `view` is `"pane"`. */
+    paneId?: string | undefined;
 }
 
 export interface SelectionContext {

@@ -5,6 +5,7 @@ import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
 import type { SettingsTab } from "../settings/tabs.ts";
+import type { WorkspacePane } from "../panes/registry.ts";
 import type {
     Disposable,
     Permission,
@@ -94,6 +95,11 @@ export class PluginRegistry {
         return this.deps.settingsTabs.add(tab);
     }
 
+    /** Shell-level workspace pane (no permission — see {@link addRenderer}). */
+    public addPane(pane: WorkspacePane): Disposable {
+        return this.deps.panes.add(pane);
+    }
+
     /** Shell-level stylesheet, owned by `"shell"` (no permission — see {@link addRenderer}). */
     public injectStylesheet(css: string): Disposable {
         return this.deps.injectStylesheet(css, "shell");
@@ -141,6 +147,7 @@ export class PluginRegistry {
             addCommand: (command) => this.addCommand(command),
             addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
             addSettingsTab: (tab) => this.addSettingsTab(tab),
+            addPane: (pane) => this.addPane(pane),
             // The manifest id is the stylesheet's owner, so a failed install
             // and a later uninstall both remove exactly this plugin's styles.
             injectStylesheet: (css) => this.deps.injectStylesheet(css, id),
@@ -157,6 +164,7 @@ export class PluginRegistry {
             addCommand: api.addCommand,
             addMemberDecoration: api.addMemberDecoration,
             addSettingsTab: api.addSettingsTab,
+            addPane: api.addPane,
             injectStylesheet: api.injectStylesheet,
         };
 

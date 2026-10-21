@@ -25,6 +25,7 @@ import type { ComposerActionsRegistry, ComposerAction } from "../timeline/compos
 import type { CommandsRegistry, Command } from "../timeline/commands.ts";
 import type { MemberDecorationsRegistry, MemberDecoration } from "../members/decorations.ts";
 import type { SettingsTabsRegistry, SettingsTab } from "../settings/tabs.ts";
+import type { WorkspacePanesRegistry, WorkspacePane } from "../panes/registry.ts";
 import type { SelectionContext } from "../selection.ts";
 import type { ActionsContext } from "../actions.ts";
 
@@ -36,8 +37,8 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All six are enforced: `timeline-renderers`, `composer-actions`, `commands`,
- * `member-decorations`, `settings-tabs` and `styles`.
+ * All seven are enforced: `timeline-renderers`, `composer-actions`, `commands`,
+ * `member-decorations`, `settings-tabs`, `styles` and `workspace-panes`.
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -51,6 +52,7 @@ export const PLUGIN_PERMISSIONS = [
     "commands",
     "settings-tabs",
     "styles",
+    "workspace-panes",
 ] as const;
 
 export type Permission = (typeof PLUGIN_PERMISSIONS)[number];
@@ -135,6 +137,12 @@ export interface PluginApi {
     /** Add a tab to the settings dialog. */
     addSettingsTab(tab: SettingsTab): Disposable;
     /**
+     * Add a workspace pane — a top-level region of the shell, opened from a
+     * tile in the guild rail. The pane fills three slots (left nav, content,
+     * bottom bar); the shell keeps its own layout around them.
+     */
+    addPane(pane: WorkspacePane): Disposable;
+    /**
      * Append a `<style>` element to the document. The CSS applies app-wide
      * (there is no shadow root to scope into) and must be self-contained:
      * `@import` and any `url()` other than `data:`, `blob:` or a `#fragment`
@@ -185,6 +193,7 @@ export interface PluginDeps {
     commands: CommandsRegistry;
     memberDecorations: MemberDecorationsRegistry;
     settingsTabs: SettingsTabsRegistry;
+    panes: WorkspacePanesRegistry;
     selection: SelectionContext;
     actions: ActionsContext;
     media: PluginMedia;

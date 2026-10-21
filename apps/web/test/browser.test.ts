@@ -411,6 +411,57 @@ describe("browser smoke test (fake client)", () => {
         await dialog.waitFor({ state: "hidden", timeout: 5_000 });
     });
 
+    it("opens a workspace pane from the rail, in all three of its slots", async () => {
+        // A pane is the other kind of thing the rail opens: the tile under the
+        // DMs button belongs to a plugin, and clicking it hands the shell's
+        // own layout (rail, tracks, chrome) over to the plugin's three slots
+        // — nav, content, footer. The plugin's stylesheet (the `styles`
+        // permission) is what makes the note's box visible.
+        const tile = page.locator(".tumult-pane-item").first();
+        await tile.waitFor({ timeout: 10_000 });
+        assert.equal(
+            await tile.getAttribute("aria-label"),
+            "Plugin pane",
+            "the pane tile did not carry the label the plugin registered",
+        );
+
+        await tile.click();
+
+        await page.waitForSelector(".tumult-showcase-pane", { timeout: 10_000 });
+        await page.waitForSelector(".tumult-showcase-nav", { timeout: 10_000 });
+        await page.waitForSelector(".tumult-showcase-footer", { timeout: 10_000 });
+
+        assert.ok(
+            page.url().endsWith("/p/cc.jackg.tumult.pane-showcase"),
+            `the pane did not get its own route: ${page.url()}`,
+        );
+
+        // The shell's own layout is still the shell's: the pane occupies the
+        // tracks, it does not replace them.
+        const nav = await page.locator(".tumult-pane-sidebar").boundingBox();
+        const content = await page.locator(".tumult-pane-content").boundingBox();
+        const footer = await page.locator(".tumult-pane-footer").boundingBox();
+        assert.ok(nav && content && footer, "a pane slot was not rendered");
+        assert.ok(nav.width > 0 && nav.height > 0, "the pane's nav slot has no size");
+        assert.ok(content.width > 0 && content.height > 0, "the pane's content slot has no size");
+        assert.ok(footer.height > 0, "the pane's footer slot has no size");
+        // The nav is the left track, the content is the middle one, the footer
+        // runs along the bottom of the middle track.
+        assert.ok(nav.x < content.x, "the pane's nav is not left of its content");
+        assert.ok(footer.y > content.y, "the pane's footer is not below its content");
+
+        // The stylesheet the plugin injected is what paints the note.
+        const marker = await page
+            .locator('[data-showcase="pane-note"]')
+            .evaluate((element) => getComputedStyle(element).getPropertyValue("--tumult-showcase-style").trim());
+        assert.equal(marker, "applied", "the plugin's injected stylesheet did not reach the pane");
+
+        // Back to a room: the pane is a view, not a mode the app gets stuck in.
+        await page.locator(".tumult-dms-item").click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+        assert.equal(await page.locator(".tumult-showcase-pane").count(), 0, "the pane stayed on screen");
+    });
+
     it("installs a third-party plugin from a repository URL, verifying its hash", async () => {
         // The whole third-party path, end to end, with GitHub faked at the
         // network layer. A fresh context isolates the install from the tests

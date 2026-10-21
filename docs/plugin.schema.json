@@ -56,7 +56,8 @@
                     "member-decorations",
                     "commands",
                     "settings-tabs",
-                    "styles"
+                    "styles",
+                    "workspace-panes"
                 ]
             },
             "uniqueItems": true,

@@ -97,6 +97,8 @@ export type {
 } from "../members/decorations.ts";
 export { SettingsTabsKey, useSettingsTabs } from "../settings/tabs.ts";
 export type { SettingsTab, SettingsTabProps, SettingsTabsRegistry } from "../settings/tabs.ts";
+export { WorkspacePanesKey, useWorkspacePanes } from "../panes/registry.ts";
+export type { WorkspacePane, WorkspacePanesRegistry } from "../panes/registry.ts";
 
 // ── Navigation and cross-pane actions ───────────────────────────────────────
 export { SelectionKey, useSelection } from "../selection.ts";

@@ -14,12 +14,16 @@ import type { ChatClient, SessionView, SpaceTree } from "@tumult/core";
 
 import GuildRailItem from "./GuildRailItem.vue";
 import DmsRailItem from "./DmsRailItem.vue";
+import PaneRailItem from "./PaneRailItem.vue";
 import AccountTile from "./AccountTile.vue";
+import type { WorkspacePane } from "../panes/registry.ts";
 
 defineProps<{
     tree: SpaceTree;
     session: SessionView | null;
     client: ChatClient;
+    /** Workspace panes, in rail order (the shell owns the registry). */
+    panes?: readonly WorkspacePane[];
 }>();
 
 const emit = defineEmits<{
@@ -39,6 +43,9 @@ const emit = defineEmits<{
             <ScrollAreaViewport class="tumult-rail-viewport">
                 <ul class="tumult-rail-list">
                     <DmsRailItem :unread="tree.orphans.reduce((n, r) => n + r.unreadCount, 0)" />
+                    <!-- Workspace panes sit directly under the DMs button: a pane is
+                         the other kind of thing the rail opens. -->
+                    <PaneRailItem v-for="pane in panes ?? []" :key="pane.id" :pane="pane" />
                     <li class="tumult-rail-sep" aria-hidden="true" />
                     <li class="tumult-rail-add">
                         <DropdownMenuRoot>

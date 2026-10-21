@@ -6,6 +6,7 @@ const routes: RouteRecordRaw[] = [
     { path: "/auth/callback", name: "callback", component: () => import("./views/CallbackView.vue") },
     { path: "/dms/:roomId?", name: "dms", component: () => import("./views/AppView.vue") },
     { path: "/g/:guildId/:roomId?", name: "guild", component: () => import("./views/AppView.vue") },
+    { path: "/p/:paneId", name: "pane", component: () => import("./views/AppView.vue") },
     { path: "/", redirect: "/dms" },
 ];
 

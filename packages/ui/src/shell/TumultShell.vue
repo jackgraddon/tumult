@@ -13,7 +13,9 @@ import { CommandsKey, CommandsRegistry } from "../timeline/commands.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
+import { installVueBridge } from "../plugins/vueBridge.ts";
 import { SettingsTabsKey, SettingsTabsRegistry } from "../settings/tabs.ts";
+import { WorkspacePanesKey, WorkspacePanesRegistry } from "../panes/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
 import MediaMessage from "../timeline/renderers/MediaMessage.vue";
@@ -62,6 +64,7 @@ const emit = defineEmits<{
 
 function hrefFor(next: RoomSelection): string {
     if (next.view === "dms") return next.roomId ? `/dms/${encodeURIComponent(next.roomId)}` : "/dms";
+    if (next.view === "pane") return `/p/${encodeURIComponent(next.paneId ?? "")}`;
     const guild = next.guildId ? `/g/${encodeURIComponent(next.guildId)}` : "/g";
     return next.roomId ? `${guild}/${encodeURIComponent(next.roomId)}` : guild;
 }
@@ -116,6 +119,7 @@ const composerActions = new ComposerActionsRegistry();
 const commands = new CommandsRegistry();
 const memberDecorations = new MemberDecorationsRegistry();
 const settingsTabs = new SettingsTabsRegistry();
+const panes = new WorkspacePanesRegistry();
 const media = {
     resolve: (uri: string, size: number) => props.client.resolveMedia(uri, size),
     resolveDownload: (uri: string) => props.client.resolveMediaDownload(uri),
@@ -128,6 +132,7 @@ const plugins = new PluginRegistry({
     commands,
     memberDecorations,
     settingsTabs,
+    panes,
     selection: selectionContext,
     actions: actionsCtx,
     media,
@@ -139,6 +144,12 @@ provide(ComposerActionsKey, composerActions);
 provide(CommandsKey, commands);
 provide(MemberDecorationsKey, memberDecorations);
 provide(SettingsTabsKey, settingsTabs);
+provide(WorkspacePanesKey, panes);
+
+// A third-party plugin's bundle shares THIS Vue instance (a second copy would
+// break provide/inject and its own lifecycle hooks), and it reaches it through
+// the bridge the template's build shim forwards to.
+installVueBridge();
 
 const mediaTypes = new Set(["m.image", "m.video", "m.audio", "m.file"]);
 plugins.addRenderer("m.room.message", {
@@ -256,6 +267,14 @@ const activeRoom = computed(() => {
 });
 
 const activeRoomId = computed(() => activeRoom.value?.id);
+
+// The workspace pane the selection points at, if any. Reading the registry
+// inside a computed registers the dependency, so a pane a plugin registers
+// after the first paint still opens.
+const activePane = computed(() => {
+    const paneId = props.selection.view === "pane" ? props.selection.paneId : undefined;
+    return paneId === undefined ? undefined : panes.get(paneId);
+});
 
 // The gear opens room settings; while power levels are unknown we leave it
 // visible and let the server reject (the slice-23 rule). Once known, only
@@ -450,11 +469,13 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 class="tumult-shell-grid"
                 :data-roomlist="showRoomList ? 'open' : 'closed'"
                 :data-members="showMembers ? 'open' : 'closed'"
+                :data-view="activePane ? 'pane' : 'room'"
             >
                 <GuildRail
                     :tree="tree"
                     :session="session"
                     :client="client"
+                    :panes="panes.all()"
                     @sign-out="emit('signOut')"
                     @security="openSecurityModal()"
                     @verify="openVerificationModal()"
@@ -464,8 +485,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     @join="roomAction = { kind: 'join' }"
                 />
                 <div class="tumult-pane tumult-pane-roomlist" :inert="!showRoomList ? true : undefined">
+                    <!-- A workspace pane owns the left track: its own nav, not the room list. -->
+                    <component :is="activePane.sidebar" v-if="activePane?.sidebar" class="tumult-pane-sidebar" />
                     <RoomListPane
-                        v-if="selection.view === 'guild'"
+                        v-else-if="selection.view === 'guild'"
                         :guild="activeGuild"
                         :selection="selection"
                         :has-more="moreRooms"
@@ -485,16 +508,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 <div class="tumult-pane tumult-pane-timeline">
                     <div class="tumult-pane-toolbar">
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')">☰</IconButton>
-                        <IconButton label="Toggle members" @click="emit('toggleMembers')">👥</IconButton>
+                        <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')">👥</IconButton>
                         <IconButton
-                            v-if="threadsEnabled && activeRoomId"
+                            v-if="!activePane && threadsEnabled && activeRoomId"
                             label="Threads"
                             :aria-pressed="threadView !== null"
                             @click="toggleThreadList"
                             >🧵</IconButton
                         >
                     </div>
+                    <component :is="activePane.content" v-if="activePane" class="tumult-pane-content" />
                     <TimelinePane
+                        v-else
                         :client="client"
                         :room="activeRoom"
                         :threads-enabled="threadsEnabled"
@@ -531,6 +556,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :room-id="activeRoomId"
                         @invite="roomAction = { kind: 'invite' }"
                     />
+                </div>
+                <!-- The pane's bottom bar: a second grid row under the content. -->
+                <div v-if="activePane?.footer" class="tumult-pane-footer">
+                    <component :is="activePane.footer" />
                 </div>
             </div>
 <RecoverySetupModal
@@ -637,6 +666,34 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         var(--layout-roomlist-width)
         minmax(0, 1fr)
         var(--layout-members-width);
+    /* Row 1 is the workspace; row 2 is a workspace pane's bottom bar (the
+       player). It is empty — and zero-height — for everything else. */
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+.tumult-shell-grid > .tumult-rail {
+    grid-column: 1;
+    grid-row: 1 / -1;
+}
+.tumult-pane-roomlist {
+    grid-column: 2;
+    grid-row: 1;
+}
+.tumult-pane-timeline {
+    grid-column: 3;
+    grid-row: 1;
+}
+.tumult-pane-members {
+    grid-column: 4;
+    grid-row: 1;
+}
+.tumult-pane-footer {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--surface-pane);
+    border-top: var(--border-width) solid var(--border-default);
 }
 .tumult-shell-grid[data-roomlist="closed"] {
     grid-template-columns:
@@ -653,6 +710,22 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         0;
 }
 .tumult-shell-grid[data-roomlist="closed"][data-members="closed"] {
+    grid-template-columns:
+        var(--layout-guild-rail-width)
+        0
+        minmax(0, 1fr)
+        0;
+}
+/* A workspace pane replaces the room list and the timeline: the member list
+   is about a room, so it has nothing to say here. */
+.tumult-shell-grid[data-view="pane"] {
+    grid-template-columns:
+        var(--layout-guild-rail-width)
+        var(--layout-roomlist-width)
+        minmax(0, 1fr)
+        0;
+}
+.tumult-shell-grid[data-view="pane"][data-roomlist="closed"] {
     grid-template-columns:
         var(--layout-guild-rail-width)
         0
@@ -677,6 +750,17 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
     flex-direction: column;
     min-height: 0;
     background: var(--timeline-bg);
+}
+/* The pane's content fills the track; its own layout is the plugin's. */
+.tumult-pane-content {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+/* The pane's left nav fills the room-list track, the same place the channel
+   list lives. */
+.tumult-pane-sidebar {
+    flex: 1 1 auto;
+    min-height: 0;
 }
 .tumult-thread-overlay {
     position: absolute;

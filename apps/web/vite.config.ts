@@ -65,15 +65,22 @@ export default defineConfig(({ mode }) => {
         // blob: URL (blob:).
         "script-src 'self' 'wasm-unsafe-eval' blob:",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob: https:",
+        // A plugin may load images from a server the user points it at (a
+        // self-hosted media server on the LAN is plain http), so the picture
+        // directive has to allow http: as well as https:.
+        "img-src 'self' data: blob: https: http:",
         // The self-hosted Figtree faces are same-origin; naming the
         // directive keeps a future default-src tightening from
         // silently dropping the UI font.
         "font-src 'self'",
         // Inline <video>/<audio> playback is a blob: URL, which
-        // media-src would otherwise inherit from default-src 'self'.
-        "media-src 'self' blob:",
-        "connect-src 'self' https: wss:",
+        // media-src would otherwise inherit from default-src 'self'. A media
+        // plugin streams straight from its own server, so the directive names
+        // the schemes a LAN server can use.
+        "media-src 'self' blob: https: http:",
+        // The same reason: a plugin talks to the server its user gave it,
+        // which is often plain http on a home network.
+        "connect-src 'self' https: http: wss:",
         "worker-src 'self' blob:",
     ].join("; ");
 

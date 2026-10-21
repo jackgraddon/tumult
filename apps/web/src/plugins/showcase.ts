@@ -2,6 +2,9 @@ import type { Plugin } from "@tumult/ui";
 
 import AdminBadge from "./AdminBadge.vue";
 import SettingsShowcaseTab from "./SettingsShowcaseTab.vue";
+import PaneShowcase from "./PaneShowcase.vue";
+import PaneShowcaseNav from "./PaneShowcaseNav.vue";
+import PaneShowcaseFooter from "./PaneShowcaseFooter.vue";
 
 /**
  * Reference plugins, registered by the app (not `packages/ui`), proving each
@@ -114,6 +117,48 @@ export const settingsShowcase: Plugin = {
             id: "cc.jackg.tumult.settings-showcase",
             title: "Plugin demo",
             component: SettingsShowcaseTab,
+        });
+    },
+};
+
+/**
+ * `workspace-panes` + `styles` — a whole screen of the app's own, opened from
+ * a tile in the guild rail.
+ *
+ * A pane takes three slots: a left nav, a content area and a bottom bar. The
+ * shell keeps the layout (the tile sits under the DMs button, the nav is where
+ * the channel list lives, the bar is pinned to the bottom) and the plugin
+ * fills the slots.
+ */
+export const workspaceShowcase: Plugin = {
+    manifest: {
+        id: "cc.jackg.tumult.pane-showcase",
+        name: "Pane showcase",
+        version: "1.0.0",
+        author: "Tumult",
+        description: "Adds a workspace pane to the rail, styled by an injected stylesheet.",
+        permissions: ["workspace-panes", "styles"],
+    },
+    install(ctx) {
+        ctx.injectStylesheet(`
+.tumult-showcase-note {
+    --tumult-showcase-style: applied;
+    margin: 0;
+    padding: var(--space-3);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+`);
+        ctx.addPane({
+            id: "cc.jackg.tumult.pane-showcase",
+            label: "Plugin pane",
+            icon: "🧩",
+            content: PaneShowcase,
+            sidebar: PaneShowcaseNav,
+            footer: PaneShowcaseFooter,
         });
     },
 };

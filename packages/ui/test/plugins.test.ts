@@ -9,6 +9,7 @@ import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
 import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
 import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
+import { WorkspacePanesRegistry } from "../src/panes/registry.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
 import { PLUGIN_API_VERSION, compareVersions } from "../src/plugins/compat.ts";
 import { CONTRACT_VERSION } from "@tumult/core/contract";
@@ -38,6 +39,7 @@ function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
         commands: new CommandsRegistry(),
         memberDecorations: new MemberDecorationsRegistry(),
         settingsTabs: new SettingsTabsRegistry(),
+        panes: new WorkspacePanesRegistry(),
         client: {} as ChatClient,
         selection: {} as SelectionContext,
         actions: {} as ActionsContext,
@@ -332,6 +334,7 @@ describe("PluginRegistry extension points", () => {
                     "member-decorations",
                     "settings-tabs",
                     "styles",
+                    "workspace-panes",
                 ],
             }),
             install(ctx) {
@@ -340,6 +343,7 @@ describe("PluginRegistry extension points", () => {
                 ctx.addMemberDecoration({ id: "d1", component: PluginComp });
                 ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp });
                 ctx.injectStylesheet(".tumult-demo { color: red; }");
+                ctx.addPane({ id: "p1", label: "One", content: PluginComp });
             },
         };
 
@@ -348,6 +352,7 @@ describe("PluginRegistry extension points", () => {
         assert.equal(deps.commands.all().length, 1);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
         assert.equal(deps.settingsTabs.all().length, 1);
+        assert.equal(deps.panes.all().length, 1);
         assert.deepEqual(deps.stylesheets, [
             { css: ".tumult-demo { color: red; }", owner: "test.plugin" },
         ]);
@@ -357,6 +362,7 @@ describe("PluginRegistry extension points", () => {
         assert.equal(deps.commands.all().length, 0);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
         assert.equal(deps.settingsTabs.all().length, 0);
+        assert.equal(deps.panes.all().length, 0);
         // The stylesheet's disposer is tracked, not left to the plugin.
         assert.deepEqual(deps.removedStylesheets, ["test.plugin"]);
     });
@@ -368,6 +374,7 @@ describe("PluginRegistry extension points", () => {
             ["member-decorations", (ctx) => ctx.addMemberDecoration({ id: "d1", component: PluginComp })],
             ["settings-tabs", (ctx) => ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp })],
             ["styles", (ctx) => ctx.injectStylesheet(".tumult-demo { color: red; }")],
+            ["workspace-panes", (ctx) => ctx.addPane({ id: "p1", label: "One", content: PluginComp })],
         ];
 
         for (const [permission, use] of cases) {
@@ -380,6 +387,7 @@ describe("PluginRegistry extension points", () => {
             assert.equal(deps.commands.all().length, 0, permission);
             assert.equal(deps.memberDecorations.resolve({} as never).length, 0, permission);
             assert.equal(deps.settingsTabs.all().length, 0, permission);
+            assert.equal(deps.panes.all().length, 0, permission);
             assert.equal(deps.stylesheets.length, 0, permission);
         }
     });
@@ -392,11 +400,13 @@ describe("PluginRegistry extension points", () => {
         const badgeDispose = plugins.addMemberDecoration({ id: "d1", component: PluginComp });
         const tabDispose = plugins.addSettingsTab({ id: "s1", title: "One", component: PluginComp });
         const stylesDispose = plugins.injectStylesheet(".tumult-demo { color: red; }");
+        const paneDispose = plugins.addPane({ id: "p1", label: "One", content: PluginComp });
 
         assert.equal(deps.composerActions.all().length, 1);
         assert.equal(deps.commands.all().length, 1);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
         assert.equal(deps.settingsTabs.all().length, 1);
+        assert.equal(deps.panes.all().length, 1);
         // Shell-level styles have no plugin manifest to borrow an id from.
         assert.deepEqual(deps.stylesheets, [
             { css: ".tumult-demo { color: red; }", owner: "shell" },
@@ -407,10 +417,12 @@ describe("PluginRegistry extension points", () => {
         badgeDispose();
         tabDispose();
         stylesDispose();
+        paneDispose();
         assert.equal(deps.composerActions.all().length, 0);
         assert.equal(deps.commands.all().length, 0);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
         assert.equal(deps.settingsTabs.all().length, 0);
+        assert.equal(deps.panes.all().length, 0);
         assert.deepEqual(deps.removedStylesheets, ["shell"]);
     });
 });

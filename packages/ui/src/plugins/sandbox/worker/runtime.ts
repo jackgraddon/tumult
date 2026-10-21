@@ -344,6 +344,9 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             addSettingsTab() {
                 throw new Error("settings tabs require the trusted lane");
             },
+            addPane() {
+                throw new Error("workspace panes require the trusted lane");
+            },
             injectStylesheet(css: string) {
                 contribute("injectStylesheet", { css });
                 return () => undefined;

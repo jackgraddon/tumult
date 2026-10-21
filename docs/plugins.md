@@ -12,9 +12,9 @@ Companion to `docs/themes.md` (theming, which shares the same
 - A plugin is a plain **TypeScript module** the app registers at runtime:
   a `manifest` plus `install(ctx)`. The registry never fetches, parses or
   evaluates anything — it receives a `Plugin` object (§1–§9).
-- It extends the shell through **six** APIs — timeline renderers, composer
-  actions, slash commands, member decorations, settings tabs and stylesheets.
-  Each one is gated by a **permission** the manifest declares.
+- It extends the shell through **seven** APIs — timeline renderers, composer
+  actions, slash commands, member decorations, settings tabs, stylesheets and
+  workspace panes. Each one is gated by a **permission** the manifest declares.
 - Everything a plugin registers is a **disposable**. Uninstall reverses all of
   it, and an install that throws is rolled back atomically — a half-installed
   plugin leaves no residue.
@@ -30,9 +30,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 - The **lane is derived, never declared** (`deriveLane`): a plugin whose
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
   loaded into a **Worker** and reaches the shell only through the bridge; a
-  plugin that contributes a live component (renderer, decoration, settings tab)
-  runs **in-page at the app's trust level**, and the consent screen says so out
-  loud. The in-page lane is an extension seam, **not** a sandbox.
+  plugin that contributes a live component (renderer, decoration, settings tab,
+  workspace pane) runs **in-page at the app's trust level**, and the consent
+  screen says so out loud. The in-page lane is an extension seam, **not** a
+  sandbox.
 - A plugin callback is **not** a component: use `ctx` inside `install`, `run`
   and `match`. The `inject()`-based hooks (`useSelection`, `usePluginRegistry`,
   …) only work inside components — renderers, decorations and settings tabs.
@@ -170,7 +171,7 @@ without a reload.
 
 ## 4. Permissions
 
-`Permission` is a closed union of six strings; each API demands exactly one:
+`Permission` is a closed union of seven strings; each API demands exactly one:
 
 | permission | API it unlocks |
 |---|---|
@@ -180,6 +181,7 @@ without a reload.
 | `member-decorations` | `addMemberDecoration` |
 | `settings-tabs` | `addSettingsTab` |
 | `styles` | `injectStylesheet` |
+| `workspace-panes` | `addPane` |
 
 Calling an API whose permission is not in `manifest.permissions` throws
 immediately — and because the throw happens during `install`, the whole install
@@ -198,9 +200,9 @@ module. For a third-party plugin it is also the input to the lane rule (§11) �
 which is why an undeclared permission is a hard failure, and an *unknown*
 permission refuses the install outright rather than being ignored.
 
-## 5. The six APIs
+## 5. The seven APIs
 
-`PluginContext` extends `PluginApi`, so the six methods below are simply
+`PluginContext` extends `PluginApi`, so the seven methods below are simply
 `ctx.addRenderer(…)`, `ctx.addCommand(…)` and so on. All live in
 `packages/ui/src/plugins/api.ts` (permission gate + tracking) over the
 per-shell registries in §1.
@@ -636,9 +638,76 @@ ctx.injectStylesheet(`.a { background: url(https://cdn.example/i.png); }`); // t
 ctx.injectStylesheet(`.a { background: url(data:image/png;base64,…); }`);   // OK
 ```
 
+### 5.7 `addPane(pane)` — `workspace-panes`
+
+Adds a **workspace pane**: a top-level screen of the app's own, opened from a
+tile in the guild rail. It is the extension point for a plugin that wants a
+whole region to itself — a media library, a notes app, a dashboard — rather
+than a decoration inside somebody else's region.
+
+```ts
+addPane(pane: WorkspacePane): Disposable
+
+interface WorkspacePane {
+    id: string;            // keys the registration (namespaced, stable)
+    label: string;         // the rail tile's tooltip and accessible name
+    icon?: string;         // glyph in the tile; defaults to the label's first letter
+    priority?: number;     // higher sorts nearer the top of the rail. Default 0.
+    content: Component;    // the main area
+    sidebar?: Component;   // the left nav (where the channel list normally is)
+    footer?: Component;    // the bottom bar (a player, a status strip, …)
+}
+```
+
+The shell keeps its layout and hands the pane three slots:
+
+| slot | where it lands |
+|---|---|
+| `sidebar` | the left track — the same place the channel list lives, and the same ☰ toggle collapses it |
+| `content` | the main track — where the timeline normally is |
+| `footer` | a bar under the workspace, spanning the pane's width |
+
+A pane is opened by selecting it: `ctx.selection.select({ view: "pane", paneId })`,
+and `ctx.selection.hrefFor({ view: "pane", paneId })` gives its URL. The shell
+renders a rail tile for every registered pane, directly under the DMs button.
+
+The components are normal components **inside the shell's tree**, so they can
+`inject()` anything the shell provides (`useSelection`, the plugin registry,
+the theme controls) on top of their props. A pane is *not* a replacement for a
+region: the shell's own chrome, the rail and the layout stay where they are
+(§10).
+
+**Example — a pane with all three slots.**
+
+```ts
+install(ctx) {
+    ctx.addPane({
+        id: "cc.example.library",
+        label: "Library",
+        icon: "📚",
+        content: LibraryView,
+        sidebar: LibraryNav,
+        footer: NowPlayingBar,
+    });
+}
+```
+
+**Example — opening it from a command.** A pane is just a selection, so a
+slash command can open one:
+
+```ts
+ctx.addCommand({
+    name: "library",
+    description: "Open the library",
+    run: () => {
+        ctx.selection.select({ view: "pane", paneId: "cc.example.library" });
+    },
+});
+```
+
 ## 6. The context
 
-Beyond the six APIs, `PluginContext` is the whole read/write surface a plugin
+Beyond the seven APIs, `PluginContext` is the whole read/write surface a plugin
 gets. There is deliberately **no `window`, no `document`, no router and no
 storage** — data flows through the same `ChatClient` contract the UI itself
 uses.
@@ -864,7 +933,7 @@ assertion there.
 This document is guarded too: `packages/ui/test/docs.test.ts` parses the fenced
 code here and fails if it declares a permission or calls a `ctx.*` API that does
 not exist, imports a name `@tumult/ui` does not export, or forgets to document
-one of the six permissions or six APIs. Change the API and that test names the
+one of the seven permissions or seven APIs. Change the API and that test names the
 stale line. The release schema is guarded separately:
 `packages/ui/test/plugin-schema.test.ts` fails when the committed schema files
 drift from the builder, when the schema and the runtime validator disagree, or
@@ -879,9 +948,10 @@ when the lane rule and the permission list fall out of step.
 - **No silent updates.** Nothing polls or replaces an installed plugin behind
   your back. An update is a user action, and a version that asks for **new**
   permissions re-opens the consent screen.
-- **No shell/pane replacement.** There is no API to replace a pane, reorder the
-  shell or take over a region — the extension points decorate and add, they do
-  not restructure. This keeps the layout stable and predictable.
+- **No shell/pane replacement.** A plugin can *add* a region of its own
+  (§5.7), but it cannot replace one, reorder the shell or take over a region it
+  was not given — the extension points decorate and add, they do not
+  restructure. This keeps the layout stable and predictable.
 - **No patch/hook type.** The `Patch` type from the original sketch is dropped
   on purpose: plugins register modules; nothing rewrites code strings on a live
   object.
@@ -927,7 +997,7 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 | lane | how it loads | what it may declare |
 |---|---|---|
 | `sandbox` | the bundle is loaded and run **inside a Worker**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
-| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions |
+| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `settings-tabs`, `workspace-panes`) |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
 permissions, and the consent screen prints the resulting lane in plain words.

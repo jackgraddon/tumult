@@ -69,6 +69,9 @@ export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations }
 export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
 export { SettingsTabsKey, SettingsTabsRegistry, useSettingsTabs } from "./settings/tabs.ts";
 export type { SettingsTab, SettingsTabProps } from "./settings/tabs.ts";
+export { WorkspacePanesKey, WorkspacePanesRegistry, useWorkspacePanes } from "./panes/registry.ts";
+export type { WorkspacePane } from "./panes/registry.ts";
+export { installVueBridge } from "./plugins/vueBridge.ts";
 export { findExternalStylesheetReferences, injectStylesheet } from "./plugins/styles.ts";
 export { default as SettingsDialog } from "./settings/SettingsDialog.vue";
 export { default as PluginsTab } from "./settings/PluginsTab.vue";
@@ -82,6 +85,7 @@ export { default as ConnectionBanner } from "./shell/ConnectionBanner.vue";
 export { default as GuildRail } from "./rail/GuildRail.vue";
 export { default as GuildRailItem } from "./rail/GuildRailItem.vue";
 export { default as DmsRailItem } from "./rail/DmsRailItem.vue";
+export { default as PaneRailItem } from "./rail/PaneRailItem.vue";
 export { default as AccountTile } from "./rail/AccountTile.vue";
 export { default as RoomListPane } from "./roomlist/RoomListPane.vue";
 export { default as SpaceCategory } from "./roomlist/SpaceCategory.vue";

@@ -965,10 +965,52 @@ export declare class SettingsTabsRegistry {
 }
 export declare const SettingsTabsKey: InjectionKey<SettingsTabsRegistry>;
 export declare function useSettingsTabs(): SettingsTabsRegistry;
+/**
+ * One workspace pane — a top-level region of the shell that a plugin fills.
+ *
+ * A pane is what the guild rail's *other* kind of tile opens: the DMs button
+ * and the guild tiles open rooms, a pane tile opens the plugin's own region.
+ * The shell keeps its layout (the rail, the tracks, the chrome) and hands the
+ * pane three slots to fill; the plugin never replaces a region, it occupies
+ * the one it was given.
+ */
+export interface WorkspacePane {
+	/** Stable, namespaced id — the registry keys by it, and the route uses it. */
+	id: string;
+	/** Label in the rail tile's tooltip and its accessible name. */
+	label: string;
+	/** Glyph rendered in the rail tile. Defaults to the label's first letter. */
+	icon?: string;
+	/** Higher sorts nearer the top of the rail. Default 0. */
+	priority?: number;
+	/** The main area — the track the timeline normally occupies. */
+	content: Component;
+	/** The left nav — the track the channel list normally occupies. */
+	sidebar?: Component;
+	/** The bottom bar, spanning the pane's width — the player. */
+	footer?: Component;
+}
+/**
+ * Per-shell workspace-pane registry (provide/inject — never a module
+ * singleton, same rule as `SettingsTabsRegistry`).
+ */
+export declare class WorkspacePanesRegistry {
+	private readonly list;
+	add(pane: WorkspacePane): Disposable$1;
+	remove(id: string): boolean;
+	/** The pane registered under `id`, or undefined. */
+	get(id: string): WorkspacePane | undefined;
+	/** Highest priority first. */
+	all(): WorkspacePane[];
+}
+export declare const WorkspacePanesKey: InjectionKey<WorkspacePanesRegistry>;
+export declare function useWorkspacePanes(): WorkspacePanesRegistry;
 export interface RoomSelection {
-	view: "dms" | "guild";
+	view: "dms" | "guild" | "pane";
 	guildId?: string | undefined;
 	roomId?: string | undefined;
+	/** The workspace pane's id — set only when `view` is `"pane"`. */
+	paneId?: string | undefined;
 }
 export interface SelectionContext {
 	current: RoomSelection;
@@ -1018,8 +1060,8 @@ type Disposable$1 = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All six are enforced: `timeline-renderers`, `composer-actions`, `commands`,
- * `member-decorations`, `settings-tabs` and `styles`.
+ * All seven are enforced: `timeline-renderers`, `composer-actions`, `commands`,
+ * `member-decorations`, `settings-tabs`, `styles` and `workspace-panes`.
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -1032,7 +1074,8 @@ export declare const PLUGIN_PERMISSIONS: readonly [
 	"member-decorations",
 	"commands",
 	"settings-tabs",
-	"styles"
+	"styles",
+	"workspace-panes"
 ];
 export type Permission = (typeof PLUGIN_PERMISSIONS)[number];
 /**
@@ -1113,6 +1156,12 @@ export interface PluginApi {
 	/** Add a tab to the settings dialog. */
 	addSettingsTab(tab: SettingsTab): Disposable$1;
 	/**
+	 * Add a workspace pane — a top-level region of the shell, opened from a
+	 * tile in the guild rail. The pane fills three slots (left nav, content,
+	 * bottom bar); the shell keeps its own layout around them.
+	 */
+	addPane(pane: WorkspacePane): Disposable$1;
+	/**
 	 * Append a `<style>` element to the document. The CSS applies app-wide
 	 * (there is no shadow root to scope into) and must be self-contained:
 	 * `@import` and any `url()` other than `data:`, `blob:` or a `#fragment`
@@ -1158,7 +1207,7 @@ interface Plugin$1 {
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export declare const PLUGIN_API_VERSION = "1.0.0";
+export declare const PLUGIN_API_VERSION = "1.1.0";
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its
  * leading integer (`"2-beta"` → 2, missing segments → 0); non-numeric text

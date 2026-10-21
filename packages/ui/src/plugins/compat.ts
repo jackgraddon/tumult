@@ -21,7 +21,7 @@ import type { PluginManifest } from "./types.ts";
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export const PLUGIN_API_VERSION = "1.0.0";
+export const PLUGIN_API_VERSION = "1.1.0";
 
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its

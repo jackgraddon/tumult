@@ -13,7 +13,7 @@ import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
-import { adminBadge, reactLastAction, settingsShowcase, shrugCommand } from "../plugins/showcase.ts";
+import { adminBadge, reactLastAction, settingsShowcase, shrugCommand, workspaceShowcase } from "../plugins/showcase.ts";
 import { pluginInstallController } from "../plugins/controller.ts";
 import { themeController } from "../theme/controller.ts";
 
@@ -84,6 +84,7 @@ onMounted(async () => {
     shell.value?.plugins.install(reactLastAction);
     shell.value?.plugins.install(adminBadge);
     shell.value?.plugins.install(settingsShowcase);
+    shell.value?.plugins.install(workspaceShowcase);
 
     // Third-party installs: hand the controller the shell's registry, then
     // re-hash and load every enabled stored plugin. Failures are reported per
@@ -98,6 +99,10 @@ onMounted(async () => {
 });
 
 const selection = computed<RoomSelection>(() => {
+    if (route.name === "pane") {
+        const paneId = typeof route.params["paneId"] === "string" ? route.params["paneId"] : undefined;
+        return { view: "pane", paneId };
+    }
     if (route.name === "dms") {
         const roomId = typeof route.params["roomId"] === "string" ? decodeRoomId(route.params["roomId"]) : undefined;
         return { view: "dms", roomId };

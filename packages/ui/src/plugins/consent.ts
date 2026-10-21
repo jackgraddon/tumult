@@ -27,6 +27,8 @@ export const PERMISSION_SUMMARY = {
     "member-decorations": "Add a badge or small marker next to people's names in the member list.",
     commands: "Add slash commands you can type in the composer, like /shrug.",
     "settings-tabs": "Add a tab to the settings window with its own controls.",
+    "workspace-panes":
+        "Add its own screen to the app — a new tile in the guild rail with a window of its own.",
     styles: "Change how the app looks by injecting CSS stylesheets.",
 } as const satisfies Record<Permission, string>;
 
