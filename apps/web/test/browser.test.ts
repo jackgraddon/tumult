@@ -462,6 +462,55 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(await page.locator(".tumult-showcase-pane").count(), 0, "the pane stayed on screen");
     });
 
+    it("loads a workspace pane directly by URL (reload / shared link)", async () => {
+        // The pane route must render the plugin's region on a cold direct load,
+        // not wait for the user to click a rail tile. The app's own boot does a
+        // history.replaceState during initial navigation; tolerate the "navigation
+        // interrupted" race that Playwright reports for same-document replaces.
+        const cold = await browser.newContext({ viewport: VIEWPORT });
+        await cold.addInitScript((session) => {
+            localStorage.setItem("tumult.session", JSON.stringify(session));
+        }, SESSION);
+        const coldPage = await cold.newPage();
+        const errors: string[] = [];
+        coldPage.on("console", (message) => {
+            if (message.type() === "error") errors.push(message.text());
+        });
+        coldPage.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+
+        try {
+            await coldPage.goto(`${origin}/p/cc.jackg.tumult.pane-showcase`, { waitUntil: "domcontentloaded" });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes("interrupted by another navigation")) throw error;
+        }
+
+        await coldPage.waitForSelector(".tumult-showcase-pane", { timeout: 10_000 });
+        await coldPage.waitForSelector(".tumult-showcase-nav", { timeout: 10_000 });
+        await coldPage.waitForSelector(".tumult-showcase-footer", { timeout: 10_000 });
+        await coldPage.waitForSelector(".tumult-pane-content", { timeout: 5_000 });
+
+        assert.equal(coldPage.url(), `${origin}/p/cc.jackg.tumult.pane-showcase`);
+        assert.equal(
+            await coldPage.locator(".tumult-shell-grid").getAttribute("data-view"),
+            "pane",
+            "a direct pane load did not set data-view=pane",
+        );
+        assert.equal(
+            await coldPage.locator(".tumult-timeline").count(),
+            0,
+            "a direct pane load showed the room timeline instead of the pane",
+        );
+
+        const nav = await coldPage.locator(".tumult-pane-sidebar").boundingBox();
+        const content = await coldPage.locator(".tumult-pane-content").boundingBox();
+        assert.ok(nav && content && nav.width > 0 && content.width > 0, "direct pane load did not lay out the pane slots");
+        assert.ok(nav.x < content.x, "the pane nav was not left of content on a direct load");
+
+        await coldPage.close();
+        await cold.close();
+    });
+
     it("installs a third-party plugin from a repository URL, verifying its hash", async () => {
         // The whole third-party path, end to end, with GitHub faked at the
         // network layer. A fresh context isolates the install from the tests

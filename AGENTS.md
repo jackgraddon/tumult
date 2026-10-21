@@ -330,6 +330,8 @@ chat client should be.
 - Packages that emit runtime JS use `rewriteRelativeImportExtensions` so
   sources keep `.ts` specifiers. `apps/web` turns it OFF — the rule cannot
   handle `.vue` specifiers, and Vite does the emitting there anyway.
+- esbuild cannot compile SFCs (`.vue`); the plugin template uses Vite +
+  `@vitejs/plugin-vue` with `vue` aliased to the host's shim (`globalThis.__tumult.vue`).
 
 ## Linux is a target — test early
 

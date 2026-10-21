@@ -18,5 +18,5 @@
             "vue": ["./node_modules/vue"]
         }
     },
-    "include": ["src/**/*.ts", "types/**/*.d.ts"]
+    "include": ["src/**/*.ts", "src/**/*.vue", "types/**/*.d.ts"]
 }

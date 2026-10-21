@@ -1,104 +1,222 @@
 /**
- * The `vue` your bundle builds against.
+ * The `vue` your bundle builds against — GENERATED, do not edit by hand.
+ *
+ * Run `pnpm shim` (scripts/gen-vue-shim.mjs) to regenerate it from the
+ * installed `vue` package.
  *
  * A plugin must share the HOST's Vue instance — a second copy would break
- * `provide`/`inject` and split reactivity in two. So the build aliases `vue`
- * to this shim (see `esbuild.config.mjs`), and Tumult puts its own runtime on
- * `globalThis.__tumult.vue` before it installs any plugin.
+ * `provide`/`inject` and split reactivity in two. So the build aliases
+ * `vue` to this file (see `vite.config.ts`), and the shell puts its own
+ * runtime on `globalThis.__tumult.vue` before it imports any plugin.
  *
- * Import the real `vue` for its TYPES (`import { h } from "vue"` still
- * typechecks — `vue` is a devDependency); at runtime this file is what ships.
- * Everything is resolved lazily so a missing bridge throws a sentence that
- * names the problem instead of `undefined is not a function`.
+ * Every export below is a binding to the host's own value, so a compiled
+ * single-file component finds the helpers it needs (`openBlock`,
+ * `createElementBlock`, `renderList`, `toDisplayString`, …) and the
+ * identity-sensitive ones (`Fragment`, `Transition`) are the host's
+ * objects, not look-alikes.
  *
- * Only the members a plugin realistically needs are forwarded. To use one that
- * is not here, add it (and its type import) — the shim is the whole surface.
+ * Import the real `vue` for your TYPES (`import { h } from "vue"` still
+ * typechecks — `vue` is a devDependency); at runtime this file is what
+ * ships.
  */
-import type {
+import type * as VueRuntime from "vue";
+
+type Bridge = typeof VueRuntime;
+
+let cached: Bridge | undefined;
+
+/** The host's Vue runtime, resolved once and remembered. */
+function runtime(): Bridge {
+    if (cached) return cached;
+    const bridge = (globalThis as { __tumult?: { vue?: unknown } }).__tumult?.vue as
+        | Bridge
+        | undefined;
+    if (!bridge) {
+        throw new Error(
+            "[tumult] this plugin needs the host's Vue runtime, and the host published none. " +
+                "A plugin that contributes a component runs in the trusted lane, where the shell " +
+                "installs `globalThis.__tumult.vue` before the bundle is imported.",
+        );
+    }
+    cached = bridge;
+    return cached;
+}
+
+export const BaseTransition: typeof VueRuntime.BaseTransition = runtime().BaseTransition;
+export const BaseTransitionPropsValidators: typeof VueRuntime.BaseTransitionPropsValidators = runtime().BaseTransitionPropsValidators;
+export const Comment: typeof VueRuntime.Comment = runtime().Comment;
+export const DeprecationTypes: typeof VueRuntime.DeprecationTypes = runtime().DeprecationTypes;
+export const EffectScope: typeof VueRuntime.EffectScope = runtime().EffectScope;
+export const ErrorCodes: typeof VueRuntime.ErrorCodes = runtime().ErrorCodes;
+export const Fragment: typeof VueRuntime.Fragment = runtime().Fragment;
+export const KeepAlive: typeof VueRuntime.KeepAlive = runtime().KeepAlive;
+export const ReactiveEffect: typeof VueRuntime.ReactiveEffect = runtime().ReactiveEffect;
+export const Static: typeof VueRuntime.Static = runtime().Static;
+export const Suspense: typeof VueRuntime.Suspense = runtime().Suspense;
+export const Teleport: typeof VueRuntime.Teleport = runtime().Teleport;
+export const Text: typeof VueRuntime.Text = runtime().Text;
+export const TrackOpTypes: typeof VueRuntime.TrackOpTypes = runtime().TrackOpTypes;
+export const Transition: typeof VueRuntime.Transition = runtime().Transition;
+export const TransitionGroup: typeof VueRuntime.TransitionGroup = runtime().TransitionGroup;
+export const TriggerOpTypes: typeof VueRuntime.TriggerOpTypes = runtime().TriggerOpTypes;
+export const VueElement: typeof VueRuntime.VueElement = runtime().VueElement;
+export const callWithAsyncErrorHandling: typeof VueRuntime.callWithAsyncErrorHandling = runtime().callWithAsyncErrorHandling;
+export const callWithErrorHandling: typeof VueRuntime.callWithErrorHandling = runtime().callWithErrorHandling;
+export const camelize: typeof VueRuntime.camelize = runtime().camelize;
+export const capitalize: typeof VueRuntime.capitalize = runtime().capitalize;
+export const cloneVNode: typeof VueRuntime.cloneVNode = runtime().cloneVNode;
+export const compile: typeof VueRuntime.compile = runtime().compile;
+export const computed: typeof VueRuntime.computed = runtime().computed;
+export const createApp: typeof VueRuntime.createApp = runtime().createApp;
+export const createBlock: typeof VueRuntime.createBlock = runtime().createBlock;
+export const createCommentVNode: typeof VueRuntime.createCommentVNode = runtime().createCommentVNode;
+export const createElementBlock: typeof VueRuntime.createElementBlock = runtime().createElementBlock;
+export const createElementVNode: typeof VueRuntime.createElementVNode = runtime().createElementVNode;
+export const createHydrationRenderer: typeof VueRuntime.createHydrationRenderer = runtime().createHydrationRenderer;
+export const createRenderer: typeof VueRuntime.createRenderer = runtime().createRenderer;
+export const createSSRApp: typeof VueRuntime.createSSRApp = runtime().createSSRApp;
+export const createSlots: typeof VueRuntime.createSlots = runtime().createSlots;
+export const createStaticVNode: typeof VueRuntime.createStaticVNode = runtime().createStaticVNode;
+export const createTextVNode: typeof VueRuntime.createTextVNode = runtime().createTextVNode;
+export const createVNode: typeof VueRuntime.createVNode = runtime().createVNode;
+export const customRef: typeof VueRuntime.customRef = runtime().customRef;
+export const defineAsyncComponent: typeof VueRuntime.defineAsyncComponent = runtime().defineAsyncComponent;
+export const defineComponent: typeof VueRuntime.defineComponent = runtime().defineComponent;
+export const defineCustomElement: typeof VueRuntime.defineCustomElement = runtime().defineCustomElement;
+export const defineEmits: typeof VueRuntime.defineEmits = runtime().defineEmits;
+export const defineExpose: typeof VueRuntime.defineExpose = runtime().defineExpose;
+export const defineModel: typeof VueRuntime.defineModel = runtime().defineModel;
+export const defineOptions: typeof VueRuntime.defineOptions = runtime().defineOptions;
+export const defineProps: typeof VueRuntime.defineProps = runtime().defineProps;
+export const defineSSRCustomElement: typeof VueRuntime.defineSSRCustomElement = runtime().defineSSRCustomElement;
+export const defineSlots: typeof VueRuntime.defineSlots = runtime().defineSlots;
+export const devtools: typeof VueRuntime.devtools = runtime().devtools;
+export const effect: typeof VueRuntime.effect = runtime().effect;
+export const effectScope: typeof VueRuntime.effectScope = runtime().effectScope;
+export const getCurrentInstance: typeof VueRuntime.getCurrentInstance = runtime().getCurrentInstance;
+export const getCurrentScope: typeof VueRuntime.getCurrentScope = runtime().getCurrentScope;
+export const getCurrentWatcher: typeof VueRuntime.getCurrentWatcher = runtime().getCurrentWatcher;
+export const getTransitionRawChildren: typeof VueRuntime.getTransitionRawChildren = runtime().getTransitionRawChildren;
+export const guardReactiveProps: typeof VueRuntime.guardReactiveProps = runtime().guardReactiveProps;
+export const h: typeof VueRuntime.h = runtime().h;
+export const handleError: typeof VueRuntime.handleError = runtime().handleError;
+export const hasInjectionContext: typeof VueRuntime.hasInjectionContext = runtime().hasInjectionContext;
+export const hydrate: typeof VueRuntime.hydrate = runtime().hydrate;
+export const hydrateOnIdle: typeof VueRuntime.hydrateOnIdle = runtime().hydrateOnIdle;
+export const hydrateOnInteraction: typeof VueRuntime.hydrateOnInteraction = runtime().hydrateOnInteraction;
+export const hydrateOnMediaQuery: typeof VueRuntime.hydrateOnMediaQuery = runtime().hydrateOnMediaQuery;
+export const hydrateOnVisible: typeof VueRuntime.hydrateOnVisible = runtime().hydrateOnVisible;
+export const initCustomFormatter: typeof VueRuntime.initCustomFormatter = runtime().initCustomFormatter;
+export const inject: typeof VueRuntime.inject = runtime().inject;
+export const isMemoSame: typeof VueRuntime.isMemoSame = runtime().isMemoSame;
+export const isProxy: typeof VueRuntime.isProxy = runtime().isProxy;
+export const isReactive: typeof VueRuntime.isReactive = runtime().isReactive;
+export const isReadonly: typeof VueRuntime.isReadonly = runtime().isReadonly;
+export const isRef: typeof VueRuntime.isRef = runtime().isRef;
+export const isRuntimeOnly: typeof VueRuntime.isRuntimeOnly = runtime().isRuntimeOnly;
+export const isShallow: typeof VueRuntime.isShallow = runtime().isShallow;
+export const isVNode: typeof VueRuntime.isVNode = runtime().isVNode;
+export const markRaw: typeof VueRuntime.markRaw = runtime().markRaw;
+export const mergeProps: typeof VueRuntime.mergeProps = runtime().mergeProps;
+export const nextTick: typeof VueRuntime.nextTick = runtime().nextTick;
+export const nodeOps: typeof VueRuntime.nodeOps = runtime().nodeOps;
+export const normalizeClass: typeof VueRuntime.normalizeClass = runtime().normalizeClass;
+export const normalizeProps: typeof VueRuntime.normalizeProps = runtime().normalizeProps;
+export const normalizeStyle: typeof VueRuntime.normalizeStyle = runtime().normalizeStyle;
+export const onActivated: typeof VueRuntime.onActivated = runtime().onActivated;
+export const onBeforeMount: typeof VueRuntime.onBeforeMount = runtime().onBeforeMount;
+export const onBeforeUnmount: typeof VueRuntime.onBeforeUnmount = runtime().onBeforeUnmount;
+export const onBeforeUpdate: typeof VueRuntime.onBeforeUpdate = runtime().onBeforeUpdate;
+export const onDeactivated: typeof VueRuntime.onDeactivated = runtime().onDeactivated;
+export const onErrorCaptured: typeof VueRuntime.onErrorCaptured = runtime().onErrorCaptured;
+export const onMounted: typeof VueRuntime.onMounted = runtime().onMounted;
+export const onRenderTracked: typeof VueRuntime.onRenderTracked = runtime().onRenderTracked;
+export const onRenderTriggered: typeof VueRuntime.onRenderTriggered = runtime().onRenderTriggered;
+export const onScopeDispose: typeof VueRuntime.onScopeDispose = runtime().onScopeDispose;
+export const onServerPrefetch: typeof VueRuntime.onServerPrefetch = runtime().onServerPrefetch;
+export const onUnmounted: typeof VueRuntime.onUnmounted = runtime().onUnmounted;
+export const onUpdated: typeof VueRuntime.onUpdated = runtime().onUpdated;
+export const onWatcherCleanup: typeof VueRuntime.onWatcherCleanup = runtime().onWatcherCleanup;
+export const openBlock: typeof VueRuntime.openBlock = runtime().openBlock;
+export const patchProp: typeof VueRuntime.patchProp = runtime().patchProp;
+export const popScopeId: typeof VueRuntime.popScopeId = runtime().popScopeId;
+export const provide: typeof VueRuntime.provide = runtime().provide;
+export const proxyRefs: typeof VueRuntime.proxyRefs = runtime().proxyRefs;
+export const pushScopeId: typeof VueRuntime.pushScopeId = runtime().pushScopeId;
+export const queuePostFlushCb: typeof VueRuntime.queuePostFlushCb = runtime().queuePostFlushCb;
+export const reactive: typeof VueRuntime.reactive = runtime().reactive;
+export const readonly: typeof VueRuntime.readonly = runtime().readonly;
+export const ref: typeof VueRuntime.ref = runtime().ref;
+export const registerRuntimeCompiler: typeof VueRuntime.registerRuntimeCompiler = runtime().registerRuntimeCompiler;
+export const render: typeof VueRuntime.render = runtime().render;
+export const renderList: typeof VueRuntime.renderList = runtime().renderList;
+export const renderSlot: typeof VueRuntime.renderSlot = runtime().renderSlot;
+export const resolveComponent: typeof VueRuntime.resolveComponent = runtime().resolveComponent;
+export const resolveDirective: typeof VueRuntime.resolveDirective = runtime().resolveDirective;
+export const resolveDynamicComponent: typeof VueRuntime.resolveDynamicComponent = runtime().resolveDynamicComponent;
+export const resolveTransitionHooks: typeof VueRuntime.resolveTransitionHooks = runtime().resolveTransitionHooks;
+export const setBlockTracking: typeof VueRuntime.setBlockTracking = runtime().setBlockTracking;
+export const setDevtoolsHook: typeof VueRuntime.setDevtoolsHook = runtime().setDevtoolsHook;
+export const setTransitionHooks: typeof VueRuntime.setTransitionHooks = runtime().setTransitionHooks;
+export const shallowReactive: typeof VueRuntime.shallowReactive = runtime().shallowReactive;
+export const shallowReadonly: typeof VueRuntime.shallowReadonly = runtime().shallowReadonly;
+export const shallowRef: typeof VueRuntime.shallowRef = runtime().shallowRef;
+export const ssrContextKey: typeof VueRuntime.ssrContextKey = runtime().ssrContextKey;
+export const stop: typeof VueRuntime.stop = runtime().stop;
+export const toDisplayString: typeof VueRuntime.toDisplayString = runtime().toDisplayString;
+export const toHandlerKey: typeof VueRuntime.toHandlerKey = runtime().toHandlerKey;
+export const toHandlers: typeof VueRuntime.toHandlers = runtime().toHandlers;
+export const toRaw: typeof VueRuntime.toRaw = runtime().toRaw;
+export const toRef: typeof VueRuntime.toRef = runtime().toRef;
+export const toRefs: typeof VueRuntime.toRefs = runtime().toRefs;
+export const toValue: typeof VueRuntime.toValue = runtime().toValue;
+export const transformVNodeArgs: typeof VueRuntime.transformVNodeArgs = runtime().transformVNodeArgs;
+export const triggerRef: typeof VueRuntime.triggerRef = runtime().triggerRef;
+export const unref: typeof VueRuntime.unref = runtime().unref;
+export const useAttrs: typeof VueRuntime.useAttrs = runtime().useAttrs;
+export const useCssModule: typeof VueRuntime.useCssModule = runtime().useCssModule;
+export const useCssVars: typeof VueRuntime.useCssVars = runtime().useCssVars;
+export const useHost: typeof VueRuntime.useHost = runtime().useHost;
+export const useId: typeof VueRuntime.useId = runtime().useId;
+export const useModel: typeof VueRuntime.useModel = runtime().useModel;
+export const useSSRContext: typeof VueRuntime.useSSRContext = runtime().useSSRContext;
+export const useShadowRoot: typeof VueRuntime.useShadowRoot = runtime().useShadowRoot;
+export const useSlots: typeof VueRuntime.useSlots = runtime().useSlots;
+export const useTemplateRef: typeof VueRuntime.useTemplateRef = runtime().useTemplateRef;
+export const useTransitionState: typeof VueRuntime.useTransitionState = runtime().useTransitionState;
+export const vModelCheckbox: typeof VueRuntime.vModelCheckbox = runtime().vModelCheckbox;
+export const vModelDynamic: typeof VueRuntime.vModelDynamic = runtime().vModelDynamic;
+export const vModelRadio: typeof VueRuntime.vModelRadio = runtime().vModelRadio;
+export const vModelSelect: typeof VueRuntime.vModelSelect = runtime().vModelSelect;
+export const vModelText: typeof VueRuntime.vModelText = runtime().vModelText;
+export const vShow: typeof VueRuntime.vShow = runtime().vShow;
+export const version: typeof VueRuntime.version = runtime().version;
+export const warn: typeof VueRuntime.warn = runtime().warn;
+export const watch: typeof VueRuntime.watch = runtime().watch;
+export const watchEffect: typeof VueRuntime.watchEffect = runtime().watchEffect;
+export const watchPostEffect: typeof VueRuntime.watchPostEffect = runtime().watchPostEffect;
+export const watchSyncEffect: typeof VueRuntime.watchSyncEffect = runtime().watchSyncEffect;
+export const withCtx: typeof VueRuntime.withCtx = runtime().withCtx;
+export const withDefaults: typeof VueRuntime.withDefaults = runtime().withDefaults;
+export const withDirectives: typeof VueRuntime.withDirectives = runtime().withDirectives;
+export const withKeys: typeof VueRuntime.withKeys = runtime().withKeys;
+export const withMemo: typeof VueRuntime.withMemo = runtime().withMemo;
+export const withModifiers: typeof VueRuntime.withModifiers = runtime().withModifiers;
+export const withScopeId: typeof VueRuntime.withScopeId = runtime().withScopeId;
+
+// The type names a plugin author reaches for. Types are erased at runtime —
+// these exist so `import type { Component } from "vue"` keeps working inside
+// the plugin's own sources. (Names that are values as well as types —
+// `EffectScope`, `Fragment` — are already bound above, so they are not
+// repeated here.)
+export type {
     Component,
     ComputedRef,
-    EffectScope,
+    CSSProperties,
     MaybeRef,
     Ref,
+    ShallowRef,
     VNode,
     WatchOptions,
     WatchSource,
 } from "vue";
-
-interface VueRuntime {
-    h: typeof import("vue").h;
-    defineComponent: typeof import("vue").defineComponent;
-    defineAsyncComponent: typeof import("vue").defineAsyncComponent;
-    ref: typeof import("vue").ref;
-    shallowRef: typeof import("vue").shallowRef;
-    reactive: typeof import("vue").reactive;
-    computed: typeof import("vue").computed;
-    watch: typeof import("vue").watch;
-    watchEffect: typeof import("vue").watchEffect;
-    effectScope: typeof import("vue").effectScope;
-    onMounted: typeof import("vue").onMounted;
-    onBeforeUnmount: typeof import("vue").onBeforeUnmount;
-    nextTick: typeof import("vue").nextTick;
-    toRefs: typeof import("vue").toRefs;
-    inject: typeof import("vue").inject;
-    provide: typeof import("vue").provide;
-    markRaw: typeof import("vue").markRaw;
-}
-
-/** The bridge Tumult installs at boot. Absent inside the sandbox lane. */
-const bridge = (globalThis as { __tumult?: { vue?: VueRuntime } }).__tumult?.vue;
-
-/** Every export goes through this, so a missing bridge fails loudly. */
-function runtime(): VueRuntime {
-    const vue = (globalThis as { __tumult?: { vue?: VueRuntime } }).__tumult?.vue;
-    if (!vue) {
-        throw new Error(
-            "[tumult] this plugin built against Vue, but the host provided no Vue runtime. " +
-                "A logic-only plugin must not import `vue` — it is the sandbox lane, which has " +
-                "no DOM. Declare a component permission (e.g. `commands` → fine; " +
-                "`timeline-renderers` needs no Vue import at all) or drop the import.",
-        );
-    }
-    return vue;
-}
-
-export const h: VueRuntime["h"] = ((...args: unknown[]) =>
-    (runtime().h as (...a: unknown[]) => unknown)(...args)) as VueRuntime["h"];
-export const defineComponent: VueRuntime["defineComponent"] = ((...args: unknown[]) =>
-    (runtime().defineComponent as (...a: unknown[]) => unknown)(...args)) as VueRuntime["defineComponent"];
-export const defineAsyncComponent: VueRuntime["defineAsyncComponent"] = ((...args: unknown[]) =>
-    (runtime().defineAsyncComponent as (...a: unknown[]) => unknown)(
-        ...args,
-    )) as VueRuntime["defineAsyncComponent"];
-export const ref: VueRuntime["ref"] = ((...args: unknown[]) =>
-    (runtime().ref as (...a: unknown[]) => unknown)(...args)) as VueRuntime["ref"];
-export const shallowRef: VueRuntime["shallowRef"] = ((...args: unknown[]) =>
-    (runtime().shallowRef as (...a: unknown[]) => unknown)(...args)) as VueRuntime["shallowRef"];
-export const reactive: VueRuntime["reactive"] = ((...args: unknown[]) =>
-    (runtime().reactive as (...a: unknown[]) => unknown)(...args)) as VueRuntime["reactive"];
-export const computed: VueRuntime["computed"] = ((...args: unknown[]) =>
-    (runtime().computed as (...a: unknown[]) => unknown)(...args)) as VueRuntime["computed"];
-export const watch: VueRuntime["watch"] = ((...args: unknown[]) =>
-    (runtime().watch as (...a: unknown[]) => unknown)(...args)) as VueRuntime["watch"];
-export const watchEffect: VueRuntime["watchEffect"] = ((...args: unknown[]) =>
-    (runtime().watchEffect as (...a: unknown[]) => unknown)(...args)) as VueRuntime["watchEffect"];
-export const effectScope: VueRuntime["effectScope"] = ((...args: unknown[]) =>
-    (runtime().effectScope as (...a: unknown[]) => unknown)(...args)) as VueRuntime["effectScope"];
-export const onMounted: VueRuntime["onMounted"] = ((...args: unknown[]) =>
-    (runtime().onMounted as (...a: unknown[]) => unknown)(...args)) as VueRuntime["onMounted"];
-export const onBeforeUnmount: VueRuntime["onBeforeUnmount"] = ((...args: unknown[]) =>
-    (runtime().onBeforeUnmount as (...a: unknown[]) => unknown)(...args)) as VueRuntime["onBeforeUnmount"];
-export const nextTick: VueRuntime["nextTick"] = ((...args: unknown[]) =>
-    (runtime().nextTick as (...a: unknown[]) => unknown)(...args)) as VueRuntime["nextTick"];
-export const toRefs: VueRuntime["toRefs"] = ((...args: unknown[]) =>
-    (runtime().toRefs as (...a: unknown[]) => unknown)(...args)) as VueRuntime["toRefs"];
-export const inject: VueRuntime["inject"] = ((...args: unknown[]) =>
-    (runtime().inject as (...a: unknown[]) => unknown)(...args)) as VueRuntime["inject"];
-export const provide: VueRuntime["provide"] = ((...args: unknown[]) =>
-    (runtime().provide as (...a: unknown[]) => unknown)(...args)) as VueRuntime["provide"];
-export const markRaw: VueRuntime["markRaw"] = ((...args: unknown[]) =>
-    (runtime().markRaw as (...a: unknown[]) => unknown)(...args)) as VueRuntime["markRaw"];
-
-/** Unused-import guard for the type-only imports above. */
-export type { Component, ComputedRef, EffectScope, MaybeRef, Ref, VNode, WatchOptions, WatchSource };
-export type { VueRuntime };

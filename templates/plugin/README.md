@@ -38,9 +38,10 @@ publishes what Tumult installs.
 |---|---|
 | `tumult.plugin.json` | the release manifest — id, permissions, `entry`, and (once released) `integrity`. Validated against `tumult.plugin.schema.json`. |
 | `src/index.ts` | your plugin: a manifest and `install(ctx)`. The template's example is a `/shrug` command. |
-| `src/shims/vue.ts` | the `vue` your bundle builds against — see below. |
+| `src/shims/vue.ts` | the `vue` your bundle builds against — **generated** by `scripts/gen-vue-shim.mjs`. See below. |
 | `types/plugin.d.ts` | the whole plugin API, vendored so you need no Tumult packages installed. **Generated** in the Tumult repo — do not edit it here. |
-| `esbuild.config.mjs` | the bundle step. |
+| `vite.config.ts` | the bundle step (Vite + `@vitejs/plugin-vue`). |
+| `scripts/gen-vue-shim.mjs` | regenerates `src/shims/vue.ts` from the installed `vue` package (`pnpm shim`). |
 | `scripts/make-release-manifest.mjs` | computes `integrity` for the built bundle. |
 | `.github/workflows/release.yml` | tag → build → hash → release. |
 
@@ -48,8 +49,9 @@ publishes what Tumult installs.
 
 Your bundle exports a `Plugin`: a manifest plus `install(ctx)`. Everything
 else goes through `ctx` — the chat client, the room selection, media
-resolution, and the six extension points (timeline renderers, composer
-actions, slash commands, member decorations, settings tabs, stylesheets), each
+resolution, and the seven extension points (timeline renderers, composer
+actions, slash commands, member decorations, settings tabs, stylesheets,
+workspace panes), each
 gated by a **permission** you declare:
 
 ```ts
@@ -86,7 +88,7 @@ neither does a reviewer:
 | permission | lane |
 |---|---|
 | `commands`, `composer-actions`, `styles` | **sandbox** — your code runs inside a Worker and reaches Tumult only through the message bridge. No DOM, no `window`. |
-| `timeline-renderers`, `member-decorations`, `settings-tabs` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
+| `timeline-renderers`, `member-decorations`, `settings-tabs`, `workspace-panes` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
 
 Stay in the sandbox if you can. A plugin that only sends messages, reacts,
 transforms text or ships stylesheets can do a lot without ever needing the DOM.
@@ -94,21 +96,26 @@ transforms text or ships stylesheets can do a lot without ever needing the DOM.
 ### Vue components
 
 A component permission (`timeline-renderers`, `member-decorations`,
-`settings-tabs`) means you contribute a Vue component, which puts you in the
-trusted lane. Import `vue` normally for its types, and build through
-`esbuild.config.mjs`, which aliases `vue` to `src/shims/vue.ts` — that shim
-forwards to the host's Vue instance, because a second copy of Vue in your
-bundle would render but could not `inject()` anything from Tumult.
+`settings-tabs`, `workspace-panes`) means you contribute a Vue component, which
+puts you in the trusted lane. Import `vue` normally for its types, and build
+through `vite.config.ts` with `@vitejs/plugin-vue` — Vite compiles your SFCs and
+aliases `vue` to `src/shims/vue.ts`. That shim forwards to the host's Vue
+instance, because a second copy of Vue in your bundle would render but could
+not `inject()` anything from Tumult.
 
 `vue` is a **devDependency** here on purpose: it is for types only. Do not
-bundle a copy.
+bundle a copy. The shim is generated (`pnpm shim`) from the installed `vue`
+package, so a compiled SFC always finds the helpers it needs. Styles in SFC
+`<style>` blocks are extracted to a sibling file that the release does not
+attach — keep CSS in a TypeScript string and inject it with
+`ctx.injectStylesheet()`.
 
 ### Compatibility
 
 `minUI` (the plugin API) and `minCore` (the chat-client contract) are enforced:
 Tumult refuses to install a plugin asking for a newer version than it
 provides. Omit them until you actually need them. The versions these vendored
-types describe are `1.0.0` and `1.0.0`.
+types describe are `1.1.0` and `1.0.0` (`minUI` and `minCore`).
 
 ## Versioning and updates
 
