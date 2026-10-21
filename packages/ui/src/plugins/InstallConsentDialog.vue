@@ -130,9 +130,9 @@ const permissions = computed(() => {
 .tumult-consent-changed {
     margin: 0;
     padding: var(--space-2);
-    border: var(--border-width) solid var(--banner-warn-border, var(--border-default));
+    border: var(--border-width) solid var(--banner-reconnect-bg);
     border-radius: var(--control-radius);
-    background: var(--banner-warn-bg, var(--surface-pane));
+    background: var(--banner-reconnect-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
 }
@@ -150,7 +150,7 @@ const permissions = computed(() => {
     background: var(--surface-pane);
 }
 .tumult-consent-lane-trusted {
-    border-color: var(--banner-error-border, var(--danger, var(--border-default)));
+    border-color: var(--banner-error-bg);
 }
 .tumult-consent-lane-label {
     margin: 0;
@@ -164,7 +164,7 @@ const permissions = computed(() => {
 }
 .tumult-consent-lane-warning {
     color: var(--text-primary);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-semibold);
 }
 .tumult-consent-perm-list {
     display: flex;
@@ -188,7 +188,7 @@ const permissions = computed(() => {
     padding: 0 var(--space-1);
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: var(--accent-contrast, var(--text-on-accent, var(--text-primary)));
+    color: var(--accent-contrast);
     font-size: var(--text-xs);
 }
 .tumult-consent-perm-none,

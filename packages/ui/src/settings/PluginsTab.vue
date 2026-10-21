@@ -274,7 +274,7 @@ async function onEnable(id: string): Promise<void> {
     font-size: var(--text-xs);
 }
 .tumult-plugin-button:disabled {
-    opacity: var(--opacity-disabled);
+    opacity: var(--state-disabled-opacity);
 }
 .tumult-plugin-remove {
     color: var(--danger, var(--text-primary));
@@ -299,7 +299,7 @@ async function onEnable(id: string): Promise<void> {
     padding: var(--space-1) var(--space-2);
     border: var(--border-width) solid var(--border-default);
     border-radius: var(--control-radius);
-    background: var(--surface-input, var(--surface-pane));
+    background: var(--input-bg);
     color: var(--text-primary);
     font: inherit;
     font-size: var(--text-sm);
