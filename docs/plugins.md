@@ -715,10 +715,34 @@ uses.
 | member | what it is |
 |---|---|
 | `manifest` | this plugin's own `PluginManifest` (handy for prefixing ids or reading your permissions). |
-| `client` | the `ChatClient` — `rooms`, `timeline(roomId)`, `send`, `toggleReaction`, `members`, `searchUsers`, `createChannel`, `connection`, `media` resolvers, … See `packages/core/src/contract.ts`. |
+| `client` | the `ChatClient` — `rooms`, `timeline(roomId)`, `send`, `toggleReaction`, `members`, `searchUsers`, `createChannel`, `setOwnPresence`, `connection`, `media` resolvers, … See `packages/core/src/contract.ts`. |
 | `selection` | `{ current, select(next), hrefFor(next) }` — the current room/guild selection and navigation. |
 | `actions` | the cross-pane channel to the shell: `requestLeave(target)` and `requestModeration({ kind, roomId, member })` open its dialogs, `requestMarkRead(roomId)` calls the client (a list row has no client of its own). |
 | `media` | `resolve(mxcUri, size)`, `resolveDownload(mxcUri)`, `resolveEncrypted(file)` — `mxc://` → loadable URL. |
+
+Presence is on that same client, and it is a **user-level** setting, not a
+per-device one: `setOwnPresence(presence, statusMessage?)` writes what every
+other Matrix client shows next to your name, and `ownPresence.get()` reads it
+back (the same feed the user bar renders). Omitting the message — or passing
+whitespace — clears it; `null` means "no status" rather than an empty string.
+
+Two things to know before relying on it. The **presence value is
+`"online" | "offline" | "unavailable"`** — `unavailable` is what the user bar
+labels "Away"; there is no "invisible". And the status is **shared account
+state**: a second plugin (or another device) writing one overwrites yours, so a
+"now playing" plugin should write on start and clear on stop rather than fight
+for the slot.
+
+```ts
+install(ctx) {
+    void ctx.client.setOwnPresence("online", "Now playing: Four Tet — Two Thousand and Seventeen");
+
+    // Clear it on teardown; fire-and-forget, since uninstall is synchronous.
+    return () => {
+        void ctx.client.setOwnPresence("online");
+    };
+}
+```
 
 Snapshots are read with `.get()` and watched with `.subscribe(listener)`, which
 returns a `Subscription` you call `.unsubscribe()` on:

@@ -21,6 +21,8 @@ import TextMessage from "../timeline/renderers/TextMessage.vue";
 import MediaMessage from "../timeline/renderers/MediaMessage.vue";
 import ConnectionBanner from "./ConnectionBanner.vue";
 import GuildRail from "../rail/GuildRail.vue";
+import UserBar from "../rail/UserBar.vue";
+import StatusDialog from "../rail/StatusDialog.vue";
 import RoomListPane from "../roomlist/RoomListPane.vue";
 import DmList from "../roomlist/DmList.vue";
 import TimelinePane from "../timeline/TimelinePane.vue";
@@ -210,6 +212,10 @@ function openVerificationModal(): void {
 
 // Profile edit dialog: the account menu's "Edit profile…" entry opens it.
 const profileModal = ref(false);
+
+// Status dialog (presence + status message): the user bar's status line and
+// the account menu's "Set status…" both open it.
+const statusModal = ref(false);
 
 // Room settings dialog: the timeline header's gear opens it, scoped to the
 // room being viewed. Room switch closes it (the room prop must not change
@@ -473,14 +479,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             >
                 <GuildRail
                     :tree="tree"
-                    :session="session"
-                    :client="client"
                     :panes="panes.all()"
-                    @sign-out="emit('signOut')"
-                    @security="openSecurityModal()"
-                    @verify="openVerificationModal()"
-                    @profile="profileModal = true"
-                    @settings="appSettingsOpen = true"
                     @create-space="roomAction = { kind: 'create-space' }"
                     @join="roomAction = { kind: 'join' }"
                 />
@@ -527,6 +526,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         @open-thread="openThread"
                         @settings="settingsOpen = true"
                     />
+                    <!-- The workspace pane's own bottom bar, inside the timeline
+                         track: a grid row would overlap a full-height timeline,
+                         and the pane's bar belongs to the pane, not the shell. -->
+                    <div v-if="activePane?.footer" class="tumult-pane-footer">
+                        <component :is="activePane.footer" />
+                    </div>
                     <!-- Overlay, not a fourth grid track: no layout changes for the other panes. -->
                     <div v-if="threadView && threadsEnabled && activeRoomId" class="tumult-thread-overlay">
                         <ThreadList
@@ -557,10 +562,20 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         @invite="roomAction = { kind: 'invite' }"
                     />
                 </div>
-                <!-- The pane's bottom bar: a second grid row under the content. -->
-                <div v-if="activePane?.footer" class="tumult-pane-footer">
-                    <component :is="activePane.footer" />
-                </div>
+                <!-- The account bar closes the grid: it owns the rail AND the
+                     room list's tracks, so the two leftmost panes end above it. -->
+                <UserBar
+                    class="tumult-userbar"
+                    :client="client"
+                    :session="session"
+                    :compact="!showRoomList"
+                    @sign-out="emit('signOut')"
+                    @security="openSecurityModal()"
+                    @verify="openVerificationModal()"
+                    @profile="profileModal = true"
+                    @settings="appSettingsOpen = true"
+                    @status="statusModal = true"
+                />
             </div>
 <RecoverySetupModal
             :client="client"
@@ -581,6 +596,11 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :client="client"
             :open="profileModal"
             @close="profileModal = false"
+        />
+        <StatusDialog
+            :client="client"
+            :open="statusModal"
+            @close="statusModal = false"
         />
         <RoomSettingsDialog
             :client="client"
@@ -666,13 +686,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         var(--layout-roomlist-width)
         minmax(0, 1fr)
         var(--layout-members-width);
-    /* Row 1 is the workspace; row 2 is a workspace pane's bottom bar (the
-       player). It is empty — and zero-height — for everything else. */
+    /* Row 1 is the workspace, row 2 is the account bar spanning the rail and
+       the room list; everything else keeps row 1 and stops where the bar
+       starts (the bar is chrome to its left, so it is not a pane track). */
     grid-template-rows: minmax(0, 1fr) auto;
+}
+.tumult-userbar {
+    grid-column: 1 / 3;
+    grid-row: 2;
 }
 .tumult-shell-grid > .tumult-rail {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1;
 }
 .tumult-pane-roomlist {
     grid-column: 2;
@@ -680,15 +705,13 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 }
 .tumult-pane-timeline {
     grid-column: 3;
-    grid-row: 1;
+    grid-row: 1 / -1;
 }
 .tumult-pane-members {
     grid-column: 4;
-    grid-row: 1;
+    grid-row: 1 / -1;
 }
 .tumult-pane-footer {
-    grid-column: 2 / -1;
-    grid-row: 2;
     display: flex;
     flex-direction: column;
     min-height: 0;

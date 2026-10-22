@@ -11,9 +11,9 @@
  *
  * The `vue` import here is a TYPE-only dependency; a plugin's template lists
  * `vue` for its types, while the runtime component comes from the shell
- * (`globalThis.__tumult.vue`). Pinned to plugin API `1.0.0` and core contract
- * `1.0.0` — the versions a manifest's `minUI` / `minCore` are compared
- * against.
+ * (`globalThis.__tumult.vue`). It carries the two versions a manifest's
+ * `minUI` / `minCore` are compared against: `PLUGIN_API_VERSION` and
+ * `CONTRACT_VERSION`, both declared below.
  */
 
 import { Component, InjectionKey, Ref } from 'vue';
@@ -33,7 +33,7 @@ import { Component, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.0.0";
+export declare const CONTRACT_VERSION = "1.1.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -332,6 +332,17 @@ export type Membership = "join" | "invite" | "leave" | "ban" | "knock";
  * us otherwise. Never invent `"online"`.
  */
 export type PresenceState = "online" | "offline" | "unknown";
+/**
+ * Presence we may set for our own user. The write enum differs from the read
+ * side: `"unavailable"` is settable (not present on read members) and `"unknown"`
+ * exists only for unread members, never as a self-written state.
+ */
+export type OwnPresenceState = "online" | "offline" | "unavailable";
+/** Our own presence as the UI needs it (for the user bar and status editor). */
+export interface OwnPresenceView {
+	presence: OwnPresenceState;
+	statusMessage: string | null;
+}
 /** One member of a room, as the members pane needs it. */
 export interface MemberView {
 	userId: string;
@@ -465,6 +476,11 @@ export interface ChatClient {
 	 * successful `setProfile()`. `null` before there is a session.
 	 */
 	profile: Subscribable<ProfileView | null>;
+	/**
+	 * Our own presence + status message, published once `start()` reads it and
+	 * refreshed after `setOwnPresence()`. `null` before there is a session.
+	 */
+	ownPresence: Subscribable<OwnPresenceView | null>;
 	/**
 	 * Snapshot feed for one room's timeline.
 	 *
@@ -722,6 +738,14 @@ export interface ChatClient {
 		displayName?: string;
 		avatar?: Blob | null;
 	}): Promise<void>;
+	/**
+	 * Set our own presence + optional status message (the visible custom
+	 * status, e.g. "Listening to <song>"). User-level, not per-device — last
+	 * writer wins across clients. Omitting `statusMessage` clears any existing
+	 * status text. Rejects when the homeserver refuses (presence disabled,
+	 * bad value).
+	 */
+	setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void>;
 	/**
 	 * Set up secret storage plus a fresh key backup, returning the encoded
 	 * recovery key. Display it to the user exactly once — it is never

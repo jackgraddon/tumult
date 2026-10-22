@@ -45,6 +45,8 @@ export type {
     MessageStatus,
     MessageView,
     NotificationPermission,
+    OwnPresenceState,
+    OwnPresenceView,
     PresenceState,
     ProfileView,
     ReactionView,

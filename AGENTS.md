@@ -223,7 +223,17 @@ chat client should be.
 - Shell layout: the guild rail is CHROME, not a pane — fixed at
   `--layout-guild-rail-width`, never collapsible (collapsing it would leave no
   way to change guild). Room list, timeline, members are the three panes.
-  Collapsed panes keep DOM at 0-width tracks with the `inert` attribute.
+  Collapsed panes keep DOM at 0-width tracks with the `inert` attribute. The
+  **user bar** (`rail/UserBar.vue`: avatar + name + status + gear) is the
+  bottom grid row and spans columns 1–2, so it crosses the rail and the room
+  list; the timeline and members tracks run `grid-row: 1 / -1` beside it. It
+  re-uses the rail's own column width as its first grid column, which is what
+  keeps the avatar centred on the rail when the room list collapses (the bar
+  then goes `compact`: avatar only, since the account menu still reaches
+  everything). A workspace pane's `footer` lives INSIDE `.tumult-pane-timeline`
+  for the same reason — a grid row under a full-height timeline would overlap
+  it, and the pane's bar belongs to the pane (the pane's width, per
+  `docs/plugins.md`).
 - Contract: `MessageView` carries `type` + `content` (plain-JSON payload owned
   by the registered renderer) so game renderers never force a contract change.
   `timeline(roomId)` returns the SAME `Subscribable` per roomId, so
@@ -236,7 +246,15 @@ chat client should be.
   the side-effect `import {} from "y"` — so an all-type braces import keeps its
   module in the graph there too. Three files had drifted into it and pulled the
   whole SDK into the fake client's chunk (839 kB → 17 kB when fixed); guarded
-  repo-wide by `packages/core/test/imports.test.ts`.
+  repo-wide by `packages/core/test/imports.test.ts`. The fake build is guarded
+  SEPARATELY and by IDENTITY, not by bundle size: the browser smoke test reads
+  each output chunk's `modules` map (resolved absolute module ids) from
+  `build()`'s return value and fails naming the offending ids. A byte ceiling
+  was the old guard and was strictly worse — it only fired once a leak crossed
+  the threshold (so real growth kept tripping it while a leak that tree-shook
+  to nothing slipped under) and it reported a number instead of a cause. Note
+  the SDK check must run against a FRESHLY BUILT `packages/core/dist`: a stale
+  dist silently satisfies the assertion while proving nothing.
   `packages/ui` ships `src` (SFCs), not `dist`; `apps/web` takes no
   project reference to it and maps `@tumult/ui` via tsconfig paths.
 - `CryptoApi`, `CryptoEvent` and `decodeRecoveryKey` are NOT exported from the
@@ -407,6 +425,26 @@ homeserver. A trap listed here has shipped broken at least once.
 
   `__tumult.client.debugUnread(true)` forces a recompute — if the numbers flip,
   the cache was stale; if they stay wrong, the recompute itself is wrong.
+
+### Own presence & status
+
+- `getPresence(userId)` is a plain REST GET returning
+  `{ presence: "online" | "offline" | "unavailable", status_msg?, … }`. It does
+  NOT update the SDK `User` model, so it is the only honest read for your own
+  status line (`rooms/own-presence.ts`).
+- The SDK's `User.presenceStatusMsg` is written ONLY when `status_msg` is
+  truthy (`setPresenceEvent`), so it never clears. Reading the model shows a
+  status you already removed; the REST read does not.
+- `ownPresence` is `null` until the server answers — render "unknown" (hollow
+  dot, "Set a status" hint), never a default `"online"` or an empty string.
+- The SDK re-emits `UserEvent.Presence` on the CLIENT with `(event, user)` and
+  no roomId — read `user.userId` and compare with the session's own id. This
+  only fires under classic sync: SSS has no presence extension, so a status set
+  by ANOTHER client lands on the next read (a write or a reload), the same
+  honesty rule as members' presence.
+- `setOwnPresence` writes user-level state (last writer wins across clients) and
+  publishes the written value immediately, then re-reads; a failed re-read keeps
+  the previous snapshot rather than claiming the status was cleared.
 
 ### Relations, replies & threads
 

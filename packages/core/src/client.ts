@@ -6,6 +6,7 @@ import {
     IndexedDBStore,
     NotificationCountType,
     SyncState,
+    UserEvent,
     type MatrixClient,
     type MatrixEvent,
     type SyncStateData,
@@ -28,6 +29,8 @@ import type {
     MessageView,
     NotificationPermission,
     NotificationState,
+    OwnPresenceState,
+    OwnPresenceView,
     ProfileView,
     RoomPowerLevelsView,
     RoomSettingsPatch,
@@ -52,6 +55,7 @@ import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
+import { readOwnPresence } from "./rooms/own-presence.ts";
 import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
     createChannel,
@@ -171,6 +175,13 @@ const PROGRESSIVE_REFRESH_MS = 120;
  */
 const SECURITY_REFRESH_MS = 250;
 
+/**
+ * Coalesce window for our own presence. Presence for one user can arrive as a
+ * burst of `m.presence` events (a status change plus a last-active bump), and
+ * each refresh is a REST read; one read per window is enough for a status line.
+ */
+const OWN_PRESENCE_REFRESH_MS = 250;
+
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -254,6 +265,16 @@ export class MatrixChatClient implements ChatClient {
         supported: typeof Notification !== "undefined",
     });
     private readonly profileState = new Observable<ProfileView | null>(null);
+    /**
+     * Our own presence + status message. `null` until the server tells us —
+     * presence is user-level state, not something we can infer from the
+     * profile, and a fresh session has no honest answer yet.
+     */
+    private readonly ownPresenceState = new Observable<OwnPresenceView | null>(null);
+    /** Coalesces `m.presence` bursts for our own user into one read. */
+    private readonly ownPresenceRefresh = new ThrottledTask(() => {
+        void this.refreshOwnPresence();
+    }, OWN_PRESENCE_REFRESH_MS);
 
     public constructor(options: ChatClientOptions) {
         this.storage = options.storage ?? AuthStorage.browser();
@@ -295,6 +316,10 @@ export class MatrixChatClient implements ChatClient {
 
     public get profile(): Subscribable<ProfileView | null> {
         return this.profileState;
+    }
+
+    public get ownPresence(): Subscribable<OwnPresenceView | null> {
+        return this.ownPresenceState;
     }
 
     public async login(params: LoginParams): Promise<void> {
@@ -486,6 +511,17 @@ export class MatrixChatClient implements ChatClient {
             // seed the feed now rather than waiting for the first batch. A
             // failure publishes the localpart fallback (below) instead.
             void this.refreshProfile();
+            // Own presence/status is another independent HTTP read: seed the
+            // bar now, then let `m.presence` (classic sync) and our own writes
+            // refresh it. Under sliding sync there is no presence extension, so
+            // a status set by ANOTHER client lands on the next read (a write or
+            // a reload) — the same honesty rule as members' presence.
+            void this.refreshOwnPresence();
+            const selfId = client.getUserId();
+            client.on(UserEvent.Presence, (_event, user) => {
+                if (user.userId !== selfId) return;
+                this.ownPresenceRefresh.schedule();
+            });
             this._media = new MediaResolver(client);
             this._notifications = new NotificationTracker(client);
             this._notifications.subscribe(() => this.publishNotifications());
@@ -574,6 +610,7 @@ export class MatrixChatClient implements ChatClient {
             this.roomRefreshScheduled = false;
             this.clearProgressiveRefresh();
             this.securityRefresh.clear();
+            this.ownPresenceRefresh.clear();
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -629,6 +666,7 @@ export class MatrixChatClient implements ChatClient {
         this.roomRefreshScheduled = false;
         this.clearProgressiveRefresh();
         this.securityRefresh.clear();
+        this.ownPresenceRefresh.clear();
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
@@ -676,6 +714,7 @@ export class MatrixChatClient implements ChatClient {
         this.stored = null;
         this.sessionState.set(null);
         this.profileState.set(null);
+        this.ownPresenceState.set(null);
         this.roomsState.set([]);
     }
 
@@ -885,6 +924,20 @@ export class MatrixChatClient implements ChatClient {
             throw error;
         }
         await this.refreshProfile();
+    }
+
+    public async setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot set presence before start()");
+        await client.setPresence(statusMessage === undefined ? { presence } : { presence, status_msg: statusMessage });
+        // The server accepted the write, so publish it immediately — the bar
+        // must not sit on a stale status while a follow-up read is in flight.
+        // The read then corrects anything the server normalised.
+        this.ownPresenceState.set({
+            presence,
+            statusMessage: statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null,
+        });
+        void this.refreshOwnPresence();
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {
@@ -1118,6 +1171,7 @@ export class MatrixChatClient implements ChatClient {
         this.stored = null;
         this.sessionState.set(null);
         this.profileState.set(null);
+        this.ownPresenceState.set(null);
         this.roomsState.set([]);
     }
 
@@ -1262,6 +1316,21 @@ export class MatrixChatClient implements ChatClient {
             this.profileState.set(await readProfile(client));
         } catch {
             this.profileState.set({ userId, displayName: fallbackName(userId), avatarUrl: null });
+        }
+    }
+
+    /**
+     * Publish our own presence + status message. Never throws: presence can be
+     * disabled on the homeserver, and a failed read is not evidence the status
+     * was cleared — the last snapshot stays.
+     */
+    private async refreshOwnPresence(): Promise<void> {
+        const client = this.matrix;
+        if (!client) return;
+        try {
+            this.ownPresenceState.set(await readOwnPresence(client));
+        } catch (error) {
+            console.error("[tumult] own presence snapshot failed", error);
         }
     }
 

@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**274 tokens** — 91 primitives, 104 semantic, 79 component.
+**279 tokens** — 91 primitives, 104 semantic, 84 component.
 
 ## Primitives
 
@@ -228,6 +228,11 @@ everything built on it.
 | `--rail-indicator` | color | `var(--accent)` | Selected guild indicator. |
 | `--rail-item-bg-hover` | color | `var(--state-hover)` | Rail item hover. |
 | `--rail-item-bg-active` | color | `var(--state-selected)` | Rail item active. |
+| `--userbar-bg` | color | `var(--surface-raised)` | User bar background. |
+| `--userbar-border` | color | `var(--border-default)` | User bar top border. |
+| `--userbar-height` | size | `56px` | User bar height. |
+| `--userbar-padding-x` | spacing | `var(--space-2)` | User bar horizontal padding. |
+| `--userbar-gap` | spacing | `var(--space-2)` | Gap between the avatar and the status text. |
 | `--roomlist-bg` | color | `var(--surface-pane)` | Room list background. |
 | `--roomlist-item-bg-hover` | color | `var(--state-hover)` | Room item hover. |
 | `--roomlist-item-bg-active` | color | `var(--state-selected)` | Room item active. |

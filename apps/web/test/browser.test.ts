@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -32,9 +32,18 @@ import { toHexColor } from "../../../packages/ui/src/theme/color.ts";
  */
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+/** Repo root — the production `packages/*/dist` live here, two levels up. */
+const repoRoot = dirname(dirname(appRoot));
 const outDir = "dist/browser-test";
 const PORT = 4183;
 const VIEWPORT = { width: 1440, height: 900 };
+
+/**
+ * What must never appear in the fake build. Matched against resolved module
+ * ids (absolute paths), so it catches the package itself and the crypto WASM
+ * glue it pulls in — the two things the fake client exists to avoid linking.
+ */
+const SDK_MODULE = /[/\\]node_modules[/\\]\.pnpm[/\\](matrix-js-sdk|@matrix-org\+)/;
 
 /** A persisted session, so the router guard opens the shell rather than /login. */
 const SESSION = {
@@ -130,12 +139,44 @@ function luminance(colour: string | null): number {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/**
+ * Map each emitted chunk's file name to the module ids that went into it.
+ *
+ * Every Rollup output chunk carries `modules`, keyed by the RESOLVED absolute
+ * path of each module in the graph. That is the build's own record of what it
+ * linked, so asserting on it asks the real question — "is matrix-js-sdk in this
+ * fake bundle?" — rather than inferring the answer from a byte count.
+ *
+ * Two reasons the size proxy this replaced was worth deleting. It only fails
+ * once a leak is big enough to cross the threshold, so a chunk that grows for
+ * legitimate reasons keeps tripping it while a *type-only* leak that survives
+ * tree-shaking at near-zero bytes slides under; and it reports a number, which
+ * says nothing about what leaked. This reports the offending module ids.
+ */
+function collectModules(result: unknown): Map<string, Set<string>> {
+    // `build()` returns one output for a single config, but an array when the
+    // config forks — handle both rather than assume.
+    const outputs = (Array.isArray(result) ? result : [result]) as Array<{
+        output: Array<{ type: string; fileName?: string; modules?: Record<string, unknown> }>;
+    }>;
+    const byChunk = new Map<string, Set<string>>();
+    for (const output of outputs) {
+        for (const item of output.output) {
+            if (item.type !== "chunk" || item.fileName === undefined) continue;
+            byChunk.set(item.fileName, new Set(Object.keys(item.modules ?? {})));
+        }
+    }
+    return byChunk;
+}
+
 describe("browser smoke test (fake client)", () => {
     let browser: Browser;
     let context: BrowserContext;
     let server: PreviewServer;
     let origin: string;
     let page: Page;
+    /** Module ids per chunk from the build, for the SDK-absence assertion. */
+    let builtModules: Map<string, Set<string>>;
     const consoleErrors: string[] = [];
 
     before(async () => {
@@ -143,7 +184,8 @@ describe("browser smoke test (fake client)", () => {
         // dep optimizer, and the dep optimizer is a documented dev-only hazard
         // for the crypto WASM. `mode: "fake"` picks the fake client in
         // vite.config.ts, so this build links no matrix-js-sdk.
-        await build({ root: appRoot, mode: "fake", logLevel: "error", build: { outDir } });
+        const result = await build({ root: appRoot, mode: "fake", logLevel: "error", build: { outDir } });
+        builtModules = collectModules(result);
 
         server = await preview({
             root: appRoot,
@@ -181,24 +223,47 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("keeps matrix-js-sdk out of the fake build", () => {
-        const assets = join(appRoot, outDir, "assets");
-        const chunks = readdirSync(assets)
-            .filter((name) => name.endsWith(".js"))
-            .map((name) => ({ name, bytes: statSync(join(assets, name)).size }))
-            .sort((a, b) => b.bytes - a.bytes);
+        // `--mode fake` swaps `@chat-impl` for the fake client, but that alone
+        // does not prove the SDK is gone: an inline `type` specifier
+        // (`import { type X } from "matrix-js-sdk"`) is NOT erased by the SFC
+        // compiler, and under `verbatimModuleSyntax` tsc emits an all-type
+        // braces import as the side-effect `import {} from "matrix-js-sdk"` —
+        // which links the whole package. That shipped once and took the fake
+        // chunk from 17 kB to 839 kB while every other gate stayed green.
+        //
+        // Assert on module IDENTITY, not on bundle size. The size gate this
+        // replaced only fired once a leak was big enough to cross a byte
+        // threshold, so legitimate growth kept tripping it while a leak that
+        // tree-shook to nothing slipped under — and it reported a number
+        // instead of naming what leaked.
+        assert.ok(builtModules.size > 0, "the build reported no chunks to inspect");
 
-        assert.ok(chunks.length > 0, "the build produced no JS chunks");
-        const biggest = chunks[0];
-        assert.ok(biggest, "the build produced no JS chunks");
-        // The SDK is ~890 kB raw. Anything that links it lands far past this,
-        // which is how a stray all-type import from matrix-js-sdk gets caught
-        // even though it leaves no runtime trace. The shell chunk legitimately
-        // carries the token registry + theme editor (~30 kB) since the theming
-        // surface lives in the settings dialog; the entry chunk is the one that
-        // has to stay registry-free (`@tumult/theme/runtime` at boot).
+        // A stale `packages/core/dist` would satisfy this assertion while
+        // proving nothing, because the fake build imports the BUILT
+        // `@tumult/core/fake`, not its sources. `pretest:browser` rebuilds core,
+        // so this only trips when the file is run directly (or a build failed
+        // silently) — which is exactly when a green result would be a lie.
+        const fakeSrc = join(repoRoot, "packages", "core", "src", "fake", "index.ts");
+        const fakeDist = join(repoRoot, "packages", "core", "dist", "fake", "index.js");
         assert.ok(
-            biggest.bytes < 400_000,
-            `largest chunk ${biggest.name} is ${biggest.bytes} bytes — matrix-js-sdk leaked into the fake build`,
+            statSync(fakeDist).mtimeMs >= statSync(fakeSrc).mtimeMs,
+            `packages/core/dist is older than its sources — run \`pnpm --filter @tumult/core build\` first, ` +
+                "or this check is inspecting a stale bundle",
+        );
+
+        const leaked = new Map<string, string[]>();
+        for (const [chunk, modules] of builtModules) {
+            const offenders = [...modules].filter((id) => SDK_MODULE.test(id));
+            if (offenders.length > 0) leaked.set(chunk, offenders);
+        }
+
+        const report = [...leaked]
+            .map(([chunk, ids]) => `  ${chunk}:\n${ids.map((id) => `    ${id}`).join("\n")}`)
+            .join("\n");
+        assert.deepEqual(
+            [...leaked.keys()],
+            [],
+            `matrix-js-sdk is in the fake build — use whole-statement \`import type\` (see AGENTS.md):\n${report}`,
         );
     });
 
@@ -624,6 +689,128 @@ describe("browser smoke test (fake client)", () => {
         const token = state.tokens["--layout-guild-rail-width"];
         assert.ok(token, "--layout-guild-rail-width is not emitted");
         assert.equal(state.railWidth, Number.parseInt(token, 10), "the rail is not sized by the token");
+    });
+
+    it("lays the user bar across the rail and the room list, and shrinks it with the list", async () => {
+        // The bar starts INSIDE the rail (its first grid column IS the rail's
+        // track, which is what keeps the avatar centred on the rail) and runs
+        // to the far edge of the room list.
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+
+        // Measured with locators, not a helper inside `page.evaluate`: tsx wraps
+        // a named function as `__name(f, "f")` before Playwright serializes it,
+        // and the page has no `__name` (see AGENTS.md).
+        const bar = await page.locator(".tumult-userbar").boundingBox();
+        const rail = await page.locator(".tumult-rail").boundingBox();
+        const roomlist = await page.locator(".tumult-pane-roomlist").boundingBox();
+        assert.ok(bar && rail && roomlist, "the user bar or its neighbours did not render");
+        assert.equal(
+            Math.round(bar.x),
+            Math.round(rail.x),
+            "the user bar does not start at the rail's edge",
+        );
+        assert.equal(
+            Math.round(bar.x + bar.width),
+            Math.round(roomlist.x + roomlist.width),
+            "the user bar does not reach the room list's far edge",
+        );
+        assert.ok(bar.width > rail.width, "the user bar did not extend past the rail");
+        // Below both panes: the room list ends where the bar starts.
+        assert.ok(
+            Math.round(roomlist.y + roomlist.height) <= Math.round(bar.y) + 1,
+            "the room list overlaps the user bar",
+        );
+        assert.equal(await page.locator(".tumult-userbar-status").count(), 1, "the status line is missing");
+        assert.equal(await page.locator(".tumult-userbar-gear").count(), 1, "the gear is missing");
+
+        // Collapse the list: the bar keeps only the rail's width, and the
+        // name/status/gear are gone rather than overflowing a 0-width track.
+        await page.locator(".tumult-pane-toolbar button").first().click();
+        await page.waitForFunction(
+            () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-roomlist") === "closed",
+            { timeout: 5_000 },
+        );
+
+        const collapsedBar = await page.locator(".tumult-userbar").boundingBox();
+        const railToken = await page.evaluate(() =>
+            getComputedStyle(document.documentElement).getPropertyValue("--layout-guild-rail-width").trim(),
+        );
+        assert.ok(collapsedBar, "the user bar did not survive the collapse");
+        assert.equal(
+            Math.round(collapsedBar.width),
+            Math.round(Number.parseFloat(railToken)),
+            "the collapsed user bar is not the rail's width",
+        );
+        assert.equal(
+            await page.locator(".tumult-userbar-status").count(),
+            0,
+            "the status line survived the collapse",
+        );
+        assert.equal(await page.locator(".tumult-userbar-gear").count(), 0, "the gear survived the collapse");
+        assert.equal(
+            await page.locator(".tumult-account").count(),
+            1,
+            "the avatar should stay reachable — it owns the account menu",
+        );
+
+        await page.locator(".tumult-pane-toolbar button").first().click();
+        await page.waitForFunction(
+            () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-roomlist") === "open",
+            { timeout: 5_000 },
+        );
+    });
+
+    it("sets a status from the user bar, and the bar shows it", async () => {
+        // The fake starts with no status at all, so the bar shows its honest
+        // "Set a status" hint; the dialog then writes through `setOwnPresence`
+        // and the bar follows the published feed.
+        const hint = page.locator(".tumult-userbar-status-hint");
+        await hint.waitFor({ timeout: 5_000 });
+        assert.equal(await hint.textContent(), "Set a status");
+
+        await page.locator(".tumult-userbar-status").click();
+        const dialog = page.locator(".tumult-dialog", { hasText: "Set a status" });
+        await dialog.waitFor({ timeout: 5_000 });
+
+        await dialog.locator('input[value="unavailable"]').check();
+        await dialog.locator("#tumult-status-message").fill("Listening to Kite");
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+
+        const barText = await page.locator(".tumult-userbar-status").textContent();
+        assert.match(barText ?? "", /Listening to Kite/, "the user bar did not pick up the written status");
+        assert.equal(
+            await page.locator(".tumult-userbar-dot").getAttribute("data-presence"),
+            "unavailable",
+            "the presence dot did not follow the written presence",
+        );
+
+        // Reopening seeds from the live feed, so the dialog shows what was saved.
+        await page.locator(".tumult-userbar-status").click();
+        await dialog.waitFor({ timeout: 5_000 });
+        assert.equal(await dialog.locator("#tumult-status-message").inputValue(), "Listening to Kite");
+        assert.ok(await dialog.locator('input[value="unavailable"]').isChecked(), "away did not survive a reopen");
+
+        // Empty saves clear the status: the bar goes back to the hint.
+        await dialog.locator("#tumult-status-message").fill("");
+        await dialog.locator('input[value="online"]').check();
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+
+        await page.locator(".tumult-userbar-status-hint").waitFor({ timeout: 5_000 });
+        assert.equal(
+            await page.locator(".tumult-userbar-dot").getAttribute("data-presence"),
+            "online",
+            "the presence dot did not follow the cleared status",
+        );
+    });
+
+    it("opens Settings from the user bar's gear", async () => {
+        await page.locator(".tumult-userbar-gear").click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
     });
 
     it("flips every colour token for light mode, and flips back", async () => {
