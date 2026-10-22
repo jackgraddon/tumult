@@ -35,12 +35,16 @@ Once your work is merged into `main` and the CI passes:
 
 1.  **Manual Trigger:** A maintainer runs the release command from the root directory:
     ```bash
-    pnpm release
+    pnpm release          # conventional-commit bump (patch/minor/major)
+    pnpm release v0.2.0   # skip the bump; use this version
     ```
-    This runs `standard-version --no-verify` — the `--no-verify` skips a local git
-    hook so the release commit can't wedge the run.
+    Both paths run `standard-version --no-verify` — the `--no-verify` skips a
+    local git hook so the release commit can't wedge the run. With a version
+    argument the bump is skipped: the tag must not already exist and must be
+    newer than the latest `v*` tag, otherwise the script exits with a reason
+    and does not cut a release.
 2.  **Automation:** `standard-version` then:
-    *   Checks commit history to determine the version change (e.g., Minor for `feat`).
+    *   Without a version, checks commit history to determine the bump (e.g. Minor for `feat`). With `pnpm release v0.2.0`, uses that number via `--release-as`.
     *   Updates the root `package.json` version and writes `CHANGELOG.md`.
     *   Creates a `v…` tag and commits `chore(release): …` to `main`.
 
