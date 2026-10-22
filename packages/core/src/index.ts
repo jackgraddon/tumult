@@ -17,6 +17,8 @@ export type {
     MemberView,
     NotificationPermission,
     NotificationState,
+    OwnPresenceState,
+    OwnPresenceView,
     PresenceState,
     ProfileView,
     ReactionView,
@@ -43,6 +45,7 @@ export { sendTextMessage } from "./rooms/send.ts";
 export { sendMediaMessage } from "./rooms/media.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
 export { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
+export { readOwnPresence } from "./rooms/own-presence.ts";
 export { readSettingsFields, updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 export { collectEdits, sendEditMessage } from "./rooms/edits.ts";
 export type { EditRecord } from "./rooms/edits.ts";

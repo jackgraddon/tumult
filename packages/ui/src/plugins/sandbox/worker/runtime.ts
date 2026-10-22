@@ -16,6 +16,7 @@ import type {
     MemberView,
     MessageView,
     NotificationState,
+    OwnPresenceView,
     ProfileView,
     RoomPowerLevelsView,
     RoomSummary,
@@ -192,6 +193,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
                 supported: false,
             }),
             profile: feed<ProfileView | null>("profile", "profile", [], null),
+            ownPresence: feed<OwnPresenceView | null>("ownPresence", "ownPresence", [], null),
 
             timeline: (roomId: string) =>
                 feed<MessageView[]>(`timeline:${roomId}`, "timeline", [roomId], []),
@@ -250,6 +252,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             setPowerLevel: call("setPowerLevel"),
 
             setProfile: call("setProfile"),
+            setOwnPresence: call("setOwnPresence"),
             setupRecovery: call("setupRecovery"),
             restoreBackup: call("restoreBackup"),
             startVerification: call("startVerification"),

@@ -10,6 +10,9 @@ import type {
     MessageView,
     NotificationPermission,
     NotificationState,
+    OwnPresenceState,
+    OwnPresenceView,
+    PresenceState,
     ProfileView,
     RoomPowerLevelsView,
     RoomSettingsPatch,
@@ -377,6 +380,7 @@ class FakeChatClient implements ChatClient {
     public readonly typing: Subscribable<TypingState>;
     public readonly notifications: Subscribable<NotificationState>;
     public readonly profile: Subscribable<ProfileView | null>;
+    public readonly ownPresence: Subscribable<OwnPresenceView | null>;
     private readonly _threads: Observable<ThreadSummary[]>;
     private readonly noThreads = new Observable<ThreadSummary[]>([]);
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
@@ -386,6 +390,8 @@ class FakeChatClient implements ChatClient {
     private readonly powerLevelFeeds = new Map<string, Observable<RoomPowerLevelsView | null>>();
     private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
+    /** Our own presence as the roster read-side sees it (no "unavailable"). */
+    private ownPresenceValue: PresenceState = "online";
 
     public constructor(seed: number) {
         this.rand = mulberry32(seed);
@@ -424,6 +430,9 @@ class FakeChatClient implements ChatClient {
             displayName: "Demo",
             avatarUrl: null,
         });
+        // No status yet: the bar shows its "Set a status" hint, which is also
+        // what a fresh real account sees before anyone writes one.
+        this.ownPresence = new Observable<OwnPresenceView | null>(null);
 
         for (const r of this.rooms.get()) {
             this.rosters.set(r.id, buildRoster(r.id, this.selfMember()));
@@ -460,6 +469,7 @@ class FakeChatClient implements ChatClient {
     public async logout(): Promise<void> {
         (this.session as Observable<SessionView | null>).set(null);
         (this.profile as Observable<ProfileView | null>).set(null);
+        (this.ownPresence as Observable<OwnPresenceView | null>).set(null);
     }
 
     public async start(): Promise<void> {
@@ -899,6 +909,24 @@ class FakeChatClient implements ChatClient {
         }
     }
 
+    public async setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void> {
+        // The fake publishes the status too, so the user bar has something to
+        // render; the roster keeps the read-side enum (no "unavailable").
+        (this.ownPresence as Observable<OwnPresenceView | null>).set({
+            presence,
+            statusMessage: statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null,
+        });
+        this.ownPresenceValue = presence === "unavailable" ? "offline" : presence;
+        for (const [roomId, roster] of this.rosters) {
+            if (!roster.some((m) => m.isSelf)) continue;
+            this.rosters.set(
+                roomId,
+                sortMembers(roster.map((m) => (m.isSelf ? { ...m, presence: this.ownPresenceValue } : m))),
+            );
+            this.publishRoom(roomId);
+        }
+    }
+
     private selfMember(): MemberView {
         const profile = this.profile.get();
         return {
@@ -908,7 +936,7 @@ class FakeChatClient implements ChatClient {
             membership: "join",
             powerLevel: 100,
             isSelf: true,
-            presence: "online",
+            presence: this.ownPresenceValue,
             lastActiveTs: Date.now(),
         };
     }

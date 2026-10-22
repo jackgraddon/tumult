@@ -196,8 +196,13 @@ describe("browser smoke test (fake client)", () => {
         // carries the token registry + theme editor (~30 kB) since the theming
         // surface lives in the settings dialog; the entry chunk is the one that
         // has to stay registry-free (`@tumult/theme/runtime` at boot).
+        //
+        // The ceiling tracks the shell's own growth (measured 399 kB before the
+        // user bar, 403 kB after), so it is a "did the SDK sneak in" tripwire,
+        // NOT a budget: the two are an order of magnitude apart. Raising it is
+        // expected when the shell grows — check the chunk names first.
         assert.ok(
-            biggest.bytes < 400_000,
+            biggest.bytes < 500_000,
             `largest chunk ${biggest.name} is ${biggest.bytes} bytes — matrix-js-sdk leaked into the fake build`,
         );
     });
@@ -624,6 +629,128 @@ describe("browser smoke test (fake client)", () => {
         const token = state.tokens["--layout-guild-rail-width"];
         assert.ok(token, "--layout-guild-rail-width is not emitted");
         assert.equal(state.railWidth, Number.parseInt(token, 10), "the rail is not sized by the token");
+    });
+
+    it("lays the user bar across the rail and the room list, and shrinks it with the list", async () => {
+        // The bar starts INSIDE the rail (its first grid column IS the rail's
+        // track, which is what keeps the avatar centred on the rail) and runs
+        // to the far edge of the room list.
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+
+        // Measured with locators, not a helper inside `page.evaluate`: tsx wraps
+        // a named function as `__name(f, "f")` before Playwright serializes it,
+        // and the page has no `__name` (see AGENTS.md).
+        const bar = await page.locator(".tumult-userbar").boundingBox();
+        const rail = await page.locator(".tumult-rail").boundingBox();
+        const roomlist = await page.locator(".tumult-pane-roomlist").boundingBox();
+        assert.ok(bar && rail && roomlist, "the user bar or its neighbours did not render");
+        assert.equal(
+            Math.round(bar.x),
+            Math.round(rail.x),
+            "the user bar does not start at the rail's edge",
+        );
+        assert.equal(
+            Math.round(bar.x + bar.width),
+            Math.round(roomlist.x + roomlist.width),
+            "the user bar does not reach the room list's far edge",
+        );
+        assert.ok(bar.width > rail.width, "the user bar did not extend past the rail");
+        // Below both panes: the room list ends where the bar starts.
+        assert.ok(
+            Math.round(roomlist.y + roomlist.height) <= Math.round(bar.y) + 1,
+            "the room list overlaps the user bar",
+        );
+        assert.equal(await page.locator(".tumult-userbar-status").count(), 1, "the status line is missing");
+        assert.equal(await page.locator(".tumult-userbar-gear").count(), 1, "the gear is missing");
+
+        // Collapse the list: the bar keeps only the rail's width, and the
+        // name/status/gear are gone rather than overflowing a 0-width track.
+        await page.locator(".tumult-pane-toolbar button").first().click();
+        await page.waitForFunction(
+            () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-roomlist") === "closed",
+            { timeout: 5_000 },
+        );
+
+        const collapsedBar = await page.locator(".tumult-userbar").boundingBox();
+        const railToken = await page.evaluate(() =>
+            getComputedStyle(document.documentElement).getPropertyValue("--layout-guild-rail-width").trim(),
+        );
+        assert.ok(collapsedBar, "the user bar did not survive the collapse");
+        assert.equal(
+            Math.round(collapsedBar.width),
+            Math.round(Number.parseFloat(railToken)),
+            "the collapsed user bar is not the rail's width",
+        );
+        assert.equal(
+            await page.locator(".tumult-userbar-status").count(),
+            0,
+            "the status line survived the collapse",
+        );
+        assert.equal(await page.locator(".tumult-userbar-gear").count(), 0, "the gear survived the collapse");
+        assert.equal(
+            await page.locator(".tumult-account").count(),
+            1,
+            "the avatar should stay reachable — it owns the account menu",
+        );
+
+        await page.locator(".tumult-pane-toolbar button").first().click();
+        await page.waitForFunction(
+            () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-roomlist") === "open",
+            { timeout: 5_000 },
+        );
+    });
+
+    it("sets a status from the user bar, and the bar shows it", async () => {
+        // The fake starts with no status at all, so the bar shows its honest
+        // "Set a status" hint; the dialog then writes through `setOwnPresence`
+        // and the bar follows the published feed.
+        const hint = page.locator(".tumult-userbar-status-hint");
+        await hint.waitFor({ timeout: 5_000 });
+        assert.equal(await hint.textContent(), "Set a status");
+
+        await page.locator(".tumult-userbar-status").click();
+        const dialog = page.locator(".tumult-dialog", { hasText: "Set a status" });
+        await dialog.waitFor({ timeout: 5_000 });
+
+        await dialog.locator('input[value="unavailable"]').check();
+        await dialog.locator("#tumult-status-message").fill("Listening to Kite");
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+
+        const barText = await page.locator(".tumult-userbar-status").textContent();
+        assert.match(barText ?? "", /Listening to Kite/, "the user bar did not pick up the written status");
+        assert.equal(
+            await page.locator(".tumult-userbar-dot").getAttribute("data-presence"),
+            "unavailable",
+            "the presence dot did not follow the written presence",
+        );
+
+        // Reopening seeds from the live feed, so the dialog shows what was saved.
+        await page.locator(".tumult-userbar-status").click();
+        await dialog.waitFor({ timeout: 5_000 });
+        assert.equal(await dialog.locator("#tumult-status-message").inputValue(), "Listening to Kite");
+        assert.ok(await dialog.locator('input[value="unavailable"]').isChecked(), "away did not survive a reopen");
+
+        // Empty saves clear the status: the bar goes back to the hint.
+        await dialog.locator("#tumult-status-message").fill("");
+        await dialog.locator('input[value="online"]').check();
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+
+        await page.locator(".tumult-userbar-status-hint").waitFor({ timeout: 5_000 });
+        assert.equal(
+            await page.locator(".tumult-userbar-dot").getAttribute("data-presence"),
+            "online",
+            "the presence dot did not follow the cleared status",
+        );
+    });
+
+    it("opens Settings from the user bar's gear", async () => {
+        await page.locator(".tumult-userbar-gear").click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
     });
 
     it("flips every colour token for light mode, and flips back", async () => {

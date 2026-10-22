@@ -17,9 +17,15 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "rail-item-bg-hover", tier: "component", kind: "color", value: v("state-hover"), description: "Rail item hover." },
     { name: "rail-item-bg-active", tier: "component", kind: "color", value: v("state-selected"), description: "Rail item active." },
 
+    // User bar (the account panel at the bottom of the rail + room list)
+    { name: "userbar-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "User bar background." },
+    { name: "userbar-border", tier: "component", kind: "color", value: v("border-default"), description: "User bar top border." },
+    { name: "userbar-height", tier: "component", kind: "size", description: "User bar height." },
+    { name: "userbar-padding-x", tier: "component", kind: "spacing", value: v("space-2"), description: "User bar horizontal padding." },
+    { name: "userbar-gap", tier: "component", kind: "spacing", value: v("space-2"), description: "Gap between the avatar and the status text." },
+
     // Room list
-    { name: "roomlist-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Room list background." },
-    { name: "roomlist-item-bg-hover", tier: "component", kind: "color", value: v("state-hover"), description: "Room item hover." },
+    { name: "roomlist-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Room list background." },    { name: "roomlist-item-bg-hover", tier: "component", kind: "color", value: v("state-hover"), description: "Room item hover." },
     { name: "roomlist-item-bg-active", tier: "component", kind: "color", value: v("state-selected"), description: "Room item active." },
     { name: "roomlist-item-text", tier: "component", kind: "color", value: v("text-secondary"), description: "Room item text." },
     { name: "roomlist-item-text-active", tier: "component", kind: "color", value: v("text-primary"), description: "Active room text." },

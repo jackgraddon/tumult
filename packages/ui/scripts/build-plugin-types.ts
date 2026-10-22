@@ -54,9 +54,9 @@ const BANNER = `/**
  *
  * The \`vue\` import here is a TYPE-only dependency; a plugin's template lists
  * \`vue\` for its types, while the runtime component comes from the shell
- * (\`globalThis.__tumult.vue\`). Pinned to plugin API \`1.0.0\` and core contract
- * \`1.0.0\` — the versions a manifest's \`minUI\` / \`minCore\` are compared
- * against.
+ * (\`globalThis.__tumult.vue\`). It carries the two versions a manifest's
+ * \`minUI\` / \`minCore\` are compared against: \`PLUGIN_API_VERSION\` and
+ * \`CONTRACT_VERSION\`, both declared below.
  */
 `;
 

@@ -827,6 +827,26 @@
                     "type": "string",
                     "description": "Rail item active."
                 },
+                "userbar-bg": {
+                    "type": "string",
+                    "description": "User bar background."
+                },
+                "userbar-border": {
+                    "type": "string",
+                    "description": "User bar top border."
+                },
+                "userbar-height": {
+                    "type": "string",
+                    "description": "User bar height."
+                },
+                "userbar-padding-x": {
+                    "type": "string",
+                    "description": "User bar horizontal padding."
+                },
+                "userbar-gap": {
+                    "type": "string",
+                    "description": "Gap between the avatar and the status text."
+                },
                 "roomlist-bg": {
                     "type": "string",
                     "description": "Room list background."
@@ -1931,6 +1951,26 @@
                     "rail-item-bg-active": {
                         "type": "string",
                         "description": "Rail item active."
+                    },
+                    "userbar-bg": {
+                        "type": "string",
+                        "description": "User bar background."
+                    },
+                    "userbar-border": {
+                        "type": "string",
+                        "description": "User bar top border."
+                    },
+                    "userbar-height": {
+                        "type": "string",
+                        "description": "User bar height."
+                    },
+                    "userbar-padding-x": {
+                        "type": "string",
+                        "description": "User bar horizontal padding."
+                    },
+                    "userbar-gap": {
+                        "type": "string",
+                        "description": "Gap between the avatar and the status text."
                     },
                     "roomlist-bg": {
                         "type": "string",
@@ -3037,6 +3077,26 @@
                     "rail-item-bg-active": {
                         "type": "string",
                         "description": "Rail item active."
+                    },
+                    "userbar-bg": {
+                        "type": "string",
+                        "description": "User bar background."
+                    },
+                    "userbar-border": {
+                        "type": "string",
+                        "description": "User bar top border."
+                    },
+                    "userbar-height": {
+                        "type": "string",
+                        "description": "User bar height."
+                    },
+                    "userbar-padding-x": {
+                        "type": "string",
+                        "description": "User bar horizontal padding."
+                    },
+                    "userbar-gap": {
+                        "type": "string",
+                        "description": "Gap between the avatar and the status text."
                     },
                     "roomlist-bg": {
                         "type": "string",

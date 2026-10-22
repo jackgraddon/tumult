@@ -10,28 +10,20 @@ import {
     ScrollAreaThumb,
     ScrollAreaViewport,
 } from "reka-ui";
-import type { ChatClient, SessionView, SpaceTree } from "@tumult/core";
+import type { SpaceTree } from "@tumult/core";
 
 import GuildRailItem from "./GuildRailItem.vue";
 import DmsRailItem from "./DmsRailItem.vue";
 import PaneRailItem from "./PaneRailItem.vue";
-import AccountTile from "./AccountTile.vue";
 import type { WorkspacePane } from "../panes/registry.ts";
 
 defineProps<{
     tree: SpaceTree;
-    session: SessionView | null;
-    client: ChatClient;
     /** Workspace panes, in rail order (the shell owns the registry). */
     panes?: readonly WorkspacePane[];
 }>();
 
 const emit = defineEmits<{
-    signOut: [];
-    security: [];
-    verify: [];
-    profile: [];
-    settings: [];
     createSpace: [];
     join: [];
 }>();
@@ -100,15 +92,6 @@ const emit = defineEmits<{
                 <ScrollAreaThumb class="tumult-scrollthumb" />
             </ScrollAreaScrollbar>
         </ScrollAreaRoot>
-        <AccountTile
-            :session="session"
-            :client="client"
-            @sign-out="emit('signOut')"
-            @security="emit('security')"
-            @verify="emit('verify')"
-            @profile="emit('profile')"
-            @settings="emit('settings')"
-        />
     </nav>
 </template>
 

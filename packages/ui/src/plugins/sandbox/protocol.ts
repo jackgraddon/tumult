@@ -80,6 +80,7 @@ export const CLIENT_METHODS = [
     "unban",
     "setPowerLevel",
     "setProfile",
+    "setOwnPresence",
     "setupRecovery",
     "restoreBackup",
     "startVerification",
@@ -103,6 +104,7 @@ export const CLIENT_FEEDS = [
     "typing",
     "notifications",
     "profile",
+    "ownPresence",
 ] as const satisfies readonly ChatClientFeeds[];
 
 /** Feeds that are parameterised by an id, subscribed via a method call. */
