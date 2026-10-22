@@ -238,6 +238,7 @@ describe("browser smoke test (fake client)", () => {
         // instead of naming what leaked.
         assert.ok(builtModules.size > 0, "the build reported no chunks to inspect");
 
+<<<<<<< HEAD
         // A stale `packages/core/dist` would satisfy this assertion while
         // proving nothing, because the fake build imports the BUILT
         // `@tumult/core/fake`, not its sources. `pretest:browser` rebuilds core,
@@ -264,6 +265,25 @@ describe("browser smoke test (fake client)", () => {
             [...leaked.keys()],
             [],
             `matrix-js-sdk is in the fake build — use whole-statement \`import type\` (see AGENTS.md):\n${report}`,
+=======
+        assert.ok(chunks.length > 0, "the build produced no JS chunks");
+        const biggest = chunks[0];
+        assert.ok(biggest, "the build produced no JS chunks");
+        // The SDK is ~890 kB raw. Anything that links it lands far past this,
+        // which is how a stray all-type import from matrix-js-sdk gets caught
+        // even though it leaves no runtime trace. The shell chunk legitimately
+        // carries the token registry + theme editor (~30 kB) since the theming
+        // surface lives in the settings dialog; the entry chunk is the one that
+        // has to stay registry-free (`@tumult/theme/runtime` at boot).
+        //
+        // The ceiling tracks the shell's own growth (measured 399 kB before the
+        // user bar, 403 kB after), so it is a "did the SDK sneak in" tripwire,
+        // NOT a budget: the two are an order of magnitude apart. Raising it is
+        // expected when the shell grows — check the chunk names first.
+        assert.ok(
+            biggest.bytes < 500_000,
+            `largest chunk ${biggest.name} is ${biggest.bytes} bytes — matrix-js-sdk leaked into the fake build`,
+>>>>>>> 915615a05364a9dd811dd6459fffe877b777f149
         );
     });
 
