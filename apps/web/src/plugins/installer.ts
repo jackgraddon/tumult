@@ -69,37 +69,32 @@ async function fetchJson(url: string): Promise<unknown | null> {
     }
 }
 
-/** Find the release manifest asset URL on a release payload, if any. */
-function manifestAssetUrl(release: unknown): string | null {
-    if (typeof release !== "object" || release === null) return null;
-    const assets = (release as { assets?: unknown }).assets;
-    if (!Array.isArray(assets)) return null;
-    for (const asset of assets) {
-        if (typeof asset !== "object" || asset === null) continue;
-        const { name, browser_download_url: download } = asset as Record<string, unknown>;
-        if (name === "tumult.plugin.json" && typeof download === "string") return download;
-    }
-    return null;
-}
-
-/** The release tag from a release payload, or `""`. */
+/** The tag a release payload carries, or `""`. */
 function releaseTag(release: unknown): string {
     if (typeof release !== "object" || release === null) return "";
     const tag = (release as { tag_name?: unknown }).tag_name;
     return typeof tag === "string" ? tag : "";
 }
 
-/** The bundle asset URL on a release whose manifest names `entry`. */
-function entryAssetUrl(release: unknown, entry: string): string | null {
-    if (typeof release !== "object" || release === null) return null;
+/** Whether a release payload carries an asset of the given name. */
+function hasReleaseAsset(release: unknown, name: string): boolean {
+    if (typeof release !== "object" || release === null) return false;
     const assets = (release as { assets?: unknown }).assets;
-    if (!Array.isArray(assets)) return null;
-    for (const asset of assets) {
-        if (typeof asset !== "object" || asset === null) continue;
-        const { name, browser_download_url: download } = asset as Record<string, unknown>;
-        if (name === entry && typeof download === "string") return download;
-    }
-    return null;
+    if (!Array.isArray(assets)) return false;
+    return assets.some((asset) => {
+        if (typeof asset !== "object" || asset === null) return false;
+        return (asset as Record<string, unknown>).name === name;
+    });
+}
+
+/**
+ * Download a release asset through the deployment's own origin. GitHub release
+ * assets are never browser-CORS-fetchable; routing through a first-party
+ * same-origin endpoint avoids the problem without pulling in a third party.
+ */
+function proxyAssetUrl(source: PluginSource, tag: string, name: string): string {
+    const params = new URLSearchParams({ owner: source.owner, repo: source.repo, tag, name });
+    return `/api/plugin-asset?${params.toString()}`;
 }
 
 /** The raw URL for one file at a ref (release-tag or default branch). */
@@ -124,16 +119,19 @@ interface ResolvedRelease {
 async function resolveManifest(source: PluginSource): Promise<ResolvedRelease> {
     const release = await fetchJson(releaseApiUrl(source));
     if (release !== null) {
-        const assetUrl = manifestAssetUrl(release);
-        if (assetUrl) {
+        const manifestName = "tumult.plugin.json";
+        if (hasReleaseAsset(release, manifestName)) {
+            const tag = releaseTag(release);
+            const assetUrl = proxyAssetUrl(source, tag, manifestName);
             const document = await fetchJson(assetUrl);
+            if (document === null) throw new InstallError("Could not download tumult.plugin.json from the release.");
             const check = checkReleaseManifest(document);
             if (!check.ok) throw new InstallError(check.reason);
             return {
                 release,
                 manifest: check.manifest,
                 lane: check.lane,
-                tag: releaseTag(release),
+                tag,
                 manifestUrl: assetUrl,
             };
         }
@@ -175,8 +173,12 @@ async function downloadBundle(resolved: ResolvedRelease, source: PluginSource): 
     const integrity = resolved.manifest.integrity;
     if (!integrity) throw new InstallError(`The manifest has no integrity hash; refusing to install.`);
 
-    const assetUrl = entryAssetUrl(resolved.release, entry);
-    const url = assetUrl ?? rawFileUrl(source, resolved.tag, entry);
+    let url: string;
+    if (hasReleaseAsset(resolved.release, entry)) {
+        url = proxyAssetUrl(source, resolved.tag, entry);
+    } else {
+        url = rawFileUrl(source, resolved.tag, entry);
+    }
 
     let response: Response;
     try {

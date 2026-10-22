@@ -22,6 +22,6 @@
       "@chat-impl": ["./src/chat.real.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "api/**/*.ts", "vite.config.ts"],
   "references": [{ "path": "../../packages/core" }, { "path": "../../packages/theme" }]
 }

@@ -635,6 +635,31 @@ homeserver. A trap listed here has shipped broken at least once.
   API (`locator.evaluate((el) => …)`, `locator.filter(…)`) over building helpers
   inside the evaluated body.
 
+### Plugins
+
+- **GitHub release assets are not browser-CORS-fetchable, period.** Both the
+  `browser_download_url` (`github.com/…/releases/download/…`) and the API asset
+  URL (`api.github.com/…/releases/assets/{id}` with `Accept:
+  application/octet-stream`) 302 to `release-assets.githubusercontent.com`,
+  which sends **no `Access-Control-Allow-Origin`** — the browser checks CORS on
+  the *final* response, so both forms throw `NetworkError` on a cross-origin
+  tab. A prior "fix" (fetch via the API `url`) did not fix the error and broke
+  the browser test: it was reverted. Only `api.github.com` JSON,
+  `raw.githubusercontent.com` and jsDelivr answer CORS-open, and none of those
+  *serves a release asset* (they serve git-tree files, and jsDelivr is not a
+  release-asset mirror).
+- The installer therefore routes the two asset downloads through the deployment's
+  own origin: `/api/plugin-asset?owner=&repo=&tag=&name=`
+  (`apps/web/api/plugin-asset.ts`), which fetches
+  `github.com/{owner}/{repo}/releases/download/{tag}/{name}` **server-side**
+  (CORS does not apply server-side) and forwards the bytes. It is NOT open:
+  upstream is reconstructed from four validated path segments, so it is not a
+  fetch-as-a-service. The `sha256` check still runs on the proxied bytes, so the
+  proxy can deny service but cannot tamper past the hash. `rawManifestUrl`
+  (`raw.githubusercontent.com`, a git-tree file) is CORS-open and stays direct.
+- The release API JSON (`/releases/latest`) IS CORS-open and is fetched
+  directly — that part of the install flow never needed the proxy.
+
 ### Known harmless
 
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver — MatrixRTC

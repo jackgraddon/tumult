@@ -553,20 +553,20 @@ describe("browser smoke test (fake client)", () => {
                         assets: [
                             {
                                 name: "tumult.plugin.json",
-                                browser_download_url: "https://example.invalid/tumult.plugin.json",
+                                browser_download_url: "https://github.com/example/remote/releases/download/v1.0.0/tumult.plugin.json",
                             },
                             {
                                 name: "plugin.js",
-                                browser_download_url: "https://example.invalid/plugin.js",
+                                browser_download_url: "https://github.com/example/remote/releases/download/v1.0.0/plugin.js",
                             },
                         ],
                     }),
                 }),
             );
-            await isolated.route("https://example.invalid/tumult.plugin.json", (route) =>
+            await isolated.route("**/api/plugin-asset**name=tumult.plugin.json**", (route) =>
                 route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manifest) }),
             );
-            await isolated.route("https://example.invalid/plugin.js", (route) =>
+            await isolated.route("**/api/plugin-asset**name=plugin.js**", (route) =>
                 route.fulfill({ status: 200, contentType: "text/javascript", body: bundle }),
             );
 

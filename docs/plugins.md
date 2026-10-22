@@ -1005,9 +1005,9 @@ permissions, and the consent screen prints the resulting lane in plain words.
 ### The install flow
 
 1. Paste a repository URL (`https://github.com/owner/repo`, `owner/repo` or a
-   `…/tree/<ref>` link). The app asks GitHub for the release's
-   `tumult.plugin.json` — the release asset if there is one, otherwise the file
-   at the tag.
+   `…/tree/<ref>` link). The app asks GitHub's API for the release — CORS-open,
+   so the release JSON reaches the browser directly — and takes its `tumult.plugin.json`
+   asset if there is one, otherwise the file at the tag.
 2. The manifest is validated (`requireIntegrity: true`) and the lane derived.
 3. **Consent.** The app shows the name, author, source link, version, the exact
    permission list, the lane badge and the hash. For a `trusted` plugin the
@@ -1016,6 +1016,31 @@ permissions, and the consent screen prints the resulting lane in plain words.
    you accept.
 4. The bundle is fetched and hashed (`sha256-<base64>` via WebCrypto); a
    mismatch refuses the install and names both hashes.
+
+### Fetching release assets (a hard browser constraint)
+
+GitHub release assets are **not** fetchable cross-origin from a browser. Both
+the `browser_download_url` (`github.com/…/releases/download/…`) and the API
+asset URL (`api.github.com/…/releases/assets/{id}` with
+`Accept: application/octet-stream`) 302-redirect to
+`release-assets.githubusercontent.com`, which sends no
+`Access-Control-Allow-Origin` — so a tab on `tumult.jackg.cc` cannot read the
+bytes, and the fetch throws a `NetworkError`. Only `api.github.com` JSON,
+`raw.githubusercontent.com` and jsDelivr answer with open CORS, and none of
+those *serves a release asset*.
+
+The app's own deployment therefore proxies the two asset downloads. Each goes to
+`/api/plugin-asset?owner=&repo=&tag=&name=` on the app's origin
+(`apps/web/api/plugin-asset.ts`), which fetches
+`github.com/{owner}/{repo}/releases/download/{tag}/{name}` **server-side** and
+forwards the bytes. The proxy is not open: it reconstructs the upstream URL from
+four validated path segments (owner, repo, tag, asset name), so it is not a
+general fetch-as-a-service. The integrity hash in step 4 still runs on the
+proxied bytes — the proxy can deny service, but cannot tamper past the hash.
+The raw-file fallback (a repo with no release) fetches
+`raw.githubusercontent.com` directly, which is already CORS-open. A self-hosted
+deployment must ship its own equivalent endpoint; the installer assumes the
+`/api/plugin-asset` route exists.
 5. The manifest is stored, the bundle is stored as text, and the plugin is
    installed through `PluginRegistry.install()` — so §3's rollback and
    disposables apply unchanged, and a throw during install means nothing was

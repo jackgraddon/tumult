@@ -30,7 +30,10 @@ publishes what Tumult installs.
    repository; template repositories ship with workflows disabled.)
 5. **Install it in Tumult.** Settings → Plugins → paste your repository URL.
    Tumult finds the release manifest, shows you the consent screen, and
-   verifies the hash before anything runs.
+   verifies the hash before anything runs. The deployment fetches your release
+   *assets* (the manifest and the bundle) through its own origin, because GitHub
+   does not send CORS headers on release-asset downloads — a browser cannot read
+   them cross-origin. (The release *JSON* is CORS-open and is read directly.)
 
 ## What lives where
 
