@@ -1,7 +1,7 @@
 {
   "name": "tumult",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "packageManager": "pnpm@11.13.1",
   "engines": {
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "pnpm --filter @tumult/web dev",
     "build": "pnpm -r build",
-    "release": "pnpm exec standard-version --no-verify",
+    "release": "node --import tsx scripts/release.ts",
     "lint": "pnpm -r lint",
     "test:integration": "tests/synapse/run.sh"
   },
