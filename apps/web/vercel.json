@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "dist",
   "functions": {
-    "api/plugin-asset.ts": {}
+    "api/plugin-asset.ts": { "maxDuration": 20 }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
