@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -30,7 +31,7 @@ function when(ts: number): string {
     <aside class="tumult-thread-list" aria-label="Threads">
         <header class="tumult-thread-list-header">
             <h2>Threads</h2>
-            <button type="button" class="tumult-thread-list-close" aria-label="Close threads" @click="emit('close')">✕</button>
+            <button type="button" class="tumult-thread-list-close" aria-label="Close threads" @click="emit('close')"><Icon name="close" /></button>
         </header>
         <p v-if="threads.length === 0" class="tumult-thread-list-empty">No threads in this room yet.</p>
         <ul v-else>

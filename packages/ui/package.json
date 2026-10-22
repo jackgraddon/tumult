@@ -15,9 +15,11 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "test:template": "vue-tsc -p ../../templates/plugin/tsconfig.json --noEmit && tsc -p ../../templates/plugin/tsconfig.workspace.json --noEmit",
     "emit:schema": "node --import tsx scripts/emit-plugin-schema.ts",
+    "emit:icons": "node --import tsx scripts/emit-icons.ts",
     "emit:types": "node --import tsx scripts/emit-plugin-types.ts"
   },
   "dependencies": {
+    "@mdi/js": "^7.4.47",
     "@tanstack/vue-virtual": "^3.13.39",
     "@tumult/core": "workspace:*",
     "@tumult/theme": "workspace:*",

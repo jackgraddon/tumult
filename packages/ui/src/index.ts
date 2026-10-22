@@ -69,6 +69,10 @@ export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations }
 export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
 export { SettingsTabsKey, SettingsTabsRegistry, useSettingsTabs } from "./settings/tabs.ts";
 export type { SettingsTab, SettingsTabProps } from "./settings/tabs.ts";
+export { default as Icon } from "./icons/Icon.vue";
+export { createIconRegistry } from "./icons/index.ts";
+export { DEFAULT_ICON_PACK, IconRegistry, IconsKey, parseIconRef, useIcons } from "./icons/registry.ts";
+export type { IconDef, IconPack, IconRef } from "./icons/registry.ts";
 export { WorkspacePanesKey, WorkspacePanesRegistry, useWorkspacePanes } from "./panes/registry.ts";
 export type { WorkspacePane } from "./panes/registry.ts";
 export { installVueBridge } from "./plugins/vueBridge.ts";

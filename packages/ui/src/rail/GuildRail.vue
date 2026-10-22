@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import {
     DropdownMenuContent,
     DropdownMenuItem,
@@ -43,7 +44,7 @@ const emit = defineEmits<{
                         <DropdownMenuRoot>
                             <DropdownMenuTrigger as-child>
                                 <button type="button" class="tumult-rail-add-button" aria-label="Add a server">
-                                    <span aria-hidden="true">+</span>
+                                    <Icon name="plus" />
                                 </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuPortal>

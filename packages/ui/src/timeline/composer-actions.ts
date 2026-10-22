@@ -30,7 +30,7 @@ export interface ComposerAction {
     id: string;
     /** Accessible name; also the tooltip. */
     label: string;
-    /** Glyph rendered in the button; falls back to the label text. */
+    /** Icon name for the button (`"thumb-up"`); falls back to the label text. */
     icon?: string;
     /** Higher sorts further left. Default 0. */
     priority?: number;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed } from "vue";
 import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from "reka-ui";
 
@@ -15,9 +16,9 @@ const isCurrent = computed(
     () => selection.current.view === "pane" && selection.current.paneId === props.pane.id,
 );
 
-// A pane names itself with a glyph; without one, the label's first letter is
-// the honest fallback (an emoji-free tile still says what it is).
-const glyph = computed(() => props.pane.icon ?? (props.pane.label.trim().charAt(0) || "?"));
+// A pane names its icon; without one (or when the name resolves to nothing),
+// the label's first letter is the honest fallback.
+const initial = computed(() => props.pane.label.trim().charAt(0) || "?");
 </script>
 
 <template>
@@ -32,7 +33,10 @@ const glyph = computed(() => props.pane.icon ?? (props.pane.label.trim().charAt(
                         :aria-label="pane.label"
                         @click.prevent="selection.select({ view: 'pane', paneId: pane.id })"
                     >
-                        <span class="tumult-pane-glyph" aria-hidden="true">{{ glyph }}</span>
+                        <span class="tumult-pane-glyph" aria-hidden="true">
+                            <Icon v-if="pane.icon" :name="pane.icon" :fallback="initial" />
+                            <template v-else>{{ initial }}</template>
+                        </span>
                     </a>
                 </li>
             </TooltipTrigger>

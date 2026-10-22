@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, ref, watch } from "vue";
 import type { ChatClient, MessageView } from "@tumult/core";
 
@@ -170,7 +171,7 @@ function onFileSelected(event: Event): void {
                 aria-label="Cancel reply"
                 @click="emit('cancelReply')"
             >
-                ×
+                <Icon name="close" />
             </button>
         </div>
         <!-- Slash-command suggestions: only while the draft is `/prefix`. -->
@@ -202,7 +203,7 @@ function onFileSelected(event: Event): void {
                 :disabled="disabled"
                 @click="openFilePicker"
             >
-                +
+                <Icon name="paperclip" />
             </button>
             <input
                 ref="fileInput"
@@ -222,7 +223,8 @@ function onFileSelected(event: Event): void {
                 :disabled="disabled"
                 @click="runAction(action)"
             >
-                {{ action.icon ?? action.label }}
+                <Icon v-if="action.icon" :name="action.icon" :fallback="action.label" />
+                <template v-else>{{ action.label }}</template>
             </button>
             <input
                 id="tumult-composer-input"

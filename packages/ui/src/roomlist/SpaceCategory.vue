@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { ref } from "vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import type { SpaceNode } from "@tumult/core";
@@ -23,11 +24,11 @@ const open = ref(true);
         guilds. Re-entry nodes (node.truncated) render as a dead-end label.
     -->
     <li v-if="node.truncated" class="tumult-truncated" aria-label="Truncated">
-        <span>⋯ {{ node.room.name }} (truncated)</span>
+        <span><Icon name="dots-horizontal" /> {{ node.room.name }} (truncated)</span>
     </li>
     <CollapsibleRoot v-else v-model:open="open" class="tumult-category">
         <CollapsibleTrigger class="tumult-category-trigger">
-            <span class="tumult-category-caret" :data-open="open ? 'true' : 'false'" aria-hidden="true">▸</span>
+            <Icon class="tumult-category-caret" :data-open="open ? 'true' : 'false'" name="chevron-right" />
             <!-- Only when the space has an icon: an initials tile on every
                  category would be noise next to the caret. -->
             <Avatar v-if="node.room.avatarUrl" :src="node.room.avatarUrl" :label="node.room.name" size="xs" aria-hidden="true" />

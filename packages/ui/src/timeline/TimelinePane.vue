@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, ref, shallowRef, watch } from "vue";
 import type { ChatClient, RoomSummary } from "@tumult/core";
 
@@ -66,13 +67,13 @@ watch(
                 label="Search this room"
                 :aria-pressed="searchOpen"
                 @click="searchOpen = !searchOpen"
-                >🔍</IconButton
+                ><Icon name="magnify" /></IconButton
             >
             <IconButton
                 v-if="room && settingsAllowed !== false"
                 label="Room settings"
                 @click="emit('settings')"
-                >⚙</IconButton
+                ><Icon name="cog" /></IconButton
             >
         </header>
         <!-- Keyed so one room's subscription is torn down before the next mounts. -->

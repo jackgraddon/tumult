@@ -49,7 +49,7 @@ export const reactLastAction: Plugin = {
         ctx.addComposerAction({
             id: "cc.jackg.tumult.react-last",
             label: "React to the last message",
-            icon: "👍",
+            icon: "thumb-up",
             run: (action) => {
                 const timeline = action.client.timeline(action.roomId).get();
                 // Only a settled, decrypted, live message can take a reaction.
@@ -155,7 +155,7 @@ export const workspaceShowcase: Plugin = {
         ctx.addPane({
             id: "cc.jackg.tumult.pane-showcase",
             label: "Plugin pane",
-            icon: "🧩",
+            icon: "puzzle",
             content: PaneShowcase,
             sidebar: PaneShowcaseNav,
             footer: PaneShowcaseFooter,

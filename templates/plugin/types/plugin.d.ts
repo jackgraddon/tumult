@@ -839,7 +839,7 @@ export interface ComposerAction {
 	id: string;
 	/** Accessible name; also the tooltip. */
 	label: string;
-	/** Glyph rendered in the button; falls back to the label text. */
+	/** Icon name for the button (`"thumb-up"`); falls back to the label text. */
 	icon?: string;
 	/** Higher sorts further left. Default 0. */
 	priority?: number;
@@ -1003,7 +1003,11 @@ export interface WorkspacePane {
 	id: string;
 	/** Label in the rail tile's tooltip and its accessible name. */
 	label: string;
-	/** Glyph rendered in the rail tile. Defaults to the label's first letter. */
+	/**
+	 * Icon name for the rail tile (`"puzzle"`, or `"pack:name"` for a
+	 * registered pack). Defaults to the label's first letter, which is also
+	 * what shows when the name resolves to nothing.
+	 */
 	icon?: string;
 	/** Higher sorts nearer the top of the rail. Default 0. */
 	priority?: number;

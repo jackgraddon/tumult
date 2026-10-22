@@ -21,6 +21,7 @@ defineProps<{
     border-radius: var(--control-radius);
     background: transparent;
     color: var(--text-secondary);
+    font-size: var(--icon-md);
     cursor: pointer;
     transition:
         background-color var(--motion-fast) var(--motion-ease),

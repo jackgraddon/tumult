@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, onMounted, watch } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -53,12 +54,12 @@ async function onSend(body: string): Promise<void> {
 <template>
     <aside class="tumult-thread-panel" aria-label="Thread">
         <header class="tumult-thread-header">
-            <button type="button" class="tumult-thread-btn" aria-label="All threads" @click="emit('back')">‹</button>
+            <button type="button" class="tumult-thread-btn" aria-label="All threads" @click="emit('back')"><Icon name="chevron-left" /></button>
             <div class="tumult-thread-header-text">
                 <h2>Thread</h2>
                 <p v-if="root" class="tumult-thread-root">{{ root.body }}</p>
             </div>
-            <button type="button" class="tumult-thread-btn" aria-label="Close thread" @click="emit('close')">✕</button>
+            <button type="button" class="tumult-thread-btn" aria-label="Close thread" @click="emit('close')"><Icon name="close" /></button>
         </header>
         <div class="tumult-thread-meta">{{ replyCount }} {{ replyCount === 1 ? "reply" : "replies" }}</div>
         <!--

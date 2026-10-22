@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from "reka-ui";
 import type { SpaceNode } from "@tumult/core";
 
@@ -26,7 +27,7 @@ const emit = defineEmits<{
         <header class="tumult-roomlist-header">
             <h2>{{ guild?.room.name ?? "Messages" }}</h2>
             <IconButton v-if="guild" label="Create a channel" @click="emit('createChannel')">
-                <span aria-hidden="true">＋</span>
+                <Icon name="plus" />
             </IconButton>
         </header>
         <ScrollAreaRoot class="tumult-roomlist-scroll">

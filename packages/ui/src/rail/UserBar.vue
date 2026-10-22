@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, ref } from "vue";
 import {
     DropdownMenuContent,
@@ -100,7 +101,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
                                 class="tumult-menu-device"
                                 :title="d.verified ? 'Verified' : 'Unverified'"
                             >
-                                <span aria-hidden="true">{{ d.verified ? "🛡️" : "⚠️" }}</span>
+                                <Icon :name="d.verified ? 'shield-check' : 'alert'" />
                                 <span class="tumult-menu-device-name">{{ d.displayName ?? d.id }}{{ d.isCurrent ? " (this device)" : "" }}</span>
                             </li>
                         </ul>
@@ -134,7 +135,7 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
             </button>
         </div>
         <IconButton v-if="!compact" class="tumult-userbar-gear" label="Settings" @click="emit('settings')">
-            <span aria-hidden="true">⚙</span>
+            <Icon name="cog" />
         </IconButton>
     </div>
 </template>

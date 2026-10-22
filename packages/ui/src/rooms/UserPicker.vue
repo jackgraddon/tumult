@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { ref } from "vue";
 import type { ChatClient, UserSearchResult } from "@tumult/core";
 
@@ -99,7 +100,7 @@ function clear(): void {
                 aria-label="Clear selection"
                 @click="clear"
             >
-                ✕
+                <Icon name="close" />
             </button>
         </div>
         <p v-if="status === 'searching'" class="tumult-dialog-hint" role="status">Searching…</p>

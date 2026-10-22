@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { onMounted, ref, shallowRef } from "vue";
 import type { ChatClient, SearchPage } from "@tumult/core";
 
@@ -106,7 +107,7 @@ function hitTime(ts: number): string {
     <aside class="tumult-search-panel" aria-label="Search this room" @keydown="onKeydown">
         <header class="tumult-search-header">
             <h2>Search</h2>
-            <IconButton label="Close search" @click="emit('close')">✕</IconButton>
+            <IconButton label="Close search" @click="emit('close')"><Icon name="close" /></IconButton>
         </header>
         <form class="tumult-search-form" role="search" @submit.prevent="submit">
             <input

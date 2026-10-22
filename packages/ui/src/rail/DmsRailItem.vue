@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from "reka-ui";
 
 import { useSelection } from "../selection.ts";
@@ -21,7 +22,7 @@ const selection = useSelection();
                         aria-label="Direct messages"
                         @click.prevent="selection.select({ view: 'dms' })"
                     >
-                        <span class="tumult-dms-glyph" aria-hidden="true">💬</span>
+                        <Icon name="message-text" />
                         <UnreadBadge class="tumult-dms-badge" :count="unread" />
                     </a>
                 </li>

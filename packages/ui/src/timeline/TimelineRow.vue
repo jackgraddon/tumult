@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, ref } from "vue";
 import {
     ContextMenuContent,
@@ -302,7 +303,7 @@ function cancelEdit(): void {
                         class="tumult-row-replies"
                         @click="onOpenThread?.(message.id)"
                     >
-                        {{ threadReplyCount }} {{ threadReplyCount === 1 ? "reply" : "replies" }} ›
+                        {{ threadReplyCount }} {{ threadReplyCount === 1 ? "reply" : "replies" }} <Icon name="chevron-right" />
                     </button>
                     <form v-if="editing" class="tumult-edit-form" @submit.prevent="saveEdit">
                         <input
@@ -368,7 +369,7 @@ function cancelEdit(): void {
                         aria-label="Edit message"
                         @click="startEdit"
                     >
-                        ✎ edit
+                        <Icon name="pencil" /> edit
                     </button>
                     <button
                         v-if="redactable && !editing"
@@ -377,7 +378,7 @@ function cancelEdit(): void {
                         aria-label="Delete message"
                         @click="onRedactMessage?.(message.id)"
                     >
-                        🗑 delete
+                        <Icon name="delete" /> delete
                     </button>
                     <button
                         v-if="replyable && !editing"
@@ -386,7 +387,7 @@ function cancelEdit(): void {
                         aria-label="Reply to message"
                         @click="onReply?.(message)"
                     >
-                        ↩ reply
+                        <Icon name="reply" /> reply
                     </button>
                     <button
                         v-if="onOpenThread && message.decryption === 'ok'"
@@ -395,11 +396,11 @@ function cancelEdit(): void {
                         aria-label="Reply in thread"
                         @click="onOpenThread?.(message.id)"
                     >
-                        💬 thread
+                        <Icon name="message-text" /> thread
                     </button>
                     <PopoverRoot v-if="onToggleReaction && message.decryption === 'ok'">
                         <PopoverTrigger as-child>
-                            <button type="button" class="tumult-reaction-add" aria-label="Add reaction">+</button>
+                            <button type="button" class="tumult-reaction-add" aria-label="Add reaction"><Icon name="emoticon-plus-outline" /></button>
                         </PopoverTrigger>
                         <PopoverPortal>
                             <PopoverContent class="tumult-reaction-popover" side="bottom" align="end">
@@ -449,7 +450,7 @@ function cancelEdit(): void {
                     <ContextMenuSub v-else-if="entry.kind === 'submenu'">
                         <ContextMenuSubTrigger class="tumult-menu-item tumult-menu-sub-trigger">
                             {{ entry.label }}
-                            <span class="tumult-menu-chevron" aria-hidden="true">›</span>
+                            <Icon class="tumult-menu-chevron" name="chevron-right" />
                         </ContextMenuSubTrigger>
                         <ContextMenuPortal>
                             <ContextMenuSubContent class="tumult-menu">
@@ -605,6 +606,7 @@ function cancelEdit(): void {
 .tumult-row-thread {
     display: inline-flex;
     align-items: center;
+    gap: var(--space-0-5);
     padding: 0 var(--space-0-5);
     border: none;
     background: transparent;

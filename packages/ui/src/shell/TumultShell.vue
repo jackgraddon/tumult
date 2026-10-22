@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
@@ -15,6 +16,8 @@ import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
 import { installVueBridge } from "../plugins/vueBridge.ts";
 import { SettingsTabsKey, SettingsTabsRegistry } from "../settings/tabs.ts";
+import { IconsKey } from "../icons/registry.ts";
+import { createIconRegistry } from "../icons/index.ts";
 import { WorkspacePanesKey, WorkspacePanesRegistry } from "../panes/registry.ts";
 import { useSubscribable } from "../subscribable.ts";
 import TextMessage from "../timeline/renderers/TextMessage.vue";
@@ -147,6 +150,7 @@ provide(CommandsKey, commands);
 provide(MemberDecorationsKey, memberDecorations);
 provide(SettingsTabsKey, settingsTabs);
 provide(WorkspacePanesKey, panes);
+provide(IconsKey, createIconRegistry());
 
 // A third-party plugin's bundle shares THIS Vue instance (a second copy would
 // break provide/inject and its own lifecycle hooks), and it reaches it through
@@ -498,7 +502,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         <header class="tumult-roomlist-header tumult-roomlist-header-row">
                             <h2>Direct Messages</h2>
                             <IconButton label="New message" @click="roomAction = { kind: 'create-dm' }">
-                                <span aria-hidden="true">＋</span>
+                                <Icon name="plus" />
                             </IconButton>
                         </header>
                         <DmList :rooms="tree.orphans" :has-more="moreRooms" @load-more="loadMoreRooms" />
@@ -506,14 +510,14 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 </div>
                 <div class="tumult-pane tumult-pane-timeline">
                     <div class="tumult-pane-toolbar">
-                        <IconButton label="Toggle room list" @click="emit('toggleRoomList')">☰</IconButton>
-                        <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')">👥</IconButton>
+                        <IconButton label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
+                        <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
                         <IconButton
                             v-if="!activePane && threadsEnabled && activeRoomId"
                             label="Threads"
                             :aria-pressed="threadView !== null"
                             @click="toggleThreadList"
-                            >🧵</IconButton
+                            ><Icon name="forum" /></IconButton
                         >
                     </div>
                     <component :is="activePane.content" v-if="activePane" class="tumult-pane-content" />

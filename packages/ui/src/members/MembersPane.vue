@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../icons/Icon.vue";
 import { computed, onMounted, ref } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { ChatClient, MemberView, RoomPowerLevelsView, Subscribable } from "@tumult/core";
@@ -138,7 +139,7 @@ function measure(el: unknown): void {
         <h2 class="tumult-members-title">
             <span>Members — {{ members ? memberCount : "…" }}</span>
             <IconButton v-if="roomId" label="Invite people" @click="emit('invite')">
-                <span aria-hidden="true">＋</span>
+                <Icon name="plus" />
             </IconButton>
         </h2>
         <p v-if="!members" class="tumult-members-state" role="status">

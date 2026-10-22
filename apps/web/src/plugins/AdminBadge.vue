@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Icon } from "@tumult/ui";
 import type { MemberView } from "@tumult/core";
 
 /**
@@ -20,7 +21,7 @@ defineProps<{
         :aria-label="`${member.displayName} is an admin`"
         :title="`${member.displayName} is an admin in this room`"
     >
-        👑
+        <Icon name="crown" />
     </span>
 </template>
 

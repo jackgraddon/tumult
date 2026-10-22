@@ -76,6 +76,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@mdi/js':
+        specifier: ^7.4.47
+        version: 7.4.47
       '@tanstack/vue-virtual':
         specifier: ^3.13.39
         version: 3.13.39(vue@3.5.43(typescript@5.9.3))
@@ -528,6 +531,9 @@ packages:
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0':
     resolution: {integrity: sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ==}
     engines: {node: '>= 18'}
+
+  '@mdi/js@7.4.47':
+    resolution: {integrity: sha512-KPnNOtm5i2pMabqZxpUz7iQf+mfrYZyKCZ8QNz85czgEt7cuHcGorWfdzUMWYA0SD+a6Hn4FmJ+YhzzzjkTZrQ==}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -2458,6 +2464,8 @@ snapshots:
       - supports-color
 
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0': {}
+
+  '@mdi/js@7.4.47': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

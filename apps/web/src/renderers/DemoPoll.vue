@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Icon } from "@tumult/ui";
 import type { MessageView } from "@tumult/core";
 
 defineProps<{ message: MessageView }>();
@@ -21,7 +22,7 @@ function optionsOf(message: MessageView): string[] {
 -->
 <template>
     <div class="tumult-poll">
-        <p class="tumult-poll-question">📊 {{ String(message.content["question"] ?? "Poll") }}</p>
+        <p class="tumult-poll-question"><Icon name="poll" /> {{ String(message.content["question"] ?? "Poll") }}</p>
         <ul class="tumult-poll-options">
             <li v-for="(option, i) in optionsOf(message)" :key="option">
                 <button type="button" class="tumult-poll-option" disabled :title="`${optionVotes(message.content, i)} votes`">

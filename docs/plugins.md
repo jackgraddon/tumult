@@ -302,7 +302,7 @@ addComposerAction(action: ComposerAction): Disposable
 interface ComposerAction {
     id: string;            // keys the registration
     label: string;         // REQUIRED: accessible name AND tooltip
-    icon?: string;         // glyph in the button; falls back to label text
+    icon?: string;         // icon name for the button (see Icons); falls back to label text
     priority?: number;     // higher sorts further LEFT. Default 0.
     run(ctx: ComposerActionContext): void | Promise<void>;
 }
@@ -322,7 +322,7 @@ only a settled, decrypted, un-redacted message can take a reaction.
 ctx.addComposerAction({
     id: "cc.example.react-last",
     label: "React to the last message",
-    icon: "👍",
+    icon: "thumb-up",
     run: (action) => {
         const timeline = action.client.timeline(action.roomId).get();
         const last = [...timeline]
@@ -343,7 +343,7 @@ const template = "**Yesterday:** …\n**Today:** …\n**Blockers:** none";
 ctx.addComposerAction({
     id: "cc.example.standup",
     label: "Insert standup template",
-    icon: "📋",
+    icon: "clipboard-text",
     run: ({ draft, setDraft }) => {
         setDraft(draft.trim() ? `${draft}\n\n${template}` : template);
     },
@@ -358,7 +358,7 @@ the same logged-not-thrown path as a failed send:
 const action: ComposerAction = {
     id: "cc.example.shrug-send",
     label: "Send a shrug",
-    icon: "🤷",
+    icon: "emoticon-neutral",
     priority: 5,
     run: ({ roomId, client }) => client.send(roomId, "¯\\_(ツ)_/¯"),
 };
@@ -651,7 +651,7 @@ addPane(pane: WorkspacePane): Disposable
 interface WorkspacePane {
     id: string;            // keys the registration (namespaced, stable)
     label: string;         // the rail tile's tooltip and accessible name
-    icon?: string;         // glyph in the tile; defaults to the label's first letter
+    icon?: string;         // icon name for the tile (see Icons); defaults to the label's first letter
     priority?: number;     // higher sorts nearer the top of the rail. Default 0.
     content: Component;    // the main area
     sidebar?: Component;   // the left nav (where the channel list normally is)
@@ -684,7 +684,7 @@ install(ctx) {
     ctx.addPane({
         id: "cc.example.library",
         label: "Library",
-        icon: "📚",
+        icon: "bookshelf",
         content: LibraryView,
         sidebar: LibraryNav,
         footer: NowPlayingBar,
@@ -704,6 +704,28 @@ ctx.addCommand({
     },
 });
 ```
+
+### Icons
+
+`icon` on a composer action or a workspace pane is an **icon name**, not a glyph.
+A bare name (`"thumb-up"`, `"cog"`, `"bookshelf"`) is a [Material Design
+Icons](https://pictogrammers.com/library/mdi/) name — Tumult bundles the
+library, so any name on that site works. The first-party chrome's icons render
+instantly; any other name loads the rest of the set on first use, and shows the
+label's initial (a pane) or the label text (a composer action) until — or
+instead, if the name is unknown.
+
+A name may carry a pack prefix, `"pack:name"`. Only the built-in `mdi` pack
+exists today (a bare name is `mdi:name`), but the registry (`IconRegistry`,
+`IconPack`) is built for more: a pack is `resolve(name) → { path, viewBox? }`
+(one SVG path, drawn in `currentColor`), so a pack for another library — or a
+custom one — keeps its own naming instead of being forced into Material's. A
+host adds one with `registry.addPack("solar", pack)`; plugin-supplied packs are
+not exposed yet.
+
+Legacy: a string that is not a valid icon name (an emoji, say) still renders as
+literal text, so a plugin written against the old glyph API keeps working. New
+plugins should use names — emoji do not follow the theme's colour.
 
 ## 6. The context
 
