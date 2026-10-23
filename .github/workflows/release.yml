@@ -21,6 +21,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # Declaring the environment makes Actions itself record a GitHub Deployment
+    # for this run (the repo's Deployments tab): pending while it runs, then
+    # success or failure from the job result, linked to the live URL. No
+    # `deployments: write` or third-party action is needed for that.
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
     # VERCEL_ORG_ID + VERCEL_PROJECT_ID set together let the CLI target the
     # project without `vercel link` / a `.vercel/` directory. VERCEL_TOKEN as an
     # env var is read natively by the CLI — never pass it as `--token` (argv is
@@ -86,6 +94,11 @@ jobs:
       run: vercel build --prod
 
     - name: Deploy project artifacts to Vercel (production)
+      id: deploy
       # No --no-wait: the CLI polls until the deployment is ready and exits
-      # non-zero on failure, so a broken deploy fails the job visibly.
-      run: vercel deploy --prebuilt --prod
+      # non-zero on failure, so a broken deploy fails the job visibly. The CLI
+      # prints progress on stderr and ONLY the deployment URL on stdout, which
+      # is what `environment.url` above links to.
+      run: |
+        url=$(vercel deploy --prebuilt --prod)
+        echo "url=$url" >> "$GITHUB_OUTPUT"
