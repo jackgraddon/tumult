@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.1](https://github.com/jackgraddon/tumult/compare/v0.1.2...v0.2.1) (2026-10-24)
+
+
+### Features
+
+* **release:** accept an explicit version and skip the bump ([bd7416d](https://github.com/jackgraddon/tumult/commit/bd7416ddd5957d07a943e34bdca9d0086393b9f1))
+* **ui:** replace emoji chrome with bundled Material icons ([ee7b2d4](https://github.com/jackgraddon/tumult/commit/ee7b2d47a747896039f07eb11d8fb2447cd17a3d))
+
 ## [0.2.0](https://github.com/jackgraddon/tumult/compare/v0.1.2...v0.2.0) (2026-10-22)
 
 ### [0.1.2](https://github.com/jackgraddon/tumult/compare/v0.1.1...v0.1.2) (2026-10-22)
