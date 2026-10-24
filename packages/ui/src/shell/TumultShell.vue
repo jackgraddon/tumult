@@ -32,9 +32,7 @@ import TimelinePane from "../timeline/TimelinePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
 import SecurityBanner from "../security/SecurityBanner.vue";
-import RecoverySetupModal from "../security/RecoverySetupModal.vue";
-import RecoveryRestoreModal from "../security/RecoveryRestoreModal.vue";
-import VerificationModal from "../security/VerificationModal.vue";
+import SecurityModal from "../security/SecurityModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
 import ThreadList from "../threads/ThreadList.vue";
 import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
@@ -199,19 +197,21 @@ const security = useSubscribable(props.client.security);
 const verification = useSubscribable(props.client.verification);
 const typing = useSubscribable(props.client.typing);
 
-// Recovery modal routing: banner buttons pick directly; the account menu
-// picks whichever flow the current status calls for.
-const securityModal = ref<"setup" | "restore" | null>(null);
+// The "enter backup" path (create a key on a fresh account, otherwise enter one)
+// lives inside the chooser, so banner triggers and the menu all converge on the
+// same modal. "Verify this device…" and an incoming request instead skip the
+// chooser and open the SAS flow directly.
+const securityStep = ref<"landing" | "sas">("landing");
+const securityModalOpen = ref(false);
 
-function openSecurityModal(): void {
-    securityModal.value = !security.value.backupEnabled ? "setup" : "restore";
+function openSecurityChooser(): void {
+    securityStep.value = "landing";
+    securityModalOpen.value = true;
 }
 
-// Verification modal state
-const verificationModal = ref(false);
-
-function openVerificationModal(): void {
-    verificationModal.value = true;
+function openVerifyFlow(): void {
+    securityStep.value = "sas";
+    securityModalOpen.value = true;
 }
 
 // Profile edit dialog: the account menu's "Edit profile…" entry opens it.
@@ -248,12 +248,13 @@ function closeThread(): void {
 }
 
 // Auto-open for incoming requests: the other side already initiated, so the
-// user must see the accept/decline prompt without hunting for it.
+// user must see the accept/decline prompt without hunting for it. It opens the
+// unified modal on the SAS flow, skipping the chooser.
 watch(
     () => verification.value.requests,
     (requests) => {
-        if (!verificationModal.value && requests.some((r) => !r.initiatedByMe && r.phase !== "done" && r.phase !== "cancelled")) {
-            verificationModal.value = true;
+        if (!securityModalOpen.value && requests.some((r) => !r.initiatedByMe && r.phase !== "done" && r.phase !== "cancelled")) {
+            openVerifyFlow();
         }
     },
     { deep: true },
@@ -472,8 +473,8 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             <ConnectionBanner :connection="connection" />
             <SecurityBanner
                 :status="security"
-                @setup="securityModal = 'setup'"
-                @restore="securityModal = 'restore'"
+                @setup="openSecurityChooser()"
+                @restore="openSecurityChooser()"
             />
             <div
                 class="tumult-shell-grid"
@@ -574,27 +575,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     :session="session"
                     :compact="!showRoomList"
                     @sign-out="emit('signOut')"
-                    @security="openSecurityModal()"
-                    @verify="openVerificationModal()"
+                    @security="openSecurityChooser()"
+                    @verify="openVerifyFlow()"
                     @profile="profileModal = true"
                     @settings="appSettingsOpen = true"
                     @status="statusModal = true"
                 />
             </div>
-<RecoverySetupModal
+        <SecurityModal
             :client="client"
-            :open="securityModal === 'setup'"
-            @close="securityModal = null"
-        />
-        <RecoveryRestoreModal
-            :client="client"
-            :open="securityModal === 'restore'"
-            @close="securityModal = null"
-        />
-        <VerificationModal
-            :client="client"
-            :open="verificationModal"
-            @close="verificationModal = false"
+            :open="securityModalOpen"
+            :initial="securityStep"
+            @close="securityModalOpen = false"
         />
         <ProfileDialog
             :client="client"

@@ -106,8 +106,7 @@ export { default as DecryptionPlaceholder } from "./timeline/renderers/Decryptio
 export { default as MembersPane } from "./members/MembersPane.vue";
 export { default as MemberListItem } from "./members/MemberListItem.vue";
 export { default as SecurityBanner } from "./security/SecurityBanner.vue";
-export { default as RecoverySetupModal } from "./security/RecoverySetupModal.vue";
-export { default as RecoveryRestoreModal } from "./security/RecoveryRestoreModal.vue";
+export { default as SecurityModal } from "./security/SecurityModal.vue";
 export { default as Avatar } from "./primitives/Avatar.vue";
 export { default as UnreadBadge } from "./primitives/UnreadBadge.vue";
 export { default as IconButton } from "./primitives/IconButton.vue";

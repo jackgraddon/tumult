@@ -1,28 +1,20 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import {
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogRoot,
-    DialogTitle,
-} from "reka-ui";
+import { DialogClose } from "reka-ui";
 import type { ChatClient, VerificationRequestView } from "@tumult/core";
 import { useSubscribable } from "../subscribable.ts";
 
 const props = defineProps<{
     client: ChatClient;
-    open: boolean;
+    active: boolean;
 }>();
 
 const emit = defineEmits<{
-    close: [];
+    /** Return to the landing chooser without abandoning the request. */
+    back: [];
 }>();
 
-type Phase = "waiting" | "incoming" | "sas" | "done" | "error";
-const phase = ref<Phase>("waiting");
+const phase = ref<"waiting" | "incoming" | "sas" | "done" | "error">("waiting");
 const sasEmoji = ref<[string, string][] | null>(null);
 const sasDecimal = ref<[number, number, number] | null>(null);
 const error = ref("");
@@ -30,21 +22,23 @@ const incomingFrom = ref("");
 
 const verification = useSubscribable(props.client.verification);
 
-function onOpenChange(next: boolean): void {
-    if (!next) emit("close");
-}
-
+// No `DialogRoot`: this is the SAS path *inside* the security dialog, so a
+// back/close button drives `use another device` ↔ landing, not a nested overlay.
 watch(
-    () => props.open,
-    (isOpen) => {
-        if (!isOpen) {
+    () => props.active,
+    (isActive) => {
+        if (!isActive) {
             phase.value = "waiting";
             sasEmoji.value = null;
             sasDecimal.value = null;
             incomingFrom.value = "";
             error.value = "";
+            return;
         }
+        // No pending request means we initiated: kick off the request.
+        if (verification.value.requests.length === 0) void start();
     },
+    { immediate: true },
 );
 
 async function start(): Promise<void> {
@@ -56,7 +50,8 @@ async function start(): Promise<void> {
     }
 }
 
-// Watch the verification feed for SAS data
+// Drive the phase from the verification feed: SAS data, an incoming request,
+// and the live transition waiting → incoming → sas → done/error.
 watch(
     verification,
     (state) => {
@@ -76,16 +71,6 @@ watch(
         if (req.phase === "cancelled") phase.value = "error";
     },
     { immediate: true },
-);
-
-// Start verification if we initiated it and no requests are active
-watch(
-    () => props.open,
-    (isOpen) => {
-        if (isOpen && verification.value.requests.length === 0) {
-            start();
-        }
-    },
 );
 
 async function acceptIncoming(): Promise<void> {
@@ -127,7 +112,7 @@ async function mismatch(): Promise<void> {
 function cancel(): void {
     const req = currentRequest();
     if (!req) return;
-    props.client.declineVerification(req.id);
+    void props.client.declineVerification(req.id);
     phase.value = "error";
 }
 
@@ -142,7 +127,7 @@ const PHASE_RANK: Record<string, number> = {
 
 /**
  * Pick the request to display: furthest-along live request wins, so a stale
- * early request never pins the modal while a newer flow advances behind it.
+ * early request never pins the view while a newer flow advances behind it.
  */
 function pickRequest(requests: readonly VerificationRequestView[]): VerificationRequestView | undefined {
     let best: VerificationRequestView | undefined;
@@ -171,96 +156,85 @@ function formatDecimal(dec: [number, number, number]): string {
 </script>
 
 <template>
-    <DialogRoot :open="open" @update:open="onOpenChange">
-        <DialogPortal>
-            <DialogOverlay class="tumult-dialog-overlay" />
-            <DialogContent class="tumult-dialog tumult-verification-modal" :class="phase">
-                <DialogTitle class="tumult-dialog-title">
-                    <template v-if="phase === 'waiting'">Waiting for verification…</template>
-                    <template v-if="phase === 'incoming'">Verification request</template>
-                    <template v-if="phase === 'sas'">Verify SAS</template>
-                    <template v-if="phase === 'done'">Verified</template>
-                    <template v-if="phase === 'error'">Verification failed</template>
-                </DialogTitle>
-                <DialogDescription class="tumult-dialog-desc" v-if="phase === 'waiting'">
-                    Waiting for the other device to accept the verification request…
-                </DialogDescription>
-                <DialogDescription class="tumult-dialog-desc" v-if="phase === 'incoming'">
-                    {{ incomingFrom || "Another device" }} wants to verify. Accept to compare emojis.
-                </DialogDescription>
-                <DialogDescription class="tumult-dialog-desc" v-if="phase === 'sas'">
-                    Compare the emojis (or numbers) with the other device. They must match exactly.
-                </DialogDescription>
-                <p v-if="phase === 'sas' && sasEmoji" class="tumult-sas-emoji">
-                    {{ formatEmoji(sasEmoji) }}
-                </p>
-                <p v-if="phase === 'sas' && sasDecimal" class="tumult-sas-decimal">
-                    {{ formatDecimal(sasDecimal) }}
-                </p>
-                <p v-if="phase === 'done'" class="tumult-dialog-status">
-                    This device is now verified. Encrypted history will decrypt as keys arrive.
-                </p>
-                <p v-if="phase === 'error'" class="tumult-dialog-error" role="alert">
-                    {{ error || "Verification was cancelled or failed." }}
-                </p>
-
-                <div class="tumult-dialog-actions">
-                    <DialogClose v-if="phase === 'waiting' || phase === 'error' || phase === 'done'" as-child>
-                        <button type="button" class="tumult-dialog-button tumult-dialog-primary">
-                            {{ phase === "done" ? "Done" : "Close" }}
-                        </button>
-                    </DialogClose>
-                    <button v-if="phase === 'sas'" type="button" class="tumult-dialog-button tumult-dialog-primary" @click="confirm">
-                        They match
+    <div class="tumult-sas">
+        <h3 class="tumult-sas-title">
+            <template v-if="phase === 'waiting'">Waiting for verification…</template>
+            <template v-else-if="phase === 'incoming'">Verification request</template>
+            <template v-else-if="phase === 'sas'">Verify SAS</template>
+            <template v-else-if="phase === 'done'">Verified</template>
+            <template v-else>Verification failed</template>
+        </h3>
+        <p v-if="phase === 'waiting'" class="tumult-dialog-desc">
+            Waiting for the other device to accept the verification request…
+        </p>
+        <p v-if="phase === 'incoming'" class="tumult-dialog-desc">
+            {{ incomingFrom || "Another device" }} wants to verify. Accept to compare emojis.
+        </p>
+        <p v-if="phase === 'sas'" class="tumult-dialog-desc">
+            Compare the emojis (or numbers) with the other device. They must match exactly.
+        </p>
+        <p v-if="phase === 'sas' && sasEmoji" class="tumult-sas-emoji">
+            {{ formatEmoji(sasEmoji) }}
+        </p>
+        <p v-if="phase === 'sas' && sasDecimal" class="tumult-sas-decimal">
+            {{ formatDecimal(sasDecimal) }}
+        </p>
+        <p v-if="phase === 'done'" class="tumult-dialog-status">
+            This device is now verified. Encrypted history will decrypt as keys arrive.
+        </p>
+        <p v-if="phase === 'error'" class="tumult-dialog-error" role="alert">
+            {{ error || "Verification was cancelled or failed." }}
+        </p>
+        <div class="tumult-dialog-actions">
+            <button type="button" class="tumult-dialog-button" @click="emit('back')">Back</button>
+            <template v-if="phase === 'waiting'">
+                <button
+                    type="button"
+                    class="tumult-dialog-button tumult-dialog-primary"
+                    @click="cancel"
+                >
+                    Cancel
+                </button>
+            </template>
+            <template v-else-if="phase === 'incoming'">
+                <button type="button" class="tumult-dialog-button" @click="cancel">Decline</button>
+                <button
+                    type="button"
+                    class="tumult-dialog-button tumult-dialog-primary"
+                    @click="acceptIncoming"
+                >
+                    Accept
+                </button>
+            </template>
+            <template v-else-if="phase === 'sas'">
+                <button type="button" class="tumult-dialog-button" @click="mismatch">
+                    They don't match
+                </button>
+                <button
+                    type="button"
+                    class="tumult-dialog-button tumult-dialog-primary"
+                    @click="confirm"
+                >
+                    They match
+                </button>
+            </template>
+            <template v-else>
+                <DialogClose as-child>
+                    <button type="button" class="tumult-dialog-button tumult-dialog-primary">
+                        {{ phase === 'done' ? "Done" : "Close" }}
                     </button>
-                    <button v-if="phase === 'sas'" type="button" class="tumult-dialog-button" @click="mismatch">
-                        They don't match
-                    </button>
-                    <button v-if="phase === 'sas'" type="button" class="tumult-dialog-button" @click="cancel">
-                        Cancel
-                    </button>
-                    <button v-if="phase === 'waiting'" type="button" class="tumult-dialog-button" @click="cancel">
-                        Cancel
-                    </button>
-                    <button v-if="phase === 'incoming'" type="button" class="tumult-dialog-button tumult-dialog-primary" @click="acceptIncoming">
-                        Accept
-                    </button>
-                    <button v-if="phase === 'incoming'" type="button" class="tumult-dialog-button" @click="cancel">
-                        Decline
-                    </button>
-                </div>
-            </DialogContent>
-        </DialogPortal>
-    </DialogRoot>
+                </DialogClose>
+            </template>
+        </div>
+    </div>
 </template>
 
 <style scoped>
-.tumult-verification-modal {
-    --width: min(var(--dialog-width), calc(100vw - var(--dialog-gutter)));
-}
-.tumult-dialog-overlay {
-    position: fixed;
-    inset: 0;
-    background: var(--overlay-bg);
-}
-.tumult-dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: var(--width);
-    padding: var(--space-4);
-    border: var(--border-width) solid var(--dialog-border);
-    border-radius: var(--control-radius);
-    background: var(--dialog-bg);
-    color: var(--text-primary);
-}
-.tumult-dialog:focus-visible {
-    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
-}
-.tumult-dialog-title {
+.tumult-sas-title {
     margin: 0 0 var(--space-1);
     font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    text-align: center;
 }
 .tumult-dialog-desc {
     margin: 0 0 var(--space-3);
@@ -319,9 +293,5 @@ function formatDecimal(dec: [number, number, number]): string {
 }
 .tumult-dialog-primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
-}
-.tumult-dialog-button:disabled {
-    opacity: var(--state-disabled-opacity);
-    cursor: not-allowed;
 }
 </style>
