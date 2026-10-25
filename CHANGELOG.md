@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.2](https://github.com/jackgraddon/tumult/compare/v0.2.1...v0.2.2) (2026-10-25)
+
+
+### Features
+
+* **ui:** per-room composer drafts ([15ee38f](https://github.com/jackgraddon/tumult/commit/15ee38ff6c8570b9e7b66840dfab0eca9aabb15d))
+
 ### [0.2.1](https://github.com/jackgraddon/tumult/compare/v0.1.2...v0.2.1) (2026-10-24)
 
 
