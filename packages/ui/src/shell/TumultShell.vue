@@ -11,6 +11,7 @@ import { MediaKey, EncryptedMediaKey, MediaDownloadKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
 import { ComposerActionsKey, ComposerActionsRegistry } from "../timeline/composer-actions.ts";
 import { CommandsKey, CommandsRegistry } from "../timeline/commands.ts";
+import { DraftsKey, createDraftStore } from "../timeline/drafts.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
@@ -120,6 +121,10 @@ provide(ActionsKey, actionsCtx);
 const registry = new TimelineRegistry();
 const composerActions = new ComposerActionsRegistry();
 const commands = new CommandsRegistry();
+// One draft store per shell, shared by every composer in the tree. Kept in
+// memory for instant re-select; its localStorage mirror lands on a trailing
+// debounce and a final `flush()` on unmount (below).
+const drafts = createDraftStore();
 const memberDecorations = new MemberDecorationsRegistry();
 const settingsTabs = new SettingsTabsRegistry();
 const panes = new WorkspacePanesRegistry();
@@ -145,6 +150,7 @@ provide(RegistryKey, registry);
 provide(PluginsKey, plugins);
 provide(ComposerActionsKey, composerActions);
 provide(CommandsKey, commands);
+provide(DraftsKey, drafts);
 provide(MemberDecorationsKey, memberDecorations);
 provide(SettingsTabsKey, settingsTabs);
 provide(WorkspacePanesKey, panes);
@@ -444,6 +450,9 @@ onBeforeUnmount(() => {
     // Plugins are per-shell: unmount takes every installed one down with it
     // (renderers unregistered, teardowns run) so a re-mount starts clean.
     plugins.uninstallAll();
+    // Persist any half-typed draft still pending its debounce so a room switch or
+    // logout doesn't lose it, and clear the timer so nothing writes past teardown.
+    drafts.flush();
     props.client.setRoomSelection(null);
 });
 

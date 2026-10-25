@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { ChatClient, MessageView } from "@tumult/core";
 
 import { useComposerActions, type ComposerAction, type ComposerActionContext } from "./composer-actions.ts";
 import { useCommands, type Command, type ResolvedCommand } from "./commands.ts";
+import { useDrafts } from "./drafts.ts";
 
 const props = defineProps<{
     disabled?: boolean;
@@ -27,8 +28,13 @@ const emit = defineEmits<{
 // plugin affordances instead of throwing.
 const composerActions = useComposerActions();
 const commands = useCommands();
+const drafts = useDrafts();
 
-const draft = ref("");
+// Restore a half-typed draft for this room before the first paint, so a reload
+// or a room switch resumes the composer where it left off rather than blank. A
+// standalone composer (the thread one carries no roomId) keeps a non-persistent
+// draft instead of restoring one.
+const draft = ref(drafts && props.roomId ? drafts.get(props.roomId) ?? "" : "");
 const inputEl = ref<HTMLInputElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 let typingSent = false;
@@ -59,6 +65,18 @@ watch(draft, (value) => {
         clearTyping();
     }
 });
+
+// Persist the draft to the per-room store on every change. An empty value is a
+// clear (a send, a command, or a wiped input drops the entry via `set`), so the
+// half-typed text is restored but a finished message is not. The store debounces
+// the durable write; the in-memory map is authoritative this session.
+watch(draft, (value) => {
+    if (drafts && props.roomId) drafts.set(props.roomId, value);
+});
+
+// Flush a pending write on teardown so an unmount (room switch, logout) does not
+// lose the last draft still waiting for its debounce.
+onBeforeUnmount(() => drafts?.flush());
 
 /** Actions need a room and a client to build their context, so no context = no row. */
 const visibleActions = computed<ComposerAction[]>(() =>
