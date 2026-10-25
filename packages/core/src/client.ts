@@ -80,6 +80,7 @@ import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
+import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
     /** Identity this app presents to the IdP during dynamic registration. */
@@ -140,6 +141,32 @@ function cryptoDatabasePrefix(session: StoredSession): string {
  */
 function syncDatabaseName(session: StoredSession): string {
     return `tumult-sync:${session.userId}`;
+}
+
+/**
+ * A structure signature over a room list, for gating an async cache write.
+ *
+ * The published room list re-publishes on every sync and receipt burst, and
+ * `sameRoomSummaries` already skips a republish when nothing counts-differently
+ * moved — but a single new message bumps a count, republishes the array, and
+ * arms the debounced writer. Counts change every message; the *structure* (which
+ * rooms exist, their names, space nesting, favourites) is what first paint needs
+ * and changes rarely, so a count-only update must not force a localStorage write.
+ *
+ * The signature therefore keeps only structural fields and omits the
+ * high-frequency ones (unread / highlight / read marker / topic / alias, which
+ * the live sync reconciles anyway). Order is preserved positionally — a genuine
+ * reorder SHOULD write once — so the signature is compared against the last
+ * written one rather than recomputed-and-stored per burst.
+ */
+function shellSignature(rooms: readonly RoomSummary[]): string {
+    return rooms
+        .map((r) => {
+            const kind = r.isSpace ? "S" : "C";
+            const fav = r.favourite ? String(r.favouriteOrder ?? 0) : "-";
+            return [r.id, r.name, kind, fav, r.parentSpaceIds.join(","), r.avatarUrl ?? "", r.joinRule].join("#");
+        })
+        .join("\n");
 }
 
 function createSyncStore(session: StoredSession): IndexedDBStore {
@@ -234,6 +261,19 @@ export class MatrixChatClient implements ChatClient {
      * Explicit call sites stay immediate and await the query directly.
      */
     private readonly securityRefresh: ThrottledTask;
+    /**
+     * Debounced writer for the shell's first-paint cache (see `shellCache.ts`).
+     * The room list republishes on every sync/receipt burst; this collapses a
+     * flood into one localStorage write so a busy room can't churn the cache.
+     */
+    private readonly shellPersist: ThrottledTask;
+    /**
+     * Signature of the last cache write: the room *structure* (ids, names,
+     * space nesting, favourite order), not the counts. Counts change every
+     * message but the structure is what first paint needs, so a count-only
+     * update is not worth a localStorage write.
+     */
+    private lastShellSignature: string | null = null;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -284,6 +324,7 @@ export class MatrixChatClient implements ChatClient {
         this.securityRefresh = new ThrottledTask(() => {
             void this.refreshSecurity();
         }, SECURITY_REFRESH_MS);
+        this.shellPersist = new ThrottledTask(() => this.flushShellCache(), SHELL_CACHE_DEBOUNCE_MS);
     }
 
     public get session(): Subscribable<SessionView | null> {
@@ -354,6 +395,22 @@ export class MatrixChatClient implements ChatClient {
 
     private async bootstrap(session: StoredSession): Promise<void> {
         this.connectionState.set("starting");
+
+        // First paint is cache-first: the SDK's on-disk store only rehydrates
+        // presence, not rooms, so `client.getRooms()` is empty until the first
+        // network batch — and that batch is a *full* resync, because the SDK does
+        // not persist its sliding-sync cursor. Painting the cached room list now
+        // means the rail is populated the instant the shell mounts, and the live
+        // sync upgrades it in place. A stale or wrong-account entry yields [].
+        // The selection the UI is resuming is seeded too, so the last-opened
+        // room is subscribed on the very first request.
+        const seed = readShellSnapshot(this.storage, { userId: session.userId, homeserverUrl: session.homeserverUrl });
+        if (seed.rooms.length > 0) {
+            this.roomsState.set(seed.rooms);
+            this.lastShellSignature = shellSignature(seed.rooms);
+            if (this._selectedRoomId === null) this._selectedRoomId = seed.lastRoomId;
+            console.debug(`[tumult] warm seed: ${seed.rooms.length} rooms from shell cache`);
+        }
 
         const store = createSyncStore(session);
         let client: MatrixClient | null = null;
@@ -621,6 +678,16 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public async stop(): Promise<void> {
+        // Persist the last good list before anything tears it down, so a clean
+        // close (as opposed to a logout, which clears the cache afterwards)
+        // leaves it intact for the next boot. The flush re-checks its
+        // signature, so a list already written by the debounced writer is a
+        // no-op; clearing the writer cancels a burst that is otherwise still
+        // pending into a half-torn-down state. The selection and store are
+        // dropped deeper in this method, so flush up front, before they go.
+        this.flushShellCache();
+        this.shellPersist.clear();
+
         // SSS carries no presence; the poller must stop before the client does
         // or it will keep firing against a torn-down store.
         this._presence?.detachAll();
@@ -684,6 +751,9 @@ export class MatrixChatClient implements ChatClient {
 
         if (session) {
             this.storage.removeItem(SSS_WINDOW_KEY);
+            // The shell cache is account-scoped; drop it with the session so a
+            // stale room list never bleeds into the next login.
+            clearShellSnapshot(this.storage);
             try {
                 await this.login_.revoke(session);
             } catch (error) {
@@ -1167,6 +1237,9 @@ export class MatrixChatClient implements ChatClient {
     private async handleSessionLoggedOut(): Promise<void> {
         await this.stop();
         this.storage.removeItem(SSS_WINDOW_KEY);
+        // The shell cache is account-scoped; a dropped session must not paint
+        // the previous account's room list on the next boot.
+        clearShellSnapshot(this.storage);
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
@@ -1229,9 +1302,30 @@ export class MatrixChatClient implements ChatClient {
             const spaces = next.filter((r) => r.isSpace).length;
             console.debug(`[tumult] rooms snapshot: ${next.length} joined (${spaces} spaces)`);
             this.roomsState.set(next);
+            // The published list is what first-paint will use; queue its cache
+            // write (debounced, structure-gated below) so the next boot paints it.
+            this.shellPersist.schedule();
         } catch (error) {
             console.error("[tumult] room snapshot failed", error);
         }
+    }
+
+    /**
+     * Persist the published room list so the next boot can paint it before the
+     * first network batch (see the seed at the top of `bootstrap`).
+     * Structure-gated: a count-only change re-publishes the list but moves no
+     * room's identity, so it is not worth a synchronous localStorage write.
+     * Best-effort: a full store makes `writeShellSnapshot` return false and the
+     * list still renders.
+     */
+    private flushShellCache(): void {
+        const account = this.stored;
+        if (!account) return; // logged out / pre-session: nothing to cache
+        const rooms = this.roomsState.get();
+        const signature = shellSignature(rooms);
+        if (signature === this.lastShellSignature) return;
+        this.lastShellSignature = signature;
+        writeShellSnapshot(this.storage, { userId: account.userId, homeserverUrl: account.homeserverUrl }, rooms, this._selectedRoomId);
     }
 
     /**
