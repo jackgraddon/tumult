@@ -109,10 +109,16 @@ const emit = defineEmits<{
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    /* A flex column so the viewport below can fill it. A block child with
+       `height: 100%` of a flex-stretched parent resolves to content height,
+       so the scroll container grew with the list and never overflowed. */
+    display: flex;
+    flex-direction: column;
 }
 .tumult-rail-viewport {
     width: 100%;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 .tumult-rail-list {
     display: flex;

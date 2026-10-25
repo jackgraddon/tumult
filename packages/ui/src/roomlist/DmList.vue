@@ -37,10 +37,13 @@ const DMS_SELECTION = { view: "dms" as const };
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 .tumult-dmlist-viewport {
     width: 100%;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 .tumult-dmlist {
     margin: 0;
