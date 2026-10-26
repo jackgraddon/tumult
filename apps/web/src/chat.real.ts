@@ -50,6 +50,19 @@ export function createChat(): ChatClient {
         );
     }
     return createChatClient({
+        // Classic /sync by default. A warm refresh with sliding sync has to
+        // re-pull the whole window from scratch (the SDK keeps its window
+        // cursor loop-local and does not persist it), so the first sync is a
+        // full resync — measured ~1.64 MB on a 92-room account, the thing the
+        // cache-first seed had to hide. Classic instead resumes incrementally
+        // from the persisted IndexedDBStore token, so the first refresh is a
+        // delta (measured 193 B for a quiet account) and the start is warm with
+        // no collapse. The cost is a heavier steady-state body (all room state
+        // per long-poll vs SSS's window), negligible for a personal account. The
+        // SSS-only trackers (UnreadTracker, PresencePoller) are gated off in
+        // classic mode in core, where the server supplies exact unread counts and
+        // sync-carried presence instead.
+        syncMode: "classic",
         clientMetadata: {
             clientName: "Tumult",
             clientUri: appClientUri,
