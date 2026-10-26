@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.3](https://github.com/jackgraddon/tumult/compare/v0.2.2...v0.2.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **rooms:** hold the warm cache through the first partial sync ([29df9e0](https://github.com/jackgraddon/tumult/commit/29df9e0b2fb660316c5f1bc5ca948d27f8e86c93))
+* **ui:** bound scroll viewports so rail/room/DM lists scroll ([7f6fc1b](https://github.com/jackgraddon/tumult/commit/7f6fc1b8b39636a2e0ebf0f9081eff3402dede04))
+* **web:** default to classic /sync so warm refreshes resume incrementally ([b8c9e85](https://github.com/jackgraddon/tumult/commit/b8c9e859174b733e7fdab9bd11b2179cdcda2707))
+
 ### [0.2.2](https://github.com/jackgraddon/tumult/compare/v0.2.1...v0.2.2) (2026-10-25)
 
 
