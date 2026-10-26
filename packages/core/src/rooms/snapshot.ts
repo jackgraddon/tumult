@@ -114,6 +114,40 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
         );
     });
 }
+
+/**
+ * Warm-boot merge: overlay a cached room list over a freshly computed one.
+ *
+ * At boot the cached list is painted, then the first network batch supersedes
+ * it. With sliding sync the SDK does not persist its window cursor, so that first
+ * batch is a *partial* resync — far fewer rooms than the account actually has.
+ * Publishing it wholesale collapses the rail (e.g. 92 → 9) until the window
+ * fills in, the flicker the cache-first seed above was meant to remove.
+ *
+ * The union keeps seed-only rooms and lets the live value win when a room is in
+ * both, so `refreshRooms()` runs it for every recompute until the first full
+ * batch supersedes the seed. Order is `next` first, then any seed rows not in
+ * `next`, so a filled-in window re-sorts itself the moment the authoritative
+ * list arrives.
+ *
+ * Pure: touches only each room's `id`; the list is a fresh array (the seed or
+ * `next` are never mutated), so the UI and the id-ordered cache signature see a
+ * stable list through the merge.
+ */
+export function mergeRoomSummaries(
+    seed: readonly RoomSummary[],
+    next: readonly RoomSummary[],
+): RoomSummary[] {
+    if (seed.length === 0) return next.slice();
+    const alive = new Set<string>();
+    for (const room of next) alive.add(room.id);
+    const merged = next.slice();
+    for (const room of seed) {
+        if (!alive.has(room.id)) merged.push(room);
+    }
+    return merged;
+}
+
 /** The `m.fully_read` room account data, or `null` when never set. */
 function readFullyRead(room: {
     getAccountData(type: string): { getContent(): Record<string, unknown> } | undefined;

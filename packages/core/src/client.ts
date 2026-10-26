@@ -47,7 +47,7 @@ import type {
 import { Observable } from "./observable.ts";
 import { querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
-import { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
+import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { sendTextMessage, retryTextMessage } from "./rooms/send.ts";
 import { sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
@@ -274,6 +274,16 @@ export class MatrixChatClient implements ChatClient {
      * update is not worth a localStorage write.
      */
     private lastShellSignature: string | null = null;
+    /**
+     * The room list painted from the shell cache at boot, held until the first
+     * full sync batch supersedes it. With sliding sync the SDK does not persist
+     * its window cursor, so the first network batch is a *partial* resync — far
+     * fewer rooms than the cache holds. `refreshRooms()` overlays this seed over
+     * every partial batch (see `mergeRoomSummaries`) so the rail can't collapse
+     * (92 → 9 → 92) while the window fills in; `clearWarmSeed()` drops it on the
+     * first full batch and on every teardown (stop / logout / logged-out).
+     */
+    private _warmSeed: RoomSummary[] | null = null;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -409,6 +419,9 @@ export class MatrixChatClient implements ChatClient {
             this.roomsState.set(seed.rooms);
             this.lastShellSignature = shellSignature(seed.rooms);
             if (this._selectedRoomId === null) this._selectedRoomId = seed.lastRoomId;
+            // Hold the seed so the first partial batch can't collapse the rail;
+            // `clearWarmSeed()` drops it on the first full sync.
+            this._warmSeed = seed.rooms;
             console.debug(`[tumult] warm seed: ${seed.rooms.length} rooms from shell cache`);
         }
 
@@ -462,10 +475,17 @@ export class MatrixChatClient implements ChatClient {
 
             // Registered before startClient() — see toConnectionState().
             client.on(ClientEvent.Sync, (state: SyncState, _prev: SyncState | null, data?: SyncStateData) => {
-                this.connectionState.set(toConnectionState(state));
+                const next = toConnectionState(state);
+                this.connectionState.set(next);
                 if (state === SyncState.Error && data?.error) {
                     console.error("[tumult] sync error", data.error);
                 }
+                // The first usable batch supersedes the warm seed: Prepared,
+                // Syncing and Catchup all collapse to "syncing", so the first
+                // one is the first full list. From here on refreshRooms()
+                // publishes the authoritative live list, so drop the seed that
+                // was shielding the rail from the partial first resync.
+                if (this._warmSeed && next === "syncing") this.clearWarmSeed();
                 // The room list is a snapshot over the sync loop: every batch
                 // can join/leave/rename rooms, change hierarchy, or move unread
                 // counts (receipts ride the same loop). Recompute wholesale —
@@ -665,6 +685,7 @@ export class MatrixChatClient implements ChatClient {
             this._slidingSync = null;
             this._rangeManager = null;
             this.roomRefreshScheduled = false;
+            this.clearWarmSeed();
             this.clearProgressiveRefresh();
             this.securityRefresh.clear();
             this.ownPresenceRefresh.clear();
@@ -731,6 +752,7 @@ export class MatrixChatClient implements ChatClient {
         this._rangeManager = null;
         this._selectedRoomId = null;
         this.roomRefreshScheduled = false;
+        this.clearWarmSeed();
         this.clearProgressiveRefresh();
         this.securityRefresh.clear();
         this.ownPresenceRefresh.clear();
@@ -1282,8 +1304,24 @@ export class MatrixChatClient implements ChatClient {
     }
 
     /**
+     * Drop the warm seed. Either the first full batch has arrived (the sync
+     * listener clears it, from which point the live list is authoritative) or
+     * the client is tearing down (stop / logout / logged-out — a stale seed
+     * must never linger into the next boot's first paint).
+     */
+    private clearWarmSeed(): void {
+        this._warmSeed = null;
+    }
+
+    /**
      * Recompute the room list from the SDK and publish it. Never throws:
      * a snapshot failure must not take down the sync listener.
+     *
+     * While a warm seed is held (boot, before the first full batch), the fresh
+     * snapshot is overlaid onto it: a partial resync can't drop the count, and
+     * seed-only rooms survive until the first full batch supersedes the seed.
+     * `sameRoomSummaries` then skips a republish when the merged list is byte
+     * for byte what the UI already shows.
      */
     private refreshRooms(): void {
         const client = this.matrix;
@@ -1298,10 +1336,11 @@ export class MatrixChatClient implements ChatClient {
                 client,
                 this._unread ? (roomId) => this._unread!.getUnread(roomId) : undefined,
             );
-            if (sameRoomSummaries(next, this.roomsState.get())) return;
-            const spaces = next.filter((r) => r.isSpace).length;
-            console.debug(`[tumult] rooms snapshot: ${next.length} joined (${spaces} spaces)`);
-            this.roomsState.set(next);
+            const published = this._warmSeed ? mergeRoomSummaries(this._warmSeed, next) : next;
+            if (sameRoomSummaries(published, this.roomsState.get())) return;
+            const spaces = published.filter((r) => r.isSpace).length;
+            console.debug(`[tumult] rooms snapshot: ${published.length} joined (${spaces} spaces)`);
+            this.roomsState.set(published);
             // The published list is what first-paint will use; queue its cache
             // write (debounced, structure-gated below) so the next boot paints it.
             this.shellPersist.schedule();

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { MatrixClient } from "matrix-js-sdk";
 
-import { sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
+import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
 import { retryTextMessage, sendTextMessage } from "../src/rooms/send.ts";
 import { createFakeChatClient } from "../src/fake/index.ts";
 
@@ -204,6 +204,76 @@ describe("sameRoomSummaries", () => {
         assert.equal(sameRoomSummaries([a], [{ ...a, name: "random" }]), false);
         // The divider anchor is account data: republish when it moves.
         assert.equal(sameRoomSummaries([a], [{ ...a, fullyReadEventId: "$x:x" }]), false);
+    });
+});
+
+describe("mergeRoomSummaries", () => {
+    // A complete RoomSummary, mirroring the one above; override per case.
+    const base = {
+        id: "!r:x",
+        name: "general",
+        topic: null,
+        avatarUrl: null,
+        isSpace: false,
+        parentSpaceIds: ["!g:x"],
+        unreadCount: 1,
+        highlightCount: 0,
+        fullyReadEventId: null,
+        joinRule: "invite" as const,
+        historyVisibility: "shared" as const,
+        canonicalAlias: null,
+    };
+    const mk = (id: string, over: Partial<typeof base> = {}): typeof base => ({ ...base, ...over, id });
+    it("keeps seed-only rooms when next is a partial subset", () => {
+        // The first SSS batch is a partial resync: 1 room of the 3 cached.
+        // The publish must not collapse to 1 — that is the flicker we gate.
+        const seed = [mk("!a:x"), mk("!b:x"), mk("!c:x")];
+        const next = [mk("!a:x")];
+        const merged = mergeRoomSummaries(seed, next);
+        assert.equal(merged.length, 3);
+        assert.deepEqual(merged.map((r) => r.id), ["!a:x", "!b:x", "!c:x"]);
+    });
+    it("lets the live value win when a room is in both", () => {
+        const seed = [mk("!a:x", { name: "old", unreadCount: 2 })];
+        const next = [mk("!a:x", { name: "new", unreadCount: 5 })];
+        const merged = mergeRoomSummaries(seed, next);
+        assert.equal(merged.length, 1);
+        // The live snapshot's values must replace the cached ones, not merge
+        // fields (a stale unread from the seed must not survive).
+        assert.equal(merged[0].name, "new");
+        assert.equal(merged[0].unreadCount, 5);
+    });
+    it("orders next first, then appends seed-only rows", () => {
+        // A filled-in window that re-sorts itself: new rooms lead, then the
+        // cached rows the partial batch hasn't delivered yet.
+        const seed = [mk("!a:x"), mk("!b:x"), mk("!c:x")];
+        const next = [mk("!z:x"), mk("!a:x")];
+        const merged = mergeRoomSummaries(seed, next);
+        assert.deepEqual(merged.map((r) => r.id), ["!z:x", "!a:x", "!b:x", "!c:x"]);
+    });
+    it("returns a fresh copy for an empty seed and mutates nothing", () => {
+        const seed: typeof base[] = [];
+        const next = [mk("!a:x"), mk("!b:x")];
+        const merged = mergeRoomSummaries(seed, next);
+        assert.notEqual(merged, next); // not the same array
+        assert.deepEqual(merged.map((r) => r.id), ["!a:x", "!b:x"]);
+
+        // A non-empty seed is likewise not mutated: the merge is a union.
+        const seed2 = [mk("!a:x")];
+        const next2 = [mk("!z:x")];
+        mergeRoomSummaries(seed2, next2);
+        assert.equal(seed2.length, 1);
+        assert.equal(next2.length, 1);
+    });
+    it("collapses to next once it is a full superset of the seed", () => {
+        // The authoritative full batch: no seed-only rows survive, so the merge
+        // is the live list (a fresh array, not the seed or next by reference).
+        const seed = [mk("!a:x"), mk("!b:x")];
+        const next = [mk("!a:x", { name: "live" }), mk("!b:x")];
+        const merged = mergeRoomSummaries(seed, next);
+        assert.equal(merged.length, 2);
+        assert.equal(merged[0].name, "live");
+        assert.notEqual(merged, next);
     });
 });
 

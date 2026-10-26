@@ -40,7 +40,7 @@ export type {
 
 export { Observable } from "./observable.ts";
 export { selectSpaceTree } from "./selectors/spaceTree.ts";
-export { sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
+export { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 export { sendTextMessage } from "./rooms/send.ts";
 export { sendMediaMessage } from "./rooms/media.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
