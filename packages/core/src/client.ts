@@ -1142,8 +1142,10 @@ export class MatrixChatClient implements ChatClient {
         return notifications.requestPermission();
     }
 
+    // Answered from configuration, not from the manager: the managers only
+    // exist after start(), but the shell asks once at setup, before it.
     public supportsCalls(): boolean {
-        return this._calls !== null;
+        return this.elementCallUrl !== null;
     }
 
     public async joinCall(roomId: string, options: { video: boolean }): Promise<void> {
@@ -1165,7 +1167,7 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public supportsVoice(): boolean {
-        return this._voice !== null;
+        return this.createE2EEWorker !== null;
     }
 
     public async joinVoice(roomId: string): Promise<void> {
