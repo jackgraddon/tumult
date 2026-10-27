@@ -1038,21 +1038,40 @@ export class MatrixChatClient implements ChatClient {
         await typing.sendTyping(roomId, isTyping);
     }
 
-    public async resolveMedia(uri: string, size: number): Promise<string> {
+    /**
+     * The media resolver is built at the end of start(), but the shell paints the
+     * cached room list on the very first frame (see bootstrap's warm seed) — so the
+     * rail's avatar <img>s call `resolveMedia()` *before* start() finishes. Rather
+     * than throw — which the avatar's one-shot `.catch()` swallows, stranding the
+     * tile on its initials until some later re-render happened to re-fire the
+     * resolver — a pre-start call now awaits the in-flight start and resolves once
+     * the resolver exists. `this.starting` settles to null when bootstrap ends, so
+     * if start() was never called (or failed and left no resolver) the original
+     * throw stands and the caller keeps its fallback.
+     */
+    private async waitForMedia(): Promise<MediaResolver> {
         const media = this._media;
-        if (!media) throw new Error("Cannot resolve media before start()");
+        if (media) return media;
+        const pending = this.starting;
+        if (!pending) throw new Error("Cannot resolve media before start()");
+        await pending;
+        const ready = this._media;
+        if (!ready) throw new Error("Cannot resolve media before start()");
+        return ready;
+    }
+
+    public async resolveMedia(uri: string, size: number): Promise<string> {
+        const media = await this.waitForMedia();
         return media.resolve(uri, size * 2);
     }
 
     public async resolveMediaDownload(uri: string): Promise<string> {
-        const media = this._media;
-        if (!media) throw new Error("Cannot resolve media before start()");
+        const media = await this.waitForMedia();
         return media.resolveDownload(uri);
     }
 
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
-        const media = this._media;
-        if (!media) throw new Error("Cannot resolve media before start()");
+        const media = await this.waitForMedia();
         return media.resolveEncrypted(file);
     }
 

@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import { AvatarFallback, AvatarImage, AvatarRoot } from "reka-ui";
 
 import { useMediaResolver } from "../media.ts";
+import { AvatarMedia } from "./avatarMedia.ts";
 
 const props = defineProps<{
     /** `mxc://` URI (resolved via the shell's media resolver) or a loadable URL. */
@@ -11,36 +12,19 @@ const props = defineProps<{
     size?: "xs" | "sm" | "md" | "lg";
 }>();
 
-const PX = { xs: 16, sm: 24, md: 32, lg: 48 } as const;
 const resolveMedia = useMediaResolver();
 
 // `mxc://` can't go in an <img>: authenticated media needs the access token,
 // so the shell fetches it and hands back a blob: URL. Until then — or if it
-// fails — Reka's fallback shows initials.
+// fails — Reka's fallback shows initials. The request-id discipline lives in
+// {@link AvatarMedia} so the cold-commit behaviour is unit-tested without a DOM.
 const resolved = ref<string | null>(null);
+const media = new AvatarMedia((url) => {
+    resolved.value = url;
+});
 watch(
     () => [props.src, props.size] as const,
-    ([src, size], _old, onCleanup) => {
-        let stale = false;
-        onCleanup(() => {
-            stale = true;
-        });
-        resolved.value = null;
-        if (!src) return;
-        if (!src.startsWith("mxc://")) {
-            resolved.value = src;
-            return;
-        }
-        if (!resolveMedia) return;
-        resolveMedia(src, PX[size ?? "md"]).then(
-            (url) => {
-                if (!stale) resolved.value = url;
-            },
-            () => {
-                // Leave the initials fallback in place.
-            },
-        );
-    },
+    () => media.run({ src: props.src, size: props.size, resolveMedia }),
     { immediate: true },
 );
 
