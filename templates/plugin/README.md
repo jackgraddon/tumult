@@ -118,7 +118,7 @@ attach — keep CSS in a TypeScript string and inject it with
 `minUI` (the plugin API) and `minCore` (the chat-client contract) are enforced:
 Tumult refuses to install a plugin asking for a newer version than it
 provides. Omit them until you actually need them. The versions these vendored
-types describe are `1.1.0` and `1.0.0` (`minUI` and `minCore`).
+types describe are both `1.1.0` (`minUI` and `minCore`).
 
 ## Versioning and updates
 

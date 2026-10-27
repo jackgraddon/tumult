@@ -58,11 +58,16 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/sandbox/worker/runtime.ts` | the Worker-side runtime factory (rebuilds `PluginContext` over RPC; tested in-process) |
 | `packages/ui/src/plugins/sandbox/worker/shim.ts` | `@tumult/ui/sandbox` — binds the runtime to the real Worker globals |
 | `packages/ui/src/plugins/styles.ts` | `injectStylesheet` — the owner-tagged `<style>` injector and its CSP guard |
+| `packages/ui/src/plugins/lane.ts` | `deriveLane`, `PluginLane`, `SANDBOXABLE_PERMISSIONS` — the trust-lane rule (§11): every-sandboxable → Worker, any component permission → in-page |
+| `packages/ui/src/plugins/compat.ts` | `PLUGIN_API_VERSION`, `compareVersions`, `checkManifestCompatibility` — the install-time `minUI`/`minCore` gate |
+| `packages/ui/src/plugins/schema.ts` | `validatePluginManifest` + the release `tumult.plugin.json` schema builder |
+| `packages/ui/src/plugins/vueBridge.ts` | `installVueBridge` — hands a third-party bundle the host's `vue` (`globalThis.__tumult.vue`), so a bundled copy can `inject()` |
 | `packages/ui/src/timeline/registry.ts` | `TimelineRegistry` — renderer resolution by event type; `addRenderer`'s target |
 | `packages/ui/src/timeline/composer-actions.ts` | `ComposerActionsRegistry` + `ComposerAction` |
 | `packages/ui/src/timeline/commands.ts` | `CommandsRegistry` + `Command` (name normalization, `suggest()`, `resolve()`) |
 | `packages/ui/src/members/decorations.ts` | `MemberDecorationsRegistry` + `MemberDecoration` |
 | `packages/ui/src/settings/tabs.ts` | `SettingsTabsRegistry` + `SettingsTab` |
+| `packages/ui/src/panes/registry.ts` | `WorkspacePanesRegistry` + `WorkspacePane` (`useWorkspacePanes`) — the 6th extension point; `addPane`'s target |
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
 | `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
