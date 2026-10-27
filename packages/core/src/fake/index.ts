@@ -1,4 +1,5 @@
 import type {
+    VoiceView,
     CallView,
     ChatClient,
     ConnectionState,
@@ -381,6 +382,11 @@ class FakeChatClient implements ChatClient {
     public readonly typing: Subscribable<TypingState>;
     private readonly callState = new Observable<CallView | null>(null);
     public readonly call: Subscribable<CallView | null> = this.callState;
+    private readonly voiceState = new Observable<VoiceView | null>(null);
+    public readonly voice: Subscribable<VoiceView | null> = this.voiceState;
+    // A seeded session so the room-row participant list has something to show.
+    private readonly voiceRoomsState = new Observable<Record<string, string[]>>({ "!a-general:fake": ["@alice:example.com"] });
+    public readonly voiceRooms: Subscribable<Record<string, string[]>> = this.voiceRoomsState;
     public readonly notifications: Subscribable<NotificationState>;
     public readonly profile: Subscribable<ProfileView | null>;
     public readonly ownPresence: Subscribable<OwnPresenceView | null>;
@@ -793,11 +799,52 @@ class FakeChatClient implements ChatClient {
 
     public async joinCall(roomId: string, options: { video: boolean }): Promise<void> {
         if (!this.rooms.get().some((room) => room.id === roomId)) throw new Error(`Cannot call unknown room ${roomId}`);
+        this.voiceState.set(null);
         this.callState.set({ roomId, url: "about:blank", video: options.video, state: "joined" });
     }
 
     public async leaveCall(): Promise<void> {
         this.callState.set(null);
+    }
+
+    public supportsVoice(): boolean {
+        return true;
+    }
+
+    // The fake "connects" instantly with one scripted remote participant, so the
+    // voice UI (bar, indicators, mute/deafen) is demoable with no LiveKit.
+    public async joinVoice(roomId: string): Promise<void> {
+        if (!this.rooms.get().some((room) => room.id === roomId)) throw new Error(`Cannot join voice in unknown room ${roomId}`);
+        this.callState.set(null);
+        const prior = this.voiceState.get();
+        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false };
+        this.voiceState.set({
+            roomId,
+            state: "connected",
+            error: null,
+            muted: self.muted,
+            deafened: prior?.deafened ?? false,
+            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false }],
+        });
+    }
+
+    public async leaveVoice(): Promise<void> {
+        this.voiceState.set(null);
+    }
+
+    public async setVoiceMuted(muted: boolean): Promise<void> {
+        const v = this.voiceState.get();
+        if (!v) return;
+        this.voiceState.set({ ...v, muted, participants: v.participants.map((p) => (p.userId === SELF_ID ? { ...p, muted } : p)) });
+    }
+
+    public setVoiceDeafened(deafened: boolean): void {
+        const v = this.voiceState.get();
+        if (v) this.voiceState.set({ ...v, deafened });
+    }
+
+    public setVoiceUserVolume(_userId: string, _volume: number): void {
+        // No audio in the fake.
     }
 
     public attachCall(_frame: HTMLIFrameElement): () => void {

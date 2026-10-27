@@ -8,6 +8,8 @@ interface ImportMetaEnv {
      * root. Unset disables calls. See .env.example.
      */
     readonly VITE_ELEMENT_CALL_URL?: string;
+    /** `"1"` turns on native audio voice. See .env.example. */
+    readonly VITE_VOICE?: string;
 }
 
 interface ImportMeta {

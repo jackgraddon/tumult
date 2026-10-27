@@ -32,6 +32,13 @@ const appClientUri: string = clientUri ?? "";
  */
 const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
 
+/**
+ * Optional: native audio voice (MatrixRTC + LiveKit, no iframe). Opt-in rather
+ * than detected because it needs a LiveKit backend advertised by the user's
+ * homeserver; with the flag off no voice control is drawn at all.
+ */
+const voiceEnabled = import.meta.env.VITE_VOICE === "1";
+
 const redirectUri = `${window.location.origin}/auth/callback`;
 
 /**
@@ -71,6 +78,16 @@ export function createChat(): ChatClient {
         // sync-carried presence instead.
         syncMode: "classic",
         ...(elementCallUrl ? { elementCallUrl } : {}),
+        // LiveKit encrypts media frames in a worker; only this bundler can build
+        // it. Dynamic + inline: it is fetched on the first join (never in the
+        // main chunk) and is a blob: worker, which the CSP's `worker-src blob:`
+        // already allows.
+        ...(voiceEnabled
+            ? {
+                  createE2EEWorker: async (): Promise<Worker> =>
+                      new (await import("livekit-client/e2ee-worker?worker&inline")).default(),
+              }
+            : {}),
         clientMetadata: {
             clientName: "Tumult",
             clientUri: appClientUri,

@@ -16,6 +16,7 @@ import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
+    VoiceView,
     CallView,
     ChatClient,
     CompleteLoginParams,
@@ -82,6 +83,8 @@ import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oaut
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
 import { CallManager } from "./call/manager.ts";
+import { VoiceManager } from "./voice/manager.ts";
+import { createLiveKitMedia } from "./voice/media.ts";
 import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
@@ -106,6 +109,13 @@ export interface ChatClientOptions {
      * allowed by the page's CSP `frame-src`.
      */
     elementCallUrl?: string;
+    /**
+     * Enables native audio voice (MatrixRTC + LiveKit, no frame). Supplied by the
+     * host because LiveKit encrypts media frames in a worker that only the host's
+     * bundler can build (`livekit-client/e2ee-worker`); core stays bundler-free.
+     * Unset means `supportsVoice()` is false.
+     */
+    createE2EEWorker?: () => Promise<Worker>;
 }
 
 /**
@@ -223,6 +233,7 @@ export class MatrixChatClient implements ChatClient {
     private readonly login_: OAuthLogin;
     private readonly syncModeOption: SyncModeOption;
     private readonly elementCallUrl: string | null;
+    private readonly createE2EEWorker: (() => Promise<Worker>) | null;
     /** Sync loop actually running; set in bootstrap before startClient. */
     private activeSyncMode: ActiveSyncMode = "classic";
 
@@ -245,6 +256,10 @@ export class MatrixChatClient implements ChatClient {
     /** The embedded call, alive while the sync loop runs. */
     private _calls: CallManager | null = null;
     private readonly callState = new Observable<CallView | null>(null);
+    /** Native voice, alive while the sync loop runs. */
+    private _voice: VoiceManager | null = null;
+    private readonly voiceState = new Observable<VoiceView | null>(null);
+    private readonly voiceRoomsState = new Observable<Record<string, string[]>>({});
     /** Thread tracking, alive while the sync loop runs. */
     private _threads: ThreadTracker | null = null;
     /** Per-room member rosters, alive while the sync loop runs. */
@@ -344,6 +359,7 @@ export class MatrixChatClient implements ChatClient {
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
         this.syncModeOption = options.syncMode ?? "auto";
         this.elementCallUrl = options.elementCallUrl || null;
+        this.createE2EEWorker = options.createE2EEWorker ?? null;
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
         this.securityRefresh = new ThrottledTask(() => {
             void this.refreshSecurity();
@@ -377,6 +393,14 @@ export class MatrixChatClient implements ChatClient {
 
     public get call(): Subscribable<CallView | null> {
         return this.callState;
+    }
+
+    public get voice(): Subscribable<VoiceView | null> {
+        return this.voiceState;
+    }
+
+    public get voiceRooms(): Subscribable<Record<string, string[]>> {
+        return this.voiceRoomsState;
     }
 
     public get notifications(): Subscribable<NotificationState> {
@@ -571,6 +595,16 @@ export class MatrixChatClient implements ChatClient {
             }
             this._typing = new TypingTracker(client);
             if (this.elementCallUrl) this._calls = new CallManager(client, this.elementCallUrl, this.callState);
+            const createE2EEWorker = this.createE2EEWorker;
+            if (createE2EEWorker) {
+                this._voice = new VoiceManager(
+                    client,
+                    { createMedia: () => createLiveKitMedia({ createE2EEWorker }) },
+                    this.voiceState,
+                    this.voiceRoomsState,
+                );
+                this._voice.start();
+            }
             // The tracker owns its own Observable; without this subscription
             // the contract's `typing` feed is published once and never again,
             // so "X is typing…" never appears in the app.
@@ -689,6 +723,8 @@ export class MatrixChatClient implements ChatClient {
             this._typing = null;
             this._calls?.detachAll();
             this._calls = null;
+            this._voice?.detachAll();
+            this._voice = null;
             this._threads?.detachAll();
             this._threads = null;
             this._members?.detachAll();
@@ -755,6 +791,8 @@ export class MatrixChatClient implements ChatClient {
         this._typing = null;
         this._calls?.detachAll();
         this._calls = null;
+        this._voice?.detachAll();
+        this._voice = null;
         this._threads?.detachAll();
         this._threads = null;
         this._members?.detachAll();
@@ -1111,6 +1149,8 @@ export class MatrixChatClient implements ChatClient {
     public async joinCall(roomId: string, options: { video: boolean }): Promise<void> {
         const calls = this._calls;
         if (!calls) throw new Error("Calls are not supported");
+        // Both write this device's call membership; two at once would fight.
+        await this._voice?.leave();
         await calls.join(roomId, options.video);
     }
 
@@ -1122,6 +1162,33 @@ export class MatrixChatClient implements ChatClient {
         const calls = this._calls;
         if (!calls) throw new Error("Calls are not supported");
         return calls.attach(frame);
+    }
+
+    public supportsVoice(): boolean {
+        return this._voice !== null;
+    }
+
+    public async joinVoice(roomId: string): Promise<void> {
+        const voice = this._voice;
+        if (!voice) throw new Error("Voice is not supported");
+        await this._calls?.leave();
+        await voice.join(roomId);
+    }
+
+    public async leaveVoice(): Promise<void> {
+        await this._voice?.leave();
+    }
+
+    public async setVoiceMuted(muted: boolean): Promise<void> {
+        await this._voice?.setMuted(muted);
+    }
+
+    public setVoiceDeafened(deafened: boolean): void {
+        this._voice?.setDeafened(deafened);
+    }
+
+    public setVoiceUserVolume(userId: string, volume: number): void {
+        this._voice?.setUserVolume(userId, volume);
     }
 
     public supportsThreads(): boolean {

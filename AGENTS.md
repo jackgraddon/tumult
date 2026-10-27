@@ -725,6 +725,30 @@ homeserver. A trap listed here has shipped broken at least once.
   (`packages/core/src/call/`: `CallWidgetDriver` answers the app's Matrix
   requests with OUR client, so the call is this user on this device;
   `CallManager` feeds it room events/to-device and publishes the snapshot).
+- **Phase B: native audio voice** (`packages/core/src/voice/`), hand-rolled on
+  matrix-js-sdk `MatrixRTCSession` + `livekit-client` (both Apache-2.0) — chosen
+  over Element's `@element-hq/matrixrtc-sdk` (experimental, a git dependency
+  that builds Element Call on install, AGPL/commercial: bundling it would put
+  Tumult under AGPL). `VoiceManager` joins the room session with the
+  homeserver's advertised LiveKit transport (`getFocusInUse()` = the oldest
+  member's), gets `{url, jwt}` from lk-jwt-service's LEGACY `/sfu/get`
+  (`sfu.ts`), and hands frame keys from `EncryptionKeyChanged` to LiveKit's key
+  provider. Compatibility mode on purpose: state-event membership (any
+  homeserver), identity `<user_id>:<device_id>`. Moving to Matrix-2.0 mode
+  (sticky events, `/get_token`, hashed identities) is a deliberate protocol
+  change confined to `sfu.ts` + the join config. Opt-in via `VITE_VOICE=1`.
+  `livekit-client` is `import()`ed only in `voice/media.ts` (lazy chunk; the fake
+  build and main chunk never carry it — the smoke test's leak regexp covers it)
+  and the E2EE worker is built by the HOST (`createE2EEWorker`, a Vite
+  `?worker&inline` import in `chat.real.ts`) so core stays bundler-free.
+  `livekit-client` must also be an explicit dependency of `apps/web` (pnpm does
+  not hoist). Voice and the embedded call are mutually exclusive: both write this
+  device's call membership, so `joinVoice` ends a call and `joinCall` ends voice.
+  A stale `join` is cancelled by a `generation` counter checked after every
+  await; a failed join must `leaveRoomSession()` or it leaves a ghost
+  participant. UNVERIFIED against a real SFU: tests stub the SDK session and the
+  media engine (`test/voice.test.ts`); no audio has ever flowed. Not built: push
+  to talk, video/screen share, output-device choice, ringing/invites (MSC4075).
 - Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
   the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
   (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production on Vercel

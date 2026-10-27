@@ -59,3 +59,24 @@ describe("fake client calls", () => {
         await assert.rejects(client.joinCall("!nope:fake", { video: true }));
     });
 });
+
+describe("fake client voice", () => {
+    it("joins voice, mutes, and is replaced by a call (they share the device's membership)", async () => {
+        const client = createFakeChatClient();
+        const room = client.rooms.get()[0];
+        assert.ok(room);
+        assert.equal(client.supportsVoice(), true);
+        await client.joinVoice(room.id);
+        assert.equal(client.voice.get()?.state, "connected");
+        await client.setVoiceMuted(true);
+        assert.equal(client.voice.get()?.muted, true);
+        assert.equal(client.voice.get()?.participants.find((p) => p.userId === "@demo:example.com")?.muted, true);
+        await client.joinCall(room.id, { video: false });
+        assert.equal(client.voice.get(), null, "starting a call must end voice");
+        await client.joinVoice(room.id);
+        assert.equal(client.call.get(), null, "joining voice must end the call");
+        await client.leaveVoice();
+        assert.equal(client.voice.get(), null);
+        await assert.rejects(client.joinVoice("!nope:fake"));
+    });
+});

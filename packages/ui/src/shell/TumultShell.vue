@@ -36,6 +36,8 @@ import SecurityBanner from "../security/SecurityBanner.vue";
 import SecurityModal from "../security/SecurityModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
 import CallPanel from "../calls/CallPanel.vue";
+import VoiceBar from "../calls/VoiceBar.vue";
+import { VoiceRoomsKey } from "../calls/voiceRooms.ts";
 import ThreadList from "../threads/ThreadList.vue";
 import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
 import CreateChannelDialog from "../rooms/CreateChannelDialog.vue";
@@ -291,6 +293,17 @@ const activeRoomId = computed(() => activeRoom.value?.id);
 const callsEnabled = props.client.supportsCalls();
 const call = useSubscribable(props.client.call);
 
+// Native audio voice is a separate capability from the embedded call app: it
+// needs the host to supply an E2EE worker, so it can be on while calls are off.
+const voiceEnabled = props.client.supportsVoice();
+const voice = useSubscribable(props.client.voice);
+provide(VoiceRoomsKey, useSubscribable(props.client.voiceRooms));
+
+function toggleVoice(roomId: string): void {
+    const action = voice.value?.roomId === roomId ? props.client.leaveVoice() : props.client.joinVoice(roomId);
+    void action.catch((error: unknown) => console.error("[tumult] could not change voice", error));
+}
+
 function startCall(roomId: string, video: boolean): void {
     void props.client.joinCall(roomId, { video }).catch((error: unknown) => {
         console.error("[tumult] could not start the call", error);
@@ -529,10 +542,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         </header>
                         <DmList :rooms="tree.orphans" :has-more="moreRooms" @load-more="loadMoreRooms" />
                     </div>
+                    <VoiceBar v-if="voiceEnabled" :client="client" />
                 </div>
                 <div class="tumult-pane tumult-pane-timeline">
                     <div class="tumult-pane-toolbar">
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
+                        <IconButton
+                            v-if="!activePane && voiceEnabled && activeRoomId"
+                            :label="voice?.roomId === activeRoomId ? 'Leave voice' : 'Join voice'"
+                            :aria-pressed="voice?.roomId === activeRoomId"
+                            @click="toggleVoice(activeRoomId)"
+                            ><Icon name="headphones"
+                        /></IconButton>
                         <template v-if="!activePane && callsEnabled && activeRoomId && call?.roomId !== activeRoomId">
                             <IconButton label="Start voice call" @click="startCall(activeRoomId, false)"><Icon name="phone" /></IconButton>
                             <IconButton label="Start video call" @click="startCall(activeRoomId, true)"><Icon name="video" /></IconButton>

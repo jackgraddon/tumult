@@ -14,7 +14,7 @@
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export const CONTRACT_VERSION = "1.2.0";
+export const CONTRACT_VERSION = "1.3.0";
 
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
@@ -307,6 +307,41 @@ export interface CallView {
     state: CallState;
 }
 
+/**
+ * Native voice (Phase B): audio-only, run by core over MatrixRTC + LiveKit, with
+ * no frame. The embedded call app ({@link CallView}) is the video route; the two
+ * are mutually exclusive because both write this device's call membership.
+ *
+ * `connecting` covers discovery, the membership write, the token exchange and
+ * the SFU handshake; `connected` means audio can flow; `reconnecting` is the SFU
+ * dropping and coming back; `error` carries `error` for the user.
+ */
+export type VoiceState = "connecting" | "connected" | "reconnecting" | "error";
+
+export interface VoiceParticipant {
+    userId: string;
+    /** Matrix device id this participant is on (a user may join from two). */
+    deviceId: string;
+    /** Whether the SFU currently detects them speaking. */
+    speaking: boolean;
+    /** Whether they have muted their own microphone. */
+    muted: boolean;
+}
+
+/** The voice session this window is in. At most one. */
+export interface VoiceView {
+    roomId: string;
+    state: VoiceState;
+    /** Human-readable cause, set only when `state` is `error`. */
+    error: string | null;
+    /** Our own microphone is muted. */
+    muted: boolean;
+    /** Remote audio is silenced locally (we still publish unless also muted). */
+    deafened: boolean;
+    /** Everyone in the session, us included, in join order. */
+    participants: VoiceParticipant[];
+}
+
 /** Per-room typing state: user ids currently typing, sorted. */
 export interface TypingState {
     /** roomId → typing user ids (self excluded). */
@@ -513,6 +548,14 @@ export interface ChatClient {
     typing: Subscribable<TypingState>;
     /** The call this window is in, or `null`. Always `null` when {@link supportsCalls} is false. */
     call: Subscribable<CallView | null>;
+    /** The native voice session this window is in, or `null`. */
+    voice: Subscribable<VoiceView | null>;
+    /**
+     * Who is in each room's voice session right now, by room id (user ids, one
+     * per device, rooms with nobody omitted) — for showing participants on a
+     * room row without joining. Empty when {@link supportsVoice} is false.
+     */
+    voiceRooms: Subscribable<Record<string, string[]>>;
     notifications: Subscribable<NotificationState>;
     /**
      * Our own profile, published once `start()` boots and after every
@@ -607,6 +650,23 @@ export interface ChatClient {
      * no call open throws.
      */
     attachCall(frame: HTMLIFrameElement): () => void;
+    /**
+     * False unless the deployment gave core what native voice needs (an E2EE
+     * worker factory) AND the client has started. The homeserver must also
+     * advertise a LiveKit transport, which only `joinVoice` can find out: it
+     * rejects (and `voice` shows `error`) when none is advertised.
+     */
+    supportsVoice(): boolean;
+    /** Join the room's voice session, leaving any voice session or call already open. */
+    joinVoice(roomId: string): Promise<void>;
+    /** Leave the voice session. A no-op when not in one. */
+    leaveVoice(): Promise<void>;
+    /** Mute or unmute our microphone. A no-op when not in a session. */
+    setVoiceMuted(muted: boolean): Promise<void>;
+    /** Silence or restore remote audio locally. A no-op when not in a session. */
+    setVoiceDeafened(deafened: boolean): void;
+    /** Local playback volume for one participant, 0 (silent) to 1. Not sent to anyone. */
+    setVoiceUserVolume(userId: string, volume: number): void;
     /**
      * Resolve an `mxc://` URI to a URL an `<img>` can load, at `size` CSS px
      * (fetched at 2x). Authenticated media needs the access token, so this is

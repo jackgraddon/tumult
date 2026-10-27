@@ -43,7 +43,7 @@ const VIEWPORT = { width: 1440, height: 900 };
  * ids (absolute paths), so it catches the package itself and the crypto WASM
  * glue it pulls in — the two things the fake client exists to avoid linking.
  */
-const SDK_MODULE = /[/\\]node_modules[/\\]\.pnpm[/\\](matrix-js-sdk|@matrix-org\+)/;
+const SDK_MODULE = /[/\\]node_modules[/\\]\.pnpm[/\\](matrix-js-sdk|@matrix-org\+|livekit-client|matrix-widget-api)/;
 
 /** A persisted session, so the router guard opens the shell rather than /login. */
 const SESSION = {
@@ -474,6 +474,32 @@ describe("browser smoke test (fake client)", () => {
 
         await page.keyboard.press("Escape");
         await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
+    it("joins native voice from the toolbar, shows the session, and mutes and leaves it", async () => {
+        // The fake client reports voice as supported and "connects" instantly
+        // with one scripted remote participant, so this proves the whole UI
+        // path (toolbar toggle -> voice bar -> controls -> teardown) without a
+        // LiveKit backend. What it cannot prove is audio: see AGENTS.md (Calls).
+        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        await page.getByRole("button", { name: "Join voice" }).click();
+
+        const bar = page.locator(".tumult-voice");
+        await bar.waitFor({ timeout: 10_000 });
+        assert.match((await bar.textContent()) ?? "", /Voice connected/);
+        assert.match((await bar.textContent()) ?? "", /· 2/, "the voice bar should count both participants");
+
+        // The toolbar toggle now offers to leave, and the room row shows who is in voice.
+        await page.getByRole("button", { name: "Leave voice" }).waitFor({ timeout: 10_000 });
+
+        const mute = bar.getByRole("button", { name: "Mute microphone" });
+        await mute.click();
+        await bar.getByRole("button", { name: "Unmute microphone" }).waitFor({ timeout: 10_000 });
+
+        await bar.getByRole("button", { name: "Disconnect" }).click();
+        await page.waitForSelector(".tumult-voice", { state: "detached", timeout: 10_000 });
+        await page.getByRole("button", { name: "Join voice" }).waitFor({ timeout: 10_000 });
     });
 
     it("opens a workspace pane from the rail, in all three of its slots", async () => {
