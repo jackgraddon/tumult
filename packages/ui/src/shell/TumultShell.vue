@@ -35,6 +35,7 @@ import IconButton from "../primitives/IconButton.vue";
 import SecurityBanner from "../security/SecurityBanner.vue";
 import SecurityModal from "../security/SecurityModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
+import CallPanel from "../calls/CallPanel.vue";
 import ThreadList from "../threads/ThreadList.vue";
 import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
 import CreateChannelDialog from "../rooms/CreateChannelDialog.vue";
@@ -285,6 +286,17 @@ const activeRoom = computed(() => {
 
 const activeRoomId = computed(() => activeRoom.value?.id);
 
+// Calls are a capability of the client + the deployment (a call app to embed),
+// not of the shell: no call app configured means no affordance at all.
+const callsEnabled = props.client.supportsCalls();
+const call = useSubscribable(props.client.call);
+
+function startCall(roomId: string, video: boolean): void {
+    void props.client.joinCall(roomId, { video }).catch((error: unknown) => {
+        console.error("[tumult] could not start the call", error);
+    });
+}
+
 // The workspace pane the selection points at, if any. Reading the registry
 // inside a computed registers the dependency, so a pane a plugin registers
 // after the first paint still opens.
@@ -521,6 +533,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 <div class="tumult-pane tumult-pane-timeline">
                     <div class="tumult-pane-toolbar">
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
+                        <template v-if="!activePane && callsEnabled && activeRoomId && call?.roomId !== activeRoomId">
+                            <IconButton label="Start voice call" @click="startCall(activeRoomId, false)"><Icon name="phone" /></IconButton>
+                            <IconButton label="Start video call" @click="startCall(activeRoomId, true)"><Icon name="video" /></IconButton>
+                        </template>
                         <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
                         <IconButton
                             v-if="!activePane && threadsEnabled && activeRoomId"
@@ -546,6 +562,9 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     <div v-if="activePane?.footer" class="tumult-pane-footer">
                         <component :is="activePane.footer" />
                     </div>
+                    <!-- Stays mounted for the whole call, wherever the user browses:
+                         unmounting its frame would hang up. -->
+                    <CallPanel v-if="callsEnabled" :client="client" :active-room-id="activeRoomId" @return="onRoomJoined" />
                     <!-- Overlay, not a fourth grid track: no layout changes for the other panes. -->
                     <div v-if="threadView && threadsEnabled && activeRoomId" class="tumult-thread-overlay">
                         <ThreadList

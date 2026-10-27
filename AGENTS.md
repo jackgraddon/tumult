@@ -52,7 +52,7 @@ chat client should be.
 - Layout: vertical guild rail (Matrix spaces) + DMs tab + members sidebar.
 - Theming + modularity are v1. Games (custom room events: chess,
   tic-tac-toe, etc.) come AFTER a rock-solid modular web UI.
-- Non-goals v1: games, voice/video, threads, encrypted search, multi-account,
+- Non-goals v1: games, native voice/video (embedded Element Call is in, see Calls), threads, encrypted search, multi-account,
   push notifications, desktop shell.
 
 ## Architecture — UI knows UI, data knows data
@@ -713,7 +713,46 @@ homeserver. A trap listed here has shipped broken at least once.
 - The release API JSON (`/releases/latest`) IS CORS-open and is fetched
   directly — that part of the install flow never needed the proxy.
 
+### Calls (embedded Element Call, Phase A)
+
+- Voice/video is MatrixRTC (MSC4143) over a LiveKit SFU (MSC4195), NOT legacy
+  `m.call.*` and not full-mesh. Element Call is the reference implementation.
+  Phase A embeds its *embedded* package as a cross-origin widget iframe; native
+  `MatrixRTCSession` + `livekit-client` voice channels are Phase B.
+- Contract: `ChatClient.call` feed (`CallView`), `supportsCalls()`, `joinCall`,
+  `leaveCall`, `attachCall(frame)`. The frame is the only DOM type in the
+  contract; media never passes through our code. Core owns the widget transport
+  (`packages/core/src/call/`: `CallWidgetDriver` answers the app's Matrix
+  requests with OUR client, so the call is this user on this device;
+  `CallManager` feeds it room events/to-device and publishes the snapshot).
+- Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
+  the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
+  (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production on Vercel
+  sets no CSP header at all (`vercel.json` has none) — a standing gap.
+- The call app must be a DIFFERENT origin from Tumult: the iframe sandbox needs
+  `allow-same-origin`, which would defeat the sandbox on our own origin.
+- `CallPanel` stays mounted for the whole call; "not viewing the call's room" is
+  CSS (the frame shrinks to 1px), never `v-if` — unmounting the frame hangs up.
+- Widget capabilities are approved wholesale (trusted, operator-configured app)
+  and the driver only acts on the call's own room.
+- VERIFIED from element-call `docs/url_params.md` and `src/widget.ts`: the embedded
+  package takes `widgetId`, `parentUrl`, `userId`, `deviceId`, `baseUrl`, `roomId`
+  in the URL fragment; `intent` has `_voice` and `_dm` variants; the app tells
+  the host `io.element.join` / `im.vector.hangup` / `io.element.close`.
+- Tests: `packages/core/test/call*.test.ts` stub the SDK client and pin every
+  driver call (arguments included). `packages/core/test-integration/call.test.ts`
+  runs the driver against a MatrixRTC-capable Synapse + LiveKit +
+  lk-jwt-service from `tests/rtc/` (`tests/rtc/run.sh`; it skips unless
+  `TEST_RTC=1`, because `tests/synapse` is pinned to v1.114.0 and has none of
+  the MSCs). Writing the unit tests caught a real bug: `delegateDelayedLeave`
+  needs the SFU WebSocket `url` the call app sends (the widget-api type omits
+  it), not the JWT service url from the transports.
+- UNVERIFIED against a live call: the `tests/rtc` stack was written without a
+  Docker daemon and has never been run, and nothing tests the iframe handshake or
+  media (a two-browser Playwright test would). The homeserver needs
+  LiveKit + lk-jwt-service and Synapse `msc4143_enabled` first.
+
 ### Known harmless
 
-- `org.matrix.msc4143/rtc/transports` 404s against this homeserver — MatrixRTC
-  discovery the SDK probes optimistically; voice/video is a v1 non-goal.
+- `org.matrix.msc4143/rtc/transports` 404s against this homeserver until MatrixRTC
+  is enabled on it — discovery the SDK probes optimistically.

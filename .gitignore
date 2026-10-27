@@ -28,6 +28,7 @@ dist-types/
 
 # Local test homeserver (generated keys + sqlite db)
 tests/synapse/data/
+tests/rtc/data/
 
 # Playwright live session state (contains tokens) — never commit
 apps/web/test/.mas-session.json

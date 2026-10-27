@@ -24,12 +24,15 @@ export const BUILTIN_ICON_NAMES = [
     "message-text",
     "paperclip",
     "pencil",
+    "phone",
+    "phone-hangup",
     "plus",
     "poll",
     "puzzle",
     "reply",
     "shield-check",
     "thumb-up",
+    "video",
 ] as const;
 
 export type BuiltinIconName = (typeof BUILTIN_ICON_NAMES)[number];

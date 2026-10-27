@@ -1,0 +1,25 @@
+# Layered over the generated homeserver.yaml. Checked in; data/ is not.
+enable_registration: true
+enable_registration_without_verification: true
+report_stats: false
+url_preview_enabled: false
+federation_domain_whitelist: []
+rc_registration: { per_second: 1000, burst_count: 1000 }
+rc_login:
+  address: { per_second: 1000, burst_count: 1000 }
+  account: { per_second: 1000, burst_count: 1000 }
+  failed_attempts: { per_second: 1000, burst_count: 1000 }
+rc_message: { per_second: 1000, burst_count: 1000 }
+# Delayed events are how a crashed client leaves a call.
+max_event_delay_duration: 24h
+rc_delayed_event_mgmt: { per_second: 1000, burst_count: 1000 }
+experimental_features:
+  msc3266_enabled: true
+  msc4143_enabled: true
+  msc4222_enabled: true
+  msc4140_enabled: true
+  msc4354_enabled: true
+matrix_rtc:
+  transports:
+    - type: livekit
+      livekit_service_url: http://localhost:8090

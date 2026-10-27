@@ -1,4 +1,6 @@
 export type {
+    CallState,
+    CallView,
     ChatClient,
     CompleteLoginParams,
     ConnectionState,

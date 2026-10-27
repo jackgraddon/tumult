@@ -1,4 +1,5 @@
 import type {
+    CallView,
     ChatClient,
     ConnectionState,
     CreateChannelParams,
@@ -378,6 +379,8 @@ class FakeChatClient implements ChatClient {
     public readonly security: Subscribable<SecurityStatus>;
     public readonly verification: Subscribable<VerificationState>;
     public readonly typing: Subscribable<TypingState>;
+    private readonly callState = new Observable<CallView | null>(null);
+    public readonly call: Subscribable<CallView | null> = this.callState;
     public readonly notifications: Subscribable<NotificationState>;
     public readonly profile: Subscribable<ProfileView | null>;
     public readonly ownPresence: Subscribable<OwnPresenceView | null>;
@@ -779,6 +782,27 @@ class FakeChatClient implements ChatClient {
 
     public supportsThreads(): boolean {
         return true;
+    }
+
+    // The fake has no call app to embed, so it demonstrates the shell around a
+    // call (the pane, the bar, the controls) with a blank frame that "joins"
+    // immediately. `about:blank` needs no `frame-src` allowance.
+    public supportsCalls(): boolean {
+        return true;
+    }
+
+    public async joinCall(roomId: string, options: { video: boolean }): Promise<void> {
+        if (!this.rooms.get().some((room) => room.id === roomId)) throw new Error(`Cannot call unknown room ${roomId}`);
+        this.callState.set({ roomId, url: "about:blank", video: options.video, state: "joined" });
+    }
+
+    public async leaveCall(): Promise<void> {
+        this.callState.set(null);
+    }
+
+    public attachCall(_frame: HTMLIFrameElement): () => void {
+        if (!this.callState.get()) throw new Error("No call to attach a frame to");
+        return () => undefined;
     }
 
     public threads(roomId: string): Subscribable<ThreadSummary[]> {

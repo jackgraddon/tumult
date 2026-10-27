@@ -33,7 +33,7 @@ import { Component, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.1.0";
+export declare const CONTRACT_VERSION = "1.2.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -289,6 +289,14 @@ interface VerificationRequestView {
 interface VerificationState {
 	requests: VerificationRequestView[];
 }
+type CallState = "connecting" | "joined" | "error";
+interface CallView {
+	roomId: string;
+	url: string;
+	/** Whether we asked to start with the camera on (voice-only when false). */
+	video: boolean;
+	state: CallState;
+}
 interface TypingState {
 	/** roomId → typing user ids (self excluded). */
 	rooms: Record<string, string[]>;
@@ -470,6 +478,8 @@ export interface ChatClient {
 	security: Subscribable<SecurityStatus>;
 	verification: Subscribable<VerificationState>;
 	typing: Subscribable<TypingState>;
+	/** The call this window is in, or `null`. Always `null` when {@link supportsCalls} is false. */
+	call: Subscribable<CallView | null>;
 	notifications: Subscribable<NotificationState>;
 	/**
 	 * Our own profile, published once `start()` boots and after every
@@ -541,6 +551,31 @@ export interface ChatClient {
 	 * Also false before `start()`, while capability is still unknown.
 	 */
 	supportsThreads(): boolean;
+	/**
+	 * False unless the app was given a call app to embed AND the client has
+	 * started. Voice/video is not part of the Matrix client-server API: it is
+	 * MatrixRTC, and the embedded call app (Element Call) needs a LiveKit
+	 * backend that the homeserver advertises. The UI hides call affordances
+	 * rather than offering one that cannot connect.
+	 */
+	supportsCalls(): boolean;
+	/**
+	 * Join (or start) the room's call, replacing any call already open. Resolves
+	 * once the call is in `call` as `connecting`; progress after that is the
+	 * feed's. Rejects when calls are unsupported or the room is unknown.
+	 */
+	joinCall(roomId: string, options: {
+		video: boolean;
+	}): Promise<void>;
+	/** Leave the current call and drop its frame wiring. A no-op with no call. */
+	leaveCall(): Promise<void>;
+	/**
+	 * Connect the call app's `<iframe>` to the client (the widget transport).
+	 * Call it once the frame is in the DOM, with the `url` from {@link CallView};
+	 * the returned function detaches (and is safe to call twice). Calling it with
+	 * no call open throws.
+	 */
+	attachCall(frame: HTMLIFrameElement): () => void;
 	/**
 	 * Resolve an `mxc://` URI to a URL an `<img>` can load, at `size` CSS px
 	 * (fetched at 2x). Authenticated media needs the access token, so this is

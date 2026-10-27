@@ -3,6 +3,11 @@
 interface ImportMetaEnv {
     /** Public https URL identifying this app to the IdP. See .env.example. */
     readonly VITE_CLIENT_URI?: string;
+    /**
+     * Public URL of a self-hosted Element Call *embedded* package, served at its
+     * root. Unset disables calls. See .env.example.
+     */
+    readonly VITE_ELEMENT_CALL_URL?: string;
 }
 
 interface ImportMeta {

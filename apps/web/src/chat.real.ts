@@ -25,6 +25,13 @@ const clientUri = import.meta.env.VITE_CLIENT_URI;
  */
 const appClientUri: string = clientUri ?? "";
 
+/**
+ * Optional: the call app to embed. Unset leaves calls off rather than guessing
+ * a public instance — the call app needs a LiveKit backend advertised by the
+ * user's homeserver, which only the operator knows exists.
+ */
+const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
+
 const redirectUri = `${window.location.origin}/auth/callback`;
 
 /**
@@ -63,6 +70,7 @@ export function createChat(): ChatClient {
         // classic mode in core, where the server supplies exact unread counts and
         // sync-carried presence instead.
         syncMode: "classic",
+        ...(elementCallUrl ? { elementCallUrl } : {}),
         clientMetadata: {
             clientName: "Tumult",
             clientUri: appClientUri,
