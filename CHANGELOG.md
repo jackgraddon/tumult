@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.4](https://github.com/jackgraddon/tumult/compare/v0.2.3...v0.2.4) (2026-10-27)
+
+
+### Bug Fixes
+
+* **ui:** paint rail/members avatars before the client starts ([9b1a4ed](https://github.com/jackgraddon/tumult/commit/9b1a4edd0cdc14603096b127c81a7e9feb899253))
+
 ### [0.2.3](https://github.com/jackgraddon/tumult/compare/v0.2.2...v0.2.3) (2026-10-26)
 
 
