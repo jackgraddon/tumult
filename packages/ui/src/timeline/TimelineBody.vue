@@ -3,6 +3,7 @@ import { onScopeDispose, shallowRef, watch } from "vue";
 import type { ChatClient, MessageView, Subscribable, Subscription, ThreadSummary } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
+import { useFeedsReady } from "../feedsReady.ts";
 import { useRoomPower } from "../members/power.ts";
 import TimelineViewport from "./TimelineViewport.vue";
 import MessageComposer from "./MessageComposer.vue";
@@ -23,9 +24,11 @@ const emit = defineEmits<{
 }>();
 
 /**
- * `timeline()` still throws until slice 4. Catch it here and render an
- * explicit placeholder instead of letting the setup throw leave a zombie
- * vnode that crashes every later patch (`emitsOptions` of null).
+ * `timeline()` throws before `start()` has built the feed. Catch it here and
+ * render an explicit placeholder instead of letting the setup throw leave a
+ * zombie vnode that crashes every later patch (`emitsOptions` of null). The
+ * parent keys this component on feed readiness, so the placeholder is
+ * replaced by a real subscription once the client is up.
  */
 let source: Subscribable<MessageView[]> | null = null;
 try {
@@ -35,6 +38,9 @@ try {
 }
 
 const messages = source ? useSubscribable(source) : null;
+// Only read for the placeholder: still starting is a wait, anything else is a
+// feed that will not come (a failed start), and saying "loading" would lie.
+const feedsReady = useFeedsReady(props.client);
 const session = useSubscribable(props.client.session);
 const typing = useSubscribable(props.client.typing);
 
@@ -160,7 +166,7 @@ async function onSendFile(file: File): Promise<void> {
 
 <template>
     <div v-if="!messages" class="tumult-timeline-todo" role="status">
-        <p>Timeline read lands in slice 4 — this room is selected, nothing is faked.</p>
+        <p>{{ feedsReady ? "Messages can't be loaded right now." : "Loading messages…" }}</p>
     </div>
     <div v-else class="tumult-timeline-body">
         <TimelineViewport :messages="messages" :room-id="props.roomId" :power="power" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :on-retry-send="retrySend" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />

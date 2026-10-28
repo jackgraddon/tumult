@@ -54,6 +54,14 @@ export default defineConfig(({ mode }) => {
         );
     }
 
+    // The embedded call app (Element Call) is a cross-origin iframe, so its
+    // origin must be named in `frame-src`; without the directive a frame falls
+    // back to `default-src 'self'` and is blocked. Unset means calls are off
+    // (the client reports `supportsCalls() === false`), so no origin is allowed
+    // at all. Only the ORIGIN is allowed, never the path: the app is addressed
+    // by origin, and a path in CSP would silently stop matching on redirect.
+    const callOrigin = /^https?:\/\/[^/?#]+/.exec(env.VITE_ELEMENT_CALL_URL ?? "")?.[0];
+
     // The policy is one constant because dev and preview must not drift: the
     // browser smoke test runs against `preview`, so a header only set on
     // `server` would leave the plugin-blob and crypto-WASM allowances unverified
@@ -82,6 +90,7 @@ export default defineConfig(({ mode }) => {
         // which is often plain http on a home network.
         "connect-src 'self' https: http: wss:",
         "worker-src 'self' blob:",
+        callOrigin ? `frame-src ${callOrigin}` : "frame-src 'none'",
     ].join("; ");
 
     return {

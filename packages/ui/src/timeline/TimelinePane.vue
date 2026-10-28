@@ -4,6 +4,7 @@ import { computed, ref, shallowRef, watch } from "vue";
 import type { ChatClient, RoomSummary } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
+import { useFeedsReady } from "../feedsReady.ts";
 import IconButton from "../primitives/IconButton.vue";
 import SearchPanel from "./SearchPanel.vue";
 import TimelineBody from "./TimelineBody.vue";
@@ -24,6 +25,8 @@ const emit = defineEmits<{
 }>();
 
 const typing = useSubscribable(props.client.typing);
+// The body subscribes once in setup; remount it when the feeds come to exist.
+const feedsReady = useFeedsReady(props.client);
 const typingUsers = computed(() => (props.room ? typing.value.rooms[props.room.id] ?? [] : []));
 
 function typingLabel(users: string[]): string {
@@ -76,10 +79,11 @@ watch(
                 ><Icon name="cog" /></IconButton
             >
         </header>
-        <!-- Keyed so one room's subscription is torn down before the next mounts. -->
+        <!-- Keyed so one room's subscription is torn down before the next mounts,
+             and so a body mounted before start() resubscribes once it can. -->
         <TimelineBody
             v-if="room"
-            :key="room.id"
+            :key="`${room.id}:${feedsReady}`"
             :client="client"
             :room-id="room.id"
             :threads-enabled="threadsEnabled"

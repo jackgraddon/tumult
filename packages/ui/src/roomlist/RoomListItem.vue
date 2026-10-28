@@ -16,6 +16,8 @@ import { copyOrLog } from "../clipboard.ts";
 import { buildRoomMenu, type RoomMenuAction } from "./roomMenu.ts";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 import Avatar from "../primitives/Avatar.vue";
+import Icon from "../icons/Icon.vue";
+import { useVoiceRooms } from "../calls/voiceRooms.ts";
 
 const props = defineProps<{
     room: RoomSummary;
@@ -23,6 +25,8 @@ const props = defineProps<{
 }>();
 
 const sel = useSelection();
+const voiceRooms = useVoiceRooms();
+const inVoice = computed(() => voiceRooms.value[props.room.id] ?? []);
 const actions = useActions();
 
 function href(): string {
@@ -79,6 +83,14 @@ function run(action: RoomMenuAction): void {
                     <Avatar v-if="selection.view === 'dms'" :label="room.name" :src="room.avatarUrl" size="sm" />
                     <span v-else class="tumult-room-hash" aria-hidden="true">#</span>
                     <span class="tumult-room-name">{{ room.name }}</span>
+                    <span
+                        v-if="inVoice.length > 0"
+                        class="tumult-room-voice"
+                        :title="`In voice: ${inVoice.join(', ')}`"
+                        :aria-label="`${inVoice.length} in voice`"
+                    >
+                        <Icon name="headphones" />{{ inVoice.length }}
+                    </span>
                     <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
                 </a>
             </ContextMenuTrigger>
@@ -126,6 +138,13 @@ function run(action: RoomMenuAction): void {
 .tumult-room-item[aria-current="page"] {
     background: var(--roomlist-item-bg-active);
     color: var(--roomlist-item-text-active);
+}
+.tumult-room-voice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    color: var(--success);
+    font-size: var(--text-xs);
 }
 .tumult-room-hash {
     color: var(--text-muted);

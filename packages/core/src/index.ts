@@ -1,4 +1,6 @@
 export type {
+    CallState,
+    CallView,
     ChatClient,
     CompleteLoginParams,
     ConnectionState,
@@ -36,6 +38,9 @@ export type {
     UserSearchResult,
     VerificationRequestView,
     VerificationState,
+    VoiceParticipant,
+    VoiceState,
+    VoiceView,
 } from "./contract.ts";
 
 export { Observable } from "./observable.ts";

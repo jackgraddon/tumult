@@ -19,6 +19,7 @@
     "@tumult/core": "workspace:*",
     "@tumult/theme": "workspace:*",
     "@tumult/ui": "workspace:*",
+    "livekit-client": "^2.23.0",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
   },

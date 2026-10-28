@@ -25,6 +25,20 @@ const clientUri = import.meta.env.VITE_CLIENT_URI;
  */
 const appClientUri: string = clientUri ?? "";
 
+/**
+ * Optional: the call app to embed. Unset leaves calls off rather than guessing
+ * a public instance — the call app needs a LiveKit backend advertised by the
+ * user's homeserver, which only the operator knows exists.
+ */
+const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
+
+/**
+ * Optional: native audio voice (MatrixRTC + LiveKit, no iframe). Opt-in rather
+ * than detected because it needs a LiveKit backend advertised by the user's
+ * homeserver; with the flag off no voice control is drawn at all.
+ */
+const voiceEnabled = import.meta.env.VITE_VOICE === "1";
+
 const redirectUri = `${window.location.origin}/auth/callback`;
 
 /**
@@ -63,6 +77,17 @@ export function createChat(): ChatClient {
         // classic mode in core, where the server supplies exact unread counts and
         // sync-carried presence instead.
         syncMode: "classic",
+        ...(elementCallUrl ? { elementCallUrl } : {}),
+        // LiveKit encrypts media frames in a worker; only this bundler can build
+        // it. Dynamic + inline: it is fetched on the first join (never in the
+        // main chunk) and is a blob: worker, which the CSP's `worker-src blob:`
+        // already allows.
+        ...(voiceEnabled
+            ? {
+                  createE2EEWorker: async (): Promise<Worker> =>
+                      new (await import("livekit-client/e2ee-worker?worker&inline")).default(),
+              }
+            : {}),
         clientMetadata: {
             clientName: "Tumult",
             clientUri: appClientUri,
