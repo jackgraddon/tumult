@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.7](https://github.com/jackgraddon/tumult/compare/v0.2.6...v0.2.7) (2026-10-28)
+
+
+### Bug Fixes
+
+* **voice:** join a call from a homeserver that only publishes a well-known focus ([c4c3733](https://github.com/jackgraddon/tumult/commit/c4c37338ec886ba61102b2bee0cd089e4bdb8e3c))
+
 ### [0.2.6](https://github.com/jackgraddon/tumult/compare/v0.2.5...v0.2.6) (2026-10-28)
 
 ### [0.2.5](https://github.com/jackgraddon/tumult/compare/v0.2.4...v0.2.5) (2026-10-28)
