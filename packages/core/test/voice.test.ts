@@ -85,6 +85,7 @@ function setup(
         /** A call already running in the room, whose focus can be borrowed. */
         existingFocus?: unknown;
         fetchImpl?: typeof fetch;
+        reconnectDelaysMs?: number[];
     } = {},
 ) {
     const session = new FakeSession();
@@ -123,7 +124,7 @@ function setup(
         }) as unknown as typeof fetch);
     const feed = new Observable<VoiceView | null>(null);
     const roomsFeed = new Observable<Record<string, string[]>>({});
-    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl }, feed, roomsFeed);
+    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl, ...(opts.reconnectDelaysMs ? { reconnectDelaysMs: opts.reconnectDelaysMs } : {}) }, feed, roomsFeed);
     return { manager, session, media, feed, roomsFeed, rtcManager, fetchCalls };
 }
 
@@ -249,7 +250,52 @@ describe("VoiceManager.join", () => {
         media.change({ ...media.snap, connection: "reconnecting" });
         assert.equal(feed.get()?.state, "reconnecting");
         media.change({ ...media.snap, connection: "disconnected" });
-        assert.equal(feed.get()?.state, "error", "a dropped SFU is not silently shown as connected");
+        assert.notEqual(feed.get()?.state, "connected", "a dropped SFU is not silently shown as connected");
+    });
+
+    it("re-dials a dropped SFU with a fresh token and republishes the mic", async () => {
+        const { manager, media, feed, fetchCalls } = setup({ reconnectDelaysMs: [0] });
+        await manager.join(ROOM);
+        media.change({ ...media.snap, connection: "disconnected" });
+        assert.equal(feed.get()?.state, "reconnecting", "the retry is shown, not a dead call");
+        await new Promise((r) => setTimeout(r, 5));
+        assert.equal(fetchCalls.length, 2, "a second token was requested");
+        assert.equal(media.log.filter(([name]) => name === "connect").length, 2);
+        assert.deepEqual(media.log.at(-2), ["mic", true]);
+        media.change({ ...media.snap, connection: "connected" });
+        assert.equal(feed.get()?.state, "connected");
+    });
+
+    it("gives up after the retries, leaving the session and the engine", async () => {
+        const { manager, session, media, feed } = setup({ reconnectDelaysMs: [0, 0] });
+        await manager.join(ROOM);
+        media.connectError = new Error("still down");
+        media.change({ ...media.snap, connection: "disconnected" });
+        await new Promise((r) => setTimeout(r, 10));
+        assert.equal(feed.get()?.state, "error");
+        assert.equal(feed.get()?.error, "still down");
+        assert.equal(session.left, 1, "no ghost participant after a lost call");
+        assert.ok(media.log.some(([name]) => name === "disconnect"));
+    });
+
+    it("does not re-dial after the user leaves", async () => {
+        const { manager, media, fetchCalls } = setup({ reconnectDelaysMs: [5] });
+        await manager.join(ROOM);
+        media.change({ ...media.snap, connection: "disconnected" });
+        await manager.leave();
+        await new Promise((r) => setTimeout(r, 15));
+        assert.equal(fetchCalls.length, 1);
+    });
+
+    it("tears the session down when the membership manager gives up", async () => {
+        const { manager, session, media, feed } = setup();
+        await manager.join(ROOM);
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, new Error("membership lost"));
+        await new Promise((r) => setImmediate(r));
+        assert.equal(feed.get()?.state, "error");
+        assert.equal(feed.get()?.error, "membership lost");
+        assert.equal(session.left, 1);
+        assert.ok(media.log.some(([name]) => name === "disconnect"));
     });
 
     it("forwards each frame key the session mints to the media engine, keyed by LiveKit identity", async () => {

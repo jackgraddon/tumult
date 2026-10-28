@@ -10,11 +10,16 @@ import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "./media.ts";
 /** How long the oldest member's transport may take to appear after we join. */
 const FOCUS_TIMEOUT_MS = 15_000;
 
+/** Waits before each reconnect attempt after the SFU connection is lost. */
+const RECONNECT_DELAYS_MS = [1_000, 3_000, 8_000];
+
 export interface VoiceManagerOptions {
     /** Builds the media engine for one session (LiveKit in production). */
     createMedia: () => Promise<VoiceMedia>;
     /** Overridable so tests need no network. */
     fetch?: typeof fetch;
+    /** Overridable so tests need no real waiting. */
+    reconnectDelaysMs?: readonly number[];
 }
 
 /** The slice of the SDK's session this manager uses, so tests can stub it. */
@@ -45,7 +50,9 @@ export class VoiceManager {
     private readonly roomsFeed: Observable<Record<string, string[]>>;
 
     private generation = 0;
-    private active: { roomId: string; session: Session; media: VoiceMedia; teardown: () => void } | null = null;
+    private active: { roomId: string; session: Session; media: VoiceMedia; teardown: () => void; serviceUrl: string | null } | null = null;
+    /** True while we are re-dialling a lost SFU connection; the feed reads "reconnecting". */
+    private reconnecting = false;
     private muted = false;
     private deafened = false;
     private readonly volumes = new Map<string, number>();
@@ -151,14 +158,17 @@ export class VoiceManager {
             rtc.on(MatrixRTCSessionEvent.EncryptionKeyChanged, onKey);
             rtc.on(MatrixRTCSessionEvent.MembershipsChanged, onMembers);
             rtc.on(MatrixRTCSessionEvent.MembershipManagerError, onError);
-            const unsubscribeMedia = engine.subscribe(() => this.publishFromMedia());
+            const unsubscribeMedia = engine.subscribe(() => {
+                this.publishFromMedia();
+                this.reconnectIfDropped(generation);
+            });
             teardown = () => {
                 rtc.off(MatrixRTCSessionEvent.EncryptionKeyChanged, onKey);
                 rtc.off(MatrixRTCSessionEvent.MembershipsChanged, onMembers);
                 rtc.off(MatrixRTCSessionEvent.MembershipManagerError, onError);
                 unsubscribeMedia();
             };
-            this.active = { roomId, session: rtc, media: engine, teardown };
+            this.active = { roomId, session: rtc, media: engine, teardown, serviceUrl: null };
 
             rtc.joinRoomSession(foci, undefined, { manageMediaKeys: true, callIntent: "audio" });
             rtc.reemitEncryptionKeys();
@@ -166,6 +176,7 @@ export class VoiceManager {
             const focus = await this.waitForFocus(rtc, live);
             if (!live()) return;
             const serviceUrl = focus.livekit_service_url;
+            if (this.active) this.active.serviceUrl = serviceUrl;
             const deviceId = this.client.getDeviceId();
             if (!deviceId) throw new Error("Cannot join voice without a device id");
             const sfu: SfuConfig = await getSfuConfig(this.client, serviceUrl, roomId, deviceId, this.options.fetch);
@@ -186,6 +197,7 @@ export class VoiceManager {
     public async leave(): Promise<void> {
         // Bump first: an in-flight join sees it at its next await and stands down.
         this.generation++;
+        this.reconnecting = false;
         const active = this.active;
         this.active = null;
         if (!active) {
@@ -222,6 +234,7 @@ export class VoiceManager {
     /** Drop everything without touching the server (used on stop()). */
     public detachAll(): void {
         this.generation++;
+        this.reconnecting = false;
         const active = this.active;
         this.active = null;
         active?.teardown();
@@ -265,10 +278,67 @@ export class VoiceManager {
         await session?.leaveRoomSession().catch(() => undefined);
     }
 
+    /**
+     * A session-level failure (the membership manager gave up). Publishing an
+     * error alone would leave media connected and our membership written, i.e.
+     * a ghost participant the user cannot see or leave, so tear it all down
+     * first and keep only the error on the feed.
+     */
     private fail(generation: number, error: unknown): void {
         if (generation !== this.generation) return;
-        const view = this.feed.get();
-        if (view) this.publish({ roomId: view.roomId, state: "error", error: message(error), participants: view.participants });
+        const roomId = this.active?.roomId ?? this.feed.get()?.roomId;
+        const active = this.active;
+        this.active = null;
+        this.reconnecting = false;
+        active?.teardown();
+        active?.media.disconnect();
+        void active?.session.leaveRoomSession().catch(() => undefined);
+        if (roomId) this.publish({ roomId, state: "error", error: message(error), participants: [] });
+    }
+
+    /**
+     * LiveKit gives up on a connection (network flap past its own retries, an
+     * expired token) by reporting `disconnected`; nothing re-dials it. Do that
+     * here with a FRESH token, since the old one may be why it dropped. Only
+     * after a first successful connect: a failed initial connect is `join`'s
+     * to report.
+     */
+    private reconnectIfDropped(generation: number): void {
+        const active = this.active;
+        if (!active || this.reconnecting || active.serviceUrl === null) return;
+        if (active.media.snapshot().connection !== "disconnected") return;
+        this.reconnecting = true;
+        void this.reconnect(generation, active);
+    }
+
+    private async reconnect(generation: number, active: NonNullable<VoiceManager["active"]>): Promise<void> {
+        const live = (): boolean => generation === this.generation && this.active === active;
+        const delays = this.options.reconnectDelaysMs ?? RECONNECT_DELAYS_MS;
+        const deviceId = this.client.getDeviceId();
+        let lastError: unknown = new Error("The call connection was lost");
+        this.publishFromMedia();
+        for (const delay of delays) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            if (!live()) return;
+            try {
+                if (!deviceId || active.serviceUrl === null) throw new Error("Cannot rejoin voice without a device id");
+                const sfu = await getSfuConfig(this.client, active.serviceUrl, active.roomId, deviceId, this.options.fetch);
+                if (!live()) return;
+                await active.media.connect(sfu.url, sfu.jwt);
+                if (!live()) return;
+                // Our published tracks died with the old connection.
+                await active.media.setMicrophone(!this.muted);
+                active.media.setDeafened(this.deafened);
+                this.reconnecting = false;
+                this.publishFromMedia();
+                return;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        if (!live()) return;
+        this.reconnecting = false;
+        this.fail(generation, lastError);
     }
 
     private applyVolumes(): void {
@@ -287,7 +357,7 @@ export class VoiceManager {
         this.applyVolumes();
         this.publish({
             roomId: active.roomId,
-            state: stateOf(snapshot),
+            state: this.reconnecting ? "reconnecting" : stateOf(snapshot),
             error: null,
             participants: snapshot.participants.map(toParticipant),
         });
