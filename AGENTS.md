@@ -749,6 +749,29 @@ homeserver. A trap listed here has shipped broken at least once.
   participant. UNVERIFIED against a real SFU: tests stub the SDK session and the
   media engine (`test/voice.test.ts`); no audio has ever flowed. Not built: push
   to talk, video/screen share, output-device choice, ringing/invites (MSC4075).
+- **Focus discovery is revision drift inside ONE MSC, not official vs
+  unofficial** (MSC4143 is unmerged either way). The current revision defines
+  `GET /_matrix/client/unstable/org.matrix.msc4143/rtc/transports` (unstable
+  response key `rtc_transports`) and lists `.well-known` discovery under its
+  REJECTED Alternatives ("exposes transports to unauthenticated users"); the
+  earlier revision used `.well-known/matrix/client` → `org.matrix.msc4143.rtc_foci`.
+  VERIFIED 2026-10: matrix.org reports `org.matrix.msc4143: false` in `/versions`,
+  404s `M_UNRECOGNIZED` on BOTH the unstable and `/v1/rtc/transports` routes, and
+  publishes its only focus — `https://livekit-jwt.call.matrix.org` — in the
+  well-known. So `voice/sfu.ts`'s `discoverFoci()` tries the CS API and then the
+  well-known, and `join()` borrows the room's focus
+  (`getActiveRoomSession()?.getFocusInUse()`) when this homeserver names none: a
+  member authenticates to the FOCUS's JWT service with their own OpenID token, so
+  JOINING a call needs no local transports — only starting one does. Without that
+  fallback every matrix.org account was unable to join a call at all (matrix.org
+  cannot host, and by extension cannot join). Note the client is deliberately
+  hybrid: NEW discovery + OLD state-event membership (matrix.org also has MSC4354
+  sticky events off), so a half-match here is a chosen mismatch.
+- `isLivekitTransportConfig` from `matrix-js-sdk/lib/matrixrtc` is NOT null-safe
+  (`object.type`), and `getFocusInUse()` returns `undefined` until a membership
+  names a focus — wrap it (`voice/sfu.ts`'s `isLivekitFocus`), or the join dies on
+  "Cannot read properties of undefined (reading 'type')" instead of its real
+  cause.
 - Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
   the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
   (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production on Vercel

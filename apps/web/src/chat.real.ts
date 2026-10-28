@@ -34,8 +34,9 @@ const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
 
 /**
  * Optional: native audio voice (MatrixRTC + LiveKit, no iframe). Opt-in rather
- * than detected because it needs a LiveKit backend advertised by the user's
- * homeserver; with the flag off no voice control is drawn at all.
+ * than detected because it needs a LiveKit focus this deployment cannot know
+ * about (a user's homeserver may advertise one, and a call already running in a
+ * room is joined with ITS focus); with the flag off no voice control is drawn.
  */
 const voiceEnabled = import.meta.env.VITE_VOICE === "1";
 

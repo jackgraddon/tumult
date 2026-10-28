@@ -1,9 +1,10 @@
-import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents, isLivekitTransportConfig } from "matrix-js-sdk/lib/matrixrtc/index.js";
+import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixRTCSession } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixClient } from "matrix-js-sdk";
 import type { VoiceParticipant, VoiceView } from "../contract.ts";
 import { Observable } from "../observable.ts";
-import { getSfuConfig, type SfuConfig } from "./sfu.ts";
+import { getSfuConfig, discoverFoci, isLivekitFocus } from "./sfu.ts";
+import type { FocusDiscovery, SfuConfig } from "./sfu.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "./media.ts";
 
 /** How long the oldest member's transport may take to appear after we join. */
@@ -109,17 +110,26 @@ export class VoiceManager {
         let media: VoiceMedia | null = null;
         let teardown = (): void => undefined;
         try {
-            const transports = await this.client._unstable_getRTCTransports().catch(() => {
-                throw new Error("This homeserver does not advertise MatrixRTC calling (MSC4143), so voice is not available here.");
-            });
+            const discovery = await discoverFoci(this.client, this.options.fetch);
             if (!live()) return;
-            const foci = transports.filter(isLivekitTransportConfig).map((t) => ({
+            const foci = discovery.foci.map((t) => ({
                 type: "livekit" as const,
                 livekit_service_url: t.livekit_service_url,
                 // The alias the JWT service maps this Matrix room to.
                 livekit_alias: roomId,
             }));
-            if (foci.length === 0) throw new Error("This homeserver advertises no LiveKit call server, so voice is not available here.");
+            if (foci.length === 0) {
+                // Our homeserver named no focus — but a call already under way
+                // has one, and a member authenticates against the FOCUS's JWT
+                // service with their own OpenID token, never against their own
+                // homeserver. So joining needs no local transports at all; this
+                // is what lets an account on a homeserver with no RTC (e.g.
+                // matrix.org) join a call hosted by someone else's.
+                const running = this.client.matrixRTC.getActiveRoomSession(room);
+                const inUse = running?.getFocusInUse();
+                if (!isLivekitFocus(inUse)) throw new Error(noFocus(discovery));
+                foci.push({ type: "livekit", livekit_service_url: inUse.livekit_service_url, livekit_alias: roomId });
+            }
 
             media = await this.options.createMedia();
             if (!live()) {
@@ -225,7 +235,7 @@ export class VoiceManager {
     private async waitForFocus(session: Session, live: () => boolean): Promise<{ livekit_service_url: string }> {
         const find = (): { livekit_service_url: string } | null => {
             const focus = session.getFocusInUse();
-            return focus && isLivekitTransportConfig(focus) ? focus : null;
+            return isLivekitFocus(focus) ? focus : null;
         };
         const now = find();
         if (now) return now;
@@ -318,4 +328,14 @@ function toParticipant(p: MediaSnapshot["participants"][number]): VoiceParticipa
 
 function message(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Both discovery routes failed and there is nothing to borrow, so say WHICH
+ * requests were made and how each answered. A bare "does not advertise
+ * MatrixRTC" hid a well-known 404 and a network failure identically.
+ */
+function noFocus(discovery: FocusDiscovery): string {
+    const asked = discovery.attempts.map((a) => `${a.asked} → ${a.error ?? "ok"}`).join("; ");
+    return `This homeserver does not advertise MatrixRTC calling (MSC4143), and the room's call has no focus to join, so voice is not available here. Tried ${asked}.`;
 }

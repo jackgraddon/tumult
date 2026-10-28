@@ -652,9 +652,11 @@ export interface ChatClient {
     attachCall(frame: HTMLIFrameElement): () => void;
     /**
      * False unless the deployment gave core what native voice needs (an E2EE
-     * worker factory) AND the client has started. The homeserver must also
-     * advertise a LiveKit transport, which only `joinVoice` can find out: it
-     * rejects (and `voice` shows `error`) when none is advertised.
+     * worker factory) AND the client has started. A call also needs a LiveKit
+     * focus, which only `joinVoice` can find out: it asks this homeserver (the
+     * MSC4143 transports endpoint, then the `.well-known` focus an earlier
+     * revision advertised) or borrows the focus a call already running in this
+     * room is using, and rejects (`voice` in `error`) when there is none.
      */
     supportsVoice(): boolean;
     /** Join the room's voice session, leaving any voice session or call already open. */

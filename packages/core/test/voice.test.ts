@@ -7,7 +7,7 @@ import type { VoiceView } from "../src/contract.ts";
 import { Observable } from "../src/observable.ts";
 import { VoiceManager } from "../src/voice/manager.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "../src/voice/media.ts";
-import { getSfuConfig } from "../src/voice/sfu.ts";
+import { discoverFoci, getSfuConfig } from "../src/voice/sfu.ts";
 
 const ROOM = "!voice:localhost";
 const SERVICE = "https://jwt.example.com";
@@ -75,17 +75,32 @@ class FakeMedia implements VoiceMedia {
     }
 }
 
-function setup(opts: { transports?: unknown[] | Error; focus?: unknown; deviceId?: string | null; fetchImpl?: typeof fetch } = {}) {
+function setup(
+    opts: {
+        transports?: unknown[] | Error;
+        focus?: unknown;
+        deviceId?: string | null;
+        /** What `.well-known/matrix/client` answers. `null`/absent means 404. */
+        wellKnown?: unknown | Error | null;
+        /** A call already running in the room, whose focus can be borrowed. */
+        existingFocus?: unknown;
+        fetchImpl?: typeof fetch;
+    } = {},
+) {
     const session = new FakeSession();
     session.focus = "focus" in opts ? opts.focus : LIVEKIT;
+    const existing = new FakeSession();
+    existing.focus = opts.existingFocus ?? null;
     const rtcManager = new EventEmitter() as EventEmitter & { getRoomSession: () => FakeSession; getActiveRoomSession: (r: { roomId: string }) => FakeSession | undefined };
     rtcManager.getRoomSession = () => session;
-    rtcManager.getActiveRoomSession = () => (session.memberships.length > 0 ? session : undefined);
+    rtcManager.getActiveRoomSession = () =>
+        opts.existingFocus === undefined ? (session.memberships.length > 0 ? session : undefined) : existing;
     const media = new FakeMedia();
     const client = {
         getRoom: (id: string) => (id === ROOM ? { roomId: ROOM } : null),
         getRooms: () => [{ roomId: ROOM }],
         getDeviceId: () => (opts.deviceId === undefined ? "DEV" : opts.deviceId),
+        getDomain: () => "localhost",
         getOpenIdToken: async () => ({ access_token: "oidc", matrix_server_name: "localhost" }),
         _unstable_getRTCTransports: async () => {
             if (opts.transports instanceof Error) throw opts.transports;
@@ -96,8 +111,14 @@ function setup(opts: { transports?: unknown[] | Error; focus?: unknown; deviceId
     const fetchCalls: unknown[][] = [];
     const fetchImpl: typeof fetch =
         opts.fetchImpl ??
-        ((async (url: string, init: RequestInit) => {
-            fetchCalls.push([url, JSON.parse(init.body as string)]);
+        ((async (url: string, init?: RequestInit) => {
+            if (String(url).includes("/.well-known/matrix/client")) {
+                const wellKnown = opts.wellKnown;
+                if (wellKnown instanceof Error) throw wellKnown;
+                if (wellKnown == null) return new Response("{}", { status: 404 });
+                return new Response(JSON.stringify(wellKnown), { status: 200 });
+            }
+            fetchCalls.push([url, JSON.parse((init?.body as string) ?? "null")]);
             return new Response(JSON.stringify({ url: "wss://sfu.example.com", jwt: "tok" }), { status: 200 });
         }) as unknown as typeof fetch);
     const feed = new Observable<VoiceView | null>(null);
@@ -130,6 +151,67 @@ describe("getSfuConfig", () => {
         await assert.rejects(getSfuConfig({ getOpenIdToken: async () => ({}) } as never, SERVICE, ROOM, "D", refuse), /403.*nope/);
         const empty = (async () => new Response("{}")) as unknown as typeof fetch;
         await assert.rejects(getSfuConfig({ getOpenIdToken: async () => ({}) } as never, SERVICE, ROOM, "D", empty), /without an SFU url/);
+    });
+});
+
+describe("discoverFoci", () => {
+    const client = (transports: unknown[] | Error, domain: string | null = "example.com") =>
+        ({
+            _unstable_getRTCTransports: async () => {
+                if (transports instanceof Error) throw transports;
+                return transports;
+            },
+            getDomain: () => domain,
+        }) as never;
+    const respond =
+        (body: unknown, status = 200) =>
+        (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+
+    it("prefers the homeserver route and never asks for the well-known document", async () => {
+        let asked = 0;
+        const fetchImpl = (async () => {
+            asked++;
+            return new Response("{}");
+        }) as unknown as typeof fetch;
+        const discovery = await discoverFoci(client([LIVEKIT]), fetchImpl);
+        assert.deepEqual(discovery.foci, [LIVEKIT]);
+        assert.equal(asked, 0);
+        assert.deepEqual(discovery.attempts, [{ asked: "GET /_matrix/client/unstable/org.matrix.msc4143/rtc/transports", error: null }]);
+    });
+
+    it("falls back to the server name's well-known focus, which is matrix.org's only route", async () => {
+        const urls: string[] = [];
+        const fetchImpl = (async (url: string) => {
+            urls.push(url);
+            return new Response(
+                JSON.stringify({ "org.matrix.msc4143.rtc_foci": [{ type: "livekit", livekit_service_url: "https://livekit-jwt.call.matrix.org" }] }),
+            );
+        }) as unknown as typeof fetch;
+        const discovery = await discoverFoci(client(new Error("M_UNRECOGNIZED")), fetchImpl);
+        assert.deepEqual(urls, ["https://example.com/.well-known/matrix/client"]);
+        assert.deepEqual(discovery.foci, [{ type: "livekit", livekit_service_url: "https://livekit-jwt.call.matrix.org" }]);
+        assert.equal(discovery.attempts[0]?.error, "M_UNRECOGNIZED", "the homeserver's own answer is kept for the error message");
+    });
+
+    it("reads the transports-shaped key too, ignores other transport types, and names one service once", async () => {
+        const discovery = await discoverFoci(
+            client([]),
+            respond({
+                "org.matrix.msc4143.rtc.transports": [
+                    { type: "livekit", livekit_service_url: SERVICE },
+                    { type: "turn", urls: ["turn:example.com"] },
+                ],
+                "org.matrix.msc4143.rtc_foci": [{ type: "livekit", livekit_service_url: SERVICE }],
+            }),
+        );
+        assert.deepEqual(discovery.foci, [LIVEKIT]);
+    });
+
+    it("records the failure of both routes instead of a bare 'not supported'", async () => {
+        const discovery = await discoverFoci(client(new Error("M_UNRECOGNIZED"), null), respond({}, 404));
+        assert.deepEqual(discovery.foci, []);
+        assert.equal(discovery.attempts.length, 1, "with no server name there is no well-known URL to ask");
+        assert.equal(discovery.attempts[0]?.error, "M_UNRECOGNIZED");
     });
 });
 
@@ -197,10 +279,45 @@ describe("VoiceManager.join", () => {
         assert.equal(session.joined.length, 0, "no membership was written");
     });
 
-    it("explains a homeserver that advertises no LiveKit transport", async () => {
+    it("names BOTH discovery routes when neither answers", async () => {
         const { manager, feed } = setup({ transports: [{ type: "something-else" }] });
         await manager.join(ROOM);
-        assert.match(feed.get()?.error ?? "", /no LiveKit call server/);
+        const error = feed.get()?.error ?? "";
+        assert.match(error, /no focus to join/, "an unhostable call is stated as such, not as a missing SFU");
+        assert.match(error, /GET \/_matrix\/client\/unstable\/org\.matrix\.msc4143\/rtc\/transports → answered with no LiveKit transport/);
+        assert.match(error, /GET https:\/\/localhost\/\.well-known\/matrix\/client → HTTP 404/);
+    });
+
+    // matrix.org reports `org.matrix.msc4143: false` in /versions and 404s the
+    // transport endpoint, so its ONLY discovery path is the well-known focus
+    // that the current MSC revision lists under "Alternatives".
+    it("finds the focus in .well-known when the homeserver has no /rtc/transports", async () => {
+        const MATRIX_ORG = "https://livekit-jwt.call.matrix.org";
+        const { manager, session, feed, fetchCalls } = setup({
+            transports: new Error("M_UNRECOGNIZED"),
+            wellKnown: { "org.matrix.msc4143.rtc_foci": [{ type: "livekit", livekit_service_url: MATRIX_ORG }] },
+            focus: { type: "livekit", livekit_service_url: MATRIX_ORG },
+        });
+        await manager.join(ROOM);
+        assert.notEqual(feed.get()?.state, "error");
+        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: MATRIX_ORG, livekit_alias: ROOM }]);
+        assert.equal(fetchCalls[0]?.[0], `${MATRIX_ORG}/sfu/get`);
+    });
+
+    // Nobody on a homeserver without RTC could join a call at all if this were
+    // required: the JWT service verifies the FOCUS's homeserver against our own
+    // OpenID token, so a running call's focus is enough to join it.
+    it("joins a call already in progress by borrowing its focus", async () => {
+        const HOST = "https://jwt.host.example";
+        const { manager, session, feed, fetchCalls } = setup({
+            transports: new Error("M_UNRECOGNIZED"),
+            existingFocus: { type: "livekit", livekit_service_url: HOST },
+            focus: { type: "livekit", livekit_service_url: HOST },
+        });
+        await manager.join(ROOM);
+        assert.notEqual(feed.get()?.state, "error");
+        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
+        assert.equal(fetchCalls[0]?.[0], `${HOST}/sfu/get`, "the token comes from the focus in use, not from our own homeserver");
     });
 
     it("removes our membership and the media engine when the SFU connection fails", async () => {
