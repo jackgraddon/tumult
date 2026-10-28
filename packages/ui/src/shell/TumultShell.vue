@@ -38,6 +38,7 @@ import ThreadPanel from "../threads/ThreadPanel.vue";
 import CallPanel from "../calls/CallPanel.vue";
 import VoiceBar from "../calls/VoiceBar.vue";
 import RoomCallStrip from "../calls/RoomCallStrip.vue";
+import { useFeedsReady } from "../feedsReady.ts";
 import { VoiceRoomsKey } from "../calls/voiceRooms.ts";
 import ThreadList from "../threads/ThreadList.vue";
 import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
@@ -297,6 +298,8 @@ const call = useSubscribable(props.client.call);
 // Native audio voice is a separate capability from the embedded call app: it
 // needs the host to supply an E2EE worker, so it can be on while calls are off.
 const voiceEnabled = props.client.supportsVoice();
+// Room feeds throw before start(); panes keyed on this resubscribe once they exist.
+const feedsReady = useFeedsReady(props.client);
 const voice = useSubscribable(props.client.voice);
 provide(VoiceRoomsKey, useSubscribable(props.client.voiceRooms));
 
@@ -570,7 +573,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     </div>
                     <RoomCallStrip
                         v-if="!activePane && voiceEnabled && activeRoomId"
-                        :key="activeRoomId"
+                        :key="`${activeRoomId}:${feedsReady}`"
                         :client="client"
                         :room-id="activeRoomId"
                     />
@@ -617,7 +620,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 <div class="tumult-pane tumult-pane-members" :inert="!showMembers ? true : undefined">
                     <!-- Keyed: one room's subscription tears down before the next mounts. -->
                     <MembersPane
-                        :key="activeRoomId ?? 'none'"
+                        :key="`${activeRoomId ?? 'none'}:${feedsReady}`"
                         :client="client"
                         :room-id="activeRoomId"
                         @invite="roomAction = { kind: 'invite' }"
