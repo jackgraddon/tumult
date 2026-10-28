@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.9](https://github.com/jackgraddon/tumult/compare/v0.2.8...v0.2.9) (2026-10-28)
+
+
+### Features
+
+* **rail:** space mark-as-read, pinned band, pin and mute ([8d1ee4b](https://github.com/jackgraddon/tumult/commit/8d1ee4b9e891dd7ee7a32db9761c8bee2d6ee9e4))
+* **roomlist:** context menu on space categories; test pinned band ([914f75c](https://github.com/jackgraddon/tumult/commit/914f75c9553cd5d3f9fd2e61d648bba481b473c3))
+
+
+### Bug Fixes
+
+* **voice:** tear down on session failure and re-dial a dropped SFU ([9091cbd](https://github.com/jackgraddon/tumult/commit/9091cbd35f0a38aacd35b8dc059e83bbe84b7428))
+
 ### [0.2.8](https://github.com/jackgraddon/tumult/compare/v0.2.7...v0.2.8) (2026-10-28)
 
 ### [0.2.7](https://github.com/jackgraddon/tumult/compare/v0.2.6...v0.2.7) (2026-10-28)
