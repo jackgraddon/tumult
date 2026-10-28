@@ -12,7 +12,7 @@ import { matrixRoomLink } from "../links.ts";
  * mounting a row.
  */
 
-export type RoomMenuAction = "mark-read" | "copy-link" | "copy-id" | "leave" | "set-avatar" | "set-alias";
+export type RoomMenuAction = "mark-read" | "pin" | "unpin" | "mute" | "unmute" | "copy-link" | "copy-id" | "leave" | "set-avatar" | "set-alias";
 
 export type RoomMenuEntry =
     | { kind: "separator"; id: string }
@@ -37,6 +37,10 @@ export function buildRoomMenu(room: RoomSummary): RoomMenu {
     // sitting there doing nothing.
     const entries: RoomMenuEntry[] = [];
     if (room.unreadCount > 0 || room.highlightCount > 0) entries.push(item("mark-read", "Mark as read"));
+    // Pin and mute are toggles, so the label is the state we would move to.
+    entries.push(item(room.favourite ? "unpin" : "pin", room.favourite ? "Unpin" : "Pin to top"));
+    entries.push(item(room.muted ? "unmute" : "mute", room.muted ? "Unmute" : "Mute"));
+    entries.push({ kind: "separator", id: "separator-copy" });
     entries.push(item("copy-link", "Copy link"));
     entries.push(item("copy-id", "Copy room ID"));
     entries.push({ kind: "separator", id: "separator-destructive" });

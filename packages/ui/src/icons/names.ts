@@ -10,6 +10,7 @@
 export const BUILTIN_ICON_NAMES = [
     "alert",
     "account-group",
+    "chevron-down",
     "chevron-left",
     "chevron-right",
     "close",

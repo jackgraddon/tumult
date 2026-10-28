@@ -173,6 +173,12 @@ function makeContext(
             requestLeave: () => undefined,
             requestModeration: () => undefined,
             requestMarkRead: () => undefined,
+            requestMarkSpaceRead: () => undefined,
+            requestPinRoom: () => undefined,
+            requestMuteRoom: () => undefined,
+            requestSpaceSettings: () => undefined,
+            requestSpaceInvite: () => undefined,
+            requestSpaceCreateChannel: () => undefined,
         },
         media: {
             resolve: async () => "blob:host/1",

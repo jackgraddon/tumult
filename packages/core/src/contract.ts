@@ -241,6 +241,12 @@ export interface RoomSummary {
      * sync.
      */
     favouriteOrder: number | null;
+    /**
+     * True when the user has muted the room: an enabled room-level push rule
+     * (`kind: "room"`, rule id = room id) that notifies nobody. Read from the
+     * account's push rules, so it follows sync, not our own sends.
+     */
+    muted: boolean;
 }
 
 /** The signed-in identity. `null` when logged out. */
@@ -720,6 +726,18 @@ export interface ChatClient {
      * "New messages" divider.
      */
     markRead(roomId: string): Promise<void>;
+    /**
+     * Pin (`m.favourite` room tag) or unpin a room. A newly pinned room carries
+     * no `order`, so it lands after the ordered ones. `RoomSummary.favourite`
+     * flips once the tag syncs back.
+     */
+    setRoomPinned(roomId: string, pinned: boolean): Promise<void>;
+    /**
+     * Mute or unmute a room's notifications with a room-level push rule that
+     * has no actions (unmute deletes it). `RoomSummary.muted` flips once the
+     * rule syncs back.
+     */
+    setRoomMuted(roomId: string, muted: boolean): Promise<void>;
     /**
      * Redact (delete) an event: our own messages, or anything our power
      * levels allow. The target tombstones ("Message deleted.") when the

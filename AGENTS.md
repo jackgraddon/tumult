@@ -208,10 +208,12 @@ chat client should be.
   pretending. The room menu's "Mark as read" is the one item that needs the
   client from a list row, so it goes through the `ActionsContext` channel the
   shell already owns (`requestMarkRead`) — the room list pane has no client of
-  its own. Deferred, with reasons: "Favourite"/"Mute"/"Mark unread"/"Pin" need
-  contract writes (`m.tag`, push rules, read markers), a space-wide "Mark as
-  read" needs a shell action that walks a space's descendants, and the member
-  menu's "Mention" needs the composer to accept a prefill — none of them may be
+  its own. "Pin to top"/"Mute" go through `setRoomPinned` (`m.favourite` tag, no
+  `order`) and `setRoomMuted` (an empty-actions room push rule; `muted` is read
+  back from `getRoomPushRule`), and a space tile's "Mark as read" walks the
+  space's descendants in the shell. "Mark unread" is deliberately not built.
+  Deferred, with reasons: the member menu's "Mention" needs the composer to
+  accept a prefill — none of them may be
   faked by the menu itself. A member menu is never empty: the copy pair needs no
   permission, so its trigger is never `disabled` (unlike the message menu's,
   which can be empty).

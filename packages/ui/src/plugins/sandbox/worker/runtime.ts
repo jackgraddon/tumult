@@ -318,6 +318,24 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
                 requestMarkRead(roomId) {
                     void rpc("actions:requestMarkRead", [roomId]);
                 },
+                requestPinRoom(roomId, pinned) {
+                    void rpc("actions:requestPinRoom", [roomId, pinned]);
+                },
+                requestMuteRoom(roomId, muted) {
+                    void rpc("actions:requestMuteRoom", [roomId, muted]);
+                },
+                requestMarkSpaceRead(spaceId) {
+                    void rpc("actions:requestMarkSpaceRead", [spaceId]);
+                },
+                requestSpaceSettings(spaceId) {
+                    void rpc("actions:requestSpaceSettings", [spaceId]);
+                },
+                requestSpaceInvite(spaceId) {
+                    void rpc("actions:requestSpaceInvite", [spaceId]);
+                },
+                requestSpaceCreateChannel(spaceId) {
+                    void rpc("actions:requestSpaceCreateChannel", [spaceId]);
+                },
             },
             media: {
                 resolve: async (uri, size) => mediaUrl(await rpc("resolveMedia", [uri, size]), "image/*"),

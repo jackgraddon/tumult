@@ -136,6 +136,12 @@ export const CONTEXT_METHODS = [
     "actions:requestLeave",
     "actions:requestModeration",
     "actions:requestMarkRead",
+    "actions:requestPinRoom",
+    "actions:requestMuteRoom",
+    "actions:requestMarkSpaceRead",
+    "actions:requestSpaceSettings",
+    "actions:requestSpaceInvite",
+    "actions:requestSpaceCreateChannel",
 ] as const;
 
 export type ContextMethod = (typeof CONTEXT_METHODS)[number];

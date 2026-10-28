@@ -49,6 +49,7 @@ function summary(overrides: Partial<RoomSummary> = {}): RoomSummary {
         canonicalAlias: null,
         favourite: false,
         favouriteOrder: null,
+        muted: false,
         ...overrides,
     };
 }

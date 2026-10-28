@@ -56,6 +56,14 @@ function run(action: RoomMenuAction): void {
             // request goes through the shell — the same channel leave uses.
             actions.requestMarkRead(props.room.id);
             break;
+        case "pin":
+        case "unpin":
+            actions.requestPinRoom(props.room.id, action === "pin");
+            break;
+        case "mute":
+        case "unmute":
+            actions.requestMuteRoom(props.room.id, action === "mute");
+            break;
         case "copy-link":
             copyOrLog(menu.value.roomLink, "room link");
             break;
@@ -75,6 +83,7 @@ function run(action: RoomMenuAction): void {
             <ContextMenuTrigger as-child>
                 <a
                     class="tumult-room-item"
+                    :data-muted="room.muted || undefined"
                     :href="href()"
                     :aria-current="isActive() ? 'page' : undefined"
                     @click.prevent="pick()"
@@ -149,6 +158,9 @@ function run(action: RoomMenuAction): void {
 .tumult-room-hash {
     color: var(--text-muted);
     flex-shrink: 0;
+}
+.tumult-room-item[data-muted] .tumult-room-name {
+    color: var(--text-muted);
 }
 .tumult-room-name {
     flex: 1;

@@ -95,7 +95,7 @@ type RoomAction =
     | { kind: "create-channel"; spaceId: string; spaceName: string }
     | { kind: "join" }
     | { kind: "create-dm" }
-    | { kind: "invite" }
+    | { kind: "invite"; roomId?: string }
     | { kind: "leave"; target: LeaveTarget }
     | { kind: "moderate"; moderation: MemberModeration }
     | null;
@@ -115,6 +115,39 @@ const actionsCtx: ActionsContext = {
         void props.client.markRead(roomId).catch((error: unknown) => {
             console.error("[tumult] mark read failed", error);
         });
+    },
+    requestPinRoom(roomId, pinned) {
+        void props.client.setRoomPinned(roomId, pinned).catch((error: unknown) => {
+            console.error("[tumult] pin failed", error);
+        });
+    },
+    requestMuteRoom(roomId, muted) {
+        void props.client.setRoomMuted(roomId, muted).catch((error: unknown) => {
+            console.error("[tumult] mute failed", error);
+        });
+    },
+    requestMarkSpaceRead(spaceId) {
+        // Every unread channel in the space's subtree. Each markRead is its own
+        // call, so one failure must not stop the rest.
+        for (const id of spaceDescendantChannels(spaceId)) {
+            const room = roomsById.value.get(id);
+            if (!room || (room.unreadCount === 0 && room.highlightCount === 0)) continue;
+            void props.client.markRead(id).catch((error: unknown) => {
+                console.error("[tumult] mark space read failed", id, error);
+            });
+        }
+    },
+    requestSpaceSettings(spaceId) {
+        settingsRoomId.value = spaceId;
+        settingsOpen.value = true;
+    },
+    requestSpaceInvite(spaceId) {
+        roomAction.value = { kind: "invite", roomId: spaceId };
+    },
+    requestSpaceCreateChannel(spaceId) {
+        const space = roomsById.value.get(spaceId);
+        if (!space) return;
+        roomAction.value = { kind: "create-channel", spaceId, spaceName: space.name };
     },
 };
 provide(ActionsKey, actionsCtx);
@@ -236,6 +269,9 @@ const statusModal = ref(false);
 // room being viewed. Room switch closes it (the room prop must not change
 // under a seeded form).
 const settingsOpen = ref(false);
+// A space's settings open from its rail tile while another room is on screen,
+// so the dialog's target is its own slot; null means "the room being viewed".
+const settingsRoomId = ref<string | null>(null);
 
 // App settings dialog (account menu → Settings…): the shell's own tabs plus
 // every plugin-contributed one. Distinct from `settingsOpen`, which is the
@@ -349,7 +385,36 @@ const channelSpaceName = computed(() =>
 const leaveTarget = computed<LeaveTarget | null>(() =>
     roomAction.value?.kind === "leave" ? roomAction.value.target : null,
 );
-const inviteRoomId = computed(() => activeRoomId.value ?? "");
+const inviteRoomId = computed(() => {
+    const action = roomAction.value;
+    return (action?.kind === "invite" ? action.roomId : undefined) ?? activeRoomId.value ?? "";
+});
+const settingsRoom = computed(() =>
+    settingsRoomId.value ? roomsById.value.get(settingsRoomId.value) : activeRoom.value,
+);
+
+/** Every non-space room beneath a space, through nested spaces (cycle-safe). */
+function spaceDescendantChannels(spaceId: string): string[] {
+    const spaces = new Set<string>([spaceId]);
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const room of rooms.value) {
+            if (room.isSpace && !spaces.has(room.id) && room.parentSpaceIds.some((p) => spaces.has(p))) {
+                spaces.add(room.id);
+                grew = true;
+            }
+        }
+    }
+    return rooms.value
+        .filter((r) => !r.isSpace && r.parentSpaceIds.some((p) => spaces.has(p)))
+        .map((r) => r.id);
+}
+
+function closeSettings(): void {
+    settingsOpen.value = false;
+    settingsRoomId.value = null;
+}
 
 function openCreateChannel(): void {
     // The header shows exactly `activeGuild` (with its own fallback), so
@@ -471,6 +536,7 @@ watch(
         props.client.setRoomSelection(id ?? null);
         threadView.value = null;
         settingsOpen.value = false;
+        settingsRoomId.value = null;
     },
     { immediate: true },
 );
@@ -659,9 +725,9 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         />
         <RoomSettingsDialog
             :client="client"
-            :open="settingsOpen && activeRoom !== undefined"
-            :room="activeRoom"
-            @close="settingsOpen = false"
+            :open="settingsOpen && settingsRoom !== undefined"
+            :room="settingsRoom"
+            @close="closeSettings"
         />
         <SettingsDialog
             :client="client"

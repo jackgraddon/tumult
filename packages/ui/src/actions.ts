@@ -35,6 +35,21 @@ export interface ActionsContext {
      * the resulting sync clears the badge.
      */
     requestMarkRead(roomId: string): void;
+    /** Pin (favourite tag) or unpin a room; a plain client call, like mark-read. */
+    requestPinRoom(roomId: string, pinned: boolean): void;
+    /** Mute or unmute a room's notifications; a plain client call. */
+    requestMuteRoom(roomId: string, muted: boolean): void;
+    /**
+     * Mark every channel under a space read (nested spaces included). The shell
+     * owns the room tree, so the rail tile asks instead of walking it.
+     */
+    requestMarkSpaceRead(spaceId: string): void;
+    /** Open settings for a space from its rail tile (not the room being viewed). */
+    requestSpaceSettings(spaceId: string): void;
+    /** Open the invite dialog for a space from its rail tile. */
+    requestSpaceInvite(spaceId: string): void;
+    /** Open the create-channel dialog for a space from its rail tile. */
+    requestSpaceCreateChannel(spaceId: string): void;
 }
 
 export const ActionsKey: InjectionKey<ActionsContext> = Symbol("tumult/actions");

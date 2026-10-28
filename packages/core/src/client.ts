@@ -1,5 +1,6 @@
 import {
     ClientEvent,
+    PushRuleKind,
     createClient,
     EventType,
     HttpApiEvent,
@@ -1219,6 +1220,25 @@ export class MatrixChatClient implements ChatClient {
         const threads = this._threads;
         if (!threads) throw new Error("Cannot mark thread read before start()");
         await threads.markThreadRead(threadId);
+    }
+
+    public async setRoomPinned(roomId: string, pinned: boolean): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot pin a room before start()");
+        if (pinned) await client.setRoomTag(roomId, "m.favourite", {});
+        else await client.deleteRoomTag(roomId, "m.favourite");
+        this.scheduleRefreshRooms();
+    }
+
+    public async setRoomMuted(roomId: string, muted: boolean): Promise<void> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot mute a room before start()");
+        if (muted) {
+            await client.addPushRule("global", PushRuleKind.RoomSpecific, roomId, { actions: [] });
+        } else if (client.getRoomPushRule("global", roomId)) {
+            await client.deletePushRule("global", PushRuleKind.RoomSpecific, roomId);
+        }
+        this.scheduleRefreshRooms();
     }
 
     public async markRead(roomId: string): Promise<void> {

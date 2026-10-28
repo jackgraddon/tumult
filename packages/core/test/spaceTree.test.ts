@@ -18,6 +18,7 @@ function room(partial: Partial<RoomSummary> & { id: string; name: string }): Roo
         canonicalAlias: null,
         favourite: false,
         favouriteOrder: null,
+        muted: false,
         ...partial,
     };
 }

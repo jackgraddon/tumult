@@ -136,6 +136,24 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             case "actions:requestMarkRead":
                 shell.actions.requestMarkRead(args[0] as string);
                 return undefined;
+            case "actions:requestPinRoom":
+                shell.actions.requestPinRoom(args[0] as string, args[1] as boolean);
+                return undefined;
+            case "actions:requestMuteRoom":
+                shell.actions.requestMuteRoom(args[0] as string, args[1] as boolean);
+                return undefined;
+            case "actions:requestMarkSpaceRead":
+                shell.actions.requestMarkSpaceRead(args[0] as string);
+                return undefined;
+            case "actions:requestSpaceSettings":
+                shell.actions.requestSpaceSettings(args[0] as string);
+                return undefined;
+            case "actions:requestSpaceInvite":
+                shell.actions.requestSpaceInvite(args[0] as string);
+                return undefined;
+            case "actions:requestSpaceCreateChannel":
+                shell.actions.requestSpaceCreateChannel(args[0] as string);
+                return undefined;
         }
     }
 

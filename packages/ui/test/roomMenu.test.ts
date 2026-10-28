@@ -22,6 +22,7 @@ function room(overrides: Partial<RoomSummary> = {}): RoomSummary {
         canonicalAlias: "#general:example.com",
         favourite: false,
         favouriteOrder: null,
+        muted: false,
         ...overrides,
     };
 }
@@ -32,13 +33,21 @@ function shape(menu: RoomMenu): string[] {
 }
 
 describe("buildRoomMenu", () => {
+    it("offers the opposite of the room's pin and mute state", () => {
+        const ids = shape(buildRoomMenu(room({ favourite: true, muted: true })));
+        assert.deepEqual(ids.slice(0, 2), ["unpin", "unmute"]);
+    });
+
     it("offers copy and leave for a read room, with no mark-read to do", () => {
-        assert.deepEqual(shape(buildRoomMenu(room())), ["copy-link", "copy-id", "|", "leave"]);
+        assert.deepEqual(shape(buildRoomMenu(room())), ["pin", "mute", "|", "copy-link", "copy-id", "|", "leave"]);
     });
 
     it("offers mark-read when there is something unread", () => {
         assert.deepEqual(shape(buildRoomMenu(room({ unreadCount: 3 }))), [
             "mark-read",
+            "pin",
+            "mute",
+            "|",
             "copy-link",
             "copy-id",
             "|",
@@ -49,6 +58,9 @@ describe("buildRoomMenu", () => {
     it("treats a highlight with no unread count as something to mark read", () => {
         assert.deepEqual(shape(buildRoomMenu(room({ highlightCount: 1 }))), [
             "mark-read",
+            "pin",
+            "mute",
+            "|",
             "copy-link",
             "copy-id",
             "|",

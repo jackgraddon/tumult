@@ -74,6 +74,7 @@ export function snapshotRooms(
             canonicalAlias: settings.canonicalAlias,
             favourite: readFavourite(room),
             favouriteOrder: readFavouriteOrder(room),
+            muted: readMuted(client, room.roomId),
         };
     });
 }
@@ -109,6 +110,7 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
             // populates when the user's `m.favourite` tag / its order moves.
             room.favourite === other.favourite &&
             room.favouriteOrder === other.favouriteOrder &&
+            room.muted === other.muted &&
             room.parentSpaceIds.length === other.parentSpaceIds.length &&
             room.parentSpaceIds.every((p, j) => p === other.parentSpaceIds[j])
         );
@@ -198,6 +200,21 @@ function readFavouriteOrder(room: {
         return typeof order === "number" && Number.isFinite(order) ? order : null;
     } catch {
         return null;
+    }
+}
+
+/**
+ * Muted = an enabled room-level push rule that notifies nobody. Modern servers
+ * store this as an empty `actions` list; the legacy form is `["dont_notify"]`.
+ */
+function readMuted(client: MatrixClient, roomId: string): boolean {
+    try {
+        const rule = client.getRoomPushRule("global", roomId);
+        if (!rule || rule.enabled === false) return false;
+        const actions = rule.actions as readonly unknown[];
+        return actions.length === 0 || actions.every((a) => a === "dont_notify");
+    } catch {
+        return false;
     }
 }
 

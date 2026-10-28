@@ -120,6 +120,7 @@ function buildRooms(): RoomSummary[] {
             canonicalAlias: null,
             favourite,
             favouriteOrder,
+            muted: false,
         });
     };
     const chan = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0, favourite = false, favouriteOrder: number | null = null): void => {
@@ -138,6 +139,7 @@ function buildRooms(): RoomSummary[] {
             canonicalAlias: null,
             favourite,
             favouriteOrder,
+            muted: false,
         });
     };
 
@@ -566,6 +568,7 @@ class FakeChatClient implements ChatClient {
             canonicalAlias: null,
             favourite: false,
             favouriteOrder: null,
+            muted: false,
         });
     }
 
@@ -589,6 +592,7 @@ class FakeChatClient implements ChatClient {
             canonicalAlias: null,
             favourite: false,
             favouriteOrder: null,
+            muted: false,
         });
     }
 
@@ -610,6 +614,7 @@ class FakeChatClient implements ChatClient {
             canonicalAlias: null,
             favourite: false,
             favouriteOrder: null,
+            muted: false,
         }, params.userId);
     }
 
@@ -635,6 +640,7 @@ class FakeChatClient implements ChatClient {
             canonicalAlias: null,
             favourite: false,
             favouriteOrder: null,
+            muted: false,
         });
     }
 
@@ -723,6 +729,22 @@ class FakeChatClient implements ChatClient {
     public async restoreBackup(_recoveryKey: string): Promise<boolean> {
         // Already healthy; nothing to restore.
         return true;
+    }
+
+    public async setRoomPinned(roomId: string, pinned: boolean): Promise<void> {
+        (this.rooms as Observable<RoomSummary[]>).update((cur) =>
+            cur.map((room) =>
+                room.id === roomId
+                    ? { ...room, favourite: pinned, favouriteOrder: pinned ? room.favouriteOrder : null }
+                    : room,
+            ),
+        );
+    }
+
+    public async setRoomMuted(roomId: string, muted: boolean): Promise<void> {
+        (this.rooms as Observable<RoomSummary[]>).update((cur) =>
+            cur.map((room) => (room.id === roomId ? { ...room, muted } : room)),
+        );
     }
 
     public async markRead(roomId: string): Promise<void> {

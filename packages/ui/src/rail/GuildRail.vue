@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import Icon from "../icons/Icon.vue";
 import {
     DropdownMenuContent,
@@ -18,7 +19,7 @@ import DmsRailItem from "./DmsRailItem.vue";
 import PaneRailItem from "./PaneRailItem.vue";
 import type { WorkspacePane } from "../panes/registry.ts";
 
-defineProps<{
+const props = defineProps<{
     tree: SpaceTree;
     /** Workspace panes, in rail order (the shell owns the registry). */
     panes?: readonly WorkspacePane[];
@@ -28,6 +29,28 @@ const emit = defineEmits<{
     createSpace: [];
     join: [];
 }>();
+
+// The pinned band folds away; the choice is a per-viewer convenience, so
+// storage failing (private window, blocked data) just means it starts open.
+const COLLAPSE_KEY = "tumult.rail.pinnedCollapsed";
+function readCollapsed(): boolean {
+    try {
+        return globalThis.localStorage?.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+const pinnedCollapsed = ref(readCollapsed());
+function togglePinned(): void {
+    pinnedCollapsed.value = !pinnedCollapsed.value;
+    try {
+        globalThis.localStorage?.setItem(COLLAPSE_KEY, pinnedCollapsed.value ? "1" : "0");
+    } catch {
+        // Not persisted; the in-memory state still works.
+    }
+}
+// A folded band must not hide that something pinned needs attention.
+const pinnedUnread = computed(() => props.tree.favourites.reduce((n, r) => n + r.unreadCount, 0));
 </script>
 
 <template>
@@ -39,6 +62,43 @@ const emit = defineEmits<{
                     <!-- Workspace panes sit directly under the DMs button: a pane is
                          the other kind of thing the rail opens. -->
                     <PaneRailItem v-for="pane in panes ?? []" :key="pane.id" :pane="pane" />
+                    <!-- Pinned rooms (m.favourite tags, in tag order) pulled out of
+                         their guild and held at the top, under DMs and panes.
+                         Absent entirely when nothing is pinned. -->
+                    <template v-if="tree.favourites.length">
+                        <li class="tumult-rail-sep" aria-hidden="true" />
+                        <li class="tumult-rail-heading">
+                            <button
+                                type="button"
+                                class="tumult-rail-heading-button"
+                                :aria-expanded="!pinnedCollapsed"
+                                @click="togglePinned"
+                            >
+                                <Icon :name="pinnedCollapsed ? 'chevron-right' : 'chevron-down'" />
+                                <span class="tumult-rail-heading-label">Pinned</span>
+                                <span v-if="pinnedCollapsed && pinnedUnread > 0" class="tumult-rail-heading-count">
+                                    {{ pinnedUnread }}
+                                </span>
+                            </button>
+                        </li>
+                        <template v-if="!pinnedCollapsed">
+                            <li
+                                v-for="fave in tree.favourites"
+                                :key="fave.id"
+                                class="tumult-rail-fav-item"
+                                :aria-hidden="fave.unreadCount > 0 ? undefined : 'true'"
+                            >
+                                <GuildRailItem
+                                    :favourite="fave.id"
+                                    :room="fave"
+                                    :name="fave.name"
+                                    :avatar-url="fave.avatarUrl"
+                                    :unread="fave.unreadCount"
+                                    :highlight="fave.highlightCount"
+                                />
+                            </li>
+                        </template>
+                    </template>
                     <li class="tumult-rail-sep" aria-hidden="true" />
                     <li class="tumult-rail-add">
                         <DropdownMenuRoot>
@@ -68,25 +128,6 @@ const emit = defineEmits<{
                         :unread="guild.aggregateUnread"
                         :highlight="guild.aggregateHighlight"
                     />
-                    <!-- Global favourites: rooms pulled from their guild, sorted by
-                         m.favourite tag order. A separator + heading open the band;
-                         everything is hidden when the user has no favourites. -->
-                    <li v-if="tree.favourites.length" class="tumult-rail-sep" aria-hidden="true" />
-                    <li v-if="tree.favourites.length" class="tumult-rail-heading">Favourites</li>
-                    <li
-                        v-for="fave in tree.favourites"
-                        :key="fave.id"
-                        class="tumult-rail-fav-item"
-                        :aria-hidden="fave.unreadCount > 0 ? undefined : 'true'"
-                    >
-                        <GuildRailItem
-                            :favourite="fave.id"
-                            :name="fave.name"
-                            :avatar-url="fave.avatarUrl"
-                            :unread="fave.unreadCount"
-                            :highlight="fave.highlightCount"
-                        />
-                    </li>
                 </ul>
             </ScrollAreaViewport>
             <ScrollAreaScrollbar orientation="vertical" class="tumult-scrollbar">
@@ -148,6 +189,33 @@ const emit = defineEmits<{
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.tumult-rail-heading-button {
+    display: flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.tumult-rail-heading-button:hover {
+    color: var(--text-primary);
+}
+.tumult-rail-heading-button:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+.tumult-rail-heading-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tumult-rail-heading-count {
+    margin-left: auto;
+    color: var(--text-primary);
 }
 .tumult-rail-fav-item {
     display: inline-flex;

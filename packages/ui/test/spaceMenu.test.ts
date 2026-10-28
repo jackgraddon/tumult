@@ -8,13 +8,22 @@ function shape(menu: SpaceMenu): string[] {
 }
 
 describe("buildSpaceMenu", () => {
-    it("offers the link, the id and the way out, in that order", () => {
+    it("offers management, the link, the id and the way out, in that order", () => {
         assert.deepEqual(shape(buildSpaceMenu("!space:example.com")), [
+            "create-channel",
+            "invite",
+            "settings",
+            "|",
             "copy-link",
             "copy-id",
             "|",
             "leave",
         ]);
+    });
+
+    it("leads with mark-as-read only when something is unread", () => {
+        assert.equal(shape(buildSpaceMenu("!s:x", null, true))[0], "mark-read");
+        assert.equal(shape(buildSpaceMenu("!s:x", null, false)).includes("mark-read"), false);
     });
 
     it("links the space's canonical alias when it has one", () => {
@@ -44,6 +53,6 @@ describe("buildSpaceMenu", () => {
         const labels = buildSpaceMenu("!space:example.com").entries.map((entry) =>
             entry.kind === "item" ? entry.label : "|",
         );
-        assert.deepEqual(labels, ["Copy link", "Copy space ID", "|", "Leave space"]);
+        assert.deepEqual(labels, ["Create channel", "Invite people", "Space settings", "|", "Copy link", "Copy space ID", "|", "Leave space"]);
     });
 });

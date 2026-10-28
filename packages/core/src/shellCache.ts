@@ -161,5 +161,6 @@ function safeSummary(input: unknown): RoomSummary | null {
     out.favourite = typeof input["favourite"] === "boolean" ? input["favourite"] : false;
     out.favouriteOrder =
         typeof input["favouriteOrder"] === "number" ? input["favouriteOrder"] : null;
+    out.muted = typeof input["muted"] === "boolean" ? input["muted"] : false;
     return out;
 }

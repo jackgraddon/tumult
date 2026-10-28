@@ -17,7 +17,9 @@ import {
 import { useSelection, type RoomSelection } from "../selection.ts";
 import { useActions } from "../actions.ts";
 import { copyOrLog } from "../clipboard.ts";
+import type { RoomSummary } from "@tumult/core";
 import { buildSpaceMenu, type SpaceMenuAction } from "./spaceMenu.ts";
+import { buildRoomMenu, type RoomMenuAction } from "../roomlist/roomMenu.ts";
 import Avatar from "../primitives/Avatar.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 
@@ -32,6 +34,8 @@ const props = defineProps<{
     /** Room id when this tile opens a room (the favourites band) instead of a
      * guild; a guild tile when absent. */
     favourite?: string | undefined;
+    /** The pinned room itself, so its tile can offer the room menu (unpin, mute). */
+    room?: RoomSummary;
 }>();
 
 const selection = useSelection();
@@ -60,12 +64,57 @@ function requestLeave(): void {
 // A space's canonical alias is not on the rail tile (the tile only carries what
 // it renders), so the link falls back to the space's room id — which always
 // resolves.
-const menu = computed(() => buildSpaceMenu(props.guildId ?? "", null));
+const menu = computed(() =>
+    props.room
+        ? buildRoomMenu(props.room)
+        : buildSpaceMenu(props.guildId ?? "", null, props.unread > 0 || props.highlight > 0),
+);
 
-function run(action: SpaceMenuAction): void {
+/** A pinned tile is a room: it gets the room menu, not the space one. */
+function runRoom(action: RoomMenuAction, room: RoomSummary): void {
     switch (action) {
+        case "mark-read":
+            actions.requestMarkRead(room.id);
+            break;
+        case "pin":
+        case "unpin":
+            actions.requestPinRoom(room.id, action === "pin");
+            break;
+        case "mute":
+        case "unmute":
+            actions.requestMuteRoom(room.id, action === "mute");
+            break;
         case "copy-link":
-            copyOrLog(menu.value.spaceLink, "space link");
+            copyOrLog((menu.value as ReturnType<typeof buildRoomMenu>).roomLink, "room link");
+            break;
+        case "copy-id":
+            copyOrLog(room.id, "room id");
+            break;
+        case "leave":
+            actions.requestLeave({ id: room.id, name: room.name, isSpace: false });
+            break;
+    }
+}
+
+function run(action: SpaceMenuAction | RoomMenuAction): void {
+    if (props.room) return runRoom(action as RoomMenuAction, props.room);
+    action = action as SpaceMenuAction;
+    const id = props.guildId ?? "";
+    switch (action) {
+        case "mark-read":
+            actions.requestMarkSpaceRead(id);
+            break;
+        case "create-channel":
+            actions.requestSpaceCreateChannel(id);
+            break;
+        case "invite":
+            actions.requestSpaceInvite(id);
+            break;
+        case "settings":
+            actions.requestSpaceSettings(id);
+            break;
+        case "copy-link":
+            copyOrLog((menu.value as ReturnType<typeof buildSpaceMenu>).spaceLink, "space link");
             break;
         case "copy-id":
             copyOrLog(props.guildId ?? "", "space id");
@@ -83,9 +132,8 @@ function run(action: SpaceMenuAction): void {
         <TooltipRoot>
             <TooltipTrigger as-child>
                 <li>
-                    <!-- The favourites band opens rooms; no guild to act on, so no
-                         right-click context menu there. -->
-                    <ContextMenuRoot v-if="!favourite">
+                    <!-- A pinned tile gets the room menu, a guild tile the space one. -->
+                    <ContextMenuRoot>
                         <ContextMenuTrigger as-child>
                             <a
                                 class="tumult-guild-item"
@@ -122,11 +170,6 @@ function run(action: SpaceMenuAction): void {
                             </ContextMenuContent>
                         </ContextMenuPortal>
                     </ContextMenuRoot>
-                    <a v-else class="tumult-guild-item" :href="selection.hrefFor(selectTarget())" :aria-current="currentFlag()" :aria-label="name" @click.prevent="selection.select(selectTarget())">
-                        <span class="tumult-guild-pill" :data-active="currentFlag() === 'page'" />
-                        <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
-                        <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
-                    </a>
                 </li>
             </TooltipTrigger>
             <TooltipPortal>

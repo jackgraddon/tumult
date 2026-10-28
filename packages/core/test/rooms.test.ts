@@ -103,6 +103,7 @@ describe("snapshotRooms", () => {
             canonicalAlias: null,
             favourite: false,
             favouriteOrder: null,
+            muted: false,
         });
     });
 
