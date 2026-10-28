@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.10](https://github.com/jackgraddon/tumult/compare/v0.2.9...v0.2.10) (2026-10-28)
+
+
+### Features
+
+* **presence:** profile fields and plugin activity renderers ([e2fb405](https://github.com/jackgraddon/tumult/commit/e2fb405c86457341e9cb9f3d81d4c437c3065724))
+
 ### [0.2.9](https://github.com/jackgraddon/tumult/compare/v0.2.8...v0.2.9) (2026-10-28)
 
 
