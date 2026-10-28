@@ -803,6 +803,14 @@
                     "type": "string",
                     "description": "Dialog width before viewport clamp."
                 },
+                "layout-settings-nav-width": {
+                    "type": "string",
+                    "description": "Settings sidebar width."
+                },
+                "layout-settings-content-width": {
+                    "type": "string",
+                    "description": "Settings page column max width."
+                },
                 "control-radius": {
                     "type": "string",
                     "description": "Inputs / buttons / rows."
@@ -1063,6 +1071,34 @@
                     "type": "string",
                     "description": "Dialog viewport clamp gutter."
                 },
+                "settings-bg": {
+                    "type": "string",
+                    "description": "Settings page background."
+                },
+                "settings-nav-bg": {
+                    "type": "string",
+                    "description": "Settings sidebar background."
+                },
+                "settings-nav-item-bg-hover": {
+                    "type": "string",
+                    "description": "Settings sidebar item hover."
+                },
+                "settings-nav-item-bg-active": {
+                    "type": "string",
+                    "description": "Settings sidebar current page."
+                },
+                "settings-nav-item-danger": {
+                    "type": "string",
+                    "description": "Settings sidebar destructive item (sign out)."
+                },
+                "settings-nav-width": {
+                    "type": "string",
+                    "description": "Settings sidebar width."
+                },
+                "settings-content-width": {
+                    "type": "string",
+                    "description": "Settings page column max width."
+                },
                 "menu-bg": {
                     "type": "string",
                     "description": "Menu background."
@@ -1074,10 +1110,6 @@
                 "menu-min-width": {
                     "type": "string",
                     "description": "Menu minimum width."
-                },
-                "menu-devices-max-height": {
-                    "type": "string",
-                    "description": "Device list max height."
                 },
                 "menu-item-danger": {
                     "type": "string",
@@ -1928,6 +1960,14 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
+                    "layout-settings-nav-width": {
+                        "type": "string",
+                        "description": "Settings sidebar width."
+                    },
+                    "layout-settings-content-width": {
+                        "type": "string",
+                        "description": "Settings page column max width."
+                    },
                     "control-radius": {
                         "type": "string",
                         "description": "Inputs / buttons / rows."
@@ -2188,6 +2228,34 @@
                         "type": "string",
                         "description": "Dialog viewport clamp gutter."
                     },
+                    "settings-bg": {
+                        "type": "string",
+                        "description": "Settings page background."
+                    },
+                    "settings-nav-bg": {
+                        "type": "string",
+                        "description": "Settings sidebar background."
+                    },
+                    "settings-nav-item-bg-hover": {
+                        "type": "string",
+                        "description": "Settings sidebar item hover."
+                    },
+                    "settings-nav-item-bg-active": {
+                        "type": "string",
+                        "description": "Settings sidebar current page."
+                    },
+                    "settings-nav-item-danger": {
+                        "type": "string",
+                        "description": "Settings sidebar destructive item (sign out)."
+                    },
+                    "settings-nav-width": {
+                        "type": "string",
+                        "description": "Settings sidebar width."
+                    },
+                    "settings-content-width": {
+                        "type": "string",
+                        "description": "Settings page column max width."
+                    },
                     "menu-bg": {
                         "type": "string",
                         "description": "Menu background."
@@ -2199,10 +2267,6 @@
                     "menu-min-width": {
                         "type": "string",
                         "description": "Menu minimum width."
-                    },
-                    "menu-devices-max-height": {
-                        "type": "string",
-                        "description": "Device list max height."
                     },
                     "menu-item-danger": {
                         "type": "string",
@@ -3054,6 +3118,14 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
+                    "layout-settings-nav-width": {
+                        "type": "string",
+                        "description": "Settings sidebar width."
+                    },
+                    "layout-settings-content-width": {
+                        "type": "string",
+                        "description": "Settings page column max width."
+                    },
                     "control-radius": {
                         "type": "string",
                         "description": "Inputs / buttons / rows."
@@ -3314,6 +3386,34 @@
                         "type": "string",
                         "description": "Dialog viewport clamp gutter."
                     },
+                    "settings-bg": {
+                        "type": "string",
+                        "description": "Settings page background."
+                    },
+                    "settings-nav-bg": {
+                        "type": "string",
+                        "description": "Settings sidebar background."
+                    },
+                    "settings-nav-item-bg-hover": {
+                        "type": "string",
+                        "description": "Settings sidebar item hover."
+                    },
+                    "settings-nav-item-bg-active": {
+                        "type": "string",
+                        "description": "Settings sidebar current page."
+                    },
+                    "settings-nav-item-danger": {
+                        "type": "string",
+                        "description": "Settings sidebar destructive item (sign out)."
+                    },
+                    "settings-nav-width": {
+                        "type": "string",
+                        "description": "Settings sidebar width."
+                    },
+                    "settings-content-width": {
+                        "type": "string",
+                        "description": "Settings page column max width."
+                    },
                     "menu-bg": {
                         "type": "string",
                         "description": "Menu background."
@@ -3325,10 +3425,6 @@
                     "menu-min-width": {
                         "type": "string",
                         "description": "Menu minimum width."
-                    },
-                    "menu-devices-max-height": {
-                        "type": "string",
-                        "description": "Device list max height."
                     },
                     "menu-item-danger": {
                         "type": "string",

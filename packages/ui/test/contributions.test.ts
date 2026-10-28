@@ -236,4 +236,20 @@ describe("SettingsTabsRegistry", () => {
         );
         assert.throws(() => tabs.add({ id: "", title: "Nameless", component: Comp }), /non-empty key/);
     });
+
+    it("groups by section in nav order, dropping empty sections", () => {
+        const tabs = new SettingsTabsRegistry();
+        tabs.add({ id: "demo", title: "Demo", component: Comp });
+        tabs.add({ id: "installed", title: "Installed", component: Comp, section: "plugins", priority: 10 });
+        tabs.add({ id: "security", title: "Security", component: Comp, section: "account" });
+        tabs.add({ id: "account", title: "My Account", component: Comp, section: "account", priority: 10 });
+
+        assert.deepEqual(
+            tabs.grouped().map((group) => [group.section, group.tabs.map((tab) => tab.id)]),
+            [
+                ["account", ["account", "security"]],
+                ["plugins", ["installed", "demo"]],
+            ],
+        );
+    });
 });

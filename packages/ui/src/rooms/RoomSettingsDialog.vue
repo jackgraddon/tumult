@@ -32,7 +32,7 @@ const busy = ref(false);
 const error = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
 
-// Same lifecycle as ProfileDialog: the Reka content unmounts on close but this
+// The Reka content unmounts on close but this
 // component's script state survives, so seed from the live summary on every
 // open. The preview blob URL must be revoked whenever it stops being shown.
 let previewUrl: string | null = null;

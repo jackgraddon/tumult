@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import {
     DropdownMenuContent,
     DropdownMenuItem,
@@ -8,7 +8,7 @@ import {
     DropdownMenuRoot,
     DropdownMenuTrigger,
 } from "reka-ui";
-import type { ChatClient, DeviceView, SessionView } from "@tumult/core";
+import type { ChatClient, SessionView } from "@tumult/core";
 
 import Avatar from "../primitives/Avatar.vue";
 import IconButton from "../primitives/IconButton.vue";
@@ -58,21 +58,11 @@ function presenceTitle(): string {
     return "Presence unknown";
 }
 
-const devices = ref<DeviceView[] | null>(null);
-
-async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
-    if (!open) return;
-    try {
-        devices.value = await client.listDevices();
-    } catch {
-        devices.value = null;
-    }
-}
 </script>
 
 <template>
     <div class="tumult-userbar" :data-compact="compact ? 'true' : undefined">
-        <DropdownMenuRoot @update:open="(open) => onOpenChange(open, client)">
+        <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
                 <button
                     type="button"
@@ -98,27 +88,14 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
                         </span>
                         <span>{{ session?.userId ?? "Signed out" }}</span>
                     </DropdownMenuItem>
-                    <div v-if="devices" class="tumult-menu-devices" role="group" aria-label="Devices">
-                        <ul>
-                            <li
-                                v-for="d in devices"
-                                :key="d.id"
-                                class="tumult-menu-device"
-                                :title="d.verified ? 'Verified' : 'Unverified'"
-                            >
-                                <Icon :name="d.verified ? 'shield-check' : 'alert'" />
-                                <span class="tumult-menu-device-name">{{ d.displayName ?? d.id }}{{ d.isCurrent ? " (this device)" : "" }}</span>
-                            </li>
-                        </ul>
-                    </div>
                     <DropdownMenuItem class="tumult-menu-item" text-value="set status" @select="emit('status')">
                         Set status…
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="tumult-menu-item" text-value="settings" @select="emit('settings')">
-                        Settings…
-                    </DropdownMenuItem>
                     <DropdownMenuItem class="tumult-menu-item" text-value="edit profile" @select="emit('profile')">
                         Edit profile…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem class="tumult-menu-item" text-value="settings" @select="emit('settings')">
+                        Settings…
                     </DropdownMenuItem>
                     <DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
                         Security…
@@ -285,33 +262,6 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
     color: var(--text-primary);
     font-size: var(--text-sm);
     font-weight: var(--weight-semibold);
-}
-.tumult-menu-devices {
-    max-height: var(--menu-devices-max-height);
-    overflow-y: auto;
-    border-top: var(--border-width) solid var(--border-default);
-    border-bottom: var(--border-width) solid var(--border-default);
-    margin: var(--space-1) 0;
-    padding: var(--space-1) 0;
-}
-.tumult-menu-devices ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.tumult-menu-device {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-}
-.tumult-menu-device-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .tumult-menu-item {
     padding: var(--space-1-5) var(--space-2);

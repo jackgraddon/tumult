@@ -517,18 +517,32 @@ ctx.addMemberDecoration({
 
 ### 5.5 `addSettingsTab(tab)` — `settings-tabs`
 
-Adds a tab to the settings dialog (opened from the account menu). The shell
-contributes its own tabs (`Appearance` at priority 10, `Plugins` at 0); plugin
-tabs default after them.
+Adds a page to the settings overlay (the full-screen view the account menu
+and the user bar's gear open). Its sidebar is grouped into three sections, in
+this order:
+
+| `section` | Heading | The shell's own pages |
+|---|---|---|
+| `"account"` | User settings | My Account (priority 10), Security (0) |
+| `"app"` | App settings | Appearance (10), Themes (0) — only when the app provides theme controls |
+| `"plugins"` | Plugins | Installed (100) |
+
+A page that names no section lands under **Plugins**, after the shell's
+"Installed" list; `priority` orders pages *within* a section, and a section
+with no pages draws no heading. The overlay titles the page with its `title`
+and owns the close button, so a page renders only its body — use the shared
+`tumult-settings-section` / `tumult-settings-heading` / `tumult-settings-note`
+classes to match the built-in pages (consecutive sections get a divider).
 
 ```ts
 addSettingsTab(tab: SettingsTab): Disposable
 
 interface SettingsTab {
-    id: string;            // keys the registration
-    title: string;         // label in the tab strip
-    component: Component;  // receives { client: ChatClient, close(): void }
-    priority?: number;     // higher sorts earlier. Default 0.
+    id: string;                 // keys the registration
+    title: string;              // label in the sidebar, and the page title
+    component: Component;       // receives { client: ChatClient, close(): void }
+    section?: SettingsSection;  // "account" | "app" | "plugins". Default "plugins".
+    priority?: number;          // higher sorts earlier within its section. Default 0.
 }
 ```
 
@@ -560,7 +574,7 @@ ctx.addSettingsTab({ id: "cc.example.diagnostics", title: "Diagnostics", compone
 ```
 
 **Example — a tab that shows the active theme.** `useTheme()` is the same seam
-the Appearance tab uses; it stays registry- and storage-free for the plugin:
+the Appearance page uses; it stays registry- and storage-free for the plugin:
 
 ```ts
 const ThemePeek = defineComponent({

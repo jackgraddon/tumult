@@ -199,16 +199,6 @@ async function onEnable(id: string): Promise<void> {
 </template>
 
 <style scoped>
-.tumult-settings-heading {
-    margin: 0 0 var(--space-2);
-    font-size: var(--text-md);
-    font-weight: var(--weight-semibold);
-}
-.tumult-settings-note {
-    margin: var(--space-2) 0 0;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-}
 .tumult-plugin-list {
     display: flex;
     flex-direction: column;

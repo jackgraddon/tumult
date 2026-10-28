@@ -455,14 +455,20 @@ describe("browser smoke test (fake client)", () => {
         const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
         assert.deepEqual(
             tabNames.map((name) => name.trim()),
-            ["Appearance", "Plugins", "Plugin demo"],
-            "the tab strip is not the shell's tabs plus the plugin's",
+            ["My Account", "Security", "Appearance", "Themes", "Installed", "Plugin demo"],
+            "the sidebar is not the shell's pages plus the plugin's",
+        );
+        // A plugin page that names no section lands under the Plugins heading.
+        const headings = await page.locator(".tumult-settings-group").allTextContents();
+        assert.deepEqual(
+            headings.map((name) => name.trim()),
+            ["User settings", "App settings", "Plugins"],
+            "the sidebar is not grouped into its three sections",
         );
 
-        // The built-in tab lists what PluginRegistry actually installed. It is
-        // not the first tab any more (Appearance sorts ahead of it), so it has
-        // to be selected explicitly.
-        await page.getByRole("tab", { name: "Plugins" }).click();
+        // The built-in page lists what PluginRegistry actually installed. It is
+        // not the first page (My Account is), so it has to be selected.
+        await page.getByRole("tab", { name: "Installed" }).click();
         assert.match(
             (await dialog.textContent()) ?? "",
             /cc\.jackg\.tumult\.shrug/,
@@ -710,7 +716,7 @@ describe("browser smoke test (fake client)", () => {
 
             await installed.locator(".tumult-account").click();
             await installed.locator(".tumult-menu-item", { hasText: "Settings" }).click();
-            await installed.getByRole("tab", { name: "Plugins" }).click();
+            await installed.getByRole("tab", { name: "Installed" }).click();
 
             await installed.locator("#tumult-plugin-url").fill("https://github.com/example/remote");
             await installed.getByRole("button", { name: "Check" }).click();
@@ -882,6 +888,39 @@ describe("browser smoke test (fake client)", () => {
         await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
     });
 
+    it("opens Settings full-screen, deep-linked from the account menu", async () => {
+        // "Edit profile…" lands on My Account rather than the first page by
+        // accident: the profile form is what the user asked for.
+        await page.locator(".tumult-account").click();
+        await page.locator(".tumult-menu-item", { hasText: "Edit profile" }).click();
+        const overlay = page.locator(".tumult-settings");
+        await overlay.waitFor({ timeout: 10_000 });
+        await page.locator("#tumult-profile-name").waitFor({ timeout: 5_000 });
+        assert.equal(
+            (await page.locator(".tumult-settings-title").innerText()).trim(),
+            "My Account",
+            "the page title does not name the deep-linked page",
+        );
+
+        // Full-screen, not a centred card: the overlay spans the viewport.
+        const box = await overlay.boundingBox();
+        const viewport = page.viewportSize();
+        assert.ok(box && viewport, "no overlay box to measure");
+        assert.equal(Math.round(box.width), viewport.width, "settings does not span the viewport width");
+        assert.equal(Math.round(box.height), viewport.height, "settings does not span the viewport height");
+        await page.keyboard.press("Escape");
+        await overlay.waitFor({ state: "hidden", timeout: 5_000 });
+
+        // "Security…" lands on the Security page, not the modal chooser.
+        await page.locator(".tumult-account").click();
+        await page.locator(".tumult-menu-item", { hasText: "Security" }).click();
+        await overlay.waitFor({ timeout: 10_000 });
+        assert.equal((await page.locator(".tumult-settings-title").innerText()).trim(), "Security");
+        assert.equal(await page.locator(".tumult-security-modal").count(), 0, "the security modal opened too");
+        await page.locator(".tumult-settings-close").click();
+        await overlay.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
     it("flips every colour token for light mode, and flips back", async () => {
         const dark = await readState(page);
 
@@ -915,15 +954,40 @@ describe("browser smoke test (fake client)", () => {
         assert.deepEqual(restored.tokens, dark.tokens, "dropping data-mode did not restore dark");
     });
 
-    // --- Appearance tab (the theme loader + UX) ------------------------------
+    // --- Appearance + Themes pages (the theme loader + UX) -------------------
 
-    /** Open Settings and switch to the Appearance tab. */
+    /** Open Settings, if it is not open, and switch to the Appearance page. */
     async function openAppearance(): Promise<void> {
-        await page.locator(".tumult-account").click();
-        await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
-        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
-        await page.getByRole("tab", { name: "Appearance" }).click();
-        await page.locator("#tumult-theme-active").waitFor({ timeout: 5_000 });
+        await openSettingsPage("Appearance");
+        await page.locator('input[name="tumult-theme-active"]').first().waitFor({ timeout: 5_000 });
+    }
+
+    /** Open Settings, if it is not open, and switch to the Themes page. */
+    async function openThemes(): Promise<void> {
+        await openSettingsPage("Themes");
+        await page.locator("#tumult-theme-install").waitFor({ timeout: 5_000 });
+    }
+
+    async function openSettingsPage(name: string): Promise<void> {
+        if (!(await page.locator(".tumult-settings").isVisible())) {
+            await page.locator(".tumult-account").click();
+            await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+            await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        }
+        await page.getByRole("tab", { name, exact: true }).click();
+    }
+
+    /** The values a segmented choice (`mode`, `density`) offers, in order. */
+    function choices(group: string): Promise<string[]> {
+        return page
+            .locator(`input[name="tumult-theme-${group}"]`)
+            .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+    }
+
+    /** Pick one option of a segmented choice on the Appearance page. */
+    async function choose(group: string, value: string): Promise<void> {
+        await page.locator(`input[name="tumult-theme-${group}"][value="${value}"]`).check();
+        await page.waitForTimeout(150);
     }
 
     async function closeSettings(): Promise<void> {
@@ -979,8 +1043,8 @@ describe("browser smoke test (fake client)", () => {
         });
     }
 
-    it("installs a theme from the Appearance tab and applies it live", async () => {
-        await openAppearance();
+    it("installs a theme from the Themes page and applies it live", async () => {
+        await openThemes();
         await installTheme({ version: 1, name: THEME_NAME, tokens: { accent: THEME_ACCENT } });
 
         const installed = await readState(page);
@@ -1017,6 +1081,7 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("switches mode on a theme that declares one", async () => {
+        await openThemes();
         await installTheme({
             version: 1,
             name: MODES_NAME,
@@ -1024,29 +1089,27 @@ describe("browser smoke test (fake client)", () => {
             modes: { light: { accent: LIGHT_ACCENT } },
         });
 
-        const options = await page.locator("#tumult-theme-mode option").allTextContents();
+        // Installing does not switch page; the mode lives on Appearance.
+        await openAppearance();
         assert.deepEqual(
-            options.map((option) => option.trim()),
+            await choices("mode"),
             ["dark", "light"],
-            "the mode menu should offer exactly what the theme implements",
+            "the mode choice should offer exactly what the theme implements",
         );
 
-        await page.locator("#tumult-theme-mode").selectOption("light");
-        await page.waitForTimeout(150);
+        await choose("mode", "light");
         const light = await readState(page);
         assert.equal(light.mode, "light");
         assert.equal(light.tokens["--accent"], LIGHT_ACCENT, "the light override did not apply");
 
         // Base mode means no attribute at all — it is the theme's `tokens` map.
-        await page.locator("#tumult-theme-mode").selectOption("dark");
-        await page.waitForTimeout(150);
+        await choose("mode", "dark");
         const dark = await readState(page);
         assert.equal(dark.mode, null);
         assert.equal(dark.tokens["--accent"], THEME_ACCENT);
 
         // Leave it on light: the reload test asserts the mode persisted too.
-        await page.locator("#tumult-theme-mode").selectOption("light");
-        await page.waitForTimeout(150);
+        await choose("mode", "light");
     });
 
     it("restores the stored theme at boot, before the shell renders", async () => {
@@ -1073,7 +1136,7 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("applies advanced CSS behind an opt-in, and refuses external references", async () => {
-        await openAppearance();
+        await openThemes();
         const marker = "applied";
 
         await page.locator('[data-testid="theme-advanced"]').check();
@@ -1149,11 +1212,10 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForTimeout(200);
 
         await openAppearance();
-        const options = await page.locator("#tumult-theme-density option").allTextContents();
         assert.deepEqual(
-            options.map((option) => option.trim()),
+            await choices("density"),
             ["cozy", "compact", "spacious"],
-            "the density menu should offer the theme's densities, base first",
+            "the density choice should offer the theme's densities, base first",
         );
 
         const cozy = await readDensity();
@@ -1161,8 +1223,8 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(cozy.room && cozy.room.height > 0, "no room row to measure");
         assert.ok(cozy.messagePaddingTop !== null, "no message row to measure");
 
-        await page.locator("#tumult-theme-density").selectOption("compact");
-        await page.waitForTimeout(250);
+        await choose("density", "compact");
+        await page.waitForTimeout(100);
         const compact = await readDensity();
         assert.equal(compact.density, "compact", "data-density did not follow the choice");
         assert.ok(
@@ -1180,8 +1242,8 @@ describe("browser smoke test (fake client)", () => {
             "the density block changed the height without changing the padding token",
         );
 
-        await page.locator("#tumult-theme-density").selectOption("spacious");
-        await page.waitForTimeout(250);
+        await choose("density", "spacious");
+        await page.waitForTimeout(100);
         const spacious = await readDensity();
         assert.equal(spacious.density, "spacious");
         assert.ok(
@@ -1196,8 +1258,8 @@ describe("browser smoke test (fake client)", () => {
         );
 
         // Back to the base: the attribute disappears and so does the effect.
-        await page.locator("#tumult-theme-density").selectOption("cozy");
-        await page.waitForTimeout(250);
+        await choose("density", "cozy");
+        await page.waitForTimeout(100);
         const back = await readDensity();
         assert.equal(back.density, null, "choosing cozy should drop data-density");
         assert.deepEqual(back.room, cozy.room, "returning to cozy did not restore the room row");
@@ -1206,8 +1268,7 @@ describe("browser smoke test (fake client)", () => {
 
     it("restores the stored density at boot, before the shell renders", async () => {
         // Leave a non-base density selected, then reload.
-        await page.locator("#tumult-theme-density").selectOption("compact");
-        await page.waitForTimeout(150);
+        await choose("density", "compact");
         await closeSettings();
 
         await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
@@ -1222,17 +1283,16 @@ describe("browser smoke test (fake client)", () => {
 
         // Clean up: later tests should start on the base density.
         await openAppearance();
-        await page.locator("#tumult-theme-density").selectOption("cozy");
-        await page.waitForTimeout(150);
+        await choose("density", "cozy");
         await closeSettings();
     });
 
     it("sizes a full-width dialog field to its container, not past it", async () => {
         // The regression this guards: without a document-wide `box-sizing:
         // border-box`, a `width: 100%` field adds its own padding and border on
-        // top and overflows its container. The Appearance tab's install box is
+        // top and overflows its container. The Themes page's install box is
         // one of those fields, so it measures the reset end to end.
-        await openAppearance();
+        await openThemes();
         const fits = await page.evaluate(() => {
             const field = document.querySelector(".tumult-dialog-textarea");
             if (!field) return null;
@@ -1370,20 +1430,20 @@ describe("browser smoke test (fake client)", () => {
 
     it("gives keyboard focus a ring on controls that declare none themselves", async () => {
         // The app-level `:focus-visible` floor is what covers a control like the
-        // Appearance tab's selects — that SFC declares no ring of its own. Focus
-        // is moved by KEYBOARD on purpose: `:focus-visible` does not match a
-        // programmatic `.focus()`, so that would prove nothing.
-        await openAppearance();
+        // Themes page's file picker — that SFC declares no ring of its own.
+        // Focus is moved by KEYBOARD on purpose: `:focus-visible` does not match
+        // a programmatic `.focus()`, so that would prove nothing.
+        await openThemes();
 
         let focused = "";
-        for (let i = 0; i < 40 && focused !== "select#tumult-theme-active"; i += 1) {
+        for (let i = 0; i < 40 && focused !== "input#tumult-theme-file"; i += 1) {
             await page.keyboard.press("Tab");
             focused = await page.evaluate(() => {
                 const el = document.activeElement;
                 return el instanceof HTMLElement ? `${el.tagName.toLowerCase()}#${el.id}` : "";
             });
         }
-        assert.equal(focused, "select#tumult-theme-active", "the theme select was not reachable by keyboard");
+        assert.equal(focused, "input#tumult-theme-file", "the theme file picker was not reachable by keyboard");
 
         const ring = await page.evaluate(() => {
             const el = document.activeElement;

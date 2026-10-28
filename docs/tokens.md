@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**279 tokens** — 91 primitives, 104 semantic, 84 component.
+**287 tokens** — 91 primitives, 106 semantic, 90 component.
 
 ## Primitives
 
@@ -217,6 +217,8 @@ everything built on it.
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
+| `--layout-settings-nav-width` | layout | `14rem` | Settings sidebar width. |
+| `--layout-settings-content-width` | layout | `46rem` | Settings page column max width. |
 
 ## Component
 
@@ -287,10 +289,16 @@ everything built on it.
 | `--dialog-border` | color | `var(--border-default)` | Dialog border. |
 | `--dialog-width` | layout | `var(--layout-dialog-width)` | Dialog width before clamp. |
 | `--dialog-gutter` | spacing | `var(--space-6)` | Dialog viewport clamp gutter. |
+| `--settings-bg` | color | `var(--surface-base)` | Settings page background. |
+| `--settings-nav-bg` | color | `var(--surface-pane)` | Settings sidebar background. |
+| `--settings-nav-item-bg-hover` | color | `var(--state-hover)` | Settings sidebar item hover. |
+| `--settings-nav-item-bg-active` | color | `var(--state-selected)` | Settings sidebar current page. |
+| `--settings-nav-item-danger` | color | `var(--danger)` | Settings sidebar destructive item (sign out). |
+| `--settings-nav-width` | layout | `var(--layout-settings-nav-width)` | Settings sidebar width. |
+| `--settings-content-width` | layout | `var(--layout-settings-content-width)` | Settings page column max width. |
 | `--menu-bg` | color | `var(--surface-raised)` | Menu background. |
 | `--menu-border` | color | `var(--border-default)` | Menu border. |
 | `--menu-min-width` | layout | `var(--layout-menu-min-width)` | Menu minimum width. |
-| `--menu-devices-max-height` | size | `160px` | Device list max height. |
 | `--menu-item-danger` | color | `var(--danger)` | Destructive menu item text. |
 | `--popover-bg` | color | `var(--surface-raised)` | Popover background. |
 | `--popover-border` | color | `var(--border-default)` | Popover border. |

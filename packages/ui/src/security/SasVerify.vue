@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { DialogClose } from "reka-ui";
 import type { ChatClient, VerificationRequestView } from "@tumult/core";
 import { useSubscribable } from "../subscribable.ts";
 
@@ -12,6 +11,8 @@ const props = defineProps<{
 const emit = defineEmits<{
     /** Return to the landing chooser without abandoning the request. */
     back: [];
+    /** The flow is finished; the host decides what that closes. */
+    done: [];
 }>();
 
 const phase = ref<"waiting" | "incoming" | "sas" | "done" | "error">("waiting");
@@ -219,11 +220,9 @@ function formatDecimal(dec: [number, number, number]): string {
                 </button>
             </template>
             <template v-else>
-                <DialogClose as-child>
-                    <button type="button" class="tumult-dialog-button tumult-dialog-primary">
-                        {{ phase === 'done' ? "Done" : "Close" }}
-                    </button>
-                </DialogClose>
+                <button type="button" class="tumult-dialog-button tumult-dialog-primary" @click="emit('done')">
+                    {{ phase === 'done' ? "Done" : "Close" }}
+                </button>
             </template>
         </div>
     </div>

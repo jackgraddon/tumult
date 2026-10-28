@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { DialogClose } from "reka-ui";
 import { useSubscribable } from "../subscribable.ts";
 import type { ChatClient } from "@tumult/core";
 
@@ -12,6 +11,8 @@ const props = defineProps<{
 const emit = defineEmits<{
     /** Return to the landing chooser. */
     back: [];
+    /** The flow is finished; the host decides what that closes. */
+    done: [];
 }>();
 
 // The "enter backup" path sub-branches on whether a backup exists yet:
@@ -173,30 +174,23 @@ async function copyKey(): Promise<void> {
     <div class="tumult-dialog-actions">
         <button type="button" class="tumult-dialog-button" @click="emit('back')">Back</button>
         <template v-if="!creating && restored">
-            <DialogClose as-child>
-                <button type="button" class="tumult-dialog-button tumult-dialog-primary">Done</button>
-            </DialogClose>
+            <button type="button" class="tumult-dialog-button tumult-dialog-primary" @click="emit('done')">Done</button>
         </template>
         <template v-else-if="creating && setupStage === 'ready'">
-            <DialogClose as-child>
-                <button type="button" class="tumult-dialog-button tumult-dialog-primary">I've saved it</button>
-            </DialogClose>
+            <button type="button" class="tumult-dialog-button tumult-dialog-primary" @click="emit('done')">I've saved it</button>
         </template>
         <template v-else-if="creating && setupStage === 'already'">
-            <DialogClose as-child>
-                <button type="button" class="tumult-dialog-button tumult-dialog-primary">Done</button>
-            </DialogClose>
+            <button type="button" class="tumult-dialog-button tumult-dialog-primary" @click="emit('done')">Done</button>
         </template>
         <template v-else>
-            <DialogClose as-child>
-                <button
-                    type="button"
-                    class="tumult-dialog-button tumult-dialog-primary"
-                    :disabled="creating && (setupStage === 'working' || setupStage === 'error')"
-                >
-                    Close
-                </button>
-            </DialogClose>
+            <button
+                type="button"
+                class="tumult-dialog-button tumult-dialog-primary"
+                :disabled="creating && (setupStage === 'working' || setupStage === 'error')"
+                @click="emit('done')"
+            >
+                Close
+            </button>
         </template>
     </div>
 </template>

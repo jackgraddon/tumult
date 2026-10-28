@@ -48,13 +48,15 @@ import JoinRoomDialog from "../rooms/JoinRoomDialog.vue";
 import CreateDmDialog from "../rooms/CreateDmDialog.vue";
 import InviteDialog from "../rooms/InviteDialog.vue";
 import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
-import ProfileDialog from "../rooms/ProfileDialog.vue";
 import RoomSettingsDialog from "../rooms/RoomSettingsDialog.vue";
 import ModerationConfirmDialog from "../members/ModerationConfirmDialog.vue";
 import PowerLevelDialog from "../members/PowerLevelDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import PluginsTab from "../settings/PluginsTab.vue";
 import AppearanceTab from "../settings/AppearanceTab.vue";
+import ThemesTab from "../settings/ThemesTab.vue";
+import AccountPage from "../settings/AccountPage.vue";
+import SecurityPage from "../settings/SecurityPage.vue";
 import { tryUseTheme } from "../theme/controls.ts";
 import { useRoomPower } from "../members/power.ts";
 
@@ -211,24 +213,50 @@ plugins.addRenderer("m.room.message", {
 });
 plugins.addRenderer("m.room.message", { component: TextMessage, priority: 0 });
 
-// The shell's own settings tab, alongside whatever plugins contribute. Tabs
+// The shell's own settings pages, alongside whatever plugins contribute. Pages
 // render inside this shell's tree, so they can inject anything provided here.
+// The account menu deep-links to these ids (`openAppSettings`).
+const SETTINGS_ACCOUNT = "cc.jackg.tumult.account";
+const SETTINGS_SECURITY = "cc.jackg.tumult.security";
+plugins.addSettingsTab({
+    id: SETTINGS_ACCOUNT,
+    title: "My Account",
+    component: AccountPage,
+    section: "account",
+    priority: 10,
+});
+plugins.addSettingsTab({
+    id: SETTINGS_SECURITY,
+    title: "Security",
+    component: SecurityPage,
+    section: "account",
+});
+// Sorts ahead of every plugin's own page in the same section.
 plugins.addSettingsTab({
     id: "cc.jackg.tumult.plugins",
-    title: "Plugins",
+    title: "Installed",
     component: PluginsTab,
+    section: "plugins",
+    priority: 100,
 });
 
 // Appearance is the shell's theming surface, but storage and the DOM belong to
 // the app — it provides a `ThemeControls` implementation above the shell.
-// Without one there is nothing to manage, so the tab is simply absent (a bare
-// UI host gets no half-wired theme editor).
+// Without one there is nothing to manage, so the pages are simply absent (a
+// bare UI host gets no half-wired theme editor).
 if (tryUseTheme()) {
     plugins.addSettingsTab({
         id: "cc.jackg.tumult.appearance",
         title: "Appearance",
         component: AppearanceTab,
+        section: "app",
         priority: 10,
+    });
+    plugins.addSettingsTab({
+        id: "cc.jackg.tumult.themes",
+        title: "Themes",
+        component: ThemesTab,
+        section: "app",
     });
 }
 
@@ -262,9 +290,6 @@ function openVerifyFlow(): void {
     securityModalOpen.value = true;
 }
 
-// Profile edit dialog: the account menu's "Edit profile…" entry opens it.
-const profileModal = ref(false);
-
 // Status dialog (presence + status message): the user bar's status line and
 // the account menu's "Set status…" both open it.
 const statusModal = ref(false);
@@ -277,10 +302,17 @@ const settingsOpen = ref(false);
 // so the dialog's target is its own slot; null means "the room being viewed".
 const settingsRoomId = ref<string | null>(null);
 
-// App settings dialog (account menu → Settings…): the shell's own tabs plus
+// App settings overlay (account menu → Settings…): the shell's own pages plus
 // every plugin-contributed one. Distinct from `settingsOpen`, which is the
-// per-room settings dialog.
+// per-room settings dialog. The page to open on rides along, so a menu entry
+// can deep-link; the overlay itself owns the selection once it is open.
 const appSettingsOpen = ref(false);
+const appSettingsTab = ref<string | null>(null);
+
+function openAppSettings(tab: string | null = null): void {
+    appSettingsTab.value = tab;
+    appSettingsOpen.value = true;
+}
 
 // Thread slide-over: the room's thread list, or one open thread.
 type ThreadView = { mode: "list" } | { mode: "thread"; threadId: string } | null;
@@ -704,10 +736,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     :session="session"
                     :compact="!showRoomList"
                     @sign-out="emit('signOut')"
-                    @security="openSecurityChooser()"
+                    @security="openAppSettings(SETTINGS_SECURITY)"
                     @verify="openVerifyFlow()"
-                    @profile="profileModal = true"
-                    @settings="appSettingsOpen = true"
+                    @profile="openAppSettings(SETTINGS_ACCOUNT)"
+                    @settings="openAppSettings()"
                     @status="statusModal = true"
                 />
             </div>
@@ -716,11 +748,6 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :open="securityModalOpen"
             :initial="securityStep"
             @close="securityModalOpen = false"
-        />
-        <ProfileDialog
-            :client="client"
-            :open="profileModal"
-            @close="profileModal = false"
         />
         <StatusDialog
             :client="client"
@@ -736,7 +763,9 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         <SettingsDialog
             :client="client"
             :open="appSettingsOpen"
+            :initial-tab="appSettingsTab"
             @close="appSettingsOpen = false"
+            @sign-out="emit('signOut')"
         />
         <CreateSpaceDialog
             :client="client"

@@ -106,12 +106,12 @@ function backToLanding(): void {
 
                 <!-- "Use another device": the SAS sub-flow drives its own actions. -->
                 <template v-else-if="step === 'sas'">
-                    <SasVerify :client="client" :active="true" @back="backToLanding" />
+                    <SasVerify :client="client" :active="true" @back="backToLanding" @done="emit('close')" />
                 </template>
 
                 <!-- "Enter backup": create a key or enter one, picked by status. -->
                 <template v-else>
-                    <BackupRecovery :client="client" :active="true" @back="backToLanding" />
+                    <BackupRecovery :client="client" :active="true" @back="backToLanding" @done="emit('close')" />
                 </template>
             </DialogContent>
         </DialogPortal>

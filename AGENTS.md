@@ -217,6 +217,19 @@ chat client should be.
   faked by the menu itself. A member menu is never empty: the copy pair needs no
   permission, so its trigger is never `disabled` (unlike the message menu's,
   which can be empty).
+- App settings is a FULL-SCREEN overlay (`settings/SettingsDialog.vue`, still a
+  Reka dialog for focus trap + Esc), not a centred card: a sidebar grouped by
+  `SettingsTab.section` (`account` → `app` → `plugins`; no section means
+  `plugins`, priority orders within one) and a page column capped at
+  `--settings-content-width`. The two halves wrap instead of using a media
+  query, because the theme gate forbids a literal length. Account things live
+  there (My Account = profile + sessions, Security = status + the SAS/backup
+  flows inline); the account menu deep-links via `initialTab`. The
+  `SecurityModal` stays for the URGENT entries (banner, incoming request), so
+  `SasVerify`/`BackupRecovery` emit `done` and the host decides what that
+  closes — a `DialogClose` inside them would close the whole settings overlay.
+  Shared page classes (`tumult-settings-section/-heading/-note`) are global in
+  the frame so plugin pages can match.
 - Framework: Vue 3 + plain Vite (not Nuxt — Nuxt's SSR/server routes are
   unused; plain workspace expresses core/ui/theme separation). Behavior/a11y
   via Reka UI (headless, WAI-ARIA).

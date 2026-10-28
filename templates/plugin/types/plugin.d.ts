@@ -1150,6 +1150,17 @@ export interface SettingsTabProps {
 	/** Close the settings dialog (e.g. from a finished action). */
 	close(): void;
 }
+declare const SETTINGS_SECTIONS: readonly [
+	"account",
+	"app",
+	"plugins"
+];
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+interface SettingsGroup {
+	section: SettingsSection;
+	title: string;
+	tabs: SettingsTab[];
+}
 /**
  * One tab in the settings dialog. The shell contributes its own tabs (the
  * plugin list) and plugins add theirs; everything else is a normal Vue
@@ -1159,10 +1170,12 @@ export interface SettingsTabProps {
 export interface SettingsTab {
 	/** Stable, namespaced id — the registry keys by it. */
 	id: string;
-	/** Label in the tab strip. */
+	/** Label in the sidebar. */
 	title: string;
 	component: Component;
-	/** Higher sorts earlier (built-in tabs at 0, plugins default after). */
+	/** Sidebar group. Default `"plugins"`. */
+	section?: SettingsSection;
+	/** Higher sorts earlier within its section. Default 0. */
 	priority?: number;
 }
 /**
@@ -1175,6 +1188,14 @@ export declare class SettingsTabsRegistry {
 	remove(id: string): boolean;
 	/** Highest priority first. */
 	all(): SettingsTab[];
+	/** The tab registered under `id`, or undefined. */
+	get(id: string): SettingsTab | undefined;
+	/**
+	 * The sidebar: one group per section that has tabs, in `SETTINGS_SECTIONS`
+	 * order, each in priority order. An empty section is dropped, so a host
+	 * with no theme controls shows no empty "App settings" heading.
+	 */
+	grouped(): SettingsGroup[];
 }
 export declare const SettingsTabsKey: InjectionKey<SettingsTabsRegistry>;
 export declare function useSettingsTabs(): SettingsTabsRegistry;
