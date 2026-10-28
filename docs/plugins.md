@@ -176,7 +176,7 @@ without a reload.
 
 ## 4. Permissions
 
-`Permission` is a closed union of seven strings; each API demands exactly one:
+`Permission` is a closed union of eight strings; each API demands exactly one:
 
 | permission | API it unlocks |
 |---|---|
@@ -184,6 +184,7 @@ without a reload.
 | `composer-actions` | `addComposerAction` |
 | `commands` | `addCommand` |
 | `member-decorations` | `addMemberDecoration` |
+| `activity-renderers` | `addActivityRenderer` |
 | `settings-tabs` | `addSettingsTab` |
 | `styles` | `injectStylesheet` |
 | `workspace-panes` | `addPane` |
@@ -205,9 +206,9 @@ module. For a third-party plugin it is also the input to the lane rule (§11) �
 which is why an undeclared permission is a hard failure, and an *unknown*
 permission refuses the install outright rather than being ignored.
 
-## 5. The seven APIs
+## 5. The eight APIs
 
-`PluginContext` extends `PluginApi`, so the seven methods below are simply
+`PluginContext` extends `PluginApi`, so the eight methods below are simply
 `ctx.addRenderer(…)`, `ctx.addCommand(…)` and so on. All live in
 `packages/ui/src/plugins/api.ts` (permission gate + tracking) over the
 per-shell registries in §1.
@@ -732,9 +733,52 @@ Legacy: a string that is not a valid icon name (an emoji, say) still renders as
 literal text, so a plugin written against the old glyph API keeps working. New
 plugins should use names — emoji do not follow the theme's colour.
 
+### 5.8 `addActivityRenderer(renderer)` — `activity-renderers`
+
+Draws a user's **activity** ("Playing Chess · 12m") in place of their status
+line, from one of their extended-profile fields (MSC4133, see §6). Tumult
+defines no activity format: the field and its shape belong to the plugin that
+registers the renderer, so vanilla Tumult stays spec-only.
+
+```ts
+addActivityRenderer(renderer: ActivityRenderer): Disposable
+
+interface ActivityRenderer {
+    id: string;                     // keys the registration
+    key: string;                    // the profile field to read, e.g. "app.tumult.activity"
+    component: Component;           // receives { userId, value, variant: "row" | "self" }
+    priority?: number;              // highest wins when several accept. Default 0.
+    match?(value: unknown): boolean; // accept a non-null value. Default: any.
+}
+```
+
+Where it draws:
+
+| `variant` | surface | rule |
+|---|---|---|
+| `row` | a subtitle under the name in the member list | **one line**, truncated — rows are virtualized on a height estimate |
+| `self` | the user bar's status line (still a button that opens the status editor) | one line |
+
+The shell reads only the fields some renderer asks for, and only for members
+the virtualizer has mounted — a shell with no activity plugin fetches nothing.
+The winner is the highest-priority renderer whose field is non-null and whose
+`match` accepts it (a throwing `match` counts as a refusal). With no winner the
+surface shows what it showed before: the status message on the user bar,
+nothing extra on a member row. Validate the value in `match`: it is whatever
+JSON the user's account stored, and any client can write it.
+
+```ts
+ctx.addActivityRenderer({
+    id: "cc.example.activity",
+    key: "cc.example.activity",
+    component: ActivityLine,
+    match: (value) => typeof (value as { name?: unknown })?.name === "string",
+});
+```
+
 ## 6. The context
 
-Beyond the seven APIs, `PluginContext` is the whole read/write surface a plugin
+Beyond the eight APIs, `PluginContext` is the whole read/write surface a plugin
 gets. There is deliberately **no `window`, no `document`, no router and no
 storage** — data flows through the same `ChatClient` contract the UI itself
 uses.
@@ -742,7 +786,7 @@ uses.
 | member | what it is |
 |---|---|
 | `manifest` | this plugin's own `PluginManifest` (handy for prefixing ids or reading your permissions). |
-| `client` | the `ChatClient` — `rooms`, `timeline(roomId)`, `send`, `toggleReaction`, `members`, `searchUsers`, `createChannel`, `setOwnPresence`, `connection`, `media` resolvers, … See `packages/core/src/contract.ts`. |
+| `client` | the `ChatClient` — `rooms`, `timeline(roomId)`, `send`, `toggleReaction`, `members`, `searchUsers`, `createChannel`, `setOwnPresence`, `profileField`/`setProfileField`, `connection`, `media` resolvers, … See `packages/core/src/contract.ts`. |
 | `selection` | `{ current, select(next), hrefFor(next) }` — the current room/guild selection and navigation. |
 | `actions` | the cross-pane channel to the shell: `requestLeave(target)` and `requestModeration({ kind, roomId, member })` open its dialogs, `requestMarkRead(roomId)` calls the client (a list row has no client of its own). |
 | `media` | `resolve(mxcUri, size)`, `resolveDownload(mxcUri)`, `resolveEncrypted(file)` — `mxc://` → loadable URL. |
@@ -770,6 +814,17 @@ install(ctx) {
     };
 }
 ```
+
+**Extended profile fields** (MSC4133) are the place for structured, public,
+per-user data such as an activity: `setProfileField(key, value)` writes one of
+your own (`null` deletes it), and `profileField(userId, key)` reads anyone's as
+a cached `Subscribable` (the same instance per user and key). Keys must be
+namespaced (`cc.example.field`); `displayname`/`avatar_url` are refused. Profile
+fields do not arrive through sync, so another user's change shows up on a later
+read (the cache holds an answer for a few minutes), not live. Not every
+homeserver supports them: check `profileFieldsSupported()` first. Without
+support, reads are `null` and writes reject, so a plugin that wants its data
+seen everywhere should also mirror a plain-text version into the status message.
 
 Snapshots are read with `.get()` and watched with `.subscribe(listener)`, which
 returns a `Subscription` you call `.unsubscribe()` on:
@@ -1048,7 +1103,7 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 | lane | how it loads | what it may declare |
 |---|---|---|
 | `sandbox` | the bundle is loaded and run **inside a Worker**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
-| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `settings-tabs`, `workspace-panes`) |
+| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
 permissions, and the consent screen prints the resulting lane in plain words.

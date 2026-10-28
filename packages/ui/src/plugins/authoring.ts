@@ -92,6 +92,14 @@ export type {
     ResolvedCommand,
 } from "../timeline/commands.ts";
 export { MemberDecorationsKey, useMemberDecorations } from "../members/decorations.ts";
+export { ActivityRenderersKey, useActivity, useActivityRenderers } from "../members/activity.ts";
+export type {
+    ActivityProps,
+    ActivityRenderer,
+    ActivityRenderersRegistry,
+    ActivityVariant,
+    ResolvedActivity,
+} from "../members/activity.ts";
 export type {
     MemberDecoration,
     MemberDecorationProps,

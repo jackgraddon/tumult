@@ -24,6 +24,7 @@ import type { RendererEntry, TimelineRegistry } from "../timeline/registry.ts";
 import type { ComposerActionsRegistry, ComposerAction } from "../timeline/composer-actions.ts";
 import type { CommandsRegistry, Command } from "../timeline/commands.ts";
 import type { MemberDecorationsRegistry, MemberDecoration } from "../members/decorations.ts";
+import type { ActivityRenderersRegistry, ActivityRenderer } from "../members/activity.ts";
 import type { SettingsTabsRegistry, SettingsTab } from "../settings/tabs.ts";
 import type { WorkspacePanesRegistry, WorkspacePane } from "../panes/registry.ts";
 import type { SelectionContext } from "../selection.ts";
@@ -37,8 +38,9 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All seven are enforced: `timeline-renderers`, `composer-actions`, `commands`,
- * `member-decorations`, `settings-tabs`, `styles` and `workspace-panes`.
+ * All eight are enforced: `timeline-renderers`, `composer-actions`, `commands`,
+ * `member-decorations`, `activity-renderers`, `settings-tabs`, `styles` and
+ * `workspace-panes`.
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -49,6 +51,7 @@ export const PLUGIN_PERMISSIONS = [
     "timeline-renderers",
     "composer-actions",
     "member-decorations",
+    "activity-renderers",
     "commands",
     "settings-tabs",
     "styles",
@@ -134,6 +137,12 @@ export interface PluginApi {
     addCommand(command: Command): Disposable;
     /** Add a badge/decoration to member rows that `match` accepts. */
     addMemberDecoration(decoration: MemberDecoration): Disposable;
+    /**
+     * Render a user's activity from one extended-profile field, in place of
+     * their status line (member rows and the user bar). The highest-priority
+     * renderer whose `match` accepts the field's value wins.
+     */
+    addActivityRenderer(renderer: ActivityRenderer): Disposable;
     /** Add a tab to the settings dialog. */
     addSettingsTab(tab: SettingsTab): Disposable;
     /**
@@ -192,6 +201,7 @@ export interface PluginDeps {
     composerActions: ComposerActionsRegistry;
     commands: CommandsRegistry;
     memberDecorations: MemberDecorationsRegistry;
+    activityRenderers: ActivityRenderersRegistry;
     settingsTabs: SettingsTabsRegistry;
     panes: WorkspacePanesRegistry;
     selection: SelectionContext;

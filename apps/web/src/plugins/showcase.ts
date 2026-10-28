@@ -1,6 +1,7 @@
 import type { Plugin } from "@tumult/ui";
 
 import AdminBadge from "./AdminBadge.vue";
+import ActivityShowcase from "./ActivityShowcase.vue";
 import SettingsShowcaseTab from "./SettingsShowcaseTab.vue";
 import PaneShowcase from "./PaneShowcase.vue";
 import PaneShowcaseNav from "./PaneShowcaseNav.vue";
@@ -78,6 +79,31 @@ export const adminBadge: Plugin = {
             id: "cc.jackg.tumult.admin-badge",
             component: AdminBadge,
             match: (member) => member.membership === "join" && member.powerLevel >= 100,
+        });
+    },
+};
+
+/**
+ * `activity-renderers` — draws a `{ name }` profile field in place of the
+ * status line. FAKE BUILDS ONLY: the fake seeds this key on Alice, while a
+ * real homeserver would be asked for it once per visible member for nothing.
+ * Real activity is the job of the rich-presence plugin, not the app.
+ */
+export const activityShowcase: Plugin = {
+    manifest: {
+        id: "cc.jackg.tumult.activity-showcase",
+        name: "Activity showcase",
+        version: "1.0.0",
+        author: "Tumult",
+        description: "Renders a demo activity profile field in the member list.",
+        permissions: ["activity-renderers"],
+    },
+    install(ctx) {
+        ctx.addActivityRenderer({
+            id: "cc.jackg.tumult.activity-showcase",
+            key: "cc.jackg.tumult.activity-showcase",
+            component: ActivityShowcase,
+            match: (value) => typeof (value as { name?: unknown } | null)?.name === "string",
         });
     },
 };

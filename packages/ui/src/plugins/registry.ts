@@ -4,6 +4,7 @@ import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
+import type { ActivityRenderer } from "../members/activity.ts";
 import type { SettingsTab } from "../settings/tabs.ts";
 import type { WorkspacePane } from "../panes/registry.ts";
 import type {
@@ -90,6 +91,11 @@ export class PluginRegistry {
         return this.deps.memberDecorations.add(decoration);
     }
 
+    /** Shell-level activity renderer (no permission — see {@link addRenderer}). */
+    public addActivityRenderer(renderer: ActivityRenderer): Disposable {
+        return this.deps.activityRenderers.add(renderer);
+    }
+
     /** Shell-level settings tab (no permission — see {@link addRenderer}). */
     public addSettingsTab(tab: SettingsTab): Disposable {
         return this.deps.settingsTabs.add(tab);
@@ -146,6 +152,7 @@ export class PluginRegistry {
             addComposerAction: (action) => this.addComposerAction(action),
             addCommand: (command) => this.addCommand(command),
             addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
+            addActivityRenderer: (renderer) => this.addActivityRenderer(renderer),
             addSettingsTab: (tab) => this.addSettingsTab(tab),
             addPane: (pane) => this.addPane(pane),
             // The manifest id is the stylesheet's owner, so a failed install
@@ -163,6 +170,7 @@ export class PluginRegistry {
             addComposerAction: api.addComposerAction,
             addCommand: api.addCommand,
             addMemberDecoration: api.addMemberDecoration,
+            addActivityRenderer: api.addActivityRenderer,
             addSettingsTab: api.addSettingsTab,
             addPane: api.addPane,
             injectStylesheet: api.injectStylesheet,

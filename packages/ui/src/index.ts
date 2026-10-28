@@ -67,6 +67,8 @@ export { CommandsKey, CommandsRegistry, useCommands } from "./timeline/commands.
 export type { Command, CommandContext, ResolvedCommand } from "./timeline/commands.ts";
 export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations } from "./members/decorations.ts";
 export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
+export { ActivityRenderersKey, ActivityRenderersRegistry, useActivity, useActivityRenderers } from "./members/activity.ts";
+export type { ActivityProps, ActivityRenderer, ActivityVariant, ResolvedActivity } from "./members/activity.ts";
 export { SettingsTabsKey, SettingsTabsRegistry, useSettingsTabs } from "./settings/tabs.ts";
 export type { SettingsTab, SettingsTabProps } from "./settings/tabs.ts";
 export { default as Icon } from "./icons/Icon.vue";

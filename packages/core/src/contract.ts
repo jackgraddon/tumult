@@ -14,7 +14,7 @@
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export const CONTRACT_VERSION = "1.3.0";
+export const CONTRACT_VERSION = "1.4.0";
 
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
@@ -886,6 +886,30 @@ export interface ChatClient {
      * bad value).
      */
     setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void>;
+    /**
+     * Whether this homeserver supports extended profile fields (MSC4133,
+     * stable or unstable). Resolves `false` before `start()` and when the
+     * server does not advertise it — `profileField()` then always reads null
+     * and `setProfileField()` rejects.
+     */
+    profileFieldsSupported(): Promise<boolean>;
+    /**
+     * One user's custom extended-profile field (MSC4133), e.g.
+     * `app.tumult.activity`. Returns the SAME `Subscribable` per
+     * (userId, key). Fetched lazily while watched and cached for a few
+     * minutes: profile fields do not arrive through sync, so another user's
+     * change lands on a later watch, not live. `null` when unset, unsupported
+     * or not yet read — never a guess. The value is the raw JSON the server
+     * stored; validating its shape is the reader's job.
+     */
+    profileField(userId: string, key: string): Subscribable<unknown>;
+    /**
+     * Write one of our own extended-profile fields; `null` deletes it. The key
+     * must be namespaced (`app.example.field`) — `displayname`/`avatar_url`
+     * are refused (use `setProfile()`). Our own `profileField()` feed updates
+     * as soon as the server accepts. Rejects when unsupported or refused.
+     */
+    setProfileField(key: string, value: unknown): Promise<void>;
     /**
      * Set up secret storage plus a fresh key backup, returning the encoded
      * recovery key. Display it to the user exactly once — it is never

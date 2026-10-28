@@ -253,6 +253,10 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
 
             setProfile: call("setProfile"),
             setOwnPresence: call("setOwnPresence"),
+            profileFieldsSupported: call("profileFieldsSupported"),
+            setProfileField: call("setProfileField"),
+            profileField: (userId: string, key: string) =>
+                feed<unknown>(`profileField:${userId}:${key}`, "profileField", [userId, key], null),
             setupRecovery: call("setupRecovery"),
             restoreBackup: call("restoreBackup"),
             startVerification: call("startVerification"),
@@ -361,6 +365,9 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             },
             addMemberDecoration() {
                 throw new Error("member decorations require the trusted lane");
+            },
+            addActivityRenderer() {
+                throw new Error("activity renderers require the trusted lane");
             },
             addSettingsTab() {
                 throw new Error("settings tabs require the trusted lane");

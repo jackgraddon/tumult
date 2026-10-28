@@ -13,7 +13,7 @@ import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
 import DemoPoll from "../renderers/DemoPoll.vue";
-import { adminBadge, reactLastAction, settingsShowcase, shrugCommand, workspaceShowcase } from "../plugins/showcase.ts";
+import { activityShowcase, adminBadge, reactLastAction, settingsShowcase, shrugCommand, workspaceShowcase } from "../plugins/showcase.ts";
 import { pluginInstallController } from "../plugins/controller.ts";
 import { themeController } from "../theme/controller.ts";
 
@@ -83,6 +83,7 @@ onMounted(async () => {
     shell.value?.plugins.install(shrugCommand);
     shell.value?.plugins.install(reactLastAction);
     shell.value?.plugins.install(adminBadge);
+    if (import.meta.env.MODE === "fake") shell.value?.plugins.install(activityShowcase);
     shell.value?.plugins.install(settingsShowcase);
     shell.value?.plugins.install(workspaceShowcase);
 

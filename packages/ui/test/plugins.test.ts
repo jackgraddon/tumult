@@ -8,6 +8,7 @@ import { TimelineRegistry } from "../src/timeline/registry.ts";
 import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
 import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
+import { ActivityRenderersRegistry } from "../src/members/activity.ts";
 import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 import { WorkspacePanesRegistry } from "../src/panes/registry.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
@@ -38,6 +39,7 @@ function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
         composerActions: new ComposerActionsRegistry(),
         commands: new CommandsRegistry(),
         memberDecorations: new MemberDecorationsRegistry(),
+        activityRenderers: new ActivityRenderersRegistry({} as ChatClient),
         settingsTabs: new SettingsTabsRegistry(),
         panes: new WorkspacePanesRegistry(),
         client: {} as ChatClient,
@@ -372,6 +374,7 @@ describe("PluginRegistry extension points", () => {
             ["composer-actions", (ctx) => ctx.addComposerAction({ id: "a1", label: "One", run() {} })],
             ["commands", (ctx) => ctx.addCommand({ name: "shrug", run() {} })],
             ["member-decorations", (ctx) => ctx.addMemberDecoration({ id: "d1", component: PluginComp })],
+            ["activity-renderers", (ctx) => ctx.addActivityRenderer({ id: "r1", key: "app.k", component: PluginComp })],
             ["settings-tabs", (ctx) => ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp })],
             ["styles", (ctx) => ctx.injectStylesheet(".tumult-demo { color: red; }")],
             ["workspace-panes", (ctx) => ctx.addPane({ id: "p1", label: "One", content: PluginComp })],

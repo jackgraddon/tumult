@@ -25,6 +25,7 @@ export const PERMISSION_SUMMARY = {
         "Draw its own version of messages in the chat — including custom event types it defines.",
     "composer-actions": "Add buttons to the message composer that run when you click them.",
     "member-decorations": "Add a badge or small marker next to people's names in the member list.",
+    "activity-renderers": "Show people's activity (from their profile) in place of their status line.",
     commands: "Add slash commands you can type in the composer, like /shrug.",
     "settings-tabs": "Add a tab to the settings window with its own controls.",
     "workspace-panes":

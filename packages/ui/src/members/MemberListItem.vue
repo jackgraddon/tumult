@@ -14,6 +14,7 @@ import { useActions, type MemberModerationKind } from "../actions.ts";
 import { copyOrLog } from "../clipboard.ts";
 import { buildMemberMenu, type MemberMenuAction } from "./memberMenu.ts";
 import { useMemberDecorations } from "./decorations.ts";
+import { useActivity } from "./activity.ts";
 import Avatar from "../primitives/Avatar.vue";
 
 const props = defineProps<{
@@ -29,6 +30,9 @@ const decorations = useMemberDecorations();
 
 /** Plugin decorations that apply to this member, after the built-in badges. */
 const memberDecorations = computed(() => decorations.resolve(props.member));
+
+/** A plugin-rendered activity subtitle, or null (then the row stays one line). */
+const activity = useActivity(() => props.member.userId);
 
 function ago(ts: number): string {
     const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -89,7 +93,17 @@ function run(action: MemberMenuAction): void {
                     aria-hidden="true"
                 />
                 <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
-                <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
+                <span class="tumult-member-text">
+                    <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
+                    <component
+                        :is="activity.renderer.component"
+                        v-if="activity"
+                        class="tumult-member-activity"
+                        :user-id="member.userId"
+                        :value="activity.value"
+                        variant="row"
+                    />
+                </span>
                 <span v-if="member.membership === 'invite'" class="tumult-member-badge">Invited</span>
                 <span v-else-if="member.membership === 'ban'" class="tumult-member-badge">Banned</span>
                 <component
@@ -154,9 +168,22 @@ function run(action: MemberMenuAction): void {
 .tumult-member-dot[data-presence="unknown"] {
     border: var(--border-width-medium) solid var(--text-muted);
 }
-.tumult-member-name {
+.tumult-member-text {
+    display: flex;
     min-width: 0;
     flex: 1;
+    flex-direction: column;
+}
+/* The activity subtitle is ONE line: rows are virtualized on an estimate. */
+.tumult-member-activity {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-member-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

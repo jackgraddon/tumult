@@ -12,6 +12,7 @@ import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
+import type { ActivityRenderer } from "../members/activity.ts";
 import type { SettingsTab } from "../settings/tabs.ts";
 import type { WorkspacePane } from "../panes/registry.ts";
 
@@ -23,6 +24,7 @@ export interface PluginApiTarget {
     addComposerAction(action: ComposerAction): Disposable;
     addCommand(command: Command): Disposable;
     addMemberDecoration(decoration: MemberDecoration): Disposable;
+    addActivityRenderer(renderer: ActivityRenderer): Disposable;
     addSettingsTab(tab: SettingsTab): Disposable;
     addPane(pane: WorkspacePane): Disposable;
     /** Injects under this plugin's id as the owner (the registry binds it). */
@@ -48,6 +50,10 @@ export function createPluginApi(target: PluginApiTarget): PluginApi {
         addMemberDecoration(decoration) {
             target.require("member-decorations");
             return target.track(target.addMemberDecoration(decoration));
+        },
+        addActivityRenderer(renderer) {
+            target.require("activity-renderers");
+            return target.track(target.addActivityRenderer(renderer));
         },
         addSettingsTab(tab) {
             target.require("settings-tabs");

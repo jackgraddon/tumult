@@ -13,6 +13,7 @@ import type { ChatClient, DeviceView, SessionView } from "@tumult/core";
 import Avatar from "../primitives/Avatar.vue";
 import IconButton from "../primitives/IconButton.vue";
 import { useSubscribable } from "../subscribable.ts";
+import { useActivity } from "../members/activity.ts";
 
 const props = defineProps<{
     session: SessionView | null;
@@ -41,6 +42,10 @@ const ownPresence = useSubscribable(props.client.ownPresence);
 
 const name = computed(() => profile.value?.displayName ?? props.session?.userId ?? "Signed out");
 const status = computed(() => ownPresence.value?.statusMessage ?? null);
+
+// A plugin's activity renderer replaces the status text when it accepts our
+// own field; the status button (and its click to edit) stays either way.
+const activity = useActivity(() => props.session?.userId ?? "");
 
 // `unknown` (no read yet) is its own state: a hollow dot is honest, while a
 // filled muted dot would claim we are offline.
@@ -130,7 +135,15 @@ async function onOpenChange(open: boolean, client: ChatClient): Promise<void> {
         <div v-if="!compact" class="tumult-userbar-id">
             <span class="tumult-userbar-name" :title="name">{{ name }}</span>
             <button type="button" class="tumult-userbar-status" @click="emit('status')">
-                <span v-if="status" class="tumult-userbar-status-text" :title="status">{{ status }}</span>
+                <component
+                    :is="activity.renderer.component"
+                    v-if="activity && session"
+                    class="tumult-userbar-status-text"
+                    :user-id="session.userId"
+                    :value="activity.value"
+                    variant="self"
+                />
+                <span v-else-if="status" class="tumult-userbar-status-text" :title="status">{{ status }}</span>
                 <span v-else class="tumult-userbar-status-hint">Set a status</span>
             </button>
         </div>

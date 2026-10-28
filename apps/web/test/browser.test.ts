@@ -426,6 +426,19 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
     });
 
+    it("renders a member's activity from a profile field in place of the status line", async () => {
+        // The fake seeds Alice's showcase field; the fake-only showcase plugin
+        // registers the renderer. Nothing else should carry a subtitle.
+        const activity = page.locator(".tumult-member-activity");
+        await activity.first().waitFor({ timeout: 10_000 });
+        assert.deepEqual(
+            (await activity.allTextContents()).map((text) => text.trim()),
+            ["Playing Chess"],
+        );
+        const row = page.locator(".tumult-member", { has: activity });
+        assert.match(await row.locator(".tumult-member-name").innerText(), /Alice/);
+    });
+
     it("renders a plugin settings tab, styled by the plugin's injected stylesheet", async () => {
         // Two extension points in one flow. The account menu opens the shell's
         // settings dialog: the built-in "Plugins" tab (the shell registering

@@ -59,6 +59,7 @@ import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 import { readOwnPresence } from "./rooms/own-presence.ts";
+import { assertProfileFieldKey, ProfileFieldStore } from "./rooms/profile-fields.ts";
 import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
     createChannel,
@@ -344,6 +345,14 @@ export class MatrixChatClient implements ChatClient {
         supported: typeof Notification !== "undefined",
     });
     private readonly profileState = new Observable<ProfileView | null>(null);
+    /**
+     * MSC4133 support, asked once per started client (`null` = not asked).
+     * Reset on stop: a different session may land on a different server.
+     */
+    private profileFieldsSupport: Promise<boolean> | null = null;
+    private readonly profileFields = new ProfileFieldStore((userId, key) => this.readProfileField(userId, key), {
+        ttlMs: 5 * 60_000,
+    });
     /**
      * Our own presence + status message. `null` until the server tells us —
      * presence is user-level state, not something we can infer from the
@@ -818,6 +827,8 @@ export class MatrixChatClient implements ChatClient {
         this.clearProgressiveRefresh();
         this.securityRefresh.clear();
         this.ownPresenceRefresh.clear();
+        this.profileFieldsSupport = null;
+        this.profileFields.clear();
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
@@ -1092,6 +1103,56 @@ export class MatrixChatClient implements ChatClient {
             statusMessage: statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null,
         });
         void this.refreshOwnPresence();
+    }
+
+    public profileFieldsSupported(): Promise<boolean> {
+        const client = this.matrix;
+        if (!client) return Promise.resolve(false);
+        this.profileFieldsSupport ??= client.doesServerSupportExtendedProfiles().catch((error: unknown) => {
+            console.error("[tumult] extended profile support check failed", error);
+            this.profileFieldsSupport = null; // transient — ask again next time
+            return false;
+        });
+        return this.profileFieldsSupport;
+    }
+
+    public profileField(userId: string, key: string): Subscribable<unknown> {
+        return this.profileFields.feed(userId, key);
+    }
+
+    public async setProfileField(key: string, value: unknown): Promise<void> {
+        assertProfileFieldKey(key);
+        const client = this.matrix;
+        const userId = client?.getUserId();
+        if (!client || !userId) throw new Error("Cannot set a profile field before start()");
+        if (!(await this.profileFieldsSupported())) {
+            throw new Error("This homeserver does not support extended profile fields (MSC4133)");
+        }
+        if (value === null || value === undefined) {
+            await client.deleteExtendedProfileProperty(key);
+            this.profileFields.publish(userId, key, null);
+        } else {
+            await client.setExtendedProfileProperty(key, value);
+            this.profileFields.publish(userId, key, value);
+        }
+    }
+
+    /**
+     * One field read for the store: `undefined` when we cannot ask (no client
+     * yet — the store retries on the next watch), `null` when unsupported or
+     * unset (404), the raw value otherwise. Other failures throw, which the
+     * store logs and leaves stale.
+     */
+    private async readProfileField(userId: string, key: string): Promise<unknown> {
+        const client = this.matrix;
+        if (!client) return undefined;
+        if (!(await this.profileFieldsSupported())) return null;
+        try {
+            return (await client.getExtendedProfileProperty(userId, key)) ?? null;
+        } catch (error) {
+            if ((error as { httpStatus?: number }).httpStatus === 404) return null;
+            throw error;
+        }
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {

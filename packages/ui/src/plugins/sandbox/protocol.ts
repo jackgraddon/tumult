@@ -81,6 +81,8 @@ export const CLIENT_METHODS = [
     "setPowerLevel",
     "setProfile",
     "setOwnPresence",
+    "profileFieldsSupported",
+    "setProfileField",
     "setupRecovery",
     "restoreBackup",
     "startVerification",
@@ -115,6 +117,7 @@ export const CLIENT_FEED_METHODS = [
     "members",
     "powerLevels",
     "banned",
+    "profileField",
 ] as const satisfies readonly ChatClientMethods[];
 
 /** Compile-time completeness: every method is either listed or a feed method. */

@@ -16,7 +16,7 @@
  * `CONTRACT_VERSION`, both declared below.
  */
 
-import { Component, InjectionKey, Ref } from 'vue';
+import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
 
 /**
  * The contract between `@tumult/core` and everything above it.
@@ -33,7 +33,7 @@ import { Component, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.3.0";
+export declare const CONTRACT_VERSION = "1.4.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -244,6 +244,12 @@ export interface RoomSummary {
 	 * sync.
 	 */
 	favouriteOrder: number | null;
+	/**
+	 * True when the user has muted the room: an enabled room-level push rule
+	 * (`kind: "room"`, rule id = room id) that notifies nobody. Read from the
+	 * account's push rules, so it follows sync, not our own sends.
+	 */
+	muted: boolean;
 }
 /** The signed-in identity. `null` when logged out. */
 export interface SessionView {
@@ -608,9 +614,11 @@ export interface ChatClient {
 	attachCall(frame: HTMLIFrameElement): () => void;
 	/**
 	 * False unless the deployment gave core what native voice needs (an E2EE
-	 * worker factory) AND the client has started. The homeserver must also
-	 * advertise a LiveKit transport, which only `joinVoice` can find out: it
-	 * rejects (and `voice` shows `error`) when none is advertised.
+	 * worker factory) AND the client has started. A call also needs a LiveKit
+	 * focus, which only `joinVoice` can find out: it asks this homeserver (the
+	 * MSC4143 transports endpoint, then the `.well-known` focus an earlier
+	 * revision advertised) or borrows the focus a call already running in this
+	 * room is using, and rejects (`voice` in `error`) when there is none.
 	 */
 	supportsVoice(): boolean;
 	/** Join the room's voice session, leaving any voice session or call already open. */
@@ -674,6 +682,18 @@ export interface ChatClient {
 	 * "New messages" divider.
 	 */
 	markRead(roomId: string): Promise<void>;
+	/**
+	 * Pin (`m.favourite` room tag) or unpin a room. A newly pinned room carries
+	 * no `order`, so it lands after the ordered ones. `RoomSummary.favourite`
+	 * flips once the tag syncs back.
+	 */
+	setRoomPinned(roomId: string, pinned: boolean): Promise<void>;
+	/**
+	 * Mute or unmute a room's notifications with a room-level push rule that
+	 * has no actions (unmute deletes it). `RoomSummary.muted` flips once the
+	 * rule syncs back.
+	 */
+	setRoomMuted(roomId: string, muted: boolean): Promise<void>;
 	/**
 	 * Redact (delete) an event: our own messages, or anything our power
 	 * levels allow. The target tombstones ("Message deleted.") when the
@@ -828,6 +848,30 @@ export interface ChatClient {
 	 * bad value).
 	 */
 	setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void>;
+	/**
+	 * Whether this homeserver supports extended profile fields (MSC4133,
+	 * stable or unstable). Resolves `false` before `start()` and when the
+	 * server does not advertise it — `profileField()` then always reads null
+	 * and `setProfileField()` rejects.
+	 */
+	profileFieldsSupported(): Promise<boolean>;
+	/**
+	 * One user's custom extended-profile field (MSC4133), e.g.
+	 * `app.tumult.activity`. Returns the SAME `Subscribable` per
+	 * (userId, key). Fetched lazily while watched and cached for a few
+	 * minutes: profile fields do not arrive through sync, so another user's
+	 * change lands on a later watch, not live. `null` when unset, unsupported
+	 * or not yet read — never a guess. The value is the raw JSON the server
+	 * stored; validating its shape is the reader's job.
+	 */
+	profileField(userId: string, key: string): Subscribable<unknown>;
+	/**
+	 * Write one of our own extended-profile fields; `null` deletes it. The key
+	 * must be namespaced (`app.example.field`) — `displayname`/`avatar_url`
+	 * are refused (use `setProfile()`). Our own `profileField()` feed updates
+	 * as soon as the server accepts. Rejects when unsupported or refused.
+	 */
+	setProfileField(key: string, value: unknown): Promise<void>;
 	/**
 	 * Set up secret storage plus a fresh key backup, returning the encoded
 	 * recovery key. Display it to the user exactly once — it is never
@@ -1036,6 +1080,69 @@ export declare class MemberDecorationsRegistry {
 }
 export declare const MemberDecorationsKey: InjectionKey<MemberDecorationsRegistry>;
 export declare function useMemberDecorations(): MemberDecorationsRegistry;
+/**
+ * Where an activity is drawn. `row` is a member-list subtitle and MUST stay
+ * one line (the members pane is virtualized and estimates row height); `self`
+ * is the user bar's status line.
+ */
+export type ActivityVariant = "row" | "self";
+/** Props every activity component receives. */
+export interface ActivityProps {
+	userId: string;
+	/** The profile field's raw value — already accepted by the renderer's `match`. */
+	value: unknown;
+	variant: ActivityVariant;
+}
+/**
+ * Renders a user's activity from one extended-profile field (MSC4133), in
+ * place of their status line. Tumult defines no activity schema of its own:
+ * the field's shape belongs to whoever registers the renderer.
+ */
+export interface ActivityRenderer {
+	/** Stable, namespaced id — the registry keys by it. */
+	id: string;
+	/** The profile field to read, e.g. `app.tumult.activity`. */
+	key: string;
+	component: Component;
+	/** Highest wins when several renderers accept a user. Default 0. */
+	priority?: number;
+	/** Accept a non-null value. Default: any non-null value. Keep it cheap. */
+	match?(value: unknown): boolean;
+}
+/** The renderer that won for one user, and the value it renders. */
+export interface ResolvedActivity {
+	renderer: ActivityRenderer;
+	value: unknown;
+}
+/**
+ * Per-shell activity-renderer registry (provide/inject — never a module
+ * singleton). Holds the shell's client so a consumer only needs a user id.
+ */
+export declare class ActivityRenderersRegistry {
+	readonly client: ChatClient;
+	private readonly list;
+	constructor(client: ChatClient);
+	add(renderer: ActivityRenderer): Disposable$1;
+	remove(id: string): boolean;
+	/** Every renderer, highest priority first (reactive). */
+	all(): ActivityRenderer[];
+	/**
+	 * The winning renderer for a set of field values: the highest-priority
+	 * one whose field is non-null and whose `match` accepts it. A throwing
+	 * `match` counts as a refusal — one bad plugin must not blank the row.
+	 */
+	resolve(values: ReadonlyMap<string, unknown>): ResolvedActivity | null;
+}
+export declare const ActivityRenderersKey: InjectionKey<ActivityRenderersRegistry>;
+export declare function useActivityRenderers(): ActivityRenderersRegistry;
+/**
+ * The activity to draw for `userId`, or null (then the caller shows its
+ * ordinary status line). Watches only the fields some renderer asks for, so a
+ * shell with no activity plugin subscribes to nothing and fetches nothing.
+ * The members pane mounts rows only for what the virtualizer renders, so
+ * fields are fetched for visible members only.
+ */
+export declare function useActivity(userId: () => string): ComputedRef<ResolvedActivity | null>;
 /** Props every settings tab receives. */
 export interface SettingsTabProps {
 	/** The chat client — the same contract the UI itself uses. */
@@ -1160,6 +1267,21 @@ export interface ActionsContext {
 	 * the resulting sync clears the badge.
 	 */
 	requestMarkRead(roomId: string): void;
+	/** Pin (favourite tag) or unpin a room; a plain client call, like mark-read. */
+	requestPinRoom(roomId: string, pinned: boolean): void;
+	/** Mute or unmute a room's notifications; a plain client call. */
+	requestMuteRoom(roomId: string, muted: boolean): void;
+	/**
+	 * Mark every channel under a space read (nested spaces included). The shell
+	 * owns the room tree, so the rail tile asks instead of walking it.
+	 */
+	requestMarkSpaceRead(spaceId: string): void;
+	/** Open settings for a space from its rail tile (not the room being viewed). */
+	requestSpaceSettings(spaceId: string): void;
+	/** Open the invite dialog for a space from its rail tile. */
+	requestSpaceInvite(spaceId: string): void;
+	/** Open the create-channel dialog for a space from its rail tile. */
+	requestSpaceCreateChannel(spaceId: string): void;
 }
 export declare const ActionsKey: InjectionKey<ActionsContext>;
 export declare function useActions(): ActionsContext;
@@ -1170,8 +1292,9 @@ type Disposable$1 = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All seven are enforced: `timeline-renderers`, `composer-actions`, `commands`,
- * `member-decorations`, `settings-tabs`, `styles` and `workspace-panes`.
+ * All eight are enforced: `timeline-renderers`, `composer-actions`, `commands`,
+ * `member-decorations`, `activity-renderers`, `settings-tabs`, `styles` and
+ * `workspace-panes`.
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -1182,6 +1305,7 @@ export declare const PLUGIN_PERMISSIONS: readonly [
 	"timeline-renderers",
 	"composer-actions",
 	"member-decorations",
+	"activity-renderers",
 	"commands",
 	"settings-tabs",
 	"styles",
@@ -1263,6 +1387,12 @@ export interface PluginApi {
 	addCommand(command: Command): Disposable$1;
 	/** Add a badge/decoration to member rows that `match` accepts. */
 	addMemberDecoration(decoration: MemberDecoration): Disposable$1;
+	/**
+	 * Render a user's activity from one extended-profile field, in place of
+	 * their status line (member rows and the user bar). The highest-priority
+	 * renderer whose `match` accepts the field's value wins.
+	 */
+	addActivityRenderer(renderer: ActivityRenderer): Disposable$1;
 	/** Add a tab to the settings dialog. */
 	addSettingsTab(tab: SettingsTab): Disposable$1;
 	/**
@@ -1317,7 +1447,7 @@ interface Plugin$1 {
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export declare const PLUGIN_API_VERSION = "1.1.0";
+export declare const PLUGIN_API_VERSION = "1.2.0";
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its
  * leading integer (`"2-beta"` → 2, missing segments → 0); non-numeric text

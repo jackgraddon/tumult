@@ -30,6 +30,7 @@ import type {
 } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { fallbackName } from "../rooms/profile.ts";
+import { assertProfileFieldKey } from "../rooms/profile-fields.ts";
 
 /** In-memory cap: dropping the head must not break scroll anchoring. */
 export const FAKE_TIMELINE_CAP = 500;
@@ -1018,6 +1019,37 @@ class FakeChatClient implements ChatClient {
             );
             this.publishRoom(roomId);
         }
+    }
+
+    /**
+     * Extended profile fields, in memory. Alice carries a value under the
+     * fake-only showcase key so the shell's activity slot has something to
+     * render (`apps/web`'s activity showcase, installed in fake builds only).
+     */
+    private readonly profileFields = new Map<string, Observable<unknown>>([
+        [
+            `@alice:example.com\u0000cc.jackg.tumult.activity-showcase`,
+            new Observable<unknown>({ name: "Playing Chess" }),
+        ],
+    ]);
+
+    public async profileFieldsSupported(): Promise<boolean> {
+        return true;
+    }
+
+    public profileField(userId: string, key: string): Subscribable<unknown> {
+        const id = `${userId}\u0000${key}`;
+        let feed = this.profileFields.get(id);
+        if (!feed) {
+            feed = new Observable<unknown>(null);
+            this.profileFields.set(id, feed);
+        }
+        return feed;
+    }
+
+    public async setProfileField(key: string, value: unknown): Promise<void> {
+        assertProfileFieldKey(key);
+        (this.profileField(SELF_ID, key) as Observable<unknown>).set(value ?? null);
     }
 
     private selfMember(): MemberView {
