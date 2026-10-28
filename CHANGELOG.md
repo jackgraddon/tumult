@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.0](https://github.com/jackgraddon/tumult/compare/v0.2.10...v0.3.0) (2026-10-28)
+
+
+### Features
+
+* **settings:** full-screen settings with grouped sidebar ([3bd5df6](https://github.com/jackgraddon/tumult/commit/3bd5df647d1650f8eee74c867b72c232b965209a))
+
 ### [0.2.10](https://github.com/jackgraddon/tumult/compare/v0.2.9...v0.2.10) (2026-10-28)
 
 
