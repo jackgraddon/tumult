@@ -1,20 +1,56 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
-import { ref } from "vue";
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
+import { computed, ref } from "vue";
+import {
+    CollapsibleContent,
+    CollapsibleRoot,
+    CollapsibleTrigger,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuPortal,
+    ContextMenuRoot,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
+} from "reka-ui";
 import type { SpaceNode } from "@tumult/core";
 
 import type { RoomSelection } from "../selection.ts";
+import { useActions } from "../actions.ts";
+import { buildSpaceMenu, type SpaceMenuAction } from "../rail/spaceMenu.ts";
+import { runSpaceAction } from "../rail/spaceActions.ts";
 import RoomListItem from "./RoomListItem.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
 import Avatar from "../primitives/Avatar.vue";
 
-defineProps<{
+const props = defineProps<{
     node: SpaceNode;
     selection: RoomSelection;
 }>();
 
 const open = ref(true);
+const actions = useActions();
+
+// The node carries the whole summary, so unlike a rail tile the menu knows the
+// canonical alias for a proper `matrix.to` link.
+const menu = computed(() =>
+    buildSpaceMenu(
+        props.node.room.id,
+        props.node.room.canonicalAlias,
+        props.node.aggregateUnread > 0 || props.node.aggregateHighlight > 0,
+        !open.value,
+    ),
+);
+
+function run(action: SpaceMenuAction): void {
+    runSpaceAction(
+        action,
+        { id: props.node.room.id, name: props.node.room.name, link: menu.value.spaceLink },
+        actions,
+        () => {
+            open.value = !open.value;
+        },
+    );
+}
 </script>
 
 <template>
@@ -27,14 +63,38 @@ const open = ref(true);
         <span><Icon name="dots-horizontal" /> {{ node.room.name }} (truncated)</span>
     </li>
     <CollapsibleRoot v-else v-model:open="open" class="tumult-category">
-        <CollapsibleTrigger class="tumult-category-trigger">
-            <Icon class="tumult-category-caret" :data-open="open ? 'true' : 'false'" name="chevron-right" />
-            <!-- Only when the space has an icon: an initials tile on every
-                 category would be noise next to the caret. -->
-            <Avatar v-if="node.room.avatarUrl" :src="node.room.avatarUrl" :label="node.room.name" size="xs" aria-hidden="true" />
-            <span class="tumult-category-name">{{ node.room.name.toUpperCase() }}</span>
-            <UnreadBadge :count="node.aggregateUnread" :highlight="node.aggregateHighlight > 0" />
-        </CollapsibleTrigger>
+        <!-- The menu trigger wraps a plain div, not the CollapsibleTrigger: two
+             as-child triggers on one element break attribute merging. -->
+        <ContextMenuRoot>
+            <ContextMenuTrigger as-child>
+                <div class="tumult-category-header">
+                        <CollapsibleTrigger class="tumult-category-trigger">
+                            <Icon class="tumult-category-caret" :data-open="open ? 'true' : 'false'" name="chevron-right" />
+                            <!-- Only when the space has an icon: an initials tile on every
+                                 category would be noise next to the caret. -->
+                            <Avatar v-if="node.room.avatarUrl" :src="node.room.avatarUrl" :label="node.room.name" size="xs" aria-hidden="true" />
+                            <span class="tumult-category-name">{{ node.room.name.toUpperCase() }}</span>
+                            <UnreadBadge :count="node.aggregateUnread" :highlight="node.aggregateHighlight > 0" />
+                        </CollapsibleTrigger>
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuPortal>
+                <ContextMenuContent class="tumult-menu">
+                    <template v-for="entry in menu.entries" :key="entry.id">
+                        <ContextMenuSeparator v-if="entry.kind === 'separator'" class="tumult-menu-separator" />
+                        <ContextMenuItem
+                            v-else
+                            class="tumult-menu-item"
+                            :class="{ 'tumult-menu-item-danger': entry.danger }"
+                            :text-value="entry.label"
+                            @select="run(entry.id)"
+                        >
+                            {{ entry.label }}
+                        </ContextMenuItem>
+                    </template>
+                </ContextMenuContent>
+            </ContextMenuPortal>
+        </ContextMenuRoot>
         <CollapsibleContent class="tumult-category-content">
             <ul class="tumult-category-list">
                 <RoomListItem v-for="room in node.rooms" :key="room.id" :room="room" :selection="selection" />

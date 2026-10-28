@@ -21,6 +21,16 @@ describe("buildSpaceMenu", () => {
         ]);
     });
 
+    it("offers a collapse toggle only where the space is a collapsible category", () => {
+        assert.equal(shape(buildSpaceMenu("!s:x")).includes("toggle-collapse"), false);
+        const open = buildSpaceMenu("!s:x", null, false, false);
+        const closed = buildSpaceMenu("!s:x", null, false, true);
+        assert.equal(shape(open)[0], "toggle-collapse");
+        const label = (m: SpaceMenu) => m.entries.find((e) => e.kind === "item" && e.id === "toggle-collapse");
+        assert.equal(label(open)?.kind === "item" && label(open)?.label, "Collapse category");
+        assert.equal(label(closed)?.kind === "item" && label(closed)?.label, "Expand category");
+    });
+
     it("leads with mark-as-read only when something is unread", () => {
         assert.equal(shape(buildSpaceMenu("!s:x", null, true))[0], "mark-read");
         assert.equal(shape(buildSpaceMenu("!s:x", null, false)).includes("mark-read"), false);

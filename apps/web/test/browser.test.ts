@@ -278,7 +278,7 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("navigates guild -> channels -> room with a timeline", async () => {
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
         const inGuild = await readState(page);
         assert.ok(inGuild.counts.channels > 0, "selecting a guild showed no channels");
@@ -481,7 +481,7 @@ describe("browser smoke test (fake client)", () => {
         // with one scripted remote participant, so this proves the whole UI
         // path (toolbar toggle -> voice bar -> controls -> teardown) without a
         // LiveKit backend. What it cannot prove is audio: see AGENTS.md (Calls).
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.locator(".tumult-room-item").first().click();
         await page.getByRole("button", { name: "Join voice" }).click();
 
@@ -751,7 +751,7 @@ describe("browser smoke test (fake client)", () => {
         // The bar starts INSIDE the rail (its first grid column IS the rail's
         // track, which is what keeps the avatar centred on the rail) and runs
         // to the far edge of the room list.
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
 
         // Measured with locators, not a helper inside `page.evaluate`: tsx wraps
@@ -1451,7 +1451,7 @@ describe("browser smoke test (fake client)", () => {
         // Any guild channel room carries the full roster (alice 100, bob 50,
         // carol 0, we are 100), so both sides of the moderation gate are
         // reachable from a single timeline.
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
         await page.locator(".tumult-room-item").first().click();
         await page.waitForSelector(".tumult-row", { timeout: 10_000 });
@@ -1674,7 +1674,7 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
         // The rail lists guilds in name order, so the first tile is Big Guild,
         // whose channel-07 carries a seeded 99+ badge.
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
 
         const room = page.locator(".tumult-room-item", { hasText: "channel-07" }).first();
@@ -1721,19 +1721,28 @@ describe("browser smoke test (fake client)", () => {
     it("offers a space its link and id, and leave", async () => {
         await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
-        await page.waitForSelector("a.tumult-guild-item", { timeout: 10_000 });
+        await page.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 10_000 });
 
-        const guild = page.locator("a.tumult-guild-item").first();
+        const guild = page.locator("a.tumult-guild-item:not([data-pinned])").first();
         await openMenuOn(guild);
-        for (const label of ["Copy link", "Copy space ID", "Leave space"]) {
+        for (const label of [
+            "Create channel",
+            "Invite people",
+            "Space settings",
+            "Copy link",
+            "Copy space ID",
+            "Leave space",
+        ]) {
             assert.equal(
                 await menuEntry(".tumult-menu", label).count(),
                 1,
                 `the space menu is missing "${label}"`,
             );
         }
-        // No mark-read here: a space means every channel in it.
-        assert.equal(await menuEntry(".tumult-menu", "Mark as read").count(), 0);
+        // Mark-read is present exactly when the tile shows unread (it marks
+        // every channel in the space).
+        const unread = await guild.locator(".tumult-badge").count();
+        assert.equal(await menuEntry(".tumult-menu", "Mark as read").count(), unread > 0 ? 1 : 0);
         await page.keyboard.press("Escape");
         await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
 
@@ -1750,10 +1759,93 @@ describe("browser smoke test (fake client)", () => {
         );
     });
 
+    it("offers a nested space the space menu as a category, and collapses it from there", async () => {
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        // Guild A is the fake's nested guild: ANNOUNCEMENTS > RELEASES > CANARY.
+        await page.locator('a.tumult-guild-item:not([data-pinned])[aria-label^="Guild A"]').click();
+        await page.waitForSelector(".tumult-category-trigger", { timeout: 10_000 });
+
+        const releases = page.locator(".tumult-category-trigger", { hasText: "RELEASES" });
+        assert.equal(await releases.getAttribute("aria-expanded"), "true");
+        await openMenuOn(releases);
+        for (const label of [
+            "Collapse category",
+            "Create channel",
+            "Invite people",
+            "Space settings",
+            "Copy link",
+            "Copy space ID",
+            "Leave space",
+        ]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                1,
+                `the category menu is missing "${label}"`,
+            );
+        }
+        // The seed gives RELEASES unread channels, so the aggregate offers mark-read.
+        assert.equal(await menuEntry(".tumult-menu", "Mark as read").count(), 1);
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
+
+        // The id is the subspace's own, not the guild's.
+        await recordClipboard();
+        await pick(releases, "Copy space ID");
+        const copied = await lastCopied();
+        assert.ok(copied?.startsWith("!") && copied !== "!guild-a:fake", `copied ${copied}`);
+
+        // Collapse from the menu, then the label flips to Expand.
+        await pick(releases, "Collapse category");
+        assert.equal(await releases.getAttribute("aria-expanded"), "false");
+        await openMenuOn(releases);
+        assert.equal(await menuEntry(".tumult-menu", "Expand category").count(), 1);
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
+
+        // Clicking the header must still toggle it (the menu wraps a div, not
+        // the collapsible trigger).
+        await releases.click();
+        assert.equal(await releases.getAttribute("aria-expanded"), "true");
+    });
+
+    it("gives a pinned rail tile the room menu, and unpins from it", async () => {
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.waitForSelector("a[data-pinned]", { timeout: 10_000 });
+
+        const heading = await page.locator(".tumult-rail-heading").innerText();
+        assert.equal(heading.trim(), "Pinned");
+        const before = await page.locator("a[data-pinned]").count();
+        const tile = page.locator("a[data-pinned]").first();
+        await openMenuOn(tile);
+        for (const label of ["Unpin", "Mute", "Copy link", "Copy room ID", "Leave room"]) {
+            assert.equal(
+                await menuEntry(".tumult-menu", label).count(),
+                1,
+                `the pinned tile menu is missing "${label}"`,
+            );
+        }
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
+
+        await pick(tile, "Unpin");
+        await page.waitForFunction((n) => document.querySelectorAll("a[data-pinned]").length === n, before - 1);
+
+        // Collapsing the band hides its tiles and remembers the choice.
+        await page.locator(".tumult-rail-heading-button").click();
+        assert.equal(await page.locator("a[data-pinned]").count(), 0, "a collapsed band hides its tiles");
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-rail-heading-button", { timeout: 10_000 });
+        assert.equal(await page.locator("a[data-pinned]").count(), 0, "the collapse must persist across a reload");
+        await page.locator(".tumult-rail-heading-button").click();
+        await page.waitForSelector("a[data-pinned]", { timeout: 5_000 });
+    });
+
     it("gates member moderation and always offers the copy pair", async () => {
         await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
-        await page.locator("a.tumult-guild-item").first().click();
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
         await page.locator(".tumult-room-item").first().click();
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });

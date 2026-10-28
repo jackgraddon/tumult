@@ -13,6 +13,7 @@ import { matrixRoomLink } from "../links.ts";
 
 export type SpaceMenuAction =
     | "mark-read"
+    | "toggle-collapse"
     | "create-channel"
     | "invite"
     | "settings"
@@ -38,12 +39,14 @@ export function buildSpaceMenu(
     spaceId: string,
     canonicalAlias?: string | null,
     hasUnread = false,
+    collapsed?: boolean,
 ): SpaceMenu {
     const entries: SpaceMenuEntry[] = [];
-    if (hasUnread) {
-        entries.push(item("mark-read", "Mark as read"));
-        entries.push({ kind: "separator", id: "separator-read" });
-    }
+    // `collapsed` is only meaningful where the space renders as a collapsible
+    // category (the room list); a rail tile passes nothing and gets no toggle.
+    if (hasUnread) entries.push(item("mark-read", "Mark as read"));
+    if (collapsed !== undefined) entries.push(item("toggle-collapse", collapsed ? "Expand category" : "Collapse category"));
+    if (entries.length > 0) entries.push({ kind: "separator", id: "separator-read" });
     entries.push(
         item("create-channel", "Create channel"),
         item("invite", "Invite people"),

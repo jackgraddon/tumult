@@ -18,6 +18,7 @@ import { useSelection, type RoomSelection } from "../selection.ts";
 import { useActions } from "../actions.ts";
 import { copyOrLog } from "../clipboard.ts";
 import type { RoomSummary } from "@tumult/core";
+import { runSpaceAction } from "./spaceActions.ts";
 import { buildSpaceMenu, type SpaceMenuAction } from "./spaceMenu.ts";
 import { buildRoomMenu, type RoomMenuAction } from "../roomlist/roomMenu.ts";
 import Avatar from "../primitives/Avatar.vue";
@@ -54,11 +55,6 @@ function currentFlag(): "page" | undefined {
         return cur.view === "dms" && cur.roomId === props.favourite ? "page" : undefined;
     }
     return cur.view === "guild" && cur.guildId === props.guildId ? "page" : undefined;
-}
-
-function requestLeave(): void {
-    if (!props.guildId) return;
-    actions.requestLeave({ id: props.guildId, name: props.name, isSpace: true });
 }
 
 // A space's canonical alias is not on the rail tile (the tile only carries what
@@ -98,31 +94,12 @@ function runRoom(action: RoomMenuAction, room: RoomSummary): void {
 
 function run(action: SpaceMenuAction | RoomMenuAction): void {
     if (props.room) return runRoom(action as RoomMenuAction, props.room);
-    action = action as SpaceMenuAction;
     const id = props.guildId ?? "";
-    switch (action) {
-        case "mark-read":
-            actions.requestMarkSpaceRead(id);
-            break;
-        case "create-channel":
-            actions.requestSpaceCreateChannel(id);
-            break;
-        case "invite":
-            actions.requestSpaceInvite(id);
-            break;
-        case "settings":
-            actions.requestSpaceSettings(id);
-            break;
-        case "copy-link":
-            copyOrLog((menu.value as ReturnType<typeof buildSpaceMenu>).spaceLink, "space link");
-            break;
-        case "copy-id":
-            copyOrLog(props.guildId ?? "", "space id");
-            break;
-        case "leave":
-            requestLeave();
-            break;
-    }
+    runSpaceAction(
+        action as SpaceMenuAction,
+        { id, name: props.name, link: (menu.value as ReturnType<typeof buildSpaceMenu>).spaceLink },
+        actions,
+    );
 }
 </script>
 
@@ -137,6 +114,7 @@ function run(action: SpaceMenuAction | RoomMenuAction): void {
                         <ContextMenuTrigger as-child>
                             <a
                                 class="tumult-guild-item"
+                                :data-pinned="favourite ? 'true' : undefined"
                                 :href="selection.hrefFor(selectTarget())"
                                 :aria-current="currentFlag()"
                                 :aria-label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
