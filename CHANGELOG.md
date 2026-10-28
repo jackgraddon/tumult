@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.5](https://github.com/jackgraddon/tumult/compare/v0.2.4...v0.2.5) (2026-10-28)
+
+
+### Features
+
+* **calls:** embed Element Call as a MatrixRTC widget ([281fda2](https://github.com/jackgraddon/tumult/commit/281fda27b503ac2872dc783685580585cf0ecf56))
+* **ui:** call strip above a room's timeline while it has a voice call ([be13616](https://github.com/jackgraddon/tumult/commit/be136168f5cbe9e9064ca26ddd917108ab723ee9))
+* **voice:** native audio voice over MatrixRTC + LiveKit ([33fc996](https://github.com/jackgraddon/tumult/commit/33fc996d82d246505edc4af6517f4b03be875a88))
+
+
+### Bug Fixes
+
+* **core:** answer supportsVoice/supportsCalls from config, not managers ([b548126](https://github.com/jackgraddon/tumult/commit/b5481264c4dd54c2a45da2660d0ba3e5e30d40d3))
+* **ui:** load the resumed room's timeline once the client has started ([531bb13](https://github.com/jackgraddon/tumult/commit/531bb13d98202e7d71c7c11c26a7ff658cc635c1))
+
 ### [0.2.4](https://github.com/jackgraddon/tumult/compare/v0.2.3...v0.2.4) (2026-10-27)
 
 
