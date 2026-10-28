@@ -502,6 +502,36 @@ describe("browser smoke test (fake client)", () => {
         await page.getByRole("button", { name: "Join voice" }).waitFor({ timeout: 10_000 });
     });
 
+    it("shows a call strip in a room with a call, and joins and leaves from it", async () => {
+        // The fake seeds a call in Guild A's #general (Alice in it) and none
+        // elsewhere, so the strip must appear here and only here.
+        await page.goto(`${origin}/g/${encodeURIComponent("!guild-a:fake")}/${encodeURIComponent("!a-general:fake")}`, {
+            waitUntil: "domcontentloaded",
+        });
+        const strip = page.locator(".tumult-callstrip");
+        await strip.waitFor({ timeout: 10_000 });
+        assert.match((await strip.textContent()) ?? "", /Voice call · 1 person/);
+        assert.equal(await strip.locator(".tumult-callstrip-person").count(), 1);
+        assert.equal(await strip.locator(".tumult-callstrip-person").first().getAttribute("title"), "Alice");
+
+        await strip.getByRole("button", { name: "Join", exact: true }).click();
+        await strip.getByText(/You're in voice · 2 people/).waitFor({ timeout: 10_000 });
+        // The fake's scripted remote is speaking: the ring is on her, not us.
+        assert.equal(await strip.locator(".tumult-callstrip-person[data-speaking]").count(), 1);
+
+        await strip.getByRole("button", { name: "Mute microphone" }).click();
+        await strip.locator(".tumult-callstrip-muted").waitFor({ timeout: 10_000 });
+
+        await strip.getByRole("button", { name: "Leave", exact: true }).click();
+        await strip.getByText(/Voice call · 1 person/).waitFor({ timeout: 10_000 });
+
+        // A room with no call has no strip at all.
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        await page.locator(".tumult-room-item").first().click();
+        await page.locator(".tumult-pane-toolbar").waitFor({ timeout: 10_000 });
+        assert.equal(await page.locator(".tumult-callstrip").count(), 0);
+    });
+
     it("opens a workspace pane from the rail, in all three of its slots", async () => {
         // A pane is the other kind of thing the rail opens: the tile under the
         // DMs button belongs to a plugin, and clicking it hands the shell's

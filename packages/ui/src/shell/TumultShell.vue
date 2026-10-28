@@ -37,6 +37,7 @@ import SecurityModal from "../security/SecurityModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
 import CallPanel from "../calls/CallPanel.vue";
 import VoiceBar from "../calls/VoiceBar.vue";
+import RoomCallStrip from "../calls/RoomCallStrip.vue";
 import { VoiceRoomsKey } from "../calls/voiceRooms.ts";
 import ThreadList from "../threads/ThreadList.vue";
 import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
@@ -567,6 +568,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                             ><Icon name="forum" /></IconButton
                         >
                     </div>
+                    <RoomCallStrip
+                        v-if="!activePane && voiceEnabled && activeRoomId"
+                        :key="activeRoomId"
+                        :client="client"
+                        :room-id="activeRoomId"
+                    />
                     <component :is="activePane.content" v-if="activePane" class="tumult-pane-content" />
                     <TimelinePane
                         v-else
