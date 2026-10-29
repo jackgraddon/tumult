@@ -36,6 +36,12 @@ function toggleMute(): void {
 function toggleDeafen(): void {
     if (voice.value) props.client.setVoiceDeafened(!voice.value.deafened);
 }
+function toggleCamera(): void {
+    if (voice.value) void props.client.setVoiceCamera(!voice.value.camera).catch(log("change the camera"));
+}
+function toggleScreen(): void {
+    if (voice.value) void props.client.setVoiceScreenShare(!voice.value.screen).catch(log("share the screen"));
+}
 function leave(): void {
     void props.client.leaveVoice().catch(log("leave voice"));
 }
@@ -70,6 +76,26 @@ function leave(): void {
                 @click="toggleDeafen"
             >
                 <Icon :name="voice.deafened ? 'headphones-off' : 'headphones'" />
+            </button>
+            <button
+                type="button"
+                class="tumult-voice-button"
+                :aria-pressed="voice.camera"
+                :aria-label="voice.camera ? 'Turn off camera' : 'Turn on camera'"
+                :title="voice.camera ? 'Turn off camera' : 'Turn on camera'"
+                @click="toggleCamera"
+            >
+                <Icon :name="voice.camera ? 'video' : 'video-off'" />
+            </button>
+            <button
+                type="button"
+                class="tumult-voice-button"
+                :aria-pressed="voice.screen"
+                :aria-label="voice.screen ? 'Stop sharing screen' : 'Share screen'"
+                :title="voice.screen ? 'Stop sharing screen' : 'Share screen'"
+                @click="toggleScreen"
+            >
+                <Icon :name="voice.screen ? 'monitor-off' : 'monitor-share'" />
             </button>
             <button type="button" class="tumult-voice-button tumult-voice-leave" aria-label="Disconnect" title="Disconnect" @click="leave">
                 <Icon name="phone-hangup" />

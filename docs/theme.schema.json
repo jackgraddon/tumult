@@ -803,6 +803,14 @@
                     "type": "string",
                     "description": "Dialog width before viewport clamp."
                 },
+                "layout-voice-tile-min-width": {
+                    "type": "string",
+                    "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                },
+                "layout-voice-stage-max-height": {
+                    "type": "string",
+                    "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                },
                 "layout-settings-nav-width": {
                     "type": "string",
                     "description": "Settings sidebar width."
@@ -1959,6 +1967,14 @@
                     "layout-dialog-width": {
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
+                    },
+                    "layout-voice-tile-min-width": {
+                        "type": "string",
+                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                    },
+                    "layout-voice-stage-max-height": {
+                        "type": "string",
+                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",
@@ -3117,6 +3133,14 @@
                     "layout-dialog-width": {
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
+                    },
+                    "layout-voice-tile-min-width": {
+                        "type": "string",
+                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                    },
+                    "layout-voice-stage-max-height": {
+                        "type": "string",
+                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",

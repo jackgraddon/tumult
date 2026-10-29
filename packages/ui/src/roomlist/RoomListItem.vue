@@ -98,7 +98,7 @@ function run(action: RoomMenuAction): void {
                         :title="`In voice: ${inVoice.join(', ')}`"
                         :aria-label="`${inVoice.length} in voice`"
                     >
-                        <Icon name="headphones" />{{ inVoice.length }}
+                        <Icon name="phone" />{{ inVoice.length }}
                     </span>
                     <UnreadBadge :count="room.unreadCount" :highlight="room.highlightCount > 0" />
                 </a>

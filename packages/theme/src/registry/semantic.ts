@@ -140,6 +140,8 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-slideover-width", tier: "semantic", kind: "layout", value: v("prim-layout-slideover"), description: "Search / thread panel width." },
     { name: "layout-menu-min-width", tier: "semantic", kind: "layout", value: v("prim-layout-menu-min"), description: "Menu minimum width." },
     { name: "layout-dialog-width", tier: "semantic", kind: "layout", description: "Dialog width before viewport clamp." },
+    { name: "layout-voice-tile-min-width", tier: "semantic", kind: "layout", description: "Narrowest video tile in a call; the stage fits as many per row as this allows." },
+    { name: "layout-voice-stage-max-height", tier: "semantic", kind: "layout", description: "Tallest the video stage above the timeline may grow before it scrolls." },
     { name: "layout-settings-nav-width", tier: "semantic", kind: "layout", description: "Settings sidebar width." },
     { name: "layout-settings-content-width", tier: "semantic", kind: "layout", description: "Settings page column max width." },
 ];

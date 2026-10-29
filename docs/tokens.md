@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**287 tokens** — 91 primitives, 106 semantic, 90 component.
+**289 tokens** — 91 primitives, 108 semantic, 90 component.
 
 ## Primitives
 
@@ -217,6 +217,8 @@ everything built on it.
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
+| `--layout-voice-tile-min-width` | layout | `14rem` | Narrowest video tile in a call; the stage fits as many per row as this allows. |
+| `--layout-voice-stage-max-height` | layout | `24rem` | Tallest the video stage above the timeline may grow before it scrolls. |
 | `--layout-settings-nav-width` | layout | `14rem` | Settings sidebar width. |
 | `--layout-settings-content-width` | layout | `46rem` | Settings page column max width. |
 

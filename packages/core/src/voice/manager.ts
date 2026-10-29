@@ -1,7 +1,7 @@
 import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixRTCSession } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixClient } from "matrix-js-sdk";
-import type { VoiceParticipant, VoiceView } from "../contract.ts";
+import type { VoiceParticipant, VoiceVideoSource, VoiceView } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { getSfuConfig, discoverFoci, isLivekitFocus } from "./sfu.ts";
 import type { FocusDiscovery, SfuConfig } from "./sfu.ts";
@@ -55,6 +55,8 @@ export class VoiceManager {
     private reconnecting = false;
     private muted = false;
     private deafened = false;
+    /** The camera we WANT on; the view reports what the media engine says is live. */
+    private camera = false;
     private readonly volumes = new Map<string, number>();
 
     /** Per-room session watchers for the "who is in voice" feed. */
@@ -104,10 +106,11 @@ export class VoiceManager {
         };
     }
 
-    public async join(roomId: string): Promise<void> {
+    public async join(roomId: string, options: { video?: boolean } = {}): Promise<void> {
         const room = this.client.getRoom(roomId);
         if (!room) throw new Error(`Cannot join voice in unknown room ${roomId}`);
         await this.leave();
+        this.camera = options.video === true;
         const generation = ++this.generation;
         const live = (): boolean => generation === this.generation;
 
@@ -170,7 +173,7 @@ export class VoiceManager {
             };
             this.active = { roomId, session: rtc, media: engine, teardown, serviceUrl: null };
 
-            rtc.joinRoomSession(foci, undefined, { manageMediaKeys: true, callIntent: "audio" });
+            rtc.joinRoomSession(foci, undefined, { manageMediaKeys: true, callIntent: this.camera ? "video" : "audio" });
             rtc.reemitEncryptionKeys();
 
             const focus = await this.waitForFocus(rtc, live);
@@ -186,6 +189,10 @@ export class VoiceManager {
             if (!live()) return;
             await engine.setMicrophone(!this.muted);
             engine.setDeafened(this.deafened);
+            // A camera that cannot start (no device, permission denied) must not
+            // fail the join: the call is still a perfectly good voice call.
+            if (this.camera) await this.startCamera(engine, live);
+            if (!live()) return;
             this.publishFromMedia();
         } catch (error) {
             if (!live()) return;
@@ -220,6 +227,35 @@ export class VoiceManager {
         this.publishFromMedia();
     }
 
+    public async setCamera(enabled: boolean): Promise<void> {
+        const active = this.active;
+        if (!active) return;
+        const previous = this.camera;
+        this.camera = enabled;
+        try {
+            await active.media.setCamera(enabled);
+        } catch (error) {
+            this.camera = previous;
+            this.publishFromMedia();
+            throw error;
+        }
+        this.publishFromMedia();
+    }
+
+    public async setScreenShare(enabled: boolean): Promise<void> {
+        const active = this.active;
+        if (!active) return;
+        try {
+            await active.media.setScreenShare(enabled);
+        } finally {
+            this.publishFromMedia();
+        }
+    }
+
+    public attachVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void {
+        return this.active?.media.attachVideo(`${userId}:${deviceId}`, source, element) ?? (() => undefined);
+    }
+
     public setDeafened(deafened: boolean): void {
         this.deafened = deafened;
         this.active?.media.setDeafened(deafened);
@@ -243,6 +279,15 @@ export class VoiceManager {
         this.stopWatching = null;
         this.feed.set(null);
         this.roomsFeed.set({});
+    }
+
+    private async startCamera(engine: VoiceMedia, live: () => boolean): Promise<void> {
+        try {
+            await engine.setCamera(true);
+        } catch (error) {
+            if (live()) this.camera = false;
+            console.error("[tumult] could not start the camera", error);
+        }
     }
 
     private async waitForFocus(session: Session, live: () => boolean): Promise<{ livekit_service_url: string }> {
@@ -329,6 +374,9 @@ export class VoiceManager {
                 // Our published tracks died with the old connection.
                 await active.media.setMicrophone(!this.muted);
                 active.media.setDeafened(this.deafened);
+                // Screen share ends with the connection (re-sharing needs a fresh
+                // user gesture); the camera is restored.
+                if (this.camera) await this.startCamera(active.media, live);
                 this.reconnecting = false;
                 this.publishFromMedia();
                 return;
@@ -360,11 +408,14 @@ export class VoiceManager {
             state: this.reconnecting ? "reconnecting" : stateOf(snapshot),
             error: null,
             participants: snapshot.participants.map(toParticipant),
+            // Local is first in the snapshot. Before it exists, the camera we asked for.
+            camera: snapshot.participants[0]?.camera ?? this.camera,
+            screen: snapshot.participants[0]?.screen ?? false,
         });
     }
 
-    private publish(view: Pick<VoiceView, "roomId" | "state" | "error" | "participants">): void {
-        this.feed.set({ ...view, muted: this.muted, deafened: this.deafened });
+    private publish(view: Pick<VoiceView, "roomId" | "state" | "error" | "participants"> & Partial<Pick<VoiceView, "camera" | "screen">>): void {
+        this.feed.set({ ...view, camera: view.camera ?? this.camera, screen: view.screen ?? false, muted: this.muted, deafened: this.deafened });
     }
 
     private publishRooms(): void {
@@ -393,7 +444,7 @@ function stateOf(snapshot: MediaSnapshot): VoiceView["state"] {
 
 function toParticipant(p: MediaSnapshot["participants"][number]): VoiceParticipant {
     const { userId, deviceId } = parseIdentity(p.identity);
-    return { userId, deviceId, speaking: p.speaking, muted: p.muted };
+    return { userId, deviceId, speaking: p.speaking, muted: p.muted, camera: p.camera, screen: p.screen };
 }
 
 function message(error: unknown): string {

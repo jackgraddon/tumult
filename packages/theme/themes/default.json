@@ -197,6 +197,8 @@
     "layout-slideover-width": "var(--prim-layout-slideover)",
     "layout-menu-min-width": "var(--prim-layout-menu-min)",
     "layout-dialog-width": "28rem",
+    "layout-voice-tile-min-width": "14rem",
+    "layout-voice-stage-max-height": "24rem",
     "layout-settings-nav-width": "14rem",
     "layout-settings-content-width": "46rem",
     "control-radius": "var(--radius-md)",

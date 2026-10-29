@@ -314,9 +314,11 @@ export interface CallView {
 }
 
 /**
- * Native voice (Phase B): audio-only, run by core over MatrixRTC + LiveKit, with
- * no frame. The embedded call app ({@link CallView}) is the video route; the two
- * are mutually exclusive because both write this device's call membership.
+ * Native voice and video (Phase B): run by core over MatrixRTC + LiveKit, with
+ * no frame. Video frames reach the UI through {@link ChatClient.attachVoiceVideo},
+ * never through the snapshot. The embedded call app ({@link CallView}) is the
+ * fallback for deployments without native support; the two are mutually
+ * exclusive because both write this device's call membership.
  *
  * `connecting` covers discovery, the membership write, the token exchange and
  * the SFU handshake; `connected` means audio can flow; `reconnecting` is the SFU
@@ -332,7 +334,14 @@ export interface VoiceParticipant {
     speaking: boolean;
     /** Whether they have muted their own microphone. */
     muted: boolean;
+    /** Whether a camera track is live and can be attached to a `<video>`. */
+    camera: boolean;
+    /** Whether a screen-share track is live and can be attached to a `<video>`. */
+    screen: boolean;
 }
+
+/** Which of a participant's video tracks. */
+export type VoiceVideoSource = "camera" | "screen";
 
 /** The voice session this window is in. At most one. */
 export interface VoiceView {
@@ -344,6 +353,10 @@ export interface VoiceView {
     muted: boolean;
     /** Remote audio is silenced locally (we still publish unless also muted). */
     deafened: boolean;
+    /** Our camera is publishing. */
+    camera: boolean;
+    /** We are sharing a screen. */
+    screen: boolean;
     /** Everyone in the session, us included, in join order. */
     participants: VoiceParticipant[];
 }
@@ -672,12 +685,28 @@ export interface ChatClient {
      * room is using, and rejects (`voice` in `error`) when there is none.
      */
     supportsVoice(): boolean;
-    /** Join the room's voice session, leaving any voice session or call already open. */
-    joinVoice(roomId: string): Promise<void>;
+    /**
+     * Join the room's voice session, leaving any voice session or call already
+     * open. `video: true` starts with the camera on; a camera that cannot start
+     * (permission denied) does not fail the join, it just stays off.
+     */
+    joinVoice(roomId: string, options?: { video?: boolean }): Promise<void>;
     /** Leave the voice session. A no-op when not in one. */
     leaveVoice(): Promise<void>;
     /** Mute or unmute our microphone. A no-op when not in a session. */
     setVoiceMuted(muted: boolean): Promise<void>;
+    /** Turn our camera on or off. Rejects if the camera cannot start. A no-op when not in a session. */
+    setVoiceCamera(enabled: boolean): Promise<void>;
+    /** Start or stop sharing a screen (the browser asks which). Rejects if refused. A no-op when not in a session. */
+    setVoiceScreenShare(enabled: boolean): Promise<void>;
+    /**
+     * Render one participant's video track into `element`. The element is the
+     * only DOM type crossing the contract (like {@link ChatClient.attachCall}'s
+     * frame): pixels never pass through our code. Call it again when the
+     * participant's `camera`/`screen` flag flips on; the returned function
+     * detaches (safe to call twice). A no-op detach when there is no such track.
+     */
+    attachVoiceVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void;
     /** Silence or restore remote audio locally. A no-op when not in a session. */
     setVoiceDeafened(deafened: boolean): void;
     /** Local playback volume for one participant, 0 (silent) to 1. Not sent to anyone. */

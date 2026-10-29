@@ -36,8 +36,10 @@ import IconButton from "../primitives/IconButton.vue";
 import SecurityBanner from "../security/SecurityBanner.vue";
 import SecurityModal from "../security/SecurityModal.vue";
 import ThreadPanel from "../threads/ThreadPanel.vue";
+import CallMenu from "../calls/CallMenu.vue";
 import CallPanel from "../calls/CallPanel.vue";
 import VoiceBar from "../calls/VoiceBar.vue";
+import VoiceStage from "../calls/VoiceStage.vue";
 import RoomCallStrip from "../calls/RoomCallStrip.vue";
 import { useFeedsReady } from "../feedsReady.ts";
 import { VoiceRoomsKey } from "../calls/voiceRooms.ts";
@@ -375,15 +377,16 @@ const feedsReady = useFeedsReady(props.client);
 const voice = useSubscribable(props.client.voice);
 provide(VoiceRoomsKey, useSubscribable(props.client.voiceRooms));
 
-function toggleVoice(roomId: string): void {
-    const action = voice.value?.roomId === roomId ? props.client.leaveVoice() : props.client.joinVoice(roomId);
-    void action.catch((error: unknown) => console.error("[tumult] could not change voice", error));
+// One entry point for "start a call here": native when the host has it, the
+// embedded app only as the fallback. The user picks voice or video, not a protocol.
+function joinCall(roomId: string, video: boolean): void {
+    const action = voiceEnabled ? props.client.joinVoice(roomId, { video }) : props.client.joinCall(roomId, { video });
+    void action.catch((error: unknown) => console.error("[tumult] could not start the call", error));
 }
 
-function startCall(roomId: string, video: boolean): void {
-    void props.client.joinCall(roomId, { video }).catch((error: unknown) => {
-        console.error("[tumult] could not start the call", error);
-    });
+function leaveCall(roomId: string): void {
+    if (voice.value?.roomId !== roomId) return;
+    void props.client.leaveVoice().catch((error: unknown) => console.error("[tumult] could not leave voice", error));
 }
 
 // The workspace pane the selection points at, if any. Reading the registry
@@ -653,17 +656,14 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 <div class="tumult-pane tumult-pane-timeline">
                     <div class="tumult-pane-toolbar">
                         <IconButton label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
-                        <IconButton
-                            v-if="!activePane && voiceEnabled && activeRoomId"
-                            :label="voice?.roomId === activeRoomId ? 'Leave voice' : 'Join voice'"
-                            :aria-pressed="voice?.roomId === activeRoomId"
-                            @click="toggleVoice(activeRoomId)"
-                            ><Icon name="headphones"
-                        /></IconButton>
-                        <template v-if="!activePane && callsEnabled && activeRoomId && call?.roomId !== activeRoomId">
-                            <IconButton label="Start voice call" @click="startCall(activeRoomId, false)"><Icon name="phone" /></IconButton>
-                            <IconButton label="Start video call" @click="startCall(activeRoomId, true)"><Icon name="video" /></IconButton>
-                        </template>
+                        <CallMenu
+                            v-if="!activePane && activeRoomId"
+                            :voice="voiceEnabled"
+                            :calls="callsEnabled && call?.roomId !== activeRoomId"
+                            :active="voice?.roomId === activeRoomId"
+                            @join="(video) => activeRoomId && joinCall(activeRoomId, video)"
+                            @leave="activeRoomId && leaveCall(activeRoomId)"
+                        />
                         <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
                         <IconButton
                             v-if="!activePane && threadsEnabled && activeRoomId"
@@ -679,6 +679,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :client="client"
                         :room-id="activeRoomId"
                     />
+                    <VoiceStage v-if="!activePane && voiceEnabled && activeRoomId" :client="client" :room-id="activeRoomId" />
                     <component :is="activePane.content" v-if="activePane" class="tumult-pane-content" />
                     <TimelinePane
                         v-else

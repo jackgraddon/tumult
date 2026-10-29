@@ -39,6 +39,7 @@ export type {
     VerificationRequestView,
     VerificationState,
     VoiceParticipant,
+    VoiceVideoSource,
     VoiceState,
     VoiceView,
 } from "./contract.ts";

@@ -1,4 +1,5 @@
 import type {
+    VoiceVideoSource,
     VoiceView,
     CallView,
     ChatClient,
@@ -844,19 +845,68 @@ class FakeChatClient implements ChatClient {
 
     // The fake "connects" instantly with one scripted remote participant, so the
     // voice UI (bar, indicators, mute/deafen) is demoable with no LiveKit.
-    public async joinVoice(roomId: string): Promise<void> {
+    public async joinVoice(roomId: string, options: { video?: boolean } = {}): Promise<void> {
         if (!this.rooms.get().some((room) => room.id === roomId)) throw new Error(`Cannot join voice in unknown room ${roomId}`);
         this.callState.set(null);
         const prior = this.voiceState.get();
-        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false };
+        const camera = options.video === true;
+        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false, camera, screen: false };
         this.voiceState.set({
             roomId,
             state: "connected",
             error: null,
             muted: self.muted,
             deafened: prior?.deafened ?? false,
-            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false }],
+            camera,
+            screen: false,
+            // Alice always has her camera on, so a tile is demoable without a device.
+            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false, camera: true, screen: false }],
         });
+    }
+
+    public async setVoiceCamera(enabled: boolean): Promise<void> {
+        this.updateSelf({ camera: enabled });
+    }
+
+    public async setVoiceScreenShare(enabled: boolean): Promise<void> {
+        this.updateSelf({ screen: enabled });
+    }
+
+    private updateSelf(change: { camera?: boolean; screen?: boolean }): void {
+        const v = this.voiceState.get();
+        if (!v) return;
+        this.voiceState.set({ ...v, ...change, participants: v.participants.map((p) => (p.userId === SELF_ID ? { ...p, ...change } : p)) });
+    }
+
+    // No SFU, so the "video" is a canvas stream: a flat colour per user and
+    // source with their id and the source drawn on it. Enough to demo the tile
+    // grid and to prove the element was wired, with no camera or device.
+    public attachVoiceVideo(userId: string, _deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void {
+        if (typeof document === "undefined") return () => undefined;
+        const canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 180;
+        const context = canvas.getContext("2d");
+        if (!context || typeof canvas.captureStream !== "function") return () => undefined;
+        let hash = 0;
+        for (const char of `${userId}:${source}`) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+        // A captured canvas only emits a frame when it is repainted, so keep repainting.
+        const paint = (): void => {
+            context.fillStyle = `hsl(${hash} 45% 35%)`;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.fillStyle = "#fff";
+            context.font = "20px sans-serif";
+            context.fillText(`${userId} · ${source}`, 12, 96);
+            context.fillRect(12 + (Date.now() / 20) % 280, 130, 8, 8);
+        };
+        paint();
+        element.srcObject = canvas.captureStream(5);
+        const timer = setInterval(paint, 200);
+        void element.play().catch(() => undefined);
+        return () => {
+            clearInterval(timer);
+            if (element.srcObject) element.srcObject = null;
+        };
     }
 
     public async leaveVoice(): Promise<void> {

@@ -17,6 +17,7 @@ import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
+    VoiceVideoSource,
     VoiceView,
     CallView,
     ChatClient,
@@ -1262,11 +1263,11 @@ export class MatrixChatClient implements ChatClient {
         return this.createE2EEWorker !== null;
     }
 
-    public async joinVoice(roomId: string): Promise<void> {
+    public async joinVoice(roomId: string, options: { video?: boolean } = {}): Promise<void> {
         const voice = this._voice;
         if (!voice) throw new Error("Voice is not supported");
         await this._calls?.leave();
-        await voice.join(roomId);
+        await voice.join(roomId, options);
     }
 
     public async leaveVoice(): Promise<void> {
@@ -1275,6 +1276,18 @@ export class MatrixChatClient implements ChatClient {
 
     public async setVoiceMuted(muted: boolean): Promise<void> {
         await this._voice?.setMuted(muted);
+    }
+
+    public async setVoiceCamera(enabled: boolean): Promise<void> {
+        await this._voice?.setCamera(enabled);
+    }
+
+    public async setVoiceScreenShare(enabled: boolean): Promise<void> {
+        await this._voice?.setScreenShare(enabled);
+    }
+
+    public attachVoiceVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void {
+        return this._voice?.attachVideo(userId, deviceId, source, element) ?? (() => undefined);
     }
 
     public setVoiceDeafened(deafened: boolean): void {

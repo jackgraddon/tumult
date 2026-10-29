@@ -53,6 +53,18 @@ class FakeMedia implements VoiceMedia {
     async setMicrophone(enabled: boolean): Promise<void> {
         this.log.push(["mic", enabled]);
     }
+    cameraError: Error | null = null;
+    async setCamera(enabled: boolean): Promise<void> {
+        this.log.push(["camera", enabled]);
+        if (this.cameraError) throw this.cameraError;
+    }
+    async setScreenShare(enabled: boolean): Promise<void> {
+        this.log.push(["screen", enabled]);
+    }
+    attachVideo(identity: string, source: string): () => void {
+        this.log.push(["attach", identity, source]);
+        return () => void this.log.push(["detach", identity, source]);
+    }
     async setKey(identity: string, index: number, key: Uint8Array): Promise<void> {
         this.log.push(["key", identity, index, [...key]]);
     }
@@ -237,15 +249,15 @@ describe("VoiceManager.join", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@me:localhost:DEV", speaking: false, muted: false },
-                { identity: "@bob:example.com:XYZ", speaking: true, muted: true },
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: false },
+                { identity: "@bob:example.com:XYZ", speaking: true, muted: true, camera: false, screen: false },
             ],
         });
         const view = feed.get();
         assert.equal(view?.state, "connected");
         assert.deepEqual(view?.participants, [
-            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false },
-            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true },
+            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false, camera: false, screen: false },
+            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true, camera: false, screen: false },
         ]);
         media.change({ ...media.snap, connection: "reconnecting" });
         assert.equal(feed.get()?.state, "reconnecting");
@@ -396,6 +408,85 @@ describe("VoiceManager.join", () => {
     });
 });
 
+describe("VoiceManager video", () => {
+    it("joins voice-only by default, with a membership intent of audio", async () => {
+        const { manager, session, media, feed } = setup();
+        await manager.join(ROOM);
+        assert.equal((session.joined[0]?.[2] as { callIntent: string }).callIntent, "audio");
+        assert.ok(!media.log.some(([name]) => name === "camera"));
+        assert.equal(feed.get()?.camera, false);
+    });
+
+    it("starts the camera after connecting when asked, and says so in the intent", async () => {
+        const { manager, session, media, feed } = setup();
+        await manager.join(ROOM, { video: true });
+        assert.equal((session.joined[0]?.[2] as { callIntent: string }).callIntent, "video");
+        const names = media.log.map(([name]) => name);
+        assert.ok(names.indexOf("camera") > names.indexOf("connect"), "frames cannot be published before the SFU connection");
+        assert.equal(feed.get()?.camera, true);
+    });
+
+    it("stays in the call, camera off, when the camera cannot start", async () => {
+        const { manager, media, feed } = setup();
+        media.cameraError = new Error("NotAllowedError");
+        const quiet = console.error;
+        console.error = () => undefined;
+        try {
+            await manager.join(ROOM, { video: true });
+        } finally {
+            console.error = quiet;
+        }
+        assert.notEqual(feed.get()?.state, "error", "a denied camera is not a failed call");
+        assert.equal(feed.get()?.camera, false);
+    });
+
+    it("turns the camera on and off, and reverts the intent when the device refuses", async () => {
+        const { manager, media, feed } = setup();
+        await manager.join(ROOM);
+        await manager.setCamera(true);
+        assert.equal(feed.get()?.camera, true);
+        await manager.setCamera(false);
+        assert.equal(feed.get()?.camera, false);
+        media.cameraError = new Error("NotReadableError");
+        await assert.rejects(manager.setCamera(true), /NotReadableError/);
+        assert.equal(feed.get()?.camera, false, "a camera that never started is not shown as on");
+    });
+
+    it("reports what the media engine says is live for the local participant", async () => {
+        const { manager, media, feed } = setup();
+        await manager.join(ROOM);
+        media.change({
+            connection: "connected",
+            participants: [
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true },
+                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: true, screen: false },
+            ],
+        });
+        assert.equal(feed.get()?.screen, true, "a share the browser ended would flip this back off");
+        assert.equal(feed.get()?.participants[1]?.camera, true);
+    });
+
+    it("attaches a participant's track by LiveKit identity, and is inert outside a session", async () => {
+        const { manager, media } = setup();
+        const element = {} as HTMLVideoElement;
+        assert.equal(typeof manager.attachVideo("@bob:x", "B", "camera", element), "function");
+        assert.ok(!media.log.some(([name]) => name === "attach"));
+        await manager.join(ROOM);
+        const detach = manager.attachVideo("@bob:x", "B", "screen", element);
+        assert.deepEqual(media.log.at(-1), ["attach", "@bob:x:B", "screen"]);
+        detach();
+        assert.deepEqual(media.log.at(-1), ["detach", "@bob:x:B", "screen"]);
+    });
+
+    it("restores the camera after re-dialling a dropped connection", async () => {
+        const { manager, media } = setup({ reconnectDelaysMs: [0] });
+        await manager.join(ROOM, { video: true });
+        media.change({ ...media.snap, connection: "disconnected" });
+        await new Promise((r) => setTimeout(r, 5));
+        assert.equal(media.log.filter(([name, on]) => name === "camera" && on === true).length, 2);
+    });
+});
+
 describe("VoiceManager controls", () => {
     it("mutes the microphone and reflects it, and remembers the choice for the next join", async () => {
         const { manager, media, feed } = setup();
@@ -422,9 +513,9 @@ describe("VoiceManager controls", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@bob:x:A", speaking: false, muted: false },
-                { identity: "@bob:x:B", speaking: false, muted: false },
-                { identity: "@eve:x:C", speaking: false, muted: false },
+                { identity: "@bob:x:A", speaking: false, muted: false, camera: false, screen: false },
+                { identity: "@bob:x:B", speaking: false, muted: false, camera: false, screen: false },
+                { identity: "@eve:x:C", speaking: false, muted: false, camera: false, screen: false },
             ],
         });
         manager.setUserVolume("@bob:x", 5);

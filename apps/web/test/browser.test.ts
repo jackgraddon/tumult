@@ -502,15 +502,15 @@ describe("browser smoke test (fake client)", () => {
         // LiveKit backend. What it cannot prove is audio: see AGENTS.md (Calls).
         await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.locator(".tumult-room-item").first().click();
-        await page.getByRole("button", { name: "Join voice" }).click();
+        await page.getByRole("button", { name: "Start voice call" }).click();
 
         const bar = page.locator(".tumult-voice");
         await bar.waitFor({ timeout: 10_000 });
         assert.match((await bar.textContent()) ?? "", /Voice connected/);
         assert.match((await bar.textContent()) ?? "", /· 2/, "the voice bar should count both participants");
 
-        // The toolbar toggle now offers to leave, and the room row shows who is in voice.
-        await page.getByRole("button", { name: "Leave voice" }).waitFor({ timeout: 10_000 });
+        // The toolbar button now offers to leave, and the room row shows who is in voice.
+        await page.getByRole("button", { name: "Leave call" }).waitFor({ timeout: 10_000 });
 
         const mute = bar.getByRole("button", { name: "Mute microphone" });
         await mute.click();
@@ -518,7 +518,29 @@ describe("browser smoke test (fake client)", () => {
 
         await bar.getByRole("button", { name: "Disconnect" }).click();
         await page.waitForSelector(".tumult-voice", { state: "detached", timeout: 10_000 });
-        await page.getByRole("button", { name: "Join voice" }).waitFor({ timeout: 10_000 });
+        await page.getByRole("button", { name: "Start voice call" }).waitFor({ timeout: 10_000 });
+    });
+
+    it("joins with video from the call menu, shows tiles, and toggles the camera", async () => {
+        // The fake draws each tile from a canvas stream, so this proves the
+        // element wiring (menu -> joinVoice({video}) -> stage -> attachVoiceVideo)
+        // and the flag-driven mount/unmount, not real capture.
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        await page.getByRole("button", { name: "Choose call type" }).click();
+        await page.getByRole("menuitem", { name: "Video" }).click();
+
+        const stage = page.locator(".tumult-voice-stage");
+        await stage.waitFor({ timeout: 10_000 });
+        assert.equal(await stage.locator(".tumult-voice-tile").count(), 2, "our camera and Alice's");
+        await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>(".tumult-voice-tile video")].every((v) => v.srcObject !== null));
+
+        const bar = page.locator(".tumult-voice");
+        await bar.getByRole("button", { name: "Turn off camera" }).click();
+        await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-tile").length === 1);
+
+        await bar.getByRole("button", { name: "Disconnect" }).click();
+        await page.waitForSelector(".tumult-voice-stage", { state: "detached", timeout: 10_000 });
     });
 
     it("shows a call strip in a room with a call, and joins and leaves from it", async () => {

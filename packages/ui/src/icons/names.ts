@@ -37,7 +37,10 @@ export const BUILTIN_ICON_NAMES = [
     "reply",
     "shield-check",
     "thumb-up",
+    "monitor-share",
+    "monitor-off",
     "video",
+    "video-off",
 ] as const;
 
 export type BuiltinIconName = (typeof BUILTIN_ICON_NAMES)[number];

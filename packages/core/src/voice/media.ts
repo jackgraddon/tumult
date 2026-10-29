@@ -1,4 +1,4 @@
-import type { Room, RemoteParticipant } from "livekit-client";
+import type { Room, RemoteParticipant, Track } from "livekit-client";
 
 /**
  * What the voice manager needs from a media engine, as the narrowest surface
@@ -12,6 +12,13 @@ export interface VoiceMedia {
     connect(url: string, jwt: string): Promise<void>;
     disconnect(): void;
     setMicrophone(enabled: boolean): Promise<void>;
+    setCamera(enabled: boolean): Promise<void>;
+    setScreenShare(enabled: boolean): Promise<void>;
+    /**
+     * Render a participant's live video track into `element`; returns the
+     * detach. Does nothing (and returns a no-op) when there is no such track.
+     */
+    attachVideo(identity: string, source: "camera" | "screen", element: HTMLVideoElement): () => void;
     /** Hand the media layer a per-participant frame key from the MatrixRTC session. */
     setKey(identity: string, index: number, key: Uint8Array): Promise<void>;
     /** Silence (or restore) all remote audio locally. */
@@ -29,6 +36,10 @@ export interface MediaParticipant {
     identity: string;
     speaking: boolean;
     muted: boolean;
+    /** A camera track exists, is not muted, and can be attached. */
+    camera: boolean;
+    /** A screen-share track exists, is not muted, and can be attached. */
+    screen: boolean;
 }
 
 export interface MediaSnapshot {
@@ -72,12 +83,22 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
     const worker = await options.createE2EEWorker();
     const room: Room = new lk.Room({
         e2ee: { keyProvider, worker },
-        // Voice only: the SFU gains nothing from adaptive video, and the default
-        // dynacast would try to negotiate layers for tracks we never publish.
-        adaptiveStream: false,
-        dynacast: false,
+        // A tile that is small or off-screen asks the SFU for a smaller layer
+        // (or none), sized from the element it is attached to; dynacast stops
+        // publishing layers nobody subscribes to.
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: { simulcast: true },
         audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
+
+    const trackSource = (source: "camera" | "screen"): Track.Source =>
+        source === "camera" ? lk.Track.Source.Camera : lk.Track.Source.ScreenShare;
+    /** A track we can draw: published, not muted, and (for a remote) subscribed. */
+    const live = (p: { getTrackPublication(source: Track.Source): { track?: unknown; isMuted: boolean } | undefined }, source: Track.Source): boolean => {
+        const publication = p.getTrackPublication(source);
+        return publication?.track != null && !publication.isMuted;
+    };
 
     const listeners = new Set<() => void>();
     const notify = (): void => listeners.forEach((listener) => listener());
@@ -101,6 +122,10 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         lk.RoomEvent.TrackUnmuted,
         lk.RoomEvent.LocalTrackPublished,
         lk.RoomEvent.LocalTrackUnpublished,
+        // A remote video track is only attachable once subscribed, and the
+        // snapshot's camera/screen flags wait for that.
+        lk.RoomEvent.TrackSubscribed,
+        lk.RoomEvent.TrackUnsubscribed,
     ] as const;
     for (const event of events) room.on(event, notify);
 
@@ -110,13 +135,11 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         const element = track.attach();
         elements.set(participant.identity, [...(elements.get(participant.identity) ?? []), element]);
         applyAudio(participant.identity);
-        notify();
     });
     room.on(lk.RoomEvent.TrackUnsubscribed, (track, _publication, participant: RemoteParticipant) => {
         if (track.kind !== lk.Track.Kind.Audio) return;
         track.detach();
         elements.delete(participant.identity);
-        notify();
     });
     room.on(lk.RoomEvent.ConnectionStateChanged, (state) => {
         connection =
@@ -148,6 +171,23 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
             await room.localParticipant.setMicrophoneEnabled(enabled);
             notify();
         },
+        async setCamera(enabled) {
+            await room.localParticipant.setCameraEnabled(enabled);
+            notify();
+        },
+        async setScreenShare(enabled) {
+            await room.localParticipant.setScreenShareEnabled(enabled);
+            notify();
+        },
+        attachVideo(identity, source, element) {
+            const participant = identity === room.localParticipant.identity ? room.localParticipant : room.remoteParticipants.get(identity);
+            const track = participant?.getTrackPublication(trackSource(source))?.track;
+            if (!track) return () => undefined;
+            track.attach(element);
+            return () => {
+                track.detach(element);
+            };
+        },
         setKey: (identity, index, key) => keyProvider.setRaw(identity, index, key),
         setDeafened(next) {
             deafened = next;
@@ -159,14 +199,14 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         },
         snapshot() {
             const local = room.localParticipant;
-            const participants: MediaParticipant[] = [
-                { identity: local.identity, speaking: local.isSpeaking, muted: !local.isMicrophoneEnabled },
-                ...[...room.remoteParticipants.values()].map((p) => ({
-                    identity: p.identity,
-                    speaking: p.isSpeaking,
-                    muted: !p.isMicrophoneEnabled,
-                })),
-            ];
+            const describe = (p: typeof local | RemoteParticipant): MediaParticipant => ({
+                identity: p.identity,
+                speaking: p.isSpeaking,
+                muted: !p.isMicrophoneEnabled,
+                camera: live(p, lk.Track.Source.Camera),
+                screen: live(p, lk.Track.Source.ScreenShare),
+            });
+            const participants: MediaParticipant[] = [describe(local), ...[...room.remoteParticipants.values()].map(describe)];
             return { connection, participants };
         },
         subscribe(listener) {

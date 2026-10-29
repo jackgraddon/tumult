@@ -75,7 +75,7 @@ function toggleMute(): void {
         :data-state="strip.state ?? 'idle'"
         aria-label="Voice call in this room"
     >
-        <Icon name="headphones" class="tumult-callstrip-icon" />
+        <Icon name="phone" class="tumult-callstrip-icon" />
         <span class="tumult-callstrip-status" role="status">{{ status }}</span>
         <ul class="tumult-callstrip-people" aria-label="In the call">
             <li
@@ -109,7 +109,7 @@ function toggleMute(): void {
                 </button>
             </template>
             <button v-else type="button" class="tumult-callstrip-join" @click="join">
-                <Icon name="headphones" />Join
+                <Icon name="phone" />Join
             </button>
         </div>
     </section>
