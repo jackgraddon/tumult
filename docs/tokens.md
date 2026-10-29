@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**289 tokens** — 91 primitives, 108 semantic, 90 component.
+**292 tokens** — 91 primitives, 110 semantic, 91 component.
 
 ## Primitives
 
@@ -214,6 +214,7 @@ everything built on it.
 | `--layout-guild-rail-width` | layout | `var(--prim-layout-rail)` | Guild rail width. |
 | `--layout-roomlist-width` | layout | `var(--prim-layout-roomlist)` | Room list width. |
 | `--layout-members-width` | layout | `var(--prim-layout-members)` | Members width. |
+| `--layout-timeline-min-width` | layout | `24rem` | Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout). |
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
@@ -221,6 +222,7 @@ everything built on it.
 | `--layout-voice-stage-max-height` | layout | `24rem` | Tallest the video stage above the timeline may grow before it scrolls. |
 | `--layout-settings-nav-width` | layout | `14rem` | Settings sidebar width. |
 | `--layout-settings-content-width` | layout | `46rem` | Settings page column max width. |
+| `--layout-settings-content-min-width` | layout | `26rem` | Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen. |
 
 ## Component
 
@@ -298,6 +300,7 @@ everything built on it.
 | `--settings-nav-item-danger` | color | `var(--danger)` | Settings sidebar destructive item (sign out). |
 | `--settings-nav-width` | layout | `var(--layout-settings-nav-width)` | Settings sidebar width. |
 | `--settings-content-width` | layout | `var(--layout-settings-content-width)` | Settings page column max width. |
+| `--settings-content-min-width` | layout | `var(--layout-settings-content-min-width)` | Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen. |
 | `--menu-bg` | color | `var(--surface-raised)` | Menu background. |
 | `--menu-border` | color | `var(--border-default)` | Menu border. |
 | `--menu-min-width` | layout | `var(--layout-menu-min-width)` | Menu minimum width. |

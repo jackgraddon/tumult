@@ -20,16 +20,16 @@ const props = defineProps<{
     client: ChatClient;
     /**
      * The room list is collapsed, so the bar only owns the rail track: keep the
-     * avatar (the account menu still reaches everything) and drop the name,
-     * status line and gear rather than letting them overflow.
+     * avatar and drop the name, status line and gear rather than letting them
+     * overflow. The account menu then carries "Settings…" in the gear's place.
      */
     compact?: boolean;
 }>();
 
+// The account menu is the quick, avatar-sized surface (who you are, your
+// status, your profile). Everything else — security, verification, sign out —
+// lives in the settings overlay the gear opens.
 const emit = defineEmits<{
-    signOut: [];
-    security: [];
-    verify: [];
     profile: [];
     settings: [];
     status: [];
@@ -94,17 +94,13 @@ function presenceTitle(): string {
                     <DropdownMenuItem class="tumult-menu-item" text-value="edit profile" @select="emit('profile')">
                         Edit profile…
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="tumult-menu-item" text-value="settings" @select="emit('settings')">
+                    <DropdownMenuItem
+                        v-if="compact"
+                        class="tumult-menu-item"
+                        text-value="settings"
+                        @select="emit('settings')"
+                    >
                         Settings…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem class="tumult-menu-item" text-value="security" @select="emit('security')">
-                        Security…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem class="tumult-menu-item" text-value="verify" @select="emit('verify')">
-                        Verify this device…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem class="tumult-menu-item" text-value="sign out" @select="emit('signOut')">
-                        Sign out
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenuPortal>

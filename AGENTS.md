@@ -221,10 +221,15 @@ chat client should be.
   Reka dialog for focus trap + Esc), not a centred card: a sidebar grouped by
   `SettingsTab.section` (`account` → `app` → `plugins`; no section means
   `plugins`, priority orders within one) and a page column capped at
-  `--settings-content-width`. The two halves wrap instead of using a media
-  query, because the theme gate forbids a literal length. Account things live
-  there (My Account = profile + sessions, Security = status + the SAS/backup
-  flows inline); the account menu deep-links via `initialTab`. The
+  `--settings-content-width`. Below `--settings-nav-width` +
+  `--settings-content-min-width` it goes NARROW (page list as its own screen,
+  Back on each page): measured by a `ResizeObserver` against a hidden probe
+  sized from those tokens, because a media query cannot read a custom property
+  and the theme gate forbids a literal length. Account things live there (My
+  Account = profile + sessions, Security = status + the SAS/backup flows
+  inline). The account menu is avatar-sized on purpose — Set status / Edit
+  profile (deep-links via `initialTab`), plus Settings only when the bar is
+  `compact` and the gear is hidden; sign out lives in the settings sidebar. The
   `SecurityModal` stays for the URGENT entries (banner, incoming request), so
   `SasVerify`/`BackupRecovery` emit `done` and the host decides what that
   closes — a `DialogClose` inside them would close the whole settings overlay.
@@ -249,6 +254,15 @@ chat client should be.
   for the same reason — a grid row under a full-height timeline would overlap
   it, and the pane's bar belongs to the pane (the pane's width, per
   `docs/plugins.md`).
+- **Phone layout:** below rail + room list + `--layout-timeline-min-width`
+  the shell goes `data-layout="phone"` and shows ONE screen (`data-screen`:
+  `nav` = rail + room list + user bar, `room`, `members`); the toolbar's
+  menu/members buttons become Back/Show members and the `showRoomList` /
+  `showMembers` props are ignored. Same probe + `ResizeObserver` as settings;
+  the probe hangs off the inline END because a wider-than-phone absolute box
+  would itself overflow the page. Hidden screens — rail and user bar included —
+  are 0-width + `inert`, so chrome collapses here and only here. The app's
+  router hands `roomId: ""` for a bare `/dms`: test selections by truthiness.
 - Contract: `MessageView` carries `type` + `content` (plain-JSON payload owned
   by the registered renderer) so game renderers never force a contract change.
   `timeline(roomId)` returns the SAME `Subscribable` per roomId, so

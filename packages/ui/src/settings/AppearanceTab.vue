@@ -6,6 +6,7 @@ import { useTheme } from "../theme/controls.ts";
 import { toHexColor } from "../theme/color.ts";
 import type { SettingsTabProps } from "./tabs.ts";
 import SegmentedChoice from "./SegmentedChoice.vue";
+import AppearancePreview from "./AppearancePreview.vue";
 
 // The client is not part of theming; declared so `client`/`close` do not fall
 // through onto the section element.
@@ -74,6 +75,11 @@ const densityOptions = computed(() =>
 </script>
 
 <template>
+    <!-- Pinned while the choices below scroll, so every toggle is seen as it lands. -->
+    <div class="tumult-appearance-preview">
+        <AppearancePreview />
+    </div>
+
     <section class="tumult-settings-section">
         <h3 class="tumult-settings-heading" id="tumult-theme-active-label">Theme</h3>
         <div class="tumult-theme-cards" role="radiogroup" aria-labelledby="tumult-theme-active-label">
@@ -146,6 +152,13 @@ const densityOptions = computed(() =>
 </template>
 
 <style scoped>
+.tumult-appearance-preview {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: var(--space-2) 0;
+    background: var(--settings-bg);
+}
 .tumult-theme-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--layout-menu-min-width), 1fr));

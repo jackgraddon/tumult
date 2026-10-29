@@ -791,6 +791,10 @@
                     "type": "string",
                     "description": "Members width."
                 },
+                "layout-timeline-min-width": {
+                    "type": "string",
+                    "description": "Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout)."
+                },
                 "layout-slideover-width": {
                     "type": "string",
                     "description": "Search / thread panel width."
@@ -818,6 +822,10 @@
                 "layout-settings-content-width": {
                     "type": "string",
                     "description": "Settings page column max width."
+                },
+                "layout-settings-content-min-width": {
+                    "type": "string",
+                    "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                 },
                 "control-radius": {
                     "type": "string",
@@ -1106,6 +1114,10 @@
                 "settings-content-width": {
                     "type": "string",
                     "description": "Settings page column max width."
+                },
+                "settings-content-min-width": {
+                    "type": "string",
+                    "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                 },
                 "menu-bg": {
                     "type": "string",
@@ -1956,6 +1968,10 @@
                         "type": "string",
                         "description": "Members width."
                     },
+                    "layout-timeline-min-width": {
+                        "type": "string",
+                        "description": "Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout)."
+                    },
                     "layout-slideover-width": {
                         "type": "string",
                         "description": "Search / thread panel width."
@@ -1983,6 +1999,10 @@
                     "layout-settings-content-width": {
                         "type": "string",
                         "description": "Settings page column max width."
+                    },
+                    "layout-settings-content-min-width": {
+                        "type": "string",
+                        "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                     },
                     "control-radius": {
                         "type": "string",
@@ -2271,6 +2291,10 @@
                     "settings-content-width": {
                         "type": "string",
                         "description": "Settings page column max width."
+                    },
+                    "settings-content-min-width": {
+                        "type": "string",
+                        "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                     },
                     "menu-bg": {
                         "type": "string",
@@ -3122,6 +3146,10 @@
                         "type": "string",
                         "description": "Members width."
                     },
+                    "layout-timeline-min-width": {
+                        "type": "string",
+                        "description": "Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout)."
+                    },
                     "layout-slideover-width": {
                         "type": "string",
                         "description": "Search / thread panel width."
@@ -3149,6 +3177,10 @@
                     "layout-settings-content-width": {
                         "type": "string",
                         "description": "Settings page column max width."
+                    },
+                    "layout-settings-content-min-width": {
+                        "type": "string",
+                        "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                     },
                     "control-radius": {
                         "type": "string",
@@ -3437,6 +3469,10 @@
                     "settings-content-width": {
                         "type": "string",
                         "description": "Settings page column max width."
+                    },
+                    "settings-content-min-width": {
+                        "type": "string",
+                        "description": "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen."
                     },
                     "menu-bg": {
                         "type": "string",

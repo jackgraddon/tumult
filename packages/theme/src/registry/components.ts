@@ -103,6 +103,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "settings-nav-item-danger", tier: "component", kind: "color", value: v("danger"), description: "Settings sidebar destructive item (sign out)." },
     { name: "settings-nav-width", tier: "component", kind: "layout", value: v("layout-settings-nav-width"), description: "Settings sidebar width." },
     { name: "settings-content-width", tier: "component", kind: "layout", value: v("layout-settings-content-width"), description: "Settings page column max width." },
+    { name: "settings-content-min-width", tier: "component", kind: "layout", value: v("layout-settings-content-min-width"), description: "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen." },
     { name: "menu-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "Menu background." },
     { name: "menu-border", tier: "component", kind: "color", value: v("border-default"), description: "Menu border." },
     { name: "menu-min-width", tier: "component", kind: "layout", value: v("layout-menu-min-width"), description: "Menu minimum width." },

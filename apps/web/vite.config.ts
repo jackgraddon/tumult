@@ -109,6 +109,31 @@ export default defineConfig(({ mode }) => {
             //
             // Dev-server only: the production build resolves the asset correctly.
             exclude: ["@matrix-org/matrix-sdk-crypto-wasm"],
+            // The SDK is only reached through the lazily imported chat client, so
+            // left to discovery the optimizer finds it mid-session, re-bundles,
+            // and answers the already-loaded page's old `?v=` hashes with
+            // "504 Outdated Optimize Dep" — a failed dynamic import ("Importing
+            // a module script failed." in Safari) on the Loading card. Bundling
+            // the client's value imports up front means no mid-session pass.
+            // Nested (`a > b`) because pnpm does not hoist: these resolve from
+            // `@tumult/core`, not from this app. The fake has no SDK at all.
+            include:
+                mode === "fake"
+                    ? []
+                    : [
+                          "@tumult/core > matrix-js-sdk",
+                          "@tumult/core > matrix-js-sdk/lib/@types/event.js",
+                          "@tumult/core > matrix-js-sdk/lib/@types/partials.js",
+                          "@tumult/core > matrix-js-sdk/lib/@types/read_receipts.js",
+                          "@tumult/core > matrix-js-sdk/lib/@types/requests.js",
+                          "@tumult/core > matrix-js-sdk/lib/@types/search.js",
+                          "@tumult/core > matrix-js-sdk/lib/crypto-api/CryptoEvent.js",
+                          "@tumult/core > matrix-js-sdk/lib/crypto-api/recovery-key.js",
+                          "@tumult/core > matrix-js-sdk/lib/crypto-api/verification.js",
+                          "@tumult/core > matrix-js-sdk/lib/matrixrtc/index.js",
+                          "@tumult/core > matrix-js-sdk/lib/sliding-sync.js",
+                          "@tumult/core > matrix-widget-api",
+                      ],
         },
         server: {
             port: 5173,

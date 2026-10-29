@@ -137,6 +137,7 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-guild-rail-width", tier: "semantic", kind: "layout", value: v("prim-layout-rail"), description: "Guild rail width." },
     { name: "layout-roomlist-width", tier: "semantic", kind: "layout", value: v("prim-layout-roomlist"), description: "Room list width." },
     { name: "layout-members-width", tier: "semantic", kind: "layout", value: v("prim-layout-members"), description: "Members width." },
+    { name: "layout-timeline-min-width", tier: "semantic", kind: "layout", description: "Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout)." },
     { name: "layout-slideover-width", tier: "semantic", kind: "layout", value: v("prim-layout-slideover"), description: "Search / thread panel width." },
     { name: "layout-menu-min-width", tier: "semantic", kind: "layout", value: v("prim-layout-menu-min"), description: "Menu minimum width." },
     { name: "layout-dialog-width", tier: "semantic", kind: "layout", description: "Dialog width before viewport clamp." },
@@ -144,4 +145,5 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-voice-stage-max-height", tier: "semantic", kind: "layout", description: "Tallest the video stage above the timeline may grow before it scrolls." },
     { name: "layout-settings-nav-width", tier: "semantic", kind: "layout", description: "Settings sidebar width." },
     { name: "layout-settings-content-width", tier: "semantic", kind: "layout", description: "Settings page column max width." },
+    { name: "layout-settings-content-min-width", tier: "semantic", kind: "layout", description: "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen." },
 ];

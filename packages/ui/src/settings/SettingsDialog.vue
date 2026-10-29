@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 import {
     DialogClose,
     DialogContent,
@@ -42,17 +42,54 @@ function firstTab(): string {
     return tabs.value[0]?.id ?? "";
 }
 
+// --- Narrow layout -----------------------------------------------------------
+// Side by side needs the sidebar AND a usable page. Below that the sidebar
+// becomes its own screen (the page list) and each page gets a Back button —
+// the phone pattern. The threshold is the theme's own two widths, measured off
+// a hidden probe sized `nav + content-min`: a media query cannot read a custom
+// property, and the token gate forbids a literal length in the stylesheet.
+const frame = ref<HTMLElement | null>(null);
+const probe = ref<HTMLElement | null>(null);
+const narrow = ref(false);
+/** Narrow only: which screen shows — the page list or the open page. */
+const narrowView = ref<"nav" | "page">("nav");
+
+function measure(): void {
+    if (!frame.value || !probe.value) return;
+    narrow.value = frame.value.clientWidth < probe.value.offsetWidth;
+}
+
+let observer: ResizeObserver | null = null;
+// DialogContent unmounts on close, so the frame comes and goes with `open`.
+watch(frame, (element) => {
+    observer?.disconnect();
+    observer = null;
+    if (!element) return;
+    observer = new ResizeObserver(measure);
+    observer.observe(element);
+    measure();
+});
+onScopeDispose(() => observer?.disconnect());
+
 // Every open lands on the page the caller asked for (a deep link from the
-// account menu), else the first page.
+// account menu), else the first page. On a narrow screen a deep link opens
+// that page; a plain open starts at the page list.
 watch(
     () => props.open,
     (open) => {
         if (!open) return;
         const wanted = props.initialTab;
-        active.value = wanted && registry.get(wanted) ? wanted : firstTab();
+        const deepLinked = Boolean(wanted && registry.get(wanted));
+        active.value = deepLinked && wanted ? wanted : firstTab();
+        narrowView.value = deepLinked ? "page" : "nav";
     },
     { immediate: true },
 );
+
+/** A user's pick (Reka emits only for those, never for our own assignment). */
+function onPick(): void {
+    narrowView.value = "page";
+}
 
 // Keep the selection valid as tabs come and go — a plugin uninstalled while the
 // dialog is open, or an install landing later, must not leave a dead page.
@@ -89,7 +126,36 @@ function signOut(): void {
                 <DialogDescription class="tumult-settings-sr">
                     Account, app and plugin settings. Press Escape to close.
                 </DialogDescription>
-                <TabsRoot v-model="active" orientation="vertical" class="tumult-settings-body">
+                <div
+                    ref="frame"
+                    class="tumult-settings-frame"
+                    :data-layout="narrow ? 'narrow' : 'wide'"
+                    :data-view="narrow ? narrowView : undefined"
+                >
+                <div ref="probe" class="tumult-settings-probe" aria-hidden="true" />
+                <!-- Narrow only: one bar for both screens, so close is always in reach. -->
+                <header v-if="narrow" class="tumult-settings-topbar">
+                    <button
+                        v-if="narrowView === 'page'"
+                        type="button"
+                        class="tumult-settings-back"
+                        aria-label="Back to settings"
+                        @click="narrowView = 'nav'"
+                    >
+                        <Icon name="chevron-left" />
+                    </button>
+                    <h2 class="tumult-settings-title">{{ narrowView === "page" ? activeTitle : "Settings" }}</h2>
+                    <DialogClose class="tumult-settings-close" aria-label="Close settings">
+                        <Icon name="close" />
+                    </DialogClose>
+                </header>
+                <TabsRoot
+                    v-model="active"
+                    orientation="vertical"
+                    :activation-mode="narrow ? 'manual' : 'automatic'"
+                    class="tumult-settings-body"
+                    @update:model-value="onPick"
+                >
                     <nav class="tumult-settings-nav" aria-label="Settings">
                         <TabsList class="tumult-settings-tabs" aria-label="Settings pages">
                             <template v-for="group in groups" :key="group.section">
@@ -115,7 +181,7 @@ function signOut(): void {
                     </nav>
                     <main class="tumult-settings-main">
                         <div class="tumult-settings-column">
-                            <header class="tumult-settings-header">
+                            <header v-if="!narrow" class="tumult-settings-header">
                                 <h2 class="tumult-settings-title">{{ activeTitle }}</h2>
                                 <DialogClose class="tumult-settings-close" aria-label="Close settings">
                                     <Icon name="close" />
@@ -136,6 +202,7 @@ function signOut(): void {
                         </div>
                     </main>
                 </TabsRoot>
+                </div>
             </DialogContent>
         </DialogPortal>
     </DialogRoot>
@@ -152,6 +219,21 @@ function signOut(): void {
 .tumult-settings:focus-visible {
     outline: none;
 }
+.tumult-settings-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+/* Measures the side-by-side threshold in the theme's own units. */
+.tumult-settings-probe {
+    position: absolute;
+    width: calc(var(--settings-nav-width) + var(--settings-content-min-width));
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
 .tumult-settings-sr {
     position: absolute;
     width: var(--hairline);
@@ -160,20 +242,18 @@ function signOut(): void {
     clip-path: inset(50%);
     white-space: nowrap;
 }
-/* Two flex children that wrap: side by side when the viewport has room for
-   the nav AND a page, stacked (nav on top) when it does not. No media query,
-   so the breakpoint follows the theme's own widths. */
+/* Side by side; each half scrolls on its own, so a long page never carries
+   the sidebar away. */
 .tumult-settings-body {
     display: flex;
-    flex-wrap: wrap;
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
 }
 .tumult-settings-nav {
     display: flex;
     flex-direction: column;
     flex: 1 0 var(--settings-nav-width);
+    overflow-y: auto;
     gap: var(--space-3);
     padding: var(--space-6) var(--space-3) var(--space-4);
     background: var(--settings-nav-bg);
@@ -243,9 +323,64 @@ function signOut(): void {
    aligned in its half) and the page (left-aligned in its half) meet near the
    centre instead of hugging the left edge. */
 .tumult-settings-main {
-    flex: 1 1 var(--settings-content-width);
+    flex: 1 1 var(--settings-content-min-width);
     min-width: 0;
+    overflow-y: auto;
     padding: var(--space-6) var(--space-4);
+}
+
+/* --- Narrow: one screen at a time ------------------------------------------ */
+.tumult-settings-topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: var(--border-width) solid var(--border-default);
+    background: var(--settings-nav-bg);
+}
+.tumult-settings-topbar .tumult-settings-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--text-md);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-settings-back {
+    display: inline-flex;
+    padding: var(--space-1);
+    border: none;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--icon-md);
+    cursor: pointer;
+}
+.tumult-settings-back:hover {
+    color: var(--text-primary);
+}
+.tumult-settings-back:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+}
+[data-layout="narrow"] .tumult-settings-nav {
+    padding: var(--space-3);
+}
+[data-layout="narrow"] .tumult-settings-tabs,
+[data-layout="narrow"] .tumult-settings-nav-footer {
+    width: 100%;
+    margin-left: 0;
+}
+[data-layout="narrow"] .tumult-settings-tab,
+[data-layout="narrow"] .tumult-settings-signout {
+    padding: var(--space-2);
+    font-size: var(--text-md);
+}
+[data-layout="narrow"] .tumult-settings-main {
+    padding: var(--space-4) var(--space-3);
+}
+[data-view="page"] .tumult-settings-nav,
+[data-view="nav"] .tumult-settings-main {
+    display: none;
 }
 .tumult-settings-column {
     display: flex;

@@ -446,8 +446,7 @@ describe("browser smoke test (fake client)", () => {
         // note inside that tab is styled by CSS the plugin injected via
         // `styles` — a marker custom property only resolves if that stylesheet
         // actually landed in the document.
-        await page.locator(".tumult-account").click();
-        await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+        await page.locator(".tumult-userbar-gear").click();
 
         const dialog = page.locator(".tumult-settings");
         await dialog.waitFor({ timeout: 10_000 });
@@ -736,8 +735,7 @@ describe("browser smoke test (fake client)", () => {
             await installed.goto(origin, { waitUntil: "domcontentloaded" });
             await installed.waitForSelector(".tumult-account", { timeout: 10_000 });
 
-            await installed.locator(".tumult-account").click();
-            await installed.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+            await installed.locator(".tumult-userbar-gear").click();
             await installed.getByRole("tab", { name: "Installed" }).click();
 
             await installed.locator("#tumult-plugin-url").fill("https://github.com/example/remote");
@@ -916,6 +914,18 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("opens Settings full-screen, deep-linked from the account menu", async () => {
+        // The account menu is the avatar-sized surface: identity, status,
+        // profile. Settings is the gear's job, and security, verification and
+        // sign out live inside it — so none of them repeat here.
+        await page.locator(".tumult-account").click();
+        const items = await page.locator(".tumult-menu-item").allTextContents();
+        assert.deepEqual(
+            items.map((item) => item.trim()),
+            ["Set status…", "Edit profile…"],
+            "the account menu should only carry the quick, avatar-sized actions",
+        );
+        await page.keyboard.press("Escape");
+
         // "Edit profile…" lands on My Account rather than the first page by
         // accident: the profile form is what the user asked for.
         await page.locator(".tumult-account").click();
@@ -938,14 +948,111 @@ describe("browser smoke test (fake client)", () => {
         await page.keyboard.press("Escape");
         await overlay.waitFor({ state: "hidden", timeout: 5_000 });
 
-        // "Security…" lands on the Security page, not the modal chooser.
-        await page.locator(".tumult-account").click();
-        await page.locator(".tumult-menu-item", { hasText: "Security" }).click();
-        await overlay.waitFor({ timeout: 10_000 });
-        assert.equal((await page.locator(".tumult-settings-title").innerText()).trim(), "Security");
-        assert.equal(await page.locator(".tumult-security-modal").count(), 0, "the security modal opened too");
-        await page.locator(".tumult-settings-close").click();
-        await overlay.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
+    it("turns the sidebar into its own screen when the page would not fit beside it", async () => {
+        // Below nav + minimum page width there is no room for both: the page
+        // list becomes a screen of its own and every page gets a Back button.
+        await page.setViewportSize({ width: 420, height: VIEWPORT.height });
+        try {
+            // The shell is in its phone layout here too, showing the room an
+            // earlier test opened; the user bar lives on the room list screen.
+            await page.getByLabel("Back to rooms").click();
+            await page.locator(".tumult-userbar-gear").click();
+            const overlay = page.locator(".tumult-settings");
+            await overlay.waitFor({ timeout: 10_000 });
+            const frame = page.locator(".tumult-settings-frame");
+            assert.equal(await frame.getAttribute("data-layout"), "narrow", "a phone-width overlay is not narrow");
+            assert.equal(await frame.getAttribute("data-view"), "nav", "a plain open should start at the page list");
+            assert.ok(await page.locator(".tumult-settings-nav").isVisible(), "the page list is hidden");
+            assert.ok(!(await page.locator(".tumult-settings-main").isVisible()), "a page shows under the list");
+
+            // Picking a page swaps screens; Back returns to the list.
+            await page.getByRole("tab", { name: "Security", exact: true }).click();
+            assert.equal(await frame.getAttribute("data-view"), "page");
+            assert.equal((await page.locator(".tumult-settings-topbar .tumult-settings-title").innerText()).trim(), "Security");
+            assert.ok(!(await page.locator(".tumult-settings-nav").isVisible()), "the list still shows over the page");
+            await page.locator(".tumult-settings-back").click();
+            assert.equal(await frame.getAttribute("data-view"), "nav", "Back did not return to the page list");
+
+            // Widening past the threshold puts both side by side again, live.
+            await page.setViewportSize(VIEWPORT);
+            await page.waitForFunction(
+                () => document.querySelector(".tumult-settings-frame")?.getAttribute("data-layout") === "wide",
+            );
+            assert.ok(await page.locator(".tumult-settings-main").isVisible(), "the page did not return beside the list");
+            await page.keyboard.press("Escape");
+            await overlay.waitFor({ state: "hidden", timeout: 5_000 });
+        } finally {
+            await page.setViewportSize(VIEWPORT);
+        }
+    });
+
+    it("shows one pane at a time at phone width, without overflowing the viewport", async () => {
+        // A grid wider than the phone forces the layout viewport out past
+        // device-width and the browser zooms the whole app out. Below rail +
+        // room list + minimum timeline the shell switches to one screen at a
+        // time: rail + room list, the room, or its members.
+        const PHONE = { width: 375, height: 812 };
+        const overflow = () =>
+            page.evaluate(() => ({
+                scroll: document.documentElement.scrollWidth,
+                client: document.documentElement.clientWidth,
+            }));
+        const grid = page.locator(".tumult-shell-grid");
+        await page.setViewportSize(PHONE);
+        try {
+            await page.goto(`${origin}/dms`, { waitUntil: "load" });
+            await page.waitForSelector(".tumult-dmlist li", { timeout: 20_000 });
+            assert.equal(await grid.getAttribute("data-layout"), "phone", "a phone-width shell is not in phone layout");
+            assert.equal(await grid.getAttribute("data-screen"), "nav", "a bare /dms should open on the room list");
+            let width = await overflow();
+            assert.equal(width.scroll, PHONE.width, "the room list screen overflows the phone");
+            assert.equal(width.client, PHONE.width);
+            assert.ok(await page.locator(".tumult-rail").isVisible(), "the rail is missing from the room list screen");
+            assert.equal(await page.locator(".tumult-pane-timeline").getAttribute("inert"), "", "the hidden timeline is not inert");
+
+            // Picking a room swaps to it; the room list goes inert at 0 width.
+            await page.locator(".tumult-dmlist li a").first().click();
+            await page.waitForFunction(
+                () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-screen") === "room",
+            );
+            await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+            width = await overflow();
+            assert.equal(width.scroll, PHONE.width, "the room screen overflows the phone");
+            const roomlist = page.locator(".tumult-pane-roomlist");
+            assert.equal(await roomlist.getAttribute("inert"), "", "the hidden room list is not inert");
+            assert.equal(Math.round((await roomlist.boundingBox())?.width ?? 0), 0, "the hidden room list keeps a width");
+            const timeline = await page.locator(".tumult-pane-timeline").boundingBox();
+            assert.equal(Math.round(timeline?.width ?? 0), PHONE.width, "the timeline does not take the whole phone");
+
+            // Read and send in it.
+            const body = `phone ${Date.now()}`;
+            await page.locator(".tumult-composer-input").fill(body);
+            await page.keyboard.press("Enter");
+            await page.locator(".tumult-row", { hasText: body }).waitFor({ timeout: 5_000 });
+
+            // Members is its own screen, with a way back.
+            await page.getByLabel("Show members").click();
+            assert.equal(await grid.getAttribute("data-screen"), "members");
+            assert.ok(await page.locator(".tumult-members").isVisible(), "the members screen shows no roster");
+            assert.equal((await overflow()).scroll, PHONE.width, "the members screen overflows the phone");
+            await page.getByLabel("Back to chat").click();
+            assert.equal(await grid.getAttribute("data-screen"), "room", "Back did not return to the room");
+            await page.getByLabel("Back to rooms").click();
+            assert.equal(await grid.getAttribute("data-screen"), "nav", "Back did not return to the room list");
+
+            // Widening restores the side-by-side panes, live.
+            await page.setViewportSize(VIEWPORT);
+            await page.waitForFunction(
+                () => document.querySelector(".tumult-shell-grid")?.getAttribute("data-layout") === "wide",
+            );
+            assert.equal(await grid.getAttribute("data-screen"), null, "a wide shell still names a phone screen");
+            assert.ok(await page.locator(".tumult-pane-timeline").isVisible(), "the timeline did not come back");
+            assert.equal(await page.locator(".tumult-pane-timeline").getAttribute("inert"), null);
+        } finally {
+            await page.setViewportSize(VIEWPORT);
+        }
     });
 
     it("flips every colour token for light mode, and flips back", async () => {
@@ -997,8 +1104,7 @@ describe("browser smoke test (fake client)", () => {
 
     async function openSettingsPage(name: string): Promise<void> {
         if (!(await page.locator(".tumult-settings").isVisible())) {
-            await page.locator(".tumult-account").click();
-            await page.locator(".tumult-menu-item", { hasText: "Settings" }).click();
+            await page.locator(".tumult-userbar-gear").click();
             await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
         }
         await page.getByRole("tab", { name, exact: true }).click();
@@ -1247,6 +1353,12 @@ describe("browser smoke test (fake client)", () => {
 
         const cozy = await readDensity();
         assert.equal(cozy.density, null, "cozy is the base density, so no data-density attribute");
+        const previewPadding = () =>
+            page
+                .locator(".tumult-preview-row")
+                .first()
+                .evaluate((row) => Math.round(Number.parseFloat(getComputedStyle(row).paddingTop)));
+        const previewCozy = await previewPadding();
         assert.ok(cozy.room && cozy.room.height > 0, "no room row to measure");
         assert.ok(cozy.messagePaddingTop !== null, "no message row to measure");
 
@@ -1267,6 +1379,12 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(
             compact.room && cozy.room && compact.room.paddingTop < cozy.room.paddingTop,
             "the density block changed the height without changing the padding token",
+        );
+        // The Appearance page's preview reads the same row token, so it packs
+        // tighter too — the whole point of showing it beside the choice.
+        assert.ok(
+            (await previewPadding()) < previewCozy,
+            "the appearance preview did not follow the density choice",
         );
 
         await choose("density", "spacious");

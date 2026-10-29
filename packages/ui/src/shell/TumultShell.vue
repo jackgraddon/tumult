@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
-import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
 import type { ChatClient, EncryptedAttachment, SpaceTree } from "@tumult/core";
@@ -87,10 +87,66 @@ const selectionContext: SelectionContext = {
     get current() {
         return props.selection;
     },
-    select: (next: RoomSelection) => emit("select", next),
+    select: (next: RoomSelection) => {
+        // A pick that lands on something to read opens it on a phone — even a
+        // re-tap of the room already selected, which changes no selection.
+        if (opensScreen(next)) phoneScreen.value = "room";
+        emit("select", next);
+    },
     hrefFor,
 };
 provide(SelectionKey, selectionContext);
+
+// --- Phone layout ------------------------------------------------------------
+// Side by side needs the rail, the room list AND a usable timeline. Below that
+// the shell shows one screen at a time — rail + room list, the timeline, or the
+// members — and the toolbar navigates between them instead of collapsing
+// tracks. The threshold is the theme's own widths, measured off a hidden probe:
+// a media query cannot read a custom property, and the token gate forbids a
+// literal length in the stylesheet (the settings overlay does the same).
+const shellEl = ref<HTMLElement | null>(null);
+const probe = ref<HTMLElement | null>(null);
+const phone = ref(false);
+/** Phone only: which screen shows. A deep link to a room opens on the room. */
+const phoneScreen = ref<"nav" | "room" | "members">(opensScreen(props.selection) ? "room" : "nav");
+
+/** A selection with something to read. Truthy, not `!== undefined`: the app's
+ *  router hands over `roomId: ""` for a bare `/dms`, as `activeRoom` knows. */
+function opensScreen(sel: RoomSelection): boolean {
+    return Boolean(sel.roomId) || sel.view === "pane";
+}
+
+function measureLayout(): void {
+    if (!shellEl.value || !probe.value) return;
+    phone.value = shellEl.value.clientWidth < probe.value.offsetWidth;
+}
+
+let layoutObserver: ResizeObserver | null = null;
+onMounted(() => {
+    if (!shellEl.value) return;
+    layoutObserver = new ResizeObserver(measureLayout);
+    layoutObserver.observe(shellEl.value);
+    measureLayout();
+});
+
+// Navigation that bypasses the selection context (a creator, a join, a leave)
+// still lands on the room it picked.
+watch(
+    () => [props.selection.view, props.selection.roomId, props.selection.paneId] as const,
+    (next, prev) => {
+        // The getter builds a fresh tuple every run: compare the parts, or a
+        // recompute with nothing new would yank the user off the room list.
+        if (next.every((part, i) => part === prev[i])) return;
+        if (opensScreen(props.selection)) phoneScreen.value = "room";
+    },
+);
+
+const roomListHidden = computed(() => (phone.value ? phoneScreen.value !== "nav" : !props.showRoomList));
+const membersHidden = computed(() => (phone.value ? phoneScreen.value !== "members" : !props.showMembers));
+// Wide, the timeline and the chrome never collapse; a phone hands the whole
+// width to one screen, so the others go to 0-width + inert like any pane.
+const timelineHidden = computed(() => phone.value && phoneScreen.value !== "room");
+const chromeHidden = computed(() => phone.value && phoneScreen.value !== "nav");
 
 // A leave/moderation request starts in a list row (which can't reach the
 // shell's dialogs) and lands in `roomAction` here. Declared above the plugin
@@ -588,6 +644,7 @@ onBeforeUnmount(() => {
     // logout doesn't lose it, and clear the timer so nothing writes past teardown.
     drafts.flush();
     props.client.setRoomSelection(null);
+    layoutObserver?.disconnect();
 });
 
 // Sliding sync pages the room window rather than returning every room at once.
@@ -612,7 +669,8 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 
 <template>
     <ConfigProvider>
-        <div class="tumult-shell">
+        <div ref="shellEl" class="tumult-shell">
+            <div ref="probe" class="tumult-shell-probe" aria-hidden="true" />
             <ConnectionBanner :connection="connection" />
             <SecurityBanner
                 :status="security"
@@ -624,14 +682,17 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 :data-roomlist="showRoomList ? 'open' : 'closed'"
                 :data-members="showMembers ? 'open' : 'closed'"
                 :data-view="activePane ? 'pane' : 'room'"
+                :data-layout="phone ? 'phone' : 'wide'"
+                :data-screen="phone ? phoneScreen : undefined"
             >
                 <GuildRail
+                    :inert="chromeHidden ? true : undefined"
                     :tree="tree"
                     :panes="panes.all()"
                     @create-space="roomAction = { kind: 'create-space' }"
                     @join="roomAction = { kind: 'join' }"
                 />
-                <div class="tumult-pane tumult-pane-roomlist" :inert="!showRoomList ? true : undefined">
+                <div class="tumult-pane tumult-pane-roomlist" :inert="roomListHidden ? true : undefined">
                     <!-- A workspace pane owns the left track: its own nav, not the room list. -->
                     <component :is="activePane.sidebar" v-if="activePane?.sidebar" class="tumult-pane-sidebar" />
                     <RoomListPane
@@ -653,9 +714,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     </div>
                     <VoiceBar v-if="voiceEnabled" :client="client" />
                 </div>
-                <div class="tumult-pane tumult-pane-timeline">
+                <div class="tumult-pane tumult-pane-timeline" :inert="timelineHidden ? true : undefined">
                     <div class="tumult-pane-toolbar">
-                        <IconButton label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
+                        <IconButton v-if="phone" label="Back to rooms" @click="phoneScreen = 'nav'"><Icon name="chevron-left" /></IconButton>
+                        <IconButton v-else label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
                         <CallMenu
                             v-if="!activePane && activeRoomId"
                             :voice="voiceEnabled"
@@ -664,7 +726,8 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                             @join="(video) => activeRoomId && joinCall(activeRoomId, video)"
                             @leave="activeRoomId && leaveCall(activeRoomId)"
                         />
-                        <IconButton v-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
+                        <IconButton v-if="!activePane && phone" label="Show members" @click="phoneScreen = 'members'"><Icon name="account-group" /></IconButton>
+                        <IconButton v-else-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
                         <IconButton
                             v-if="!activePane && threadsEnabled && activeRoomId"
                             label="Threads"
@@ -720,7 +783,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         />
                     </div>
                 </div>
-                <div class="tumult-pane tumult-pane-members" :inert="!showMembers ? true : undefined">
+                <div class="tumult-pane tumult-pane-members" :inert="membersHidden ? true : undefined">
+                    <div v-if="phone" class="tumult-pane-toolbar">
+                        <IconButton label="Back to chat" @click="phoneScreen = 'room'"><Icon name="chevron-left" /></IconButton>
+                    </div>
                     <!-- Keyed: one room's subscription tears down before the next mounts. -->
                     <MembersPane
                         :key="`${activeRoomId ?? 'none'}:${feedsReady}`"
@@ -733,12 +799,10 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                      room list's tracks, so the two leftmost panes end above it. -->
                 <UserBar
                     class="tumult-userbar"
+                    :inert="chromeHidden ? true : undefined"
                     :client="client"
                     :session="session"
-                    :compact="!showRoomList"
-                    @sign-out="emit('signOut')"
-                    @security="openAppSettings(SETTINGS_SECURITY)"
-                    @verify="openVerifyFlow()"
+                    :compact="phone ? false : !showRoomList"
                     @profile="openAppSettings(SETTINGS_ACCOUNT)"
                     @settings="openAppSettings()"
                     @status="statusModal = true"
@@ -825,6 +889,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 
 <style scoped>
 .tumult-shell {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100dvh;
@@ -909,6 +974,50 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
         0
         minmax(0, 1fr)
         0;
+}
+/* Phone: one screen at a time. Declared after the wide variants, at the same
+   or higher specificity, so a stale data-roomlist/data-members cannot win. The
+   hidden screens stay mounted as 0-width inert tracks. */
+.tumult-shell-grid[data-layout="phone"][data-screen="nav"] {
+    grid-template-columns:
+        var(--layout-guild-rail-width)
+        minmax(0, 1fr)
+        0
+        0;
+}
+.tumult-shell-grid[data-layout="phone"][data-screen="room"] {
+    grid-template-columns:
+        0
+        0
+        minmax(0, 1fr)
+        0;
+}
+.tumult-shell-grid[data-layout="phone"][data-screen="members"] {
+    grid-template-columns:
+        0
+        0
+        0
+        minmax(0, 1fr);
+}
+.tumult-shell-grid[data-layout="phone"] > .tumult-rail[inert],
+.tumult-shell-grid[data-layout="phone"] > .tumult-userbar[inert],
+.tumult-shell-grid[data-layout="phone"] > .tumult-pane-timeline[inert] {
+    width: 0;
+    overflow: hidden;
+    visibility: hidden;
+}
+/* Measures the side-by-side threshold in the theme's own units. Wider than a
+   phone by definition, so it hangs off the inline END: overflow toward the
+   start edge is not scrollable, and a probe that widened the page would force
+   the very zoom-out this layout exists to prevent. */
+.tumult-shell-probe {
+    position: absolute;
+    top: 0;
+    inset-inline-end: 0;
+    width: calc(var(--layout-guild-rail-width) + var(--layout-roomlist-width) + var(--layout-timeline-min-width));
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 .tumult-pane {
     min-width: 0;
