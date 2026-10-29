@@ -860,6 +860,11 @@ describe("browser smoke test (fake client)", () => {
             "unavailable",
             "the presence dot did not follow the written presence",
         );
+        // ONE source for our own dot: the member list's self row agrees with the bar.
+        const selfDot = page
+            .locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Demo$/ }) })
+            .locator(".tumult-member-dot");
+        assert.equal(await selfDot.getAttribute("data-presence"), "unavailable", "our member row disagrees with the bar");
 
         // Reopening seeds from the live feed, so the dialog shows what was saved.
         await page.locator(".tumult-userbar-status").click();

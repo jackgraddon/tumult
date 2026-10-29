@@ -50,6 +50,7 @@ function ago(ts: number): string {
 function presenceTitle(): string {
     const m = props.member;
     if (m.presence === "online") return "Online";
+    if (m.presence === "unavailable") return "Away";
     if (m.presence === "offline") return m.lastActiveTs ? `Last seen ${ago(m.lastActiveTs)}` : "Offline";
     return "Presence not yet known";
 }
@@ -161,6 +162,9 @@ function run(action: MemberMenuAction): void {
 }
 .tumult-member-dot[data-presence="online"] {
     background: var(--success);
+}
+.tumult-member-dot[data-presence="unavailable"] {
+    background: var(--warning);
 }
 .tumult-member-dot[data-presence="offline"] {
     background: var(--text-muted);

@@ -470,11 +470,19 @@ homeserver. A trap listed here has shipped broken at least once.
 - The SDK re-emits `UserEvent.Presence` on the CLIENT with `(event, user)` and
   no roomId — read `user.userId` and compare with the session's own id. This
   only fires under classic sync: SSS has no presence extension, so a status set
-  by ANOTHER client lands on the next read (a write or a reload), the same
-  honesty rule as members' presence.
-- `setOwnPresence` writes user-level state (last writer wins across clients) and
-  publishes the written value immediately, then re-reads; a failed re-read keeps
-  the previous snapshot rather than claiming the status was cleared.
+  by ANOTHER client lands on the next heartbeat read (60 s).
+- SSS never sends `set_presence`, so the server kept reporting us `offline`
+  while the app was open (and our member row, hardcoded `online`, disagreed
+  with the bar). Now: our own member row mirrors `ownPresence` (ONE source),
+  and `announcePresence()` re-asserts the user's last chosen presence
+  (`tumult.presence.desired`, default `online`) on start and every 60 s,
+  keeping the current `status_msg` (resent so the write cannot drop it).
+- `unavailable` ("Away") is a member `PresenceState`, not folded into
+  `offline`, so a row and the bar agree on it.
+- `setOwnPresence` writes user-level state (last writer wins across clients),
+  remembers the choice for the heartbeat, publishes the written value
+  immediately, then re-reads; a failed re-read keeps the previous snapshot
+  rather than claiming the status was cleared.
 
 ### Relations, replies & threads
 

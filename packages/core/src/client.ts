@@ -42,6 +42,7 @@ import type {
     SecurityStatus,
     SessionView,
     Subscribable,
+    Subscription,
     ThreadSummary,
     TypingState,
     UserSearchResult,
@@ -206,6 +207,21 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
 const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
 
 /**
+ * The presence the user last chose (`online` when never set). Re-asserted on
+ * start and on {@link OWN_PRESENCE_HEARTBEAT_MS}: sliding sync carries no
+ * `set_presence`, so without this the server never hears we are online and
+ * keeps reporting `offline` while we are plainly using the app.
+ */
+const PRESENCE_KEY = "tumult.presence.desired";
+
+/**
+ * How often our own presence is re-read and, if the server drifted (idle
+ * timeout, another client), re-asserted. Also how fast a status set on
+ * another device reaches the bar under sliding sync. One GET per tick.
+ */
+const OWN_PRESENCE_HEARTBEAT_MS = 60_000;
+
+/**
  * Throttle for progressive room-list refreshes during the first sync. Sliding
  * sync emits `ClientEvent.Room` once per room as it enters the window (roughly
  * 100 events on a large account), all before the single terminal
@@ -360,6 +376,9 @@ export class MatrixChatClient implements ChatClient {
      */
     private readonly ownPresenceState = new Observable<OwnPresenceView | null>(null);
     /** Coalesces `m.presence` bursts for our own user into one read. */
+    private ownPresenceHeartbeat: ReturnType<typeof setInterval> | null = null;
+    /** Mirrors `ownPresence` into the rosters, so our row matches the bar. */
+    private selfPresenceSubscription: Subscription | null = null;
     private readonly ownPresenceRefresh = new ThrottledTask(() => {
         void this.refreshOwnPresence();
     }, OWN_PRESENCE_REFRESH_MS);
@@ -622,6 +641,10 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._members = new MembersTracker(client);
+            this._members.setSelfPresence(this.ownPresenceState.get()?.presence ?? "unknown");
+            this.selfPresenceSubscription = this.ownPresenceState.subscribe((own) =>
+                this._members?.setSelfPresence(own?.presence ?? "unknown"),
+            );
             this._powerLevels = new PowerLevelsTracker(client);
             // `slidingSync` is a START option that selects the sync loop: the
             // SDK swaps to SlidingSyncSdk only when the instance is passed to
@@ -651,12 +674,14 @@ export class MatrixChatClient implements ChatClient {
             // seed the feed now rather than waiting for the first batch. A
             // failure publishes the localpart fallback (below) instead.
             void this.refreshProfile();
-            // Own presence/status is another independent HTTP read: seed the
-            // bar now, then let `m.presence` (classic sync) and our own writes
-            // refresh it. Under sliding sync there is no presence extension, so
-            // a status set by ANOTHER client lands on the next read (a write or
-            // a reload) — the same honesty rule as members' presence.
-            void this.refreshOwnPresence();
+            // Own presence/status is another independent HTTP read: read it
+            // now and re-assert the presence the user chose (sliding sync never
+            // tells the server we are here), then keep it honest on a
+            // heartbeat. `m.presence` (classic sync) and our own writes refresh
+            // it in between; under sliding sync a status set by ANOTHER client
+            // lands on the next heartbeat.
+            void this.announcePresence();
+            this.ownPresenceHeartbeat = setInterval(() => void this.announcePresence(), OWN_PRESENCE_HEARTBEAT_MS);
             const selfId = client.getUserId();
             client.on(UserEvent.Presence, (_event, user) => {
                 if (user.userId !== selfId) return;
@@ -756,6 +781,7 @@ export class MatrixChatClient implements ChatClient {
             this.clearProgressiveRefresh();
             this.securityRefresh.clear();
             this.ownPresenceRefresh.clear();
+            this.stopOwnPresence();
             this.matrix = null;
             this.store = null;
             this.timelines = null;
@@ -827,6 +853,7 @@ export class MatrixChatClient implements ChatClient {
         this.clearProgressiveRefresh();
         this.securityRefresh.clear();
         this.ownPresenceRefresh.clear();
+        this.stopOwnPresence();
         this.profileFieldsSupport = null;
         this.profileFields.clear();
         this.matrix = null;
@@ -846,6 +873,7 @@ export class MatrixChatClient implements ChatClient {
 
         if (session) {
             this.storage.removeItem(SSS_WINDOW_KEY);
+            this.storage.removeItem(PRESENCE_KEY);
             // The shell cache is account-scoped; drop it with the session so a
             // stale room list never bleeds into the next login.
             clearShellSnapshot(this.storage);
@@ -1095,6 +1123,8 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) throw new Error("Cannot set presence before start()");
         await client.setPresence(statusMessage === undefined ? { presence } : { presence, status_msg: statusMessage });
+        // Remember the choice: start and the heartbeat re-assert it.
+        this.storage.setItem(PRESENCE_KEY, presence);
         // The server accepted the write, so publish it immediately — the bar
         // must not sit on a stale status while a follow-up read is in flight.
         // The read then corrects anything the server normalised.
@@ -1471,6 +1501,7 @@ export class MatrixChatClient implements ChatClient {
     private async handleSessionLoggedOut(): Promise<void> {
         await this.stop();
         this.storage.removeItem(SSS_WINDOW_KEY);
+        this.storage.removeItem(PRESENCE_KEY);
         // The shell cache is account-scoped; a dropped session must not paint
         // the previous account's room list on the next boot.
         clearShellSnapshot(this.storage);
@@ -1677,6 +1708,39 @@ export class MatrixChatClient implements ChatClient {
         } catch (error) {
             console.error("[tumult] own presence snapshot failed", error);
         }
+    }
+
+    /**
+     * Read our presence and, when the server disagrees with what the user
+     * chose, write the choice back (keeping the current status message).
+     * Publishes whichever the server ends up holding. Never throws: a server
+     * with presence disabled keeps the last snapshot, as in refreshOwnPresence.
+     */
+    private async announcePresence(): Promise<void> {
+        const client = this.matrix;
+        if (!client) return;
+        try {
+            const current = await readOwnPresence(client);
+            const desired = this.storage.getItem<OwnPresenceState>(PRESENCE_KEY) ?? "online";
+            if (current.presence !== desired && this.matrix === client) {
+                await client.setPresence(
+                    current.statusMessage === null
+                        ? { presence: desired }
+                        : { presence: desired, status_msg: current.statusMessage },
+                );
+                current.presence = desired;
+            }
+            if (this.matrix === client) this.ownPresenceState.set(current);
+        } catch (error) {
+            console.error("[tumult] own presence announce failed", error);
+        }
+    }
+
+    private stopOwnPresence(): void {
+        if (this.ownPresenceHeartbeat !== null) clearInterval(this.ownPresenceHeartbeat);
+        this.ownPresenceHeartbeat = null;
+        this.selfPresenceSubscription?.unsubscribe();
+        this.selfPresenceSubscription = null;
     }
 
     /** Persist/restore the sliding-sync room-window upper bound across reloads. */

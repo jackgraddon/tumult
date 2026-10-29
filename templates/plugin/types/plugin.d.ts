@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.4.0";
+export declare const CONTRACT_VERSION = "1.5.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -366,12 +366,15 @@ export type Membership = "join" | "invite" | "leave" | "ban" | "knock";
  * from the store's cache is deliberately not trusted (it can be days old and
  * still say `"online"`), so a member stays `"unknown"` until the server tells
  * us otherwise. Never invent `"online"`.
+ *
+ * `"unavailable"` is Matrix's "away" (idle, or set by the user) — kept
+ * distinct from `"offline"` so a member row and the user bar agree on it.
+ * Our own row reads the same snapshot as {@link ChatClient.ownPresence}.
  */
-export type PresenceState = "online" | "offline" | "unknown";
+export type PresenceState = "online" | "unavailable" | "offline" | "unknown";
 /**
- * Presence we may set for our own user. The write enum differs from the read
- * side: `"unavailable"` is settable (not present on read members) and `"unknown"`
- * exists only for unread members, never as a self-written state.
+ * Presence we may set for our own user. `"unknown"` exists only on the read
+ * side (a member we have no live presence for), never as a self-written state.
  */
 export type OwnPresenceState = "online" | "offline" | "unavailable";
 /** Our own presence as the UI needs it (for the user bar and status editor). */
@@ -525,6 +528,10 @@ export interface ChatClient {
 	/**
 	 * Our own presence + status message, published once `start()` reads it and
 	 * refreshed after `setOwnPresence()`. `null` before there is a session.
+	 * The single source for our own dot: the user bar AND our member row.
+	 * The presence last chosen through `setOwnPresence()` (default `online`)
+	 * is re-asserted on start and on a heartbeat, because sliding sync never
+	 * reports us online to the server on its own.
 	 */
 	ownPresence: Subscribable<OwnPresenceView | null>;
 	/**

@@ -402,7 +402,7 @@ class FakeChatClient implements ChatClient {
     private readonly powerLevelFeeds = new Map<string, Observable<RoomPowerLevelsView | null>>();
     private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
-    /** Our own presence as the roster read-side sees it (no "unavailable"). */
+    /** Our own presence; the roster's self row mirrors `ownPresence`, like core. */
     private ownPresenceValue: PresenceState = "online";
 
     public constructor(seed: number) {
@@ -486,6 +486,14 @@ class FakeChatClient implements ChatClient {
 
     public async start(): Promise<void> {
         (this.connection as Observable<ConnectionState>).set("syncing");
+        // Core announces presence on start; the fake's bar must not sit on
+        // "unknown" while our row already says online.
+        if (this.ownPresence.get() === null) {
+            (this.ownPresence as Observable<OwnPresenceView | null>).set({
+                presence: this.ownPresenceValue as OwnPresenceState,
+                statusMessage: null,
+            });
+        }
     }
 
     public async stop(): Promise<void> {
@@ -1010,7 +1018,7 @@ class FakeChatClient implements ChatClient {
             presence,
             statusMessage: statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null,
         });
-        this.ownPresenceValue = presence === "unavailable" ? "offline" : presence;
+        this.ownPresenceValue = presence;
         for (const [roomId, roster] of this.rosters) {
             if (!roster.some((m) => m.isSelf)) continue;
             this.rosters.set(

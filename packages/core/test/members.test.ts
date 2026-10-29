@@ -185,8 +185,24 @@ describe("MembersTracker", () => {
             `lastActiveTs tracks last_active_ago, got ${after?.lastActiveTs}`,
         );
 
-        const self = tracker.members("!a").get().find((m) => m.isSelf);
-        assert.equal(self?.presence, "online", "we are the one looking at the roster");
+        // Our own row is NOT read from the SDK's User: it mirrors the client's
+        // ownPresence snapshot, so it agrees with the user bar.
+        const self = () => tracker.members("!a").get().find((m) => m.isSelf);
+        assert.equal(self()?.presence, "unknown", "no own snapshot yet");
+        tracker.setSelfPresence("unavailable");
+        assert.equal(self()?.presence, "unavailable");
+        tracker.setSelfPresence("online");
+        assert.equal(self()?.presence, "online");
+    });
+
+    it("keeps a member's away (unavailable) distinct from offline", () => {
+        const roomA = room("!a", [member("@alice:localhost", { rawDisplayName: "Alice" })]);
+        const matrix = stubMatrix([roomA]);
+        matrix.users.set("@alice:localhost", { presence: "unavailable", lastActiveAgo: 1000 });
+        const tracker = new MembersTracker(matrix);
+        tracker.members("!a");
+        tracker.applyPollPresence([{ userId: "@alice:localhost" }]);
+        assert.equal(tracker.members("!a").get()[0]?.presence, "unavailable");
     });
 
     it("drops presence queued from the cached first sync", () => {

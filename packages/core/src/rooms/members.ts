@@ -35,7 +35,8 @@ function isRostered(membership: string | undefined): boolean {
  */
 function toPresence(value: string | undefined): PresenceState {
     if (value === "online") return "online";
-    if (value === "offline" || value === "unavailable") return "offline";
+    if (value === "unavailable") return "unavailable";
+    if (value === "offline") return "offline";
     return "unknown";
 }
 
@@ -50,6 +51,7 @@ function snapshotMembers(
     room: Room,
     matrix: MatrixClient,
     livePresence: ReadonlySet<string>,
+    selfPresence: PresenceState,
 ): MemberView[] {
     const selfId = matrix.getUserId();
     const out: MemberView[] = [];
@@ -64,7 +66,9 @@ function snapshotMembers(
             membership: member.membership as MemberView["membership"],
             powerLevel: member.powerLevel ?? 0,
             isSelf,
-            ...presenceOf(matrix, member.userId, isSelf, livePresence),
+            ...(isSelf
+                ? { presence: selfPresence, lastActiveTs: selfPresence === "unknown" ? null : Date.now() }
+                : presenceOf(matrix, member.userId, livePresence)),
         });
     }
     out.sort(
@@ -91,11 +95,8 @@ function snapshotMembers(
 function presenceOf(
     matrix: MatrixClient,
     userId: string,
-    isSelf: boolean,
     livePresence: ReadonlySet<string>,
 ): { presence: PresenceState; lastActiveTs: number | null } {
-    // We are the one looking at the roster; our own dot is us, live.
-    if (isSelf) return { presence: "online", lastActiveTs: Date.now() };
     if (!livePresence.has(userId)) return { presence: "unknown", lastActiveTs: null };
     const user = matrix.getUser(userId);
     if (!user) return { presence: "unknown", lastActiveTs: null };
@@ -133,6 +134,11 @@ export class MembersTracker {
     private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly livePresence = new Set<string>();
     private readonly pendingPresence = new Set<string>();
+    /**
+     * Our own dot. Set by the client from its `ownPresence` snapshot, so our
+     * row and the user bar read ONE value; `unknown` until the server answers.
+     */
+    private selfPresence: PresenceState = "unknown";
     private readonly onMemberChange: (event: MatrixEvent, member: RoomMember) => void;
     private readonly onClientEvent: (event: MatrixEvent) => void;
     private readonly onSync: (state: SyncState, prev: SyncState | null, data?: SyncStateData) => void;
@@ -225,6 +231,13 @@ export class MembersTracker {
      * event is set — the trigger is each poll (not every sync), the sink is
      * the REST response.
      */
+    /** Publish our own presence into every roster (no-op when unchanged). */
+    public setSelfPresence(presence: PresenceState): void {
+        if (presence === this.selfPresence) return;
+        this.selfPresence = presence;
+        this.rebuildAll();
+    }
+
     public applyPollPresence(presence: Array<PresenceInput>): boolean {
         if (!presence.length) return false;
         for (const { userId } of presence) {
@@ -239,7 +252,7 @@ export class MembersTracker {
         const room = this.matrix.getRoom(roomId);
         const feed = this.feeds.get(roomId);
         // Room gone (left/kicked): an empty roster is the truth, not a stale list.
-        if (feed) feed.set(room ? snapshotMembers(room, this.matrix, this.livePresence) : []);
+        if (feed) feed.set(room ? snapshotMembers(room, this.matrix, this.livePresence, this.selfPresence) : []);
         const banned = this.bannedFeeds.get(roomId);
         if (banned) banned.set(room ? snapshotBanned(room, this.matrix) : []);
     }
