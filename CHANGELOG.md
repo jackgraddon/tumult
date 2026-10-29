@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.2](https://github.com/jackgraddon/tumult/compare/v0.3.0...v0.3.2) (2026-10-29)
+
+
+### Features
+
+* **ui:** phone-width layouts, appearance preview, slimmer account menu ([e8d7a66](https://github.com/jackgraddon/tumult/commit/e8d7a663baf90e368a327d701ed8628561bb07aa))
+* **voice:** native video and screen share, one Voice/Video call menu ([42b9b8f](https://github.com/jackgraddon/tumult/commit/42b9b8f2d1870d96a3a73206860ef0648129dfc0))
+
+
+### Bug Fixes
+
+* **presence:** one source for our own dot; announce presence under SSS ([511a287](https://github.com/jackgraddon/tumult/commit/511a28715508215198ca7a8407f60c6b9039f472))
+
 ## [0.3.0](https://github.com/jackgraddon/tumult/compare/v0.2.10...v0.3.0) (2026-10-28)
 
 
