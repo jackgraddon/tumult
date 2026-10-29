@@ -34,8 +34,14 @@ function shape(menu: RoomMenu): string[] {
 
 describe("buildRoomMenu", () => {
     it("offers the opposite of the room's pin and mute state", () => {
-        const ids = shape(buildRoomMenu(room({ favourite: true, muted: true })));
-        assert.deepEqual(ids.slice(0, 2), ["unpin", "unmute"]);
+        const menu = buildRoomMenu(room({ favourite: true, muted: true }));
+        assert.deepEqual(shape(menu).slice(0, 2), ["unpin", "unmute"]);
+        // The label names the state we would move to, so the toggles read as
+        // their own undo rather than repeating "Pin"/"Mute".
+        assert.deepEqual(
+            menu.entries.flatMap((entry) => (entry.kind === "item" ? [entry.label] : [])).slice(0, 2),
+            ["Unpin", "Unmute"],
+        );
     });
 
     it("offers copy and leave for a read room, with no mark-read to do", () => {
@@ -94,6 +100,9 @@ describe("buildRoomMenu", () => {
         );
         assert.deepEqual(labels, [
             "Mark as read",
+            "Pin to top",
+            "Mute",
+            "|",
             "Copy link",
             "Copy room ID",
             "|",
