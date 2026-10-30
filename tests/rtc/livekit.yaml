@@ -1,6 +1,19 @@
+# LiveKit SFU for the test stack (host networking, see docker-compose.yml).
 port: 7880
+# Loopback only: dev keys, no auth worth the name.
+bind_addresses: ["127.0.0.1"]
 rtc:
   tcp_port: 7881
+  # A narrow range: two browsers need a handful of ports, not ten thousand.
+  port_range_start: 50000
+  port_range_end: 50100
+  # Browsers and SFU share one host, so advertise loopback and nothing else:
+  # no STUN lookup of a public IP, and loopback candidates are collected (they
+  # are skipped by default).
   use_external_ip: false
+  node_ip: 127.0.0.1
+  enable_loopback_candidate: true
 keys:
   devkey: devsecret-devsecret-devsecret-0123
+logging:
+  level: info

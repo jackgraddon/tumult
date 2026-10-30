@@ -90,8 +90,10 @@ export default defineConfig(({ mode }) => {
         // the schemes a LAN server can use.
         "media-src 'self' blob: https: http:",
         // The same reason: a plugin talks to the server its user gave it,
-        // which is often plain http on a home network.
-        "connect-src 'self' https: http: wss:",
+        // which is often plain http on a home network. `ws:` is that rule for
+        // a WebSocket: a self-hosted SFU on a LAN (and the RTC test stack)
+        // signals over plain ws, and `http:` already permits plaintext.
+        "connect-src 'self' https: http: wss: ws:",
         "worker-src 'self' blob:",
         callOrigin ? `frame-src ${callOrigin}` : "frame-src 'none'",
     ].join("; ");
