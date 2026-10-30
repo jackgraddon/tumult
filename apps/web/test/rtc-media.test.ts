@@ -287,6 +287,15 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
             name: `Media ${suffix}`,
             preset: "private_chat",
             invite: [bob.userId],
+            // Encrypted, as real calls are: MatrixRTC sends its media keys as
+            // encrypted to-device messages, and crypto only tracks the devices
+            // of members of ENCRYPTED rooms ("unknown device" otherwise).
+            initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
+            // Joining a call is sending a `call.member` STATE event, which
+            // private_chat puts at power 50, so Bob (power 0) was refused with
+            // M_FORBIDDEN. Element creates rooms with it at 0; so does this.
+            // (Tumult's own createDm/createChannel do NOT, yet.)
+            power_level_content_override: { events: { "org.matrix.msc3401.call.member": 0 } },
         }));
         await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.accessToken, {});
 
