@@ -316,6 +316,20 @@ interface VoiceParticipant {
 	camera: boolean;
 	/** Whether a screen-share track is live and can be attached to a `<video>`. */
 	screen: boolean;
+	/**
+	 * Whether their screen share carries audio. Browser support for capturing it
+	 * is partial (none on Safari; on Chromium, a tab with "share audio" ticked),
+	 * so a silent share is normal and must be shown, not guessed at.
+	 */
+	screenAudio: boolean;
+}
+interface VoiceSettings {
+	/** Remove the sound of the other side coming out of our speakers. Wanted without headphones. */
+	echoCancellation: boolean;
+	/** Suppress steady background noise. Colours the voice, so off for a clean microphone. */
+	noiseSuppression: boolean;
+	/** Even out loudness automatically. Off to keep your own dynamics. */
+	autoGainControl: boolean;
 }
 type VoiceVideoSource = "camera" | "screen";
 interface VoiceView {
@@ -661,6 +675,10 @@ export interface ChatClient {
 	 * detaches (safe to call twice). A no-op detach when there is no such track.
 	 */
 	attachVoiceVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void;
+	/** How our microphone is processed. Persisted on this device, and available before a call starts. */
+	voiceSettings: Subscribable<VoiceSettings>;
+	/** Change microphone processing (any subset). Persists, and re-opens the microphone if a call is live. */
+	setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void>;
 	/** Silence or restore remote audio locally. A no-op when not in a session. */
 	setVoiceDeafened(deafened: boolean): void;
 	/** Local playback volume for one participant, 0 (silent) to 1. Not sent to anyone. */

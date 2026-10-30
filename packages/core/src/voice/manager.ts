@@ -1,10 +1,11 @@
 import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixRTCSession } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixClient } from "matrix-js-sdk";
-import type { VoiceParticipant, VoiceVideoSource, VoiceView } from "../contract.ts";
+import type { VoiceParticipant, VoiceSettings, VoiceVideoSource, VoiceView } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { getSfuConfig, discoverFoci, isLivekitFocus } from "./sfu.ts";
 import type { FocusDiscovery, SfuConfig } from "./sfu.ts";
+import { DEFAULT_VOICE_SETTINGS } from "../contract.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "./media.ts";
 
 /** How long the oldest member's transport may take to appear after we join. */
@@ -18,6 +19,8 @@ export interface VoiceManagerOptions {
     createMedia: () => Promise<VoiceMedia>;
     /** Overridable so tests need no network. */
     fetch?: typeof fetch;
+    /** Read at join time, so a change made before a call is honoured by it. */
+    voiceSettings?: () => VoiceSettings;
     /** Overridable so tests need no real waiting. */
     reconnectDelaysMs?: readonly number[];
 }
@@ -187,6 +190,10 @@ export class VoiceManager {
 
             await engine.connect(sfu.url, sfu.jwt);
             if (!live()) return;
+            // Before the microphone opens, or it opens under the wrong constraints
+            // and has to be opened twice.
+            await engine.setProcessing(this.settings());
+            if (!live()) return;
             await engine.setMicrophone(!this.muted);
             engine.setDeafened(this.deafened);
             // A camera that cannot start (no device, permission denied) must not
@@ -225,6 +232,15 @@ export class VoiceManager {
         if (!active) return;
         await active.media.setMicrophone(!muted);
         this.publishFromMedia();
+    }
+
+    /** Re-open the live microphone under new processing settings. A no-op outside a session. */
+    public async applySettings(settings: VoiceSettings): Promise<void> {
+        await this.active?.media.setProcessing(settings);
+    }
+
+    private settings(): VoiceSettings {
+        return this.options.voiceSettings?.() ?? DEFAULT_VOICE_SETTINGS;
     }
 
     public async setCamera(enabled: boolean): Promise<void> {
@@ -372,6 +388,7 @@ export class VoiceManager {
                 await active.media.connect(sfu.url, sfu.jwt);
                 if (!live()) return;
                 // Our published tracks died with the old connection.
+                await active.media.setProcessing(this.settings());
                 await active.media.setMicrophone(!this.muted);
                 active.media.setDeafened(this.deafened);
                 // Screen share ends with the connection (re-sharing needs a fresh
@@ -444,7 +461,7 @@ function stateOf(snapshot: MediaSnapshot): VoiceView["state"] {
 
 function toParticipant(p: MediaSnapshot["participants"][number]): VoiceParticipant {
     const { userId, deviceId } = parseIdentity(p.identity);
-    return { userId, deviceId, speaking: p.speaking, muted: p.muted, camera: p.camera, screen: p.screen };
+    return { userId, deviceId, speaking: p.speaking, muted: p.muted, camera: p.camera, screen: p.screen, screenAudio: p.screenAudio };
 }
 
 function message(error: unknown): string {

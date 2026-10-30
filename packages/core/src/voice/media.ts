@@ -1,5 +1,7 @@
 import type { Room, RemoteParticipant, Track } from "livekit-client";
 
+import type { VoiceSettings } from "../contract.ts";
+
 /**
  * What the voice manager needs from a media engine, as the narrowest surface
  * that lets the manager's logic be tested without LiveKit. The one real
@@ -12,6 +14,12 @@ export interface VoiceMedia {
     connect(url: string, jwt: string): Promise<void>;
     disconnect(): void;
     setMicrophone(enabled: boolean): Promise<void>;
+    /**
+     * How the microphone is processed. Applies to the next capture, and to the
+     * live one if there is one (the microphone is re-opened under the new
+     * constraints, so a call does not have to be left and rejoined).
+     */
+    setProcessing(settings: VoiceSettings): Promise<void>;
     setCamera(enabled: boolean): Promise<void>;
     setScreenShare(enabled: boolean): Promise<void>;
     /**
@@ -40,6 +48,8 @@ export interface MediaParticipant {
     camera: boolean;
     /** A screen-share track exists, is not muted, and can be attached. */
     screen: boolean;
+    /** A screen share's audio track exists and is not muted. */
+    screenAudio: boolean;
 }
 
 export interface MediaSnapshot {
@@ -103,14 +113,19 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
     const listeners = new Set<() => void>();
     const notify = (): void => listeners.forEach((listener) => listener());
     let deafened = false;
+    /** The muted microphone was captured under older processing settings. */
+    let staleCapture = false;
     const volumes = new Map<string, number>();
-    const elements = new Map<string, HTMLMediaElement[]>();
+    // Keyed by TRACK, not participant: one person can have a microphone and a
+    // screen-share audio track at once, and dropping one must not drop the other.
+    const elements = new Map<string, { identity: string; element: HTMLMediaElement }>();
     let connection: MediaConnection = "connecting";
 
-    const applyAudio = (identity: string): void => {
-        for (const element of elements.get(identity) ?? []) {
-            element.muted = deafened;
-            element.volume = volumes.get(identity) ?? 1;
+    const applyAudio = (identity?: string): void => {
+        for (const entry of elements.values()) {
+            if (identity !== undefined && entry.identity !== identity) continue;
+            entry.element.muted = deafened;
+            entry.element.volume = volumes.get(entry.identity) ?? 1;
         }
     };
 
@@ -133,13 +148,13 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         if (track.kind !== lk.Track.Kind.Audio) return;
         // A detached <audio> still plays, so core never touches the DOM.
         const element = track.attach();
-        elements.set(participant.identity, [...(elements.get(participant.identity) ?? []), element]);
+        elements.set(track.sid ?? `${participant.identity}:${elements.size}`, { identity: participant.identity, element });
         applyAudio(participant.identity);
     });
     room.on(lk.RoomEvent.TrackUnsubscribed, (track, _publication, participant: RemoteParticipant) => {
         if (track.kind !== lk.Track.Kind.Audio) return;
         track.detach();
-        elements.delete(participant.identity);
+        elements.delete(track.sid ?? "");
     });
     room.on(lk.RoomEvent.ConnectionStateChanged, (state) => {
         connection =
@@ -167,7 +182,25 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
             listeners.clear();
             elements.clear();
         },
+        async setProcessing(settings) {
+            // LiveKit reads these when it next captures; it also reads them for a
+            // restart, which is how a live microphone picks them up.
+            const defaults = (room.options.audioCaptureDefaults ??= {});
+            Object.assign(defaults, settings);
+            const track = room.localParticipant.getTrackPublication(lk.Track.Source.Microphone)?.audioTrack;
+            // A muted track may have its capture released; re-opening it now would
+            // light the browser's microphone indicator for someone who is muted.
+            // It is flagged and re-opened on unmute instead.
+            if (!track) return;
+            if (track.isMuted) staleCapture = true;
+            else await track.restartTrack({ ...settings });
+        },
         async setMicrophone(enabled) {
+            if (enabled && staleCapture) {
+                staleCapture = false;
+                const track = room.localParticipant.getTrackPublication(lk.Track.Source.Microphone)?.audioTrack;
+                if (track) await track.restartTrack({ ...room.options.audioCaptureDefaults });
+            }
             await room.localParticipant.setMicrophoneEnabled(enabled);
             notify();
         },
@@ -176,7 +209,27 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
             notify();
         },
         async setScreenShare(enabled) {
-            await room.localParticipant.setScreenShareEnabled(enabled);
+            // Audio is opt-in in LiveKit: without it a share is silent. It is a
+            // different kind of audio from the microphone (music, a game, a video),
+            // so the voice processing that suits speech would mangle it, and the
+            // call's own audio is kept out of it so others do not hear themselves.
+            // Browser support is partial (tab or system audio on Chromium; none on
+            // Safari), and a browser that cannot capture it shares video only.
+            await room.localParticipant.setScreenShareEnabled(
+                enabled,
+                enabled
+                    ? {
+                          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+                          systemAudio: "include",
+                      }
+                    : undefined,
+            );
+            // getDisplayMedia hands back video alone when the browser cannot (or the
+            // user did not) capture audio, and nothing errors. Say so where it can
+            // be found; the snapshot's `screenAudio` is what the UI shows.
+            if (enabled && !room.localParticipant.getTrackPublication(lk.Track.Source.ScreenShareAudio)) {
+                console.info("[tumult] the screen share has no audio: the browser captured video only");
+            }
             notify();
         },
         attachVideo(identity, source, element) {
@@ -191,7 +244,7 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         setKey: (identity, index, key) => keyProvider.setRaw(identity, index, key),
         setDeafened(next) {
             deafened = next;
-            for (const identity of elements.keys()) applyAudio(identity);
+            applyAudio();
         },
         setVolume(identity, volume) {
             volumes.set(identity, volume);
@@ -205,6 +258,7 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
                 muted: !p.isMicrophoneEnabled,
                 camera: live(p, lk.Track.Source.Camera),
                 screen: live(p, lk.Track.Source.ScreenShare),
+                screenAudio: live(p, lk.Track.Source.ScreenShareAudio),
             });
             const participants: MediaParticipant[] = [describe(local), ...[...room.remoteParticipants.values()].map(describe)];
             return { connection, participants };

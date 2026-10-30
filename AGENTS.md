@@ -785,7 +785,29 @@ homeserver. A trap listed here has shipped broken at least once.
   await; a failed join must `leaveRoomSession()` or it leaves a ghost
   participant. UNVERIFIED against a real SFU: tests stub the SDK session and the
   media engine (`test/voice.test.ts`); no audio has ever flowed. Not built: push
-  to talk, video/screen share, output-device choice, ringing/invites (MSC4075).
+  to talk, output-device choice, ringing/invites (MSC4075).
+  Video and screen share ARE built on the same session (`setVoiceCamera`,
+  `setVoiceScreenShare`, `attachVoiceVideo`; callIntent `"video"`): a
+  participant's `camera`/`screen` flag is true only once a track is live AND
+  attachable, so a mounted `VoiceTile` always has something to attach. The stage
+  (`calls/VoiceStage.vue`) must never scroll or grow: it has a token height
+  (`--layout-voice-stage-height`) or, expanded, covers the timeline pane, and
+  `calls/stageLayout.ts` (`bestGrid`) picks the grid that makes every tile as
+  large as that box allows. Clicking a tile toggles it in/out of the spotlight; a
+  screen is spotlit by default and several can be at once. Local custom
+  properties like `--cols` must be declared in the stylesheet or the token
+  coverage test reads them as unresolved references.
+  Microphone processing (`VoiceSettings`: echo cancellation, noise suppression,
+  auto gain; `voiceSettings` / `setVoiceSettings`) is a DEVICE preference, kept
+  under `tumult.voice.settings` and deliberately NOT cleared on logout. It is
+  applied before the microphone first opens (join and reconnect both re-read it),
+  and a live change re-opens the mic track with `restartTrack` — except while
+  muted, where it is flagged and re-opened on unmute so a muted user's browser
+  does not light its microphone indicator. It never touches screen-share audio,
+  which is captured with processing off on purpose. A UI value import from the
+  `@tumult/core` ROOT drags matrix-js-sdk into the fake bundle (the smoke test's
+  leak check catches it): shared constants like `DEFAULT_VOICE_SETTINGS` live in
+  `contract.ts` and the UI imports them from `@tumult/core/contract`.
 - **Focus discovery is revision drift inside ONE MSC, not official vs
   unofficial** (MSC4143 is unmerged either way). The current revision defines
   `GET /_matrix/client/unstable/org.matrix.msc4143/rtc/transports` (unstable

@@ -39,6 +39,7 @@ export type {
     VerificationRequestView,
     VerificationState,
     VoiceParticipant,
+    VoiceSettings,
     VoiceVideoSource,
     VoiceState,
     VoiceView,
@@ -76,3 +77,5 @@ export { hasStoredSession } from "./auth/session.ts";
 // does not drag the SDK back into the UI chunks.
 export { isTerminalMediaError } from "./media/classify.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
+
+export { DEFAULT_VOICE_SETTINGS } from "./contract.ts";

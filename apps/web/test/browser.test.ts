@@ -439,6 +439,49 @@ describe("browser smoke test (fake client)", () => {
         assert.match(await row.locator(".tumult-member-name").innerText(), /Alice/);
     });
 
+    it("turns microphone processing off and back on from the Voice settings page", async () => {
+        const openVoice = async (): Promise<void> => {
+            await page.locator(".tumult-userbar-gear").click();
+            await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+            await page.getByRole("tab", { name: "Voice" }).click();
+        };
+        const close = async (): Promise<void> => {
+            await page.keyboard.press("Escape");
+            await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+        };
+        const noise = page.getByTestId("voice-noiseSuppression");
+        const echo = page.getByTestId("voice-echoCancellation");
+        const gain = page.getByTestId("voice-autoGainControl");
+        const reset = page.getByRole("button", { name: "Reset to defaults" });
+
+        await openVoice();
+        // Everything is on by default, and there is nothing to reset.
+        assert.equal(await noise.isChecked(), true);
+        assert.equal(await reset.isDisabled(), true);
+
+        await noise.uncheck();
+        await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>(".tumult-voice-reset")?.disabled);
+        assert.equal(await echo.isChecked(), true, "the other two are untouched");
+
+        // The choice is the client's, not the page's: it survives closing and reopening.
+        await close();
+        await openVoice();
+        assert.equal(await noise.isChecked(), false, "the choice was not kept");
+        assert.equal(await gain.isChecked(), true);
+
+        // All three off is a deliberate setup, and the page says what it implies.
+        await echo.uncheck();
+        await gain.uncheck();
+        await page.getByText("Sending your microphone unprocessed").waitFor({ timeout: 10_000 });
+
+        await reset.click();
+        await page.waitForFunction(() =>
+            [...document.querySelectorAll<HTMLInputElement>("[data-testid^=voice-]")].every((input) => input.checked),
+        );
+        assert.equal(await reset.isDisabled(), true);
+        await close();
+    });
+
     it("renders a plugin settings tab, styled by the plugin's injected stylesheet", async () => {
         // Two extension points in one flow. The account menu opens the shell's
         // settings dialog: the built-in "Plugins" tab (the shell registering
@@ -454,7 +497,7 @@ describe("browser smoke test (fake client)", () => {
         const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
         assert.deepEqual(
             tabNames.map((name) => name.trim()),
-            ["My Account", "Security", "Appearance", "Themes", "Installed", "Plugin demo"],
+            ["My Account", "Security", "Appearance", "Voice", "Themes", "Installed", "Plugin demo"],
             "the sidebar is not the shell's pages plus the plugin's",
         );
         // A plugin page that names no section lands under the Plugins heading.
@@ -537,6 +580,58 @@ describe("browser smoke test (fake client)", () => {
         const bar = page.locator(".tumult-voice");
         await bar.getByRole("button", { name: "Turn off camera" }).click();
         await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-tile").length === 1);
+
+        await bar.getByRole("button", { name: "Disconnect" }).click();
+        await page.waitForSelector(".tumult-voice-stage", { state: "detached", timeout: 10_000 });
+    });
+
+    it("fits the video stage without scrolling, spotlights on click, and expands over the chat", async () => {
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        await page.getByRole("button", { name: "Choose call type" }).click();
+        await page.getByRole("menuitem", { name: "Video" }).click();
+        const stage = page.locator(".tumult-voice-stage");
+        await stage.waitFor({ timeout: 10_000 });
+
+        // Nothing scrolls: not the stage, not the page, whatever the window.
+        const overflows = (): Promise<boolean> =>
+            stage.evaluate((el) => el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth || document.documentElement.scrollHeight > window.innerHeight);
+        assert.equal(await overflows(), false, "the stage must fit its box");
+
+        // Two cameras, nothing spotlit: one even grid and no strip.
+        assert.equal(await stage.locator(".tumult-voice-strip").count(), 0);
+
+        // Click a tile: it goes up front and the other drops to the strip.
+        const tiles = stage.locator(".tumult-voice-tile");
+        await tiles.filter({ hasText: "alice" }).click();
+        await stage.locator(".tumult-voice-strip .tumult-voice-tile").waitFor({ timeout: 10_000 });
+        assert.equal(await stage.locator(".tumult-voice-main .tumult-voice-tile").count(), 1);
+        assert.equal(await stage.locator(".tumult-voice-main .tumult-voice-tile").getAttribute("aria-pressed"), "true");
+
+        // A shared screen starts in the spotlight beside it; both fit.
+        const bar = page.locator(".tumult-voice");
+        await bar.getByRole("button", { name: "Share screen" }).click();
+        await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-main .tumult-voice-tile").length === 2);
+        assert.equal(await overflows(), false, "several spotlit tiles still fit");
+        // The fake's share carries no audio, and the tile says so instead of leaving it to guess.
+        const screenTile = stage.locator(".tumult-voice-tile[data-source='screen']");
+        assert.match((await screenTile.textContent()) ?? "", /No audio/);
+        assert.doesNotMatch((await stage.locator(".tumult-voice-tile[data-source='camera']").first().textContent()) ?? "", /No audio/);
+
+        // Reverse the screen: it goes back to the strip.
+        await stage.locator(".tumult-voice-main .tumult-voice-tile[data-source='screen']").click();
+        await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-strip .tumult-voice-tile").length === 2);
+
+        // Expand covers the whole timeline pane; Esc gives it back.
+        const pane = page.locator(".tumult-pane-timeline");
+        await stage.getByRole("button", { name: "Expand video" }).click();
+        assert.equal(await stage.getAttribute("data-expanded"), "true");
+        const [paneBox, stageBox] = await Promise.all([pane.boundingBox(), stage.boundingBox()]);
+        assert.ok(paneBox && stageBox);
+        assert.ok(Math.abs(paneBox.height - stageBox.height) < 2 && Math.abs(paneBox.width - stageBox.width) < 2, "expanded stage covers the pane");
+        assert.equal(await overflows(), false, "expanded still fits");
+        await page.keyboard.press("Escape");
+        assert.equal(await stage.getAttribute("data-expanded"), "false");
 
         await bar.getByRole("button", { name: "Disconnect" }).click();
         await page.waitForSelector(".tumult-voice-stage", { state: "detached", timeout: 10_000 });

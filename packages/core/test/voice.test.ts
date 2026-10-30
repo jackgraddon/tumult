@@ -6,6 +6,8 @@ import type { MatrixClient } from "matrix-js-sdk";
 import type { VoiceView } from "../src/contract.ts";
 import { Observable } from "../src/observable.ts";
 import { VoiceManager } from "../src/voice/manager.ts";
+import { DEFAULT_VOICE_SETTINGS } from "../src/contract.ts";
+import { normalizeVoiceSettings } from "../src/voice/settings.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "../src/voice/media.ts";
 import { discoverFoci, getSfuConfig } from "../src/voice/sfu.ts";
 
@@ -53,6 +55,9 @@ class FakeMedia implements VoiceMedia {
     async setMicrophone(enabled: boolean): Promise<void> {
         this.log.push(["mic", enabled]);
     }
+    async setProcessing(settings: unknown): Promise<void> {
+        this.log.push(["processing", settings]);
+    }
     cameraError: Error | null = null;
     async setCamera(enabled: boolean): Promise<void> {
         this.log.push(["camera", enabled]);
@@ -98,6 +103,7 @@ function setup(
         existingFocus?: unknown;
         fetchImpl?: typeof fetch;
         reconnectDelaysMs?: number[];
+        voiceSettings?: () => { echoCancellation: boolean; noiseSuppression: boolean; autoGainControl: boolean };
     } = {},
 ) {
     const session = new FakeSession();
@@ -136,7 +142,7 @@ function setup(
         }) as unknown as typeof fetch);
     const feed = new Observable<VoiceView | null>(null);
     const roomsFeed = new Observable<Record<string, string[]>>({});
-    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl, ...(opts.reconnectDelaysMs ? { reconnectDelaysMs: opts.reconnectDelaysMs } : {}) }, feed, roomsFeed);
+    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl, ...(opts.reconnectDelaysMs ? { reconnectDelaysMs: opts.reconnectDelaysMs } : {}), ...(opts.voiceSettings ? { voiceSettings: opts.voiceSettings } : {}) }, feed, roomsFeed);
     return { manager, session, media, feed, roomsFeed, rtcManager, fetchCalls };
 }
 
@@ -239,7 +245,7 @@ describe("VoiceManager.join", () => {
         assert.equal(config["callIntent"], "audio");
         assert.equal(session.reemitted, 1, "keys minted before the listener attached are replayed");
         assert.deepEqual(fetchCalls, [[`${SERVICE}/sfu/get`, { room: ROOM, openid_token: { access_token: "oidc", matrix_server_name: "localhost" }, device_id: "DEV" }]]);
-        assert.deepEqual(media.log, [["connect", "wss://sfu.example.com", "tok"], ["mic", true], ["deafen", false]]);
+        assert.deepEqual(media.log, [["connect", "wss://sfu.example.com", "tok"], ["processing", { echoCancellation: true, noiseSuppression: true, autoGainControl: true }], ["mic", true], ["deafen", false]]);
         assert.equal(feed.get()?.roomId, ROOM);
     });
 
@@ -249,15 +255,15 @@ describe("VoiceManager.join", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@bob:example.com:XYZ", speaking: true, muted: true, camera: false, screen: false },
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: true, muted: true, camera: false, screen: false, screenAudio: false },
             ],
         });
         const view = feed.get();
         assert.equal(view?.state, "connected");
         assert.deepEqual(view?.participants, [
-            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false, camera: false, screen: false },
-            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true, camera: false, screen: false },
+            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true, camera: false, screen: false, screenAudio: false },
         ]);
         media.change({ ...media.snap, connection: "reconnecting" });
         assert.equal(feed.get()?.state, "reconnecting");
@@ -408,6 +414,58 @@ describe("VoiceManager.join", () => {
     });
 });
 
+describe("VoiceManager microphone processing", () => {
+    const RAW = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+    it("applies the stored settings before the microphone opens, so it opens once under the right constraints", async () => {
+        const { manager, media } = setup({ voiceSettings: () => RAW });
+        await manager.join(ROOM);
+        const names = media.log.map(([name]) => name);
+        assert.ok(names.indexOf("processing") > names.indexOf("connect"));
+        assert.ok(names.indexOf("processing") < names.indexOf("mic"), "settings first, then the microphone");
+        assert.deepEqual(media.log.find(([name]) => name === "processing")?.[1], RAW);
+    });
+
+    it("defaults to processing on when nothing was configured", async () => {
+        const { manager, media } = setup();
+        await manager.join(ROOM);
+        assert.deepEqual(media.log.find(([name]) => name === "processing")?.[1], { echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    });
+
+    it("re-applies a change to a live call, and ignores one when no call is open", async () => {
+        const { manager, media } = setup();
+        await manager.applySettings(RAW);
+        assert.ok(!media.log.some(([name]) => name === "processing"));
+        await manager.join(ROOM);
+        await manager.applySettings(RAW);
+        assert.deepEqual(media.log.at(-1), ["processing", RAW]);
+    });
+
+    it("reads the settings again when it re-dials, so a change made mid-call is not undone", async () => {
+        let current = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        const { manager, media } = setup({ reconnectDelaysMs: [0], voiceSettings: () => current });
+        await manager.join(ROOM);
+        current = RAW;
+        media.change({ ...media.snap, connection: "disconnected" });
+        await new Promise((r) => setTimeout(r, 5));
+        const applied = media.log.filter(([name]) => name === "processing");
+        assert.deepEqual(applied.at(-1)?.[1], RAW);
+    });
+});
+
+describe("normalizeVoiceSettings", () => {
+    it("completes anything stored into a full settings object", () => {
+        assert.deepEqual(normalizeVoiceSettings(null), DEFAULT_VOICE_SETTINGS);
+        assert.deepEqual(normalizeVoiceSettings({ noiseSuppression: false }), { echoCancellation: true, noiseSuppression: false, autoGainControl: true });
+    });
+
+    it("falls back per field on a mistyped value and drops unknown ones", () => {
+        const out = normalizeVoiceSettings({ echoCancellation: "no", autoGainControl: false, voiceIsolation: true });
+        assert.deepEqual(out, { echoCancellation: true, noiseSuppression: true, autoGainControl: false });
+        assert.ok(!("voiceIsolation" in out));
+    });
+});
+
 describe("VoiceManager video", () => {
     it("joins voice-only by default, with a membership intent of audio", async () => {
         const { manager, session, media, feed } = setup();
@@ -458,12 +516,25 @@ describe("VoiceManager video", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true },
-                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: true, screen: false },
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: true, screen: false, screenAudio: false },
             ],
         });
         assert.equal(feed.get()?.screen, true, "a share the browser ended would flip this back off");
         assert.equal(feed.get()?.participants[1]?.camera, true);
+    });
+
+    it("says whether each screen share carries audio, since a browser may capture video only", async () => {
+        const { manager, media, feed } = setup();
+        await manager.join(ROOM);
+        media.change({
+            connection: "connected",
+            participants: [
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: false, screen: true, screenAudio: true },
+            ],
+        });
+        assert.deepEqual(feed.get()?.participants.map((p) => p.screenAudio), [false, true]);
     });
 
     it("attaches a participant's track by LiveKit identity, and is inert outside a session", async () => {
@@ -513,9 +584,9 @@ describe("VoiceManager controls", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@bob:x:A", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@bob:x:B", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@eve:x:C", speaking: false, muted: false, camera: false, screen: false },
+                { identity: "@bob:x:A", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@bob:x:B", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@eve:x:C", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
             ],
         });
         manager.setUserVolume("@bob:x", 5);

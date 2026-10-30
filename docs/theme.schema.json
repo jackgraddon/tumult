@@ -807,13 +807,13 @@
                     "type": "string",
                     "description": "Dialog width before viewport clamp."
                 },
-                "layout-voice-tile-min-width": {
+                "layout-voice-stage-height": {
                     "type": "string",
-                    "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                    "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                 },
-                "layout-voice-stage-max-height": {
+                "layout-voice-strip-height": {
                     "type": "string",
-                    "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                    "description": "Height of the row of small tiles beside a spotlit participant or screen."
                 },
                 "layout-settings-nav-width": {
                     "type": "string",
@@ -1984,13 +1984,13 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
-                    "layout-voice-tile-min-width": {
+                    "layout-voice-stage-height": {
                         "type": "string",
-                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                        "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                     },
-                    "layout-voice-stage-max-height": {
+                    "layout-voice-strip-height": {
                         "type": "string",
-                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                        "description": "Height of the row of small tiles beside a spotlit participant or screen."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",
@@ -3162,13 +3162,13 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
-                    "layout-voice-tile-min-width": {
+                    "layout-voice-stage-height": {
                         "type": "string",
-                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                        "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                     },
-                    "layout-voice-stage-max-height": {
+                    "layout-voice-strip-height": {
                         "type": "string",
-                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                        "description": "Height of the row of small tiles beside a spotlit participant or screen."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",

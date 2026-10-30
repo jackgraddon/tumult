@@ -1,4 +1,5 @@
 import type {
+    VoiceSettings,
     VoiceVideoSource,
     VoiceView,
     CallView,
@@ -850,7 +851,7 @@ class FakeChatClient implements ChatClient {
         this.callState.set(null);
         const prior = this.voiceState.get();
         const camera = options.video === true;
-        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false, camera, screen: false };
+        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false, camera, screen: false, screenAudio: false };
         this.voiceState.set({
             roomId,
             state: "connected",
@@ -860,8 +861,15 @@ class FakeChatClient implements ChatClient {
             camera,
             screen: false,
             // Alice always has her camera on, so a tile is demoable without a device.
-            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false, camera: true, screen: false }],
+            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false, camera: true, screen: false, screenAudio: false }],
         });
+    }
+
+    private readonly voiceSettingsState = new Observable<VoiceSettings>({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    public readonly voiceSettings: Subscribable<VoiceSettings> = this.voiceSettingsState;
+
+    public async setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void> {
+        this.voiceSettingsState.set({ ...this.voiceSettingsState.get(), ...settings });
     }
 
     public async setVoiceCamera(enabled: boolean): Promise<void> {

@@ -218,8 +218,8 @@ everything built on it.
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
-| `--layout-voice-tile-min-width` | layout | `14rem` | Narrowest video tile in a call; the stage fits as many per row as this allows. |
-| `--layout-voice-stage-max-height` | layout | `24rem` | Tallest the video stage above the timeline may grow before it scrolls. |
+| `--layout-voice-stage-height` | layout | `22rem` | Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled. |
+| `--layout-voice-strip-height` | layout | `7rem` | Height of the row of small tiles beside a spotlit participant or screen. |
 | `--layout-settings-nav-width` | layout | `14rem` | Settings sidebar width. |
 | `--layout-settings-content-width` | layout | `46rem` | Settings page column max width. |
 | `--layout-settings-content-min-width` | layout | `26rem` | Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen. |

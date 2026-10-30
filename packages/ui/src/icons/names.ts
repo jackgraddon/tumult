@@ -9,6 +9,8 @@
  */
 export const BUILTIN_ICON_NAMES = [
     "alert",
+    "arrow-collapse-all",
+    "arrow-expand-all",
     "account-group",
     "chevron-down",
     "chevron-left",
@@ -31,6 +33,8 @@ export const BUILTIN_ICON_NAMES = [
     "pencil",
     "phone",
     "phone-hangup",
+    "pin",
+    "pin-off",
     "plus",
     "poll",
     "puzzle",
@@ -41,6 +45,7 @@ export const BUILTIN_ICON_NAMES = [
     "monitor-off",
     "video",
     "video-off",
+    "volume-off",
 ] as const;
 
 export type BuiltinIconName = (typeof BUILTIN_ICON_NAMES)[number];

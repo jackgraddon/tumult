@@ -17,6 +17,7 @@ import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
+    VoiceSettings,
     VoiceVideoSource,
     VoiceView,
     CallView,
@@ -89,6 +90,7 @@ import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingS
 import { CallManager } from "./call/manager.ts";
 import { VoiceManager } from "./voice/manager.ts";
 import { createLiveKitMedia } from "./voice/media.ts";
+import { normalizeVoiceSettings } from "./voice/settings.ts";
 import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
@@ -214,6 +216,9 @@ const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
  * keeps reporting `offline` while we are plainly using the app.
  */
 const PRESENCE_KEY = "tumult.presence.desired";
+// A device preference (which microphone processing it wants), not an account's,
+// so unlike the presence key it survives logout.
+const VOICE_SETTINGS_KEY = "tumult.voice.settings";
 
 /**
  * How often our own presence is re-read and, if the server drifted (idle
@@ -279,6 +284,7 @@ export class MatrixChatClient implements ChatClient {
     private _voice: VoiceManager | null = null;
     private readonly voiceState = new Observable<VoiceView | null>(null);
     private readonly voiceRoomsState = new Observable<Record<string, string[]>>({});
+    private readonly voiceSettingsState: Observable<VoiceSettings>;
     /** Thread tracking, alive while the sync loop runs. */
     private _threads: ThreadTracker | null = null;
     /** Per-room member rosters, alive while the sync loop runs. */
@@ -390,6 +396,7 @@ export class MatrixChatClient implements ChatClient {
         this.syncModeOption = options.syncMode ?? "auto";
         this.elementCallUrl = options.elementCallUrl || null;
         this.createE2EEWorker = options.createE2EEWorker ?? null;
+        this.voiceSettingsState = new Observable(normalizeVoiceSettings(this.storage.getItem(VOICE_SETTINGS_KEY)));
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
         this.securityRefresh = new ThrottledTask(() => {
             void this.refreshSecurity();
@@ -427,6 +434,10 @@ export class MatrixChatClient implements ChatClient {
 
     public get voice(): Subscribable<VoiceView | null> {
         return this.voiceState;
+    }
+
+    public get voiceSettings(): Subscribable<VoiceSettings> {
+        return this.voiceSettingsState;
     }
 
     public get voiceRooms(): Subscribable<Record<string, string[]>> {
@@ -629,7 +640,7 @@ export class MatrixChatClient implements ChatClient {
             if (createE2EEWorker) {
                 this._voice = new VoiceManager(
                     client,
-                    { createMedia: () => createLiveKitMedia({ createE2EEWorker }) },
+                    { createMedia: () => createLiveKitMedia({ createE2EEWorker }), voiceSettings: () => this.voiceSettingsState.get() },
                     this.voiceState,
                     this.voiceRoomsState,
                 );
@@ -1276,6 +1287,15 @@ export class MatrixChatClient implements ChatClient {
 
     public async setVoiceMuted(muted: boolean): Promise<void> {
         await this._voice?.setMuted(muted);
+    }
+
+    public async setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void> {
+        const next = normalizeVoiceSettings({ ...this.voiceSettingsState.get(), ...settings });
+        // Persist and publish first: the choice is the user's whether or not a
+        // call is open to apply it to, and a failed re-open must not lose it.
+        this.storage.setItem(VOICE_SETTINGS_KEY, next);
+        this.voiceSettingsState.set(next);
+        await this._voice?.applySettings(next);
     }
 
     public async setVoiceCamera(enabled: boolean): Promise<void> {

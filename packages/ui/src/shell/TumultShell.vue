@@ -56,6 +56,7 @@ import PowerLevelDialog from "../members/PowerLevelDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import PluginsTab from "../settings/PluginsTab.vue";
 import AppearanceTab from "../settings/AppearanceTab.vue";
+import VoiceTab from "../settings/VoiceTab.vue";
 import ThemesTab from "../settings/ThemesTab.vue";
 import AccountPage from "../settings/AccountPage.vue";
 import SecurityPage from "../settings/SecurityPage.vue";
@@ -315,6 +316,17 @@ if (tryUseTheme()) {
         title: "Themes",
         component: ThemesTab,
         section: "app",
+    });
+}
+
+// Microphone processing only means something where native voice is on.
+if (props.client.supportsVoice()) {
+    plugins.addSettingsTab({
+        id: "cc.jackg.tumult.voice",
+        title: "Voice",
+        component: VoiceTab,
+        section: "app",
+        priority: 5,
     });
 }
 
