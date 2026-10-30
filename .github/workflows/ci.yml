@@ -44,7 +44,7 @@ jobs:
     - name: Unit Tests
       # Hermetic per-package `test/` suites (core, ui, theme). The Docker-backed
       # integration suites (test-integration/, run via `pnpm test:integration`)
-      # are intentionally NOT in the default CI.
+      # are intentionally NOT in this gate: they run in integration.yml.
       run: pnpm -r test
 
     - name: Install Firefox for the browser smoke test

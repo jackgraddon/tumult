@@ -1,0 +1,64 @@
+name: Integration (real homeserver)
+
+# The Docker-backed suites, kept OUT of ci.yml so they never gate `main`: they
+# talk to a real Synapse and can fail for reasons a unit test cannot. This is
+# also the runner for dev machines with no container runtime —
+# `tests/container.sh` points there when it finds neither Docker nor Podman:
+#
+#   gh workflow run integration.yml --ref <branch>             # synapse suite
+#   gh workflow run integration.yml --ref <branch> -f suite=rtc
+#   gh run watch
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Which stack to run"
+        type: choice
+        options: [synapse, rtc, all]
+        default: synapse
+  schedule:
+    # Nightly, so drift (an SDK bump, a stale test) surfaces within a day.
+    - cron: "17 6 * * *"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "packages/core/**"
+      - "tests/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/integration.yml"
+
+concurrency:
+  group: integration-${{ github.ref }}-${{ inputs.suite || 'synapse' }}
+  cancel-in-progress: true
+
+jobs:
+  synapse:
+    # Every trigger runs this one unless a dispatch asked for rtc alone.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite != 'rtc' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install --frozen-lockfile
+      # The suites import packages/core/src directly, so nothing is built first.
+      # On failure, run.sh prints the container logs before tearing down.
+      - run: pnpm test:integration
+
+  rtc:
+    # Dispatch only: the stack has never run green, so it must not turn nightly
+    # runs red before someone has tuned it (see tests/rtc/docker-compose.yml).
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite != 'synapse' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:rtc

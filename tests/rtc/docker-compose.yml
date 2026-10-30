@@ -8,20 +8,24 @@
 # tune them on first run.
 services:
   synapse:
-    image: matrixdotorg/synapse:v1.163.0
+    # Images are fully qualified: Podman refuses short names without a TTY.
+    image: docker.io/matrixdotorg/synapse:v1.163.0
     ports:
       - "8018:8008"
     volumes:
-      - ./data:/data
-    command: ["run", "-c", "/data/homeserver.yaml", "-c", "/data/override.yaml"]
+      # `z` relabels for SELinux (Fedora); a no-op on hosts without it.
+      - ./data:/data:z
+      # Mounted, not copied into data/ (see tests/synapse/docker-compose.yml).
+      - ./override.yaml:/conf/override.yaml:ro,z
+    command: ["run", "-c", "/data/homeserver.yaml", "-c", "/conf/override.yaml"]
 
   livekit:
-    image: livekit/livekit-server:v1.9.0
+    image: docker.io/livekit/livekit-server:v1.9.0
     command: ["--config", "/etc/livekit.yaml"]
     ports:
       - "7880:7880"
     volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - ./livekit.yaml:/etc/livekit.yaml:ro,z
 
   lk-jwt-service:
     image: ghcr.io/element-hq/lk-jwt-service:latest

@@ -12,7 +12,8 @@
     "build": "pnpm -r build",
     "release": "node --import tsx scripts/release.ts",
     "lint": "eslint .",
-    "test:integration": "tests/synapse/run.sh"
+    "test:integration": "tests/synapse/run.sh",
+    "test:rtc": "tests/rtc/run.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

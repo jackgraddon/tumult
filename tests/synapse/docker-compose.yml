@@ -1,10 +1,15 @@
 services:
   synapse:
     # Pinned: matches the MSC4186 baseline in AGENTS.md. Bump deliberately.
-    image: matrixdotorg/synapse:v1.114.0
+    # Fully qualified: Podman refuses short image names without a TTY.
+    image: docker.io/matrixdotorg/synapse:v1.114.0
     ports:
       - "8008:8008"
     volumes:
-      - ./data:/data
+      # `z` relabels for SELinux (Fedora); a no-op on hosts without it.
+      - ./data:/data:z
+      # Mounted, not copied into data/: under rootless Podman, data/ belongs to
+      # the container's user after generation, so the host cannot write into it.
+      - ./override.yaml:/conf/override.yaml:ro,z
     # homeserver.yaml is generated once by run.sh; override.yaml layers test settings.
-    command: ["run", "-c", "/data/homeserver.yaml", "-c", "/data/override.yaml"]
+    command: ["run", "-c", "/data/homeserver.yaml", "-c", "/conf/override.yaml"]

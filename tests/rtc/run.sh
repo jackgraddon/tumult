@@ -1,42 +1,38 @@
 #!/bin/sh
 # Spin up Synapse + LiveKit + lk-jwt-service, run the call integration test,
-# tear it down. KEEP=1 leaves the stack running for debugging.
+# tear it down. KEEP=1 leaves the stack running for debugging. Docker or
+# Podman, see tests/container.sh.
 # UNVERIFIED on first write: see docker-compose.yml.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+LOG_PREFIX="[rtc]"
+COMPOSE_FILE="$HERE/docker-compose.yml"
+# shellcheck source=../container.sh
+. "$HERE/../container.sh"
+
 export TEST_SYNAPSE_URL="${TEST_SYNAPSE_URL:-http://localhost:8018}"
 export TEST_RTC=1
+pick_runtime
 
 if [ ! -f "$HERE/data/homeserver.yaml" ]; then
-    echo "[rtc] generating server config..."
+    echo "$LOG_PREFIX generating server config..."
     mkdir -p "$HERE/data"
-    docker run --rm \
-        -v "$HERE/data:/data" \
+    ctr run --rm \
+        -v "$HERE/data:/data:z" \
         -e SYNAPSE_SERVER_NAME=localhost \
         -e SYNAPSE_REPORT_STATS=no \
-        matrixdotorg/synapse:v1.163.0 generate
+        docker.io/matrixdotorg/synapse:v1.163.0 generate
 fi
 
-cp "$HERE/override.yaml" "$HERE/data/override.yaml"
-docker compose -f "$HERE/docker-compose.yml" down > /dev/null 2>&1 || true
-docker compose -f "$HERE/docker-compose.yml" up -d
+compose down > /dev/null 2>&1 || true
+trap stack_cleanup EXIT
+trap 'exit 130' INT TERM
+compose up -d
 
-cleanup() {
-    if [ "${KEEP:-0}" != "1" ]; then
-        docker compose -f "$HERE/docker-compose.yml" down
-    else
-        echo "[rtc] KEEP=1 — leaving the stack up"
-    fi
-}
-trap cleanup EXIT INT TERM
+wait_for_synapse
 
-echo "[rtc] waiting for Synapse..."
-for _ in $(seq 1 60); do
-    curl -sf "$TEST_SYNAPSE_URL/_matrix/client/versions" > /dev/null 2>&1 && break
-    sleep 2
-done
-curl -sf "$TEST_SYNAPSE_URL/_matrix/client/versions" > /dev/null
-
-echo "[rtc] running call integration tests..."
-node --test packages/core/test-integration/call.test.ts
+echo "$LOG_PREFIX running call integration tests..."
+cd "$ROOT/packages/core"
+node --test test-integration/call.test.ts
