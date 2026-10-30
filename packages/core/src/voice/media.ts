@@ -151,7 +151,7 @@ export async function createLiveKitMedia(options: LiveKitMediaOptions): Promise<
         elements.set(track.sid ?? `${participant.identity}:${elements.size}`, { identity: participant.identity, element });
         applyAudio(participant.identity);
     });
-    room.on(lk.RoomEvent.TrackUnsubscribed, (track, _publication, participant: RemoteParticipant) => {
+    room.on(lk.RoomEvent.TrackUnsubscribed, (track, _publication, _participant: RemoteParticipant) => {
         if (track.kind !== lk.Track.Kind.Audio) return;
         track.detach();
         elements.delete(track.sid ?? "");

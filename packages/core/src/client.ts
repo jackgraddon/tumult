@@ -1436,7 +1436,7 @@ export class MatrixChatClient implements ChatClient {
                 await crypto.restoreKeyBackup();
             } catch (cause) {
                 console.error("[tumult] key backup restore failed", cause);
-                throw new Error(restoreFailureMessage(cause));
+                throw new Error(restoreFailureMessage(cause), { cause });
             }
             // Verification half: the same pasted key unlocks 4S, which also
             // holds the cross-signing private keys. Importing them and

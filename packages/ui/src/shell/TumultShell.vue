@@ -341,7 +341,6 @@ const connection = useSubscribable(props.client.connection);
 const session = useSubscribable(props.client.session);
 const security = useSubscribable(props.client.security);
 const verification = useSubscribable(props.client.verification);
-const typing = useSubscribable(props.client.typing);
 
 // The "enter backup" path (create a key on a fresh account, otherwise enter one)
 // lives inside the chooser, so banner triggers and the menu all converge on the

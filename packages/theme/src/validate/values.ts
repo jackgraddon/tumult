@@ -33,6 +33,7 @@ const SHADOW_PART = new RegExp(
  * comment openers are pure syntax attacks. `url()` is separate (`banned-url`),
  * because a remote fetch is a different problem from a selector escape.
  */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const UNSAFE_VALUE = /[\u0000-\u001f\u007f;{}@<>\\]/;
 
 /** The offending substring of `value`, or null when it cannot escape a declaration. */

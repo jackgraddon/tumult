@@ -11,13 +11,19 @@
     "dev": "pnpm --filter @tumult/web dev",
     "build": "pnpm -r build",
     "release": "node --import tsx scripts/release.ts",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
     "test:integration": "tests/synapse/run.sh"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.4",
     "@vercel/node": "^25.0.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-vue": "^10.12.0",
+    "globals": "^17.13.0",
     "standard-version": "^9.1.2",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "typescript-eslint": "^8.72.1",
+    "vue-eslint-parser": "^10.4.1"
   }
 }

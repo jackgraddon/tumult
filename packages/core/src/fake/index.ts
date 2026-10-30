@@ -715,7 +715,6 @@ class FakeChatClient implements ChatClient {
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
         const obs = this.timelines.get(roomId);
         if (!obs) return;
-        const own = "@demo:example.com";
         const existing = obs
             .get()
             .find((m) => m.id === targetEventId)

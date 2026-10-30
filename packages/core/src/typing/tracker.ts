@@ -1,4 +1,4 @@
-import { ClientEvent, RoomEvent, RoomMemberEvent, type MatrixClient, type Room } from "matrix-js-sdk";
+import { ClientEvent, RoomMemberEvent, type MatrixClient } from "matrix-js-sdk";
 
 import type { TypingState } from "../contract.ts";
 import { Observable } from "../observable.ts";

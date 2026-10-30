@@ -28,7 +28,6 @@ import {
     type PendingInstall,
     type PluginInstallControls,
     type Plugin,
-    type PluginManifest,
     type SandboxHost,
 } from "@tumult/ui";
 

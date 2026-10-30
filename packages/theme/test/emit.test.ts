@@ -18,7 +18,6 @@ const theme = JSON.parse(readFileSync(join(here, "..", "themes", "default.json")
     modes?: Record<string, Record<string, string>>;
     densities?: Record<string, Record<string, string>>;
 };
-const defaults = theme.tokens;
 
 /** The `:root { … }` block alone: the mode/density blocks repeat token names. */
 function rootBlock(css: string): string {

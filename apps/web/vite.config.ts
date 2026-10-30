@@ -1,4 +1,5 @@
 import vue from "@vitejs/plugin-vue";
+import type { Plugin } from "vite";
 import { defineConfig, loadEnv } from "vite";
 
 /**
@@ -62,10 +63,12 @@ export default defineConfig(({ mode }) => {
     // by origin, and a path in CSP would silently stop matching on redirect.
     const callOrigin = /^https?:\/\/[^/?#]+/.exec(env.VITE_ELEMENT_CALL_URL ?? "")?.[0];
 
-    // The policy is one constant because dev and preview must not drift: the
-    // browser smoke test runs against `preview`, so a header only set on
-    // `server` would leave the plugin-blob and crypto-WASM allowances unverified
-    // (and the test would pass while a real preview deploy broke).
+    // The policy is one constant because dev and the build must not drift: dev
+    // sends it as a header, and the build embeds it in index.html (`cspMeta`
+    // below), which is what both production and the browser smoke test's
+    // `preview` serve. Preview deliberately sends NO header of its own — one
+    // would mask a broken meta policy, and the test would pass while production
+    // ran with none.
     const csp = [
         "default-src 'self'",
         // The Rust crypto layer is WASM ('wasm-unsafe-eval'), and the
@@ -93,8 +96,30 @@ export default defineConfig(({ mode }) => {
         callOrigin ? `frame-src ${callOrigin}` : "frame-src 'none'",
     ].join("; ");
 
+    // Production has no server of ours to set a header (Vercel serves the static
+    // build, and `vercel.json` is static so it cannot see `callOrigin`), so the
+    // BUILT document carries the policy itself. It goes straight after
+    // `<meta charset>`: before every script, preload and stylesheet (a meta
+    // policy only governs what follows it), but not before the charset, which
+    // browsers only honour within the first 1024 bytes. No anchor fails the
+    // build rather than shipping without a policy. A <meta> policy cannot
+    // express `frame-ancestors`; that one lives in `vercel.json`'s headers, and
+    // must stay out of `csp` (a meta policy that names it logs a console error).
+    const cspMeta: Plugin = {
+        name: "tumult-csp-meta",
+        apply: "build",
+        transformIndexHtml(html) {
+            const charset = /<meta charset="[^"]*"\s*\/?>/i.exec(html);
+            if (!charset) throw new Error("index.html has no <meta charset> to anchor the CSP <meta> after");
+            const escaped = csp.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+            const tag = `\n        <meta http-equiv="Content-Security-Policy" content="${escaped}" />`;
+            const end = charset.index + charset[0].length;
+            return html.slice(0, end) + tag + html.slice(end);
+        },
+    };
+
     return {
-        plugins: [vue()],
+        plugins: [vue(), cspMeta],
         // Read env files from the repo root, where `vercel pull` writes them and
         // where the local `.env.local` lives. See `envDir` above.
         envDir,
@@ -139,8 +164,8 @@ export default defineConfig(({ mode }) => {
             port: 5173,
             headers: { "Content-Security-Policy": csp },
         },
-        preview: {
-            headers: { "Content-Security-Policy": csp },
-        },
+        // Explicitly empty: `preview.headers` DEFAULTS to `server.headers`, so
+        // leaving it out sends the dev header and masks the built meta policy.
+        preview: { headers: {} },
     };
 });

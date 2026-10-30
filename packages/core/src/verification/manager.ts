@@ -7,7 +7,6 @@ import { VerifierEvent } from "matrix-js-sdk/lib/crypto-api/verification.js";
 import type { VerificationRequest } from "matrix-js-sdk/lib/crypto-api/verification";
 
 import type { VerificationRequestView, VerificationState } from "../contract.ts";
-import { Observable } from "../observable.ts";
 
 interface TrackedRequest {
     request: VerificationRequest;
@@ -214,7 +213,7 @@ export class VerificationManager {
             return verifier;
         } catch (cause) {
             const detail = cause instanceof Error ? cause.message : String(cause);
-            throw new Error(`Couldn't start emoji verification: ${detail}`);
+            throw new Error(`Couldn't start emoji verification: ${detail}`, { cause });
         }
     }
 

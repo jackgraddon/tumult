@@ -36,6 +36,11 @@ jobs:
     - name: Type Check
       run: pnpm -r typecheck
 
+    - name: Lint
+      # One flat config at the root (eslint.config.js): correctness rules only,
+      # no formatting and no type-aware rules — typing is the step above.
+      run: pnpm lint
+
     - name: Unit Tests
       # Hermetic per-package `test/` suites (core, ui, theme). The Docker-backed
       # integration suites (test-integration/, run via `pnpm test:integration`)

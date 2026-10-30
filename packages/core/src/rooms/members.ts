@@ -5,7 +5,6 @@ import {
     type MatrixEvent,
     type Room,
     type RoomMember,
-    type User,
     type SyncState,
     type SyncStateData,
 } from "matrix-js-sdk";

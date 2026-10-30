@@ -7,10 +7,6 @@ import { type PresenceInput } from "../src/rooms/members.ts";
 
 import type { RoomMember } from "matrix-js-sdk";
 
-interface StubRoom {
-    members: RoomMember[];
-    getMembers: () => RoomMember[];
-}
 
 function room(roomId: string, members: RoomMember[]): Room {
     return {

@@ -42,7 +42,6 @@ const messages = source ? useSubscribable(source) : null;
 // feed that will not come (a failed start), and saying "loading" would lie.
 const feedsReady = useFeedsReady(props.client);
 const session = useSubscribable(props.client.session);
-const typing = useSubscribable(props.client.typing);
 
 // Power levels gate the message menu's moderation actions. `useRoomPower`
 // resolves to null while the feed is unknown (and before start(), where

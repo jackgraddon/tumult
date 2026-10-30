@@ -55,7 +55,7 @@ async function start(): Promise<void> {
 // and the live transition waiting → incoming → sas → done/error.
 watch(
     verification,
-    (state) => {
+    () => {
         const req = currentRequest();
         if (!req) return;
 

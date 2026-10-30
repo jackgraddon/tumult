@@ -24,7 +24,6 @@ function parseCss(css: string): {
     const re = /:root\[data-theme="([^"]+)"\](?:\[data-(mode|density)="([^"]+)"\])?\s*\{\s*([^}]*)\}/gs;
     let m: RegExpExecArray | null;
     while ((m = re.exec(css)) !== null) {
-        const themeName = m[1];
         const kind = m[2]; // "mode" or "density" or undefined
         const name = m[3]; // the mode/density name
         const body = m[4];

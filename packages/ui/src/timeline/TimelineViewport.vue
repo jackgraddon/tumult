@@ -186,11 +186,10 @@ watch(
 // bottom. React to the spacer's own height changing (that is the reliable
 // trigger — the virtualizer gives no reactive hook on measurement updates)
 // and re-jump while we still track the tail.
-function onSpacerResize(entries: ResizeObserverEntry[]): void {
+function onSpacerResize(): void {
     if (!trackingTail.value) return;
-    for (const entry of entries) {
-        void nextTick(() => pinToBottom());
-    }
+    // One re-pin per batch: every entry asks for the same thing.
+    void nextTick(() => pinToBottom());
 }
 const spacerObserver = new ResizeObserver(onSpacerResize);
 onScopeDispose(() => spacerObserver.disconnect());

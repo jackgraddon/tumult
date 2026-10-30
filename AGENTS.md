@@ -833,8 +833,12 @@ homeserver. A trap listed here has shipped broken at least once.
   cause.
 - Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
   the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
-  (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production on Vercel
-  sets no CSP header at all (`vercel.json` has none) — a standing gap.
+  (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production gets that
+  policy as a `<meta>` the BUILD writes into `index.html` (right after
+  `<meta charset>`), because `vercel.json` is static and cannot see the env.
+  Dev sends it as a header; `preview.headers` is set to `{}` on purpose, since it
+  DEFAULTS to `server.headers` and would mask a broken meta in the smoke test.
+  What a meta policy cannot carry (`frame-ancestors`) is a `vercel.json` header.
 - The call app must be a DIFFERENT origin from Tumult: the iframe sandbox needs
   `allow-same-origin`, which would defeat the sandbox on our own origin.
 - `CallPanel` stays mounted for the whole call; "not viewing the call's room" is

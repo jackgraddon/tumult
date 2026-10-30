@@ -2224,6 +2224,35 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
     });
 
+    it("enforces the CSP from the built document itself, with no header", async () => {
+        // Production (Vercel) sends no policy header for the page; the build
+        // embeds it as a <meta>. Preview sends no header either, so this proves
+        // the meta alone is enforced — and it must come before every script and
+        // stylesheet, yet after the charset (which must sit in the first 1024 bytes).
+        // A page of its own: the blocked script below is a deliberate console
+        // error, which the main page's no-errors gate must not see.
+        const response = await fetch(`${origin}/?cb=${Date.now()}`);
+        assert.equal(response.headers.get("content-security-policy"), null, "preview must not mask the meta policy");
+        const html = await response.text();
+        assert.match(html, /<head>\s*<meta charset="[^"]*"\s*\/?>\s*<meta http-equiv="Content-Security-Policy"/i);
+        assert.ok(html.indexOf("<meta charset") < 1024, "the CSP meta pushed <meta charset> past the first 1024 bytes");
+
+        const probe = await context.newPage();
+        try {
+            await probe.goto(`${origin}/dms`, { waitUntil: "load" });
+            await probe.waitForSelector(".tumult-shell", { timeout: 20_000 });
+            const ran = await probe.evaluate(() => {
+                const script = document.createElement("script");
+                script.textContent = "window.__inlineRan = true";
+                document.head.append(script);
+                return (window as unknown as { __inlineRan?: boolean }).__inlineRan === true;
+            });
+            assert.equal(ran, false, "an inline script ran: the built document enforces no script-src");
+        } finally {
+            await probe.close();
+        }
+    });
+
     it("reports no console errors across the whole run", () => {
         assert.deepEqual(consoleErrors, []);
     });

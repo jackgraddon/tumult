@@ -20,7 +20,6 @@
 
 import {
     checkReleaseManifest,
-    deriveLane,
     hashBundle,
     hashMismatchReason,
     rawManifestUrl,
