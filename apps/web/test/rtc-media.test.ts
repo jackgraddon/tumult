@@ -359,9 +359,9 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
                 await p.page.waitForSelector(".tumult-shell", { timeout: 60_000 });
                 await p.page.getByRole("button", { name: "Choose call type" }).click({ timeout: 60_000 });
                 await p.page.getByRole("menuitem", { name: "Video" }).click();
-                // A locator, not waitForFunction: under the app's CSP (no
-                // 'unsafe-eval') Chromium never ran the predicate, so it timed
-                // out with "Voice connected" on screen.
+                // On failure the bar shows the error instead (e.g. M_FORBIDDEN
+                // when the room keeps call membership above a member's power),
+                // and the screenshot in test-results/ shows which person.
                 await p.page.locator(".tumult-voice").getByText("Voice connected").waitFor({ timeout: 60_000 });
             }
         } catch (error) {

@@ -24,6 +24,11 @@ on:
     paths:
       - "packages/core/**"
       - "tests/**"
+      # The media test drives the real app's call UI and CSP.
+      - "packages/ui/src/calls/**"
+      - "apps/web/vite.config.ts"
+      - "apps/web/src/chat.real.ts"
+      - "apps/web/test/rtc-media.test.ts"
       - "pnpm-lock.yaml"
       - ".github/workflows/integration.yml"
 
@@ -34,6 +39,7 @@ concurrency:
 jobs:
   synapse:
     # Every trigger runs this one unless a dispatch asked for rtc alone.
+    # (The default dispatch is synapse only: `-f suite=all` runs both.)
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite != 'rtc' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -49,9 +55,9 @@ jobs:
       - run: pnpm test:integration
 
   rtc:
-    # Dispatch only: the stack has never run green, so it must not turn nightly
-    # runs red before someone has tuned it (see tests/rtc/docker-compose.yml).
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite != 'synapse' }}
+    # MatrixRTC stack + the two-browser media test (~5 min). Every trigger runs
+    # it unless a dispatch asked for the synapse suite alone.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite != 'synapse' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

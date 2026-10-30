@@ -108,8 +108,11 @@ Once your work is merged into `main` and the CI passes:
 (`pnpm test:integration` → `tests/synapse/run.sh`) and the MatrixRTC stack
 (`pnpm test:rtc` → `tests/rtc/run.sh`) run against a real homeserver, so they live
 in `.github/workflows/integration.yml` and never block `main`. That workflow runs
-the Synapse suite nightly and on PRs touching `packages/core` or `tests/`; the RTC
-stack is on-demand only, since it has not run green yet.
+both nightly and on PRs touching `packages/core`, `tests/` or the call UI. The RTC
+run ends with a two-browser media test (`apps/web/test/rtc-media.test.ts`): two
+Chromiums join one encrypted video call through the built app and must hear each
+other's tone and see each other's colour. Its stack uses host networking (Linux;
+Docker Desktop needs host networking enabled); `RTC_MEDIA=0` skips the browsers.
 
 Locally they need **Docker or Podman** (`tests/container.sh` picks whichever
 works; force one with `CONTAINER_RUNTIME=podman`). With neither, run them on
