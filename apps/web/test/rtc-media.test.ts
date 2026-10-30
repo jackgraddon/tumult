@@ -350,11 +350,10 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
                 await p.page.waitForSelector(".tumult-shell", { timeout: 60_000 });
                 await p.page.getByRole("button", { name: "Choose call type" }).click({ timeout: 60_000 });
                 await p.page.getByRole("menuitem", { name: "Video" }).click();
-                const bar = p.page.locator(".tumult-voice");
-                await bar.waitFor({ timeout: 60_000 });
-                await p.page.waitForFunction(() => /Voice connected/.test(document.querySelector(".tumult-voice")?.textContent ?? ""), null, {
-                    timeout: 60_000,
-                });
+                // A locator, not waitForFunction: under the app's CSP (no
+                // 'unsafe-eval') Chromium never ran the predicate, so it timed
+                // out with "Voice connected" on screen.
+                await p.page.locator(".tumult-voice").getByText("Voice connected").waitFor({ timeout: 60_000 });
             }
         } catch (error) {
             failed = true;
