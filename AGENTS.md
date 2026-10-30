@@ -713,6 +713,17 @@ homeserver. A trap listed here has shipped broken at least once.
 
 ### Test & module tooling
 
+- After `stopClient()`, something in matrix-js-sdk keeps a Node process alive
+  ~110 s (VERIFIED on CI against Synapse: every integration file finished its
+  tests in 3–50 s, then lingered; twelve files overran a 20-minute job). The
+  runners pass `--test-force-exit`. Root cause NOT found — the test helpers
+  only poll, so the handle is the SDK's; `process.getActiveResourcesInfo()` in
+  an `after()` hook would name it. A browser tab hides this, but it is a
+  stop-path leak all the same.
+- An integration test that builds `MembersTracker` standalone must call
+  `setSelfPresence()` itself: own presence is fed by the client from
+  `ownPresence` and is `unknown` until then (two tests asserted `online` and
+  went stale when that became one source).
 - Deep SDK VALUE imports need the `.js` extension for Node strip-mode — tsc and
   Vite forgive extensionless deep imports, only `node --test` catches it (this
   bit `matrix-js-sdk/lib/@types/search`).

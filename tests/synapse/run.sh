@@ -17,8 +17,11 @@ COMPOSE_FILE="$HERE/docker-compose.yml"
 run_suite() {
     echo "$LOG_PREFIX running integration tests..."
     # Globbed, not a directory: `node --test <dir>` broke on Node 25.
+    # --test-force-exit: after stopClient() something in matrix-js-sdk keeps
+    # each file's process alive ~110 s past its last test, so twelve files
+    # overran CI's 20 minutes on 5-50 s of actual testing.
     cd "$ROOT/packages/core"
-    node --test ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
+    node --test --test-force-exit ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
 }
 
 if [ -n "${TEST_SYNAPSE_URL:-}" ]; then

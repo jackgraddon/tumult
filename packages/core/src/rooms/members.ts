@@ -222,6 +222,13 @@ export class MembersTracker {
         this.pendingPresence.clear();
     }
 
+    /** Publish our own presence into every roster (no-op when unchanged). */
+    public setSelfPresence(presence: PresenceState): void {
+        if (presence === this.selfPresence) return;
+        this.selfPresence = presence;
+        this.rebuildAll();
+    }
+
     /**
      * Sliding sync carries no presence in its sync envelope, so inject it here
      * from the REST poll: mark the user live (so `presenceOf` no longer says
@@ -230,13 +237,6 @@ export class MembersTracker {
      * event is set — the trigger is each poll (not every sync), the sink is
      * the REST response.
      */
-    /** Publish our own presence into every roster (no-op when unchanged). */
-    public setSelfPresence(presence: PresenceState): void {
-        if (presence === this.selfPresence) return;
-        this.selfPresence = presence;
-        this.rebuildAll();
-    }
-
     public applyPollPresence(presence: Array<PresenceInput>): boolean {
         if (!presence.length) return false;
         for (const { userId } of presence) {

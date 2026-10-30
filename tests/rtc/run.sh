@@ -35,4 +35,4 @@ wait_for_synapse
 
 echo "$LOG_PREFIX running call integration tests..."
 cd "$ROOT/packages/core"
-node --test test-integration/call.test.ts
+node --test --test-force-exit test-integration/call.test.ts
