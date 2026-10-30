@@ -28,13 +28,16 @@
  */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { build, preview, type PreviewServer } from "vite";
+
+import { createDm } from "../../../packages/core/src/rooms/lifecycle.ts";
 
 const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://127.0.0.1:8018";
 const enabled = process.env["TEST_RTC"] === "1";
@@ -42,6 +45,9 @@ const PORT = 4175;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..");
+// matrix-js-sdk is core's dependency, not this app's (pnpm does not hoist):
+// resolve it from core, which is also the copy lifecycle.ts imports.
+const coreRoot = join(here, "..", "..", "..", "packages", "core");
 const resultsDir = join(appRoot, "test-results", "rtc-media");
 
 type Rgb = [number, number, number];
@@ -283,20 +289,20 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
         const suffix = Date.now().toString(36);
         const accounts = await Promise.all(PEOPLE.map((p) => register(`${p.name}-${suffix}`)));
         const [alice, bob] = accounts as [(typeof accounts)[0], (typeof accounts)[0]];
-        ({ room_id: roomId } = await api<{ room_id: string }>("POST", "/_matrix/client/v3/createRoom", alice.accessToken, {
-            name: `Media ${suffix}`,
-            preset: "private_chat",
-            invite: [bob.userId],
-            // Encrypted, as real calls are: MatrixRTC sends its media keys as
-            // encrypted to-device messages, and crypto only tracks the devices
-            // of members of ENCRYPTED rooms ("unknown device" otherwise).
-            initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
-            // Joining a call is sending a `call.member` STATE event, which
-            // private_chat puts at power 50, so Bob (power 0) was refused with
-            // M_FORBIDDEN. Element creates rooms with it at 0; so does this.
-            // (Tumult's own createDm/createChannel do NOT, yet.)
-            power_level_content_override: { events: { "org.matrix.msc3401.call.member": 0 } },
-        }));
+        // The room is made by Tumult's own createDm, the code behind "new DM",
+        // so the call runs in the room the app really creates. Two things in it
+        // matter here, and each broke this test before it was there:
+        //  - Bob is a plain member (power 0), and joining is a `call.member`
+        //    STATE event; createDm opens that to members (it used to be 50,
+        //    and every member but the creator got M_FORBIDDEN).
+        //  - Encrypted, as real DMs are: MatrixRTC sends media keys as
+        //    encrypted to-device messages, and crypto only tracks the devices
+        //    of ENCRYPTED rooms' members ("unknown device" otherwise).
+        const sdk = (await import(pathToFileURL(createRequire(join(coreRoot, "package.json")).resolve("matrix-js-sdk")).href)) as {
+            createClient: (opts: { baseUrl: string; userId: string; accessToken: string; deviceId: string }) => unknown;
+        };
+        const aliceSdk = sdk.createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.accessToken, deviceId: alice.deviceId });
+        roomId = await createDm(aliceSdk as Parameters<typeof createDm>[0], { userId: bob.userId, encrypted: true });
         await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.accessToken, {});
 
         for (const [i, spec] of PEOPLE.entries()) {

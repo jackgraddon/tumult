@@ -34,10 +34,24 @@ interface StateCall {
 }
 
 /** Stub MatrixClient recording createRoom + state-event + account-data calls. */
+/** What Synapse's private_chat preset writes (handlers/room.py), abridged. */
+const PRESET_POWER_LEVELS = {
+    users: { "@me:localhost": 100 },
+    users_default: 0,
+    events: { "m.room.power_levels": 100, "m.room.encryption": 100, "m.room.server_acl": 100, "m.room.name": 50 },
+    events_default: 0,
+    state_default: 50,
+    invite: 0,
+};
+
+const CALL_MEMBER = "org.matrix.msc3401.call.member";
+
 function lifecycleStub(opts: {
     domain?: string | null;
     direct?: Record<string, string[]>;
     joinReturns?: string;
+    /** The new room's power levels as the server reports them; an Error to make the read fail. */
+    powerLevels?: Record<string, unknown> | Error;
 } = {}): {
     matrix: MatrixClient;
     created: CreateRoomOpts[];
@@ -58,6 +72,11 @@ function lifecycleStub(opts: {
         createRoom: async (o: CreateRoomOpts) => {
             created.push(o);
             return { room_id: `!new${created.length}:localhost` };
+        },
+        getStateEvent: async (_roomId: string, eventType: string) => {
+            assert.equal(eventType, "m.room.power_levels");
+            if (opts.powerLevels instanceof Error) throw opts.powerLevels;
+            return structuredClone(opts.powerLevels ?? PRESET_POWER_LEVELS);
         },
         sendStateEvent: async (roomId: string, eventType: string, content: Record<string, unknown>, stateKey?: string) => {
             state.push({ roomId, eventType, content, stateKey });
@@ -108,18 +127,34 @@ describe("createChannel", () => {
         assert.equal(created[0]!.preset, "private_chat");
         assert.equal(created[0]!.room_alias_name, undefined);
         assert.equal(created[0]!.initial_state, undefined);
-        // Only the two link events — no m.room.encryption anywhere.
+        // Calls opened to members, then the two link events — no
+        // m.room.encryption anywhere.
         assert.deepEqual(
             state.map((s) => s.eventType),
-            ["m.space.child", "m.space.parent"],
+            ["m.room.power_levels", "m.space.child", "m.space.parent"],
         );
+    });
+
+    it("lets every member join calls, raising only that one level", async () => {
+        const { matrix, state } = lifecycleStub();
+        await createChannel(matrix, "!guild:localhost", { name: "general" });
+        const write = state.find((s) => s.eventType === "m.room.power_levels")!;
+        assert.equal(write.roomId, "!new1:localhost");
+        assert.equal(write.stateKey, "");
+        // Everything the server set survives: an override on createRoom would
+        // have REPLACED `events` and dropped these 100s to state_default.
+        assert.deepEqual(write.content, {
+            ...PRESET_POWER_LEVELS,
+            events: { ...PRESET_POWER_LEVELS.events, [CALL_MEMBER]: 0 },
+        });
     });
 
     it("links child and parent with a non-empty via (snapshot drops empty via)", async () => {
         const { matrix, state } = lifecycleStub();
         await createChannel(matrix, "!guild:localhost", { name: "general" });
-        assert.equal(state.length, 2, "both m.space.child and m.space.parent are written");
-        const [child, parent] = state;
+        const links = state.filter((s) => s.eventType.startsWith("m.space."));
+        assert.equal(links.length, 2, "both m.space.child and m.space.parent are written");
+        const [child, parent] = links;
         assert.equal(child!.roomId, "!guild:localhost");
         assert.equal(child!.eventType, "m.space.child");
         assert.equal(child!.stateKey, "!new1:localhost");
@@ -172,6 +207,33 @@ describe("createDm", () => {
         assert.equal(opts.is_direct, true);
         assert.deepEqual(opts.invite, ["@bob:localhost"]);
         assert.equal(opts.initial_state, undefined, "unencrypted unless asked");
+    });
+
+    it("lets the invitee join calls (the preset keeps call membership at 50)", async () => {
+        const { matrix, state } = lifecycleStub();
+        await createDm(matrix, { userId: "@bob:localhost" });
+        assert.equal(state.length, 1);
+        assert.equal(state[0]!.eventType, "m.room.power_levels");
+        assert.equal((state[0]!.content["events"] as Record<string, number>)[CALL_MEMBER], 0);
+        assert.equal((state[0]!.content["events"] as Record<string, number>)["m.room.power_levels"], 100, "nothing else is lowered");
+    });
+
+    it("writes nothing when the room already lets members join calls", async () => {
+        const { matrix, state } = lifecycleStub({
+            powerLevels: { ...PRESET_POWER_LEVELS, events: { ...PRESET_POWER_LEVELS.events, [CALL_MEMBER]: 0 } },
+        });
+        await createDm(matrix, { userId: "@bob:localhost" });
+        assert.equal(state.length, 0);
+    });
+
+    it("still creates the DM when the power-level write fails, and logs it", async (t) => {
+        const warn = t.mock.method(console, "warn", () => {});
+        const { matrix, accountData } = lifecycleStub({ powerLevels: new Error("M_FORBIDDEN") });
+        const roomId = await createDm(matrix, { userId: "@bob:localhost" });
+        assert.equal(roomId, "!new1:localhost", "the room exists, so creation must not report failure");
+        assert.equal(accountData.length, 1, "and it is still filed under m.direct");
+        assert.equal(warn.mock.callCount(), 1);
+        assert.match(String(warn.mock.calls[0]!.arguments[0]), /only admins can join/);
     });
 
     it("merges m.direct without dropping other users' entries", async () => {

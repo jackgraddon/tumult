@@ -15,6 +15,43 @@ import type {
 const MEGOLM = "m.megolm.v1.aes-sha2";
 
 /**
+ * Let every member of a room we just created join its calls.
+ *
+ * Joining a MatrixRTC call (compatibility mode, see voice/sfu.ts) is sending an
+ * `org.matrix.msc3401.call.member` STATE event, and the presets leave state
+ * events at `state_default` (50) — so without this only the creator could join
+ * and everyone else was refused with M_FORBIDDEN. Element creates rooms with
+ * it at 0; so do we.
+ *
+ * A follow-up write, not `power_level_content_override` on createRoom: Synapse
+ * applies that override with a SHALLOW update, so passing `events` replaces the
+ * whole default map and silently drops `m.room.power_levels`,
+ * `m.room.encryption`, `m.room.server_acl` (100) and friends to 50. Those
+ * defaults also differ by room version (v12 puts tombstone at 150) and by
+ * server config, so they cannot be restated here. Reading the room's actual
+ * levels and raising one entry is right for all of them.
+ *
+ * Never throws: the room already exists, and reporting a failed create for it
+ * would be worse than calls being admin-only in it. The failure is logged.
+ */
+async function allowCallsForMembers(matrix: MatrixClient, roomId: string): Promise<void> {
+    try {
+        const current = (await matrix.getStateEvent(roomId, EventType.RoomPowerLevels, "")) as {
+            events?: Record<string, number>;
+        };
+        if (current.events?.[EventType.GroupCallMemberPrefix] === 0) return;
+        await matrix.sendStateEvent(
+            roomId,
+            EventType.RoomPowerLevels,
+            { ...current, events: { ...current.events, [EventType.GroupCallMemberPrefix]: 0 } } as never,
+            "",
+        );
+    } catch (error) {
+        console.warn(`[tumult] could not open calls to members of ${roomId}; only admins can join them`, error);
+    }
+}
+
+/**
  * Lifecycle verbs (create / join / leave / invite) plus directory search.
  * Free functions over the SDK so the call shapes are unit-testable without a
  * homeserver — same split as redact.ts and search.ts.
@@ -53,6 +90,7 @@ export async function createChannel(
             ? { initial_state: [{ type: "m.room.encryption", content: { algorithm: MEGOLM } }] }
             : {}),
     });
+    await allowCallsForMembers(matrix, roomId);
 
     // Link the channel into its space. `via` must be non-empty: snapshotRooms
     // treats an empty/absent via as a REMOVED link and drops the parent, so a
@@ -74,6 +112,7 @@ export async function createDm(matrix: MatrixClient, params: CreateDmParams): Pr
             ? { initial_state: [{ type: "m.room.encryption", content: { algorithm: MEGOLM } }] }
             : {}),
     });
+    await allowCallsForMembers(matrix, roomId);
     // Record the mapping so other clients file this under DMs too. Merge, not
     // replace: m.direct holds every DM on the account and overwriting it would
     // un-file everyone else's.

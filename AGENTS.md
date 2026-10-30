@@ -803,11 +803,16 @@ homeserver. A trap listed here has shipped broken at least once.
   push to talk, output-device choice, ringing/invites (MSC4075).
 - Joining is sending a `call.member` STATE event, so a room that leaves it at
   `state_default` (50 under `private_chat`) refuses every plain member with
-  M_FORBIDDEN — only admins can join. Element creates rooms with
-  `org.matrix.msc3401.call.member: 0`; Tumult's `createDm`/`createChannel` do
-  NOT (VERIFIED by the media test, which now creates its room like Element).
-  On that refusal the client still connects to LiveKit (a ghost that receives
-  undecryptable media) and the voice bar prints the raw MatrixError + URL.
+  M_FORBIDDEN — only admins can join (found by the media test). Element creates
+  rooms with `org.matrix.msc3401.call.member: 0`; `createDm`/`createChannel`
+  now do too (`allowCallsForMembers` in `rooms/lifecycle.ts`), as a follow-up
+  power-levels write rather than `power_level_content_override` — Synapse
+  applies that override SHALLOWLY, so passing `events` replaces the default
+  map and drops `m.room.power_levels`/`m.room.encryption`/`m.room.server_acl`
+  from 100 to 50 (VERIFIED in synapse/handlers/room.py). Rooms made BEFORE the
+  fix, or by other clients, still need an admin to lower it. On that refusal
+  the client still connects to LiveKit (a ghost that receives undecryptable
+  media) and the voice bar prints the raw MatrixError + URL — both unfixed.
   Video and screen share ARE built on the same session (`setVoiceCamera`,
   `setVoiceScreenShare`, `attachVoiceVideo`; callIntent `"video"`): a
   participant's `camera`/`screen` flag is true only once a track is live AND
