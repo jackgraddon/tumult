@@ -460,13 +460,16 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
             // The membership write and the SFU connect run in parallel, so the
             // refusal can land before the connect starts or mid-way through it
             // (both seen on CI). Either way nothing may STAY connected: give a
-            // straggling join every chance, then every peer connection Bob's
-            // page ever made must be closed. The ghost was one left open.
+            // straggling join every chance, then no peer connection Bob's page
+            // made may be live. The ghost was one left connected. An aborted
+            // connect can leave a PC LiveKit created but never started (`new`:
+            // no ICE, no transport, no participant) — LiveKit's abort path does
+            // not close() it; that is a leaked object, not a ghost.
             await new Promise((resolve) => setTimeout(resolve, 8000));
             const states = (await bob.page.evaluate("window.__tumultPeerConnections.map((pc) => pc.connectionState)")) as string[];
             assert.ok(
-                states.every((s) => s === "closed"),
-                `Bob's refused join left a connection to the SFU open: ${JSON.stringify(states)}`,
+                !states.some((s) => s === "connecting" || s === "connected"),
+                `Bob's refused join left a connection to the SFU live: ${JSON.stringify(states)}`,
             );
             // And the SFU agrees: Alice's call still has only Alice in it.
             assert.match((await alice.page.locator(".tumult-voice-room").textContent()) ?? "", /· 1\b/, "a ghost Bob joined Alice's call");
