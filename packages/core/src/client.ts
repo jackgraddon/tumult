@@ -89,6 +89,7 @@ import { ThrottledTask } from "./util/throttle.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
+import { toConnectionState, watchNetwork } from "./sync/connection.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
 import { CallManager } from "./call/manager.ts";
 import { VoiceManager } from "./voice/manager.ts";
@@ -125,32 +126,6 @@ export interface ChatClientOptions {
      * Unset means `supportsVoice()` is false.
      */
     createE2EEWorker?: () => Promise<Worker>;
-}
-
-/**
- * Map the SDK's sync lifecycle onto the coarser state the UI cares about.
- *
- * `Prepared` and `Catchup` both mean "we have a usable timeline" as far as the
- * UI is concerned, so both collapse to `syncing`. `Prepared` can be served
- * entirely from the IndexedDB cache, which is exactly why the listener has to
- * be attached before `startClient()` — otherwise a warm start emits it before
- * anyone is listening and the UI hangs on `starting` forever.
- */
-function toConnectionState(state: SyncState | null): ConnectionState {
-    switch (state) {
-        case SyncState.Prepared:
-        case SyncState.Syncing:
-        case SyncState.Catchup:
-            return "syncing";
-        case SyncState.Reconnecting:
-            return "reconnecting";
-        case SyncState.Error:
-            return "error";
-        case SyncState.Stopped:
-            return "stopped";
-        default:
-            return "starting";
-    }
 }
 
 /**
@@ -767,7 +742,7 @@ export class MatrixChatClient implements ChatClient {
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
             await this.refreshSecurity();
-            this.watchNetwork(client);
+            this.unwatchNetwork = watchNetwork(client, this.connectionState);
         } catch (error) {
             // Leave nothing half-built. A failed start that leaves a client or an
             // open store behind means the next attempt builds a second client on
@@ -815,34 +790,6 @@ export class MatrixChatClient implements ChatClient {
             this.connectionState.set("error");
             throw error;
         }
-    }
-
-    /**
-     * Follow the browser's own view of the network. Left to the sync loop, an
-     * outage is noticed only when the current long-poll fails — measured at
-     * 0–30 s by the network-outage test — and recovery waits out the SDK's
-     * retry back-off. The browser knows at once: on `offline` say so
-     * ("reconnecting"), on `online` restart the sync now. A no-op outside a
-     * browser. Undone by stop().
-     */
-    private watchNetwork(client: MatrixClient): void {
-        const target = globalThis as {
-            addEventListener?: (type: string, listener: () => void) => void;
-            removeEventListener?: (type: string, listener: () => void) => void;
-        };
-        if (typeof target.addEventListener !== "function") return;
-        const onOffline = (): void => {
-            if (this.connectionState.get() === "syncing") this.connectionState.set("reconnecting");
-        };
-        const onOnline = (): void => {
-            client.retryImmediately();
-        };
-        target.addEventListener("offline", onOffline);
-        target.addEventListener("online", onOnline);
-        this.unwatchNetwork = () => {
-            target.removeEventListener?.("offline", onOffline);
-            target.removeEventListener?.("online", onOnline);
-        };
     }
 
     public async stop(): Promise<void> {
