@@ -425,7 +425,20 @@ describe("browser smoke test (fake client)", () => {
             Buffer.from(
                 `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="100%" height="100%" fill="${fill}"/></svg>`,
             );
-        const rowsBefore = await page.locator(".tumult-row").count();
+        // Not a row COUNT: the timeline is virtualized, so how many rows are
+        // mounted changes on its own (it dropped 21 → 20 on CI with nothing
+        // sent). What must not exist is a message carrying either file.
+        // An uncaptioned image shows its name only as the <img> alt, so look
+        // for either the text or the alt.
+        const sent = async (): Promise<number> => {
+            let n = 0;
+            for (const name of ["wrong.svg", "cat.svg"]) {
+                n += await page.locator(".tumult-row", { hasText: name }).count();
+                n += await page.locator(`.tumult-row img[alt="${name}"]`).count();
+            }
+            return n;
+        };
+        const sentBefore = await sent();
         await page.locator(".tumult-composer-file").setInputFiles([
             { name: "wrong.svg", mimeType: "image/svg+xml", buffer: svg("red") },
             { name: "cat.svg", mimeType: "image/svg+xml", buffer: svg("grey") },
@@ -434,7 +447,8 @@ describe("browser smoke test (fake client)", () => {
         await cards.nth(1).waitFor({ timeout: 5_000 });
         assert.equal(await cards.count(), 2, "both picked files should stage, not send");
         await page.waitForTimeout(400);
-        assert.equal(await page.locator(".tumult-row").count(), rowsBefore, "picking a file must not send it");
+        assert.equal(await sent(), sentBefore, "picking a file must not send it");
+        assert.equal(await cards.count(), 2, "and both are still waiting in the tray");
         // The thumbnail is the picked bytes, previewed locally.
         assert.match((await cards.first().locator("img").getAttribute("src")) ?? "", /^blob:/);
 
