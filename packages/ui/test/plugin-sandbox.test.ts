@@ -2,7 +2,7 @@
  * Tests the host↔Worker bridge end to end, in-process.
  *
  * Both halves are factories with their coupling injected — `sandboxPlugin()` takes
- * a `SandboxHost` (whose `createWorker()` returns a `SandboxWorker`), and
+ * a `SandboxHost` (whose `createTransport()` returns a `SandboxTransport`), and
  * `createSandboxRuntime()` takes a `SandboxScope`. So the real protocol can be
  * exercised by wiring a fake Worker straight to a fake scope, with no browser and
  * no `self`: every message one side posts is delivered to the other.
@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 
 import type { ChatClient } from "@tumult/core/contract";
 
-import { SANDBOX_LIMITS, sandboxPlugin, type SandboxWorker } from "../src/plugins/sandbox/host.ts";
+import { SANDBOX_LIMITS, sandboxPlugin, type SandboxTransport } from "../src/plugins/sandbox/host.ts";
 import { createSandboxRuntime, type SandboxScope } from "../src/plugins/sandbox/worker/runtime.ts";
 import type { HostMessage, WorkerMessage } from "../src/plugins/sandbox/protocol.ts";
 import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types.ts";
@@ -33,7 +33,7 @@ import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types
  * microtask after an action is enough to observe its effect.
  */
 function makeWorker(scopeOverrides: Partial<SandboxScope> = {}): {
-    worker: SandboxWorker;
+    worker: SandboxTransport;
     scope: SandboxScope;
     closed: () => boolean;
 } {
@@ -66,7 +66,7 @@ function makeWorker(scopeOverrides: Partial<SandboxScope> = {}): {
         ...scopeOverrides,
     };
 
-    const worker: SandboxWorker = {
+    const worker: SandboxTransport = {
         postMessage: (message: HostMessage) => {
             // Host → worker: drive the runtime's registered handler(s), cloned
             // as a real Worker clones (this is what hid a DataCloneError: every
@@ -262,7 +262,7 @@ async function bridge(
     const facade = sandboxPlugin(
         { manifest: MANIFEST, bundle: "// bundle text" },
         {
-            createWorker: () => fake.worker,
+            createTransport: () => fake.worker,
             ...(hooks.onFailed ? { onFailed: hooks.onFailed } : {}),
         },
     );
@@ -338,7 +338,7 @@ describe("sandbox bridge", () => {
         });
         const facade = sandboxPlugin(
             { manifest: MANIFEST, bundle: "// x" },
-            { createWorker: () => fake.worker },
+            { createTransport: () => fake.worker },
         );
         facade.install(
             makeContext(MANIFEST, client, { onSelect: (next) => selections.push(next) }),
@@ -375,7 +375,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, partial.client));
         await settle();
 
@@ -406,7 +406,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
@@ -433,7 +433,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
@@ -457,7 +457,7 @@ describe("sandbox bridge", () => {
         const facade = sandboxPlugin(
             { manifest: MANIFEST, bundle: "// x" },
             {
-                createWorker: () => fake.worker,
+                createTransport: () => fake.worker,
                 onFailed: (id, error) => failures.push({ id, error }),
             },
         );
@@ -484,7 +484,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
@@ -510,7 +510,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 

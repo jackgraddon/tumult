@@ -22,7 +22,9 @@ export type {
 export { deriveLane, SANDBOXABLE_PERMISSIONS } from "./plugins/lane.ts";
 export type { PluginLane } from "./plugins/lane.ts";
 export { sandboxPlugin } from "./plugins/sandbox/host.ts";
-export type { SandboxEntry, SandboxHost, SandboxWorker } from "./plugins/sandbox/host.ts";
+export type { SandboxEntry, SandboxHost, SandboxTransport } from "./plugins/sandbox/host.ts";
+export { createFrameTransport, FRAME_BOOT_TIMEOUT_MS, FRAME_MESSAGE } from "./plugins/sandbox/frame.ts";
+export type { FrameTransport, FrameTransportDeps, MountedFrame, PortLike } from "./plugins/sandbox/frame.ts";
 export { SANDBOX_PROTOCOL_VERSION } from "./plugins/sandbox/protocol.ts";
 export type { SandboxCapabilities } from "./plugins/sandbox/protocol.ts";
 export { PLUGIN_API_VERSION, checkManifestCompatibility, compareVersions } from "./plugins/compat.ts";
