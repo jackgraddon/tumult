@@ -215,8 +215,14 @@ describe("rooms against real Synapse", () => {
             invite: [bob.userId],
         }))["room_id"] as string;
         await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.token, {});
+        // Different content each time: Synapse answers an IDENTICAL state write
+        // with the existing event (200) before any permission check, so a
+        // repeat of an earlier allowed write would pass even once closed.
+        let attempt = 0;
         const bobJoinsCall = (): Promise<Record<string, unknown>> =>
-            api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {});
+            api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {
+                attempt: ++attempt,
+            });
 
         await assert.rejects(bobJoinsCall(), /403/, "admins-only to begin with");
         const aliceClient = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
