@@ -5,7 +5,6 @@ import {
     EventType,
     HttpApiEvent,
     IndexedDBStore,
-    NotificationCountType,
     SyncState,
     type MatrixClient,
     type MatrixEvent,
@@ -51,7 +50,6 @@ import type {
 } from "./contract.ts";
 import { Observable } from "./observable.ts";
 import { CryptoController } from "./crypto/controller.ts";
-import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { resendAfterOutage, sendTextMessage, retryTextMessage } from "./rooms/send.ts";
 import { readUploadLimit, sendAttachments, sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
@@ -77,9 +75,8 @@ import { banMember, kickMember, PowerLevelsTracker, setMemberPowerLevel, unbanMe
 import { MediaResolver } from "./media/resolver.ts";
 import { NotificationTracker } from "./notifications/tracker.ts";
 import { PresencePoller } from "./rooms/presence.ts";
-import { UnreadTracker } from "./rooms/unread.ts";
+import { RoomListPublisher } from "./rooms/room-list.ts";
 import { onDecryptedRebuild, TimelineFeed } from "./timeline/feed.ts";
-import { ThrottledTask } from "./util/throttle.ts";
 import { VerificationManager } from "./verification/manager.ts";
 import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
@@ -87,7 +84,7 @@ import { toConnectionState, watchNetwork } from "./sync/connection.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
 import { RtcFeature } from "./call/rtc.ts";
 import type { ClientContext } from "./client-context.ts";
-import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
+import { clearShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
     /** Identity this app presents to the IdP during dynamic registration. */
@@ -138,32 +135,6 @@ function syncDatabaseName(session: StoredSession): string {
     return `tumult-sync:${session.userId}`;
 }
 
-/**
- * A structure signature over a room list, for gating an async cache write.
- *
- * The published room list re-publishes on every sync and receipt burst, and
- * `sameRoomSummaries` already skips a republish when nothing counts-differently
- * moved — but a single new message bumps a count, republishes the array, and
- * arms the debounced writer. Counts change every message; the *structure* (which
- * rooms exist, their names, space nesting, favourites) is what first paint needs
- * and changes rarely, so a count-only update must not force a localStorage write.
- *
- * The signature therefore keeps only structural fields and omits the
- * high-frequency ones (unread / highlight / read marker / topic / alias, which
- * the live sync reconciles anyway). Order is preserved positionally — a genuine
- * reorder SHOULD write once — so the signature is compared against the last
- * written one rather than recomputed-and-stored per burst.
- */
-function shellSignature(rooms: readonly RoomSummary[]): string {
-    return rooms
-        .map((r) => {
-            const kind = r.isSpace ? "S" : "C";
-            const fav = r.favourite ? String(r.favouriteOrder ?? 0) : "-";
-            return [r.id, r.name, kind, fav, r.parentSpaceIds.join(","), r.avatarUrl ?? "", r.joinRule].join("#");
-        })
-        .join("\n");
-}
-
 function createSyncStore(session: StoredSession): IndexedDBStore {
     return new IndexedDBStore({
         indexedDB: globalThis.indexedDB,
@@ -178,16 +149,6 @@ function createSyncStore(session: StoredSession): IndexedDBStore {
  * next account starts from the default window.
  */
 const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
-
-/**
- * Throttle for progressive room-list refreshes during the first sync. Sliding
- * sync emits `ClientEvent.Room` once per room as it enters the window (roughly
- * 100 events on a large account), all before the single terminal
- * `ClientEvent.Sync`; without a throttle the list would recompute and re-render
- * once per room. One pass per this window keeps it smooth while still painting
- * long before the batch finishes.
- */
-const PROGRESSIVE_REFRESH_MS = 120;
 
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
@@ -206,6 +167,8 @@ export class MatrixChatClient implements ChatClient {
     private readonly ownPresenceCtl: OwnPresenceController;
     /** Security feed, recovery setup/restore, devices (crypto/controller.ts). */
     private readonly cryptoCtl: CryptoController;
+    /** The published room list, its warm seed and shell cache (rooms/room-list.ts). */
+    private readonly roomList: RoomListPublisher;
     /** Sync loop actually running; set in bootstrap before startClient. */
     private activeSyncMode: ActiveSyncMode = "classic";
 
@@ -235,43 +198,6 @@ export class MatrixChatClient implements ChatClient {
     private _media: MediaResolver | null = null;
     /** Browser notification firing, alive while the sync loop runs. */
     private _notifications: NotificationTracker | null = null;
-    /** Client-side unread counts (sliding sync only — Synapse sends none). */
-    private _unread: UnreadTracker | null = null;
-    /**
-     * A room-list refresh is due on the next microtask. Sync, receipt, and
-     * unread-count signals arrive in bursts (a sync batch can carry many
-     * receipts); coalescing keeps `snapshotRooms` to one pass per burst.
-     */
-    private roomRefreshScheduled = false;
-    /**
-     * Progressive room-list refresh for the first sync (see
-     * {@link scheduleProgressiveRefreshRooms}). A throttled task, not a
-     * microtask: the first-sync room flood must not recompute once per room.
-     */
-    private readonly progressiveRefresh: ThrottledTask;
-    /**
-     * Debounced writer for the shell's first-paint cache (see `shellCache.ts`).
-     * The room list republishes on every sync/receipt burst; this collapses a
-     * flood into one localStorage write so a busy room can't churn the cache.
-     */
-    private readonly shellPersist: ThrottledTask;
-    /**
-     * Signature of the last cache write: the room *structure* (ids, names,
-     * space nesting, favourite order), not the counts. Counts change every
-     * message but the structure is what first paint needs, so a count-only
-     * update is not worth a localStorage write.
-     */
-    private lastShellSignature: string | null = null;
-    /**
-     * The room list painted from the shell cache at boot, held until the first
-     * full sync batch supersedes it. With sliding sync the SDK does not persist
-     * its window cursor, so the first network batch is a *partial* resync — far
-     * fewer rooms than the cache holds. `refreshRooms()` overlays this seed over
-     * every partial batch (see `mergeRoomSummaries`) so the rail can't collapse
-     * (92 → 9 → 92) while the window fills in; `clearWarmSeed()` drops it on the
-     * first full batch and on every teardown (stop / logout / logged-out).
-     */
-    private _warmSeed: RoomSummary[] | null = null;
     /** Presence REST poller (sliding sync only — no presence extension). */
     private _presence: PresencePoller | null = null;
     /** Simplified Sliding Sync instance (sliding mode only). */
@@ -283,7 +209,6 @@ export class MatrixChatClient implements ChatClient {
 
     private readonly sessionState = new Observable<SessionView | null>(null);
     private readonly connectionState = new Observable<ConnectionState>("stopped");
-    private readonly roomsState = new Observable<RoomSummary[]>([]);
     private readonly verificationState = new Observable<VerificationState>({ requests: [] });
     private readonly typingState = new Observable<TypingState>({ rooms: {} });
     private readonly notificationsState = new Observable<NotificationState>({
@@ -315,8 +240,7 @@ export class MatrixChatClient implements ChatClient {
         this.profileCtl = new ProfileController(this.ctx);
         this.ownPresenceCtl = new OwnPresenceController(this.ctx);
         this.cryptoCtl = new CryptoController(this.ctx, { rebuildTimelines: () => this.timelines?.rebuildAll() });
-        this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
-        this.shellPersist = new ThrottledTask(() => this.flushShellCache(), SHELL_CACHE_DEBOUNCE_MS);
+        this.roomList = new RoomListPublisher(this.ctx);
     }
 
     public get session(): Subscribable<SessionView | null> {
@@ -328,7 +252,7 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public get rooms(): Subscribable<RoomSummary[]> {
-        return this.roomsState;
+        return this.roomList.feed;
     }
 
     public get security(): Subscribable<SecurityStatus> {
@@ -412,16 +336,8 @@ export class MatrixChatClient implements ChatClient {
         // sync upgrades it in place. A stale or wrong-account entry yields [].
         // The selection the UI is resuming is seeded too, so the last-opened
         // room is subscribed on the very first request.
-        const seed = readShellSnapshot(this.storage, { userId: session.userId, homeserverUrl: session.homeserverUrl });
-        if (seed.rooms.length > 0) {
-            this.roomsState.set(seed.rooms);
-            this.lastShellSignature = shellSignature(seed.rooms);
-            if (this._selectedRoomId === null) this._selectedRoomId = seed.lastRoomId;
-            // Hold the seed so the first partial batch can't collapse the rail;
-            // `clearWarmSeed()` drops it on the first full sync.
-            this._warmSeed = seed.rooms;
-            console.debug(`[tumult] warm seed: ${seed.rooms.length} rooms from shell cache`);
-        }
+        const resumeRoomId = this.roomList.seed(session);
+        if (this._selectedRoomId === null) this._selectedRoomId = resumeRoomId;
 
         const store = createSyncStore(session);
         let client: MatrixClient | null = null;
@@ -492,20 +408,12 @@ export class MatrixChatClient implements ChatClient {
                 if (state === SyncState.Error && data?.error) {
                     console.error("[tumult] sync error", data.error);
                 }
-                // The first usable batch supersedes the warm seed: Prepared,
-                // Syncing and Catchup all collapse to "syncing", so the first
-                // one is the first full list. From here on refreshRooms()
-                // publishes the authoritative live list, so drop the seed that
-                // was shielding the rail from the partial first resync.
-                if (this._warmSeed && next === "syncing") this.clearWarmSeed();
-                // The room list is a snapshot over the sync loop: every batch
-                // can join/leave/rename rooms, change hierarchy, or move unread
-                // counts (receipts ride the same loop). Recompute wholesale —
-                // the Sync event is the one invalidation signal that covers all
-                // of them without per-room listener bookkeeping.
+                // The first usable batch supersedes the warm seed (dropped on
+                // the first "syncing"), then the room list — a snapshot over
+                // the sync loop — recomputes wholesale (rooms/room-list.ts).
                 //
                 // Timelines self-drive off the same loop inside TimelineFeed.
-                this.scheduleRefreshRooms();
+                this.roomList.onSync(next);
             });
 
             // Rooms enter the sliding-sync window one at a time during the
@@ -517,7 +425,7 @@ export class MatrixChatClient implements ChatClient {
             // here paints the list as rooms arrive. Once the window is warm,
             // rooms are updated (not added), so this rarely fires again.
             client.on(ClientEvent.Room, () => {
-                this.scheduleProgressiveRefreshRooms();
+                this.roomList.scheduleProgressive();
             });
 
             // SSS loop emits ClientEvent.Sync from SlidingSyncState.Complete,
@@ -530,7 +438,7 @@ export class MatrixChatClient implements ChatClient {
             // recompute off that too: this is the invalidation signal that
             // actually covers read positions.
             client.on(ClientEvent.Event, (event: MatrixEvent) => {
-                if (event.getType() === EventType.Receipt) this.scheduleRefreshRooms();
+                if (event.getType() === EventType.Receipt) this.roomList.schedule();
             });
 
             // The homeserver has rejected our token and refreshing could not
@@ -589,7 +497,7 @@ export class MatrixChatClient implements ChatClient {
             this.activeSyncMode = slidingSupported ? "sliding" : "classic";
             const sliding = slidingSupported ? buildSlidingSync(client, this.sssWindowStore()) : null;
             if (sliding) {
-                this._unread = new UnreadTracker(client, () => this.scheduleRefreshRooms());
+                this.roomList.attachUnread(client);
                 // The open room's members are polled every tick — the roster on
                 // screen stays live — while everyone else refreshes on a slower
                 // cadence after a warm-up tick.
@@ -678,8 +586,8 @@ export class MatrixChatClient implements ChatClient {
         // no-op; clearing the writer cancels a burst that is otherwise still
         // pending into a half-torn-down state. The selection and store are
         // dropped deeper in this method, so flush up front, before they go.
-        this.flushShellCache();
-        this.shellPersist.clear();
+        this.roomList.flush();
+        this.roomList.clearPersist();
 
         // SSS carries no presence; the poller must stop before the client does
         // or it will keep firing against a torn-down store.
@@ -737,17 +645,13 @@ export class MatrixChatClient implements ChatClient {
         this._media = null;
         this._notifications?.detachAll();
         this._notifications = null;
-        this._unread?.dispose();
-        this._unread = null;
+        this.roomList.detach();
         // stop() already detached the poller before stopClient(); detachAll is
         // idempotent, so the second call here is a no-op on that path.
         this._presence?.detachAll();
         this._presence = null;
         this._slidingSync = null;
         this._rangeManager = null;
-        this.roomRefreshScheduled = false;
-        this.clearWarmSeed();
-        this.clearProgressiveRefresh();
         this.cryptoCtl.clearTimers();
         this.ownPresenceCtl.stop();
         this.selfPresenceSubscription?.unsubscribe();
@@ -1169,7 +1073,7 @@ export class MatrixChatClient implements ChatClient {
         if (!client) throw new Error("Cannot pin a room before start()");
         if (pinned) await client.setRoomTag(roomId, "m.favourite", {});
         else await client.deleteRoomTag(roomId, "m.favourite");
-        this.scheduleRefreshRooms();
+        this.roomList.schedule();
     }
 
     public async setRoomMuted(roomId: string, muted: boolean): Promise<void> {
@@ -1180,7 +1084,7 @@ export class MatrixChatClient implements ChatClient {
         } else if (client.getRoomPushRule("global", roomId)) {
             await client.deletePushRule("global", PushRuleKind.RoomSpecific, roomId);
         }
-        this.scheduleRefreshRooms();
+        this.roomList.schedule();
     }
 
     public async markRead(roomId: string): Promise<void> {
@@ -1265,104 +1169,7 @@ export class MatrixChatClient implements ChatClient {
         this.sessionState.set(null);
         this.profileCtl.feed.set(null);
         this.ownPresenceCtl.feed.set(null);
-        this.roomsState.set([]);
-    }
-
-    /**
-     * Coalesce a room-list refresh onto the next microtask. Sync, receipt, and
-     * unread-count changes all funnel here: a single sync batch can carry many
-     * receipts, and each used to run a full `snapshotRooms` pass.
-     */
-    private scheduleRefreshRooms(): void {
-        if (this.roomRefreshScheduled) return;
-        this.roomRefreshScheduled = true;
-        queueMicrotask(() => {
-            this.roomRefreshScheduled = false;
-            // A pending progressive refresh would do the same pass; drop it so
-            // a Sync/receipt burst never costs two snapshots.
-            this.clearProgressiveRefresh();
-            this.refreshRooms();
-        });
-    }
-
-    /**
-     * Throttled variant of {@link scheduleRefreshRooms}, used for the first-sync
-     * room flood. At most one recompute per {@link PROGRESSIVE_REFRESH_MS} while
-     * rooms stream in, so the list grows smoothly instead of re-rendering once
-     * per room. A later `scheduleRefreshRooms` (the terminal Sync) still runs
-     * immediately; the timer is cleared on teardown.
-     */
-    private scheduleProgressiveRefreshRooms(): void {
-        this.progressiveRefresh.schedule();
-    }
-
-    /** Drop any pending progressive refresh (stop/teardown). */
-    private clearProgressiveRefresh(): void {
-        this.progressiveRefresh.clear();
-    }
-
-    /**
-     * Drop the warm seed. Either the first full batch has arrived (the sync
-     * listener clears it, from which point the live list is authoritative) or
-     * the client is tearing down (stop / logout / logged-out — a stale seed
-     * must never linger into the next boot's first paint).
-     */
-    private clearWarmSeed(): void {
-        this._warmSeed = null;
-    }
-
-    /**
-     * Recompute the room list from the SDK and publish it. Never throws:
-     * a snapshot failure must not take down the sync listener.
-     *
-     * While a warm seed is held (boot, before the first full batch), the fresh
-     * snapshot is overlaid onto it: a partial resync can't drop the count, and
-     * seed-only rooms survive until the first full batch supersedes the seed.
-     * `sameRoomSummaries` then skips a republish when the merged list is byte
-     * for byte what the UI already shows.
-     */
-    private refreshRooms(): void {
-        const client = this.matrix;
-        if (!client) return;
-        try {
-            // Sliding sync sends no unread counts (Synapse hardcodes them to 0),
-            // so in that mode the tracker recomputes them here, before the
-            // snapshot reads them. Classic /sync supplies exact server counts
-            // and highlights, so there is no tracker to run.
-            this._unread?.update();
-            const next = snapshotRooms(
-                client,
-                this._unread ? (roomId) => this._unread!.getUnread(roomId) : undefined,
-            );
-            const published = this._warmSeed ? mergeRoomSummaries(this._warmSeed, next) : next;
-            if (sameRoomSummaries(published, this.roomsState.get())) return;
-            const spaces = published.filter((r) => r.isSpace).length;
-            console.debug(`[tumult] rooms snapshot: ${published.length} joined (${spaces} spaces)`);
-            this.roomsState.set(published);
-            // The published list is what first-paint will use; queue its cache
-            // write (debounced, structure-gated below) so the next boot paints it.
-            this.shellPersist.schedule();
-        } catch (error) {
-            console.error("[tumult] room snapshot failed", error);
-        }
-    }
-
-    /**
-     * Persist the published room list so the next boot can paint it before the
-     * first network batch (see the seed at the top of `bootstrap`).
-     * Structure-gated: a count-only change re-publishes the list but moves no
-     * room's identity, so it is not worth a synchronous localStorage write.
-     * Best-effort: a full store makes `writeShellSnapshot` return false and the
-     * list still renders.
-     */
-    private flushShellCache(): void {
-        const account = this.stored;
-        if (!account) return; // logged out / pre-session: nothing to cache
-        const rooms = this.roomsState.get();
-        const signature = shellSignature(rooms);
-        if (signature === this.lastShellSignature) return;
-        this.lastShellSignature = signature;
-        writeShellSnapshot(this.storage, { userId: account.userId, homeserverUrl: account.homeserverUrl }, rooms, this._selectedRoomId);
+        this.roomList.feed.set([]);
     }
 
     /**
@@ -1376,29 +1183,7 @@ export class MatrixChatClient implements ChatClient {
      * stay wrong, the recompute itself is wrong.
      */
     public debugUnread(recompute = false): Array<Record<string, unknown>> {
-        const client = this.matrix;
-        if (!client) return [];
-        if (recompute) this._unread?.update();
-        return client
-            .getRooms()
-            .filter((room) => room.getMyMembership() === "join")
-            .map((room) => ({
-                name: room.name,
-                roomId: room.roomId,
-                sdkUnread: room.getUnreadNotificationCount(),
-                threadUnread: room.hasThreadUnreadNotification(),
-                ...(this._unread
-                    ? this._unread.describe(room)
-                    : {
-                        total: room.getUnreadNotificationCount(),
-                        highlight: room.getUnreadNotificationCount(NotificationCountType.Highlight),
-                        markerId: null,
-                        receiptIds: [],
-                        readIndex: -1,
-                        window: room.getLiveTimeline().getEvents().length,
-                        tailId: null,
-                    }),
-            }));
+        return this.roomList.debugUnread(recompute);
     }
 
     private adoptSession(session: StoredSession): void {
