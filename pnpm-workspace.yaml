@@ -11,3 +11,12 @@ packages:
 allowBuilds:
   esbuild: true
   vue-demi: true
+
+# Security floor for transitive dependencies. source-map-js <1.2.2 has an
+# event-loop DoS (GHSA-68fv-2mgg-jv7q); it arrives through Vue's SFC compiler,
+# which has not bumped it yet. Drop the entry once nothing resolves below it.
+overrides:
+  source-map-js: ">=1.2.2"
+  # minimatch <11.0.1: ReDoS via globparts amplification (GHSA-g3hv-75wg-m249),
+  # no 10.x fix. Only ESLint uses it, on our own config's patterns.
+  minimatch: ">=11.0.1"

@@ -1,4 +1,21 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+/**
+ * The slice of Vercel's Node request/response helpers this function uses.
+ * Declared here rather than imported from `@vercel/node`: we only ever needed
+ * its types (Vercel's runtime supplies the objects), and the package pins
+ * releases of undici, path-to-regexp and others with open advisories — even in
+ * its latest version — into every install.
+ */
+interface VercelRequest {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+}
+
+interface VercelResponse {
+    status(code: number): VercelResponse;
+    setHeader(name: string, value: string): VercelResponse;
+    json(body: unknown): VercelResponse;
+    send(body: unknown): VercelResponse;
+}
 
 const OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

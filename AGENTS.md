@@ -709,8 +709,11 @@ homeserver. A trap listed here has shipped broken at least once.
   of up to 10 s and uploads in batches, so a device opened seconds after a
   message can find 404 in the backup for its session (seen on CI). The test
   waits for the server's backup to hold the room's key before restoring.
-  Still manual: verifying ANOTHER user, and a MAS server demanding UIA for a
-  cross-signing upload (fails loudly, untested).
+  MAS cannot block it: Synapse's `SigningKeyUploadServlet` only demands auth
+  when the account ALREADY has cross-signing (MSC3967), MAS or not — and we
+  only bootstrap when it has none (VERIFIED in synapse/rest/client/keys.py).
+  Not built at all: verifying ANOTHER user (the app only verifies its own
+  devices; no member-menu entry), so there is nothing there to test yet.
 
 ### Performance
 
