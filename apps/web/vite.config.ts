@@ -177,8 +177,12 @@ export default defineConfig(({ mode }) => {
     // origin must be named in `frame-src`; without the directive a frame falls
     // back to `default-src 'self'` and is blocked. Unset means calls are off
     // (the client reports `supportsCalls() === false`), so no call origin is
-    // allowed at all (only the plugin sandbox's 'self'). Only the ORIGIN is allowed, never the path: the app is addressed
-    // by origin, and a path in CSP would silently stop matching on redirect.
+    // allowed at all. Only the ORIGIN is allowed, never the path: the app is
+    // addressed by origin, and a path in CSP would silently stop matching on
+    // redirect. `'self'` is for the plugin sandbox frame (/sandbox.html). It
+    // admits any same-origin page, which opens nothing: every page on this
+    // origin is ours, and the sandbox attribute plus /sandbox.html's own CSP
+    // are what confine the plugin, not frame-src.
     const callOrigin = /^https?:\/\/[^/?#]+/.exec(env.VITE_ELEMENT_CALL_URL ?? "")?.[0];
 
     // The policy is one constant because dev and the build must not drift: dev
