@@ -38,9 +38,10 @@ export const LANE_SUMMARY = {
     sandbox: {
         label: "Sandboxed",
         blurb:
-            "This plugin runs in an isolated background worker. It can send messages and react " +
-            "through a fixed set of calls, but it has no access to the page, the DOM, or anything " +
-            "the app does not explicitly hand it.",
+            "This plugin runs in an isolated background worker. When you run one of its commands " +
+            "or actions, it can read and act in that room — send, reply, react — and only until it " +
+            "finishes. It cannot see your other rooms, your account, your encryption keys or your " +
+            "devices, and has no access to the page or the DOM.",
         warning: null,
     },
     trusted: {

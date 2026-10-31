@@ -1075,8 +1075,11 @@ when the lane rule and the permission list fall out of step.
 - **No patch/hook type.** The `Patch` type from the original sketch is dropped
   on purpose: plugins register modules; nothing rewrites code strings on a live
   object.
-- **No crypto/security API in the context.** A plugin gets the `ChatClient`
-  surface, not verification, key backup or secret storage.
+- **No crypto/security API for sandboxed plugins.** A sandbox-lane plugin's
+  client is policed (§11): verification, key backup, secret storage and devices
+  are refused. An in-page (trusted-lane) plugin holds the real `ChatClient`,
+  which includes them — that is what "runs as part of the app" means, and the
+  consent screen says so.
 - **No `window`/`document` in the context.** Style through `injectStylesheet`
   (guarded, §5.6); there is no arbitrary DOM handle. (The *in-page* lane can
   reach the DOM by importing it directly — that is exactly why it is the
@@ -1184,9 +1187,25 @@ permission gate. Its `install(ctx)` boots a module Worker
 then answers the Worker's requests against the real `ctx` the shell provided.
 
 The plugin's `ctx` inside the Worker is the *same shape* as the in-page one, with
-five differences the boundary forces:
+seven differences the boundary forces:
 
-- **Feeds become pushes.** `client.rooms`, `client.timeline(roomId)` and the rest
+- **The client is policed, not reflected.** `packages/ui/src/plugins/sandbox/policy.ts`
+  classifies every `ChatClient` member (a new member fails the build until it is
+  classified). A sandboxed plugin may `send`, `sendReply`, `toggleReaction`,
+  `sendTyping`, `loadMore` and open `timeline(roomId)` **only for the room of an
+  invocation the user triggered** — they ran its command or clicked its action
+  there — and only while that invocation runs; a timeline opened that way closes
+  when it ends. `supportsThreads`, `hasMoreRooms` and `connection` are always
+  open. Everything else is refused: account, session, recovery, verification,
+  devices, moderation, settings, profile, presence, room lifecycle, other rooms,
+  member lists, search, media, calls, and every `ctx.selection` / `ctx.actions`
+  call. (Before this, the bridge reflected the whole client — a `["styles"]`
+  plugin could read every room and mint a recovery key.)
+- **Invocation contexts cross as data.** A command's `{ roomId, client, args,
+  raw }` and an action's `setDraft` cannot be structured-cloned, so the host sends
+  `{ kind: "client" }` (the Worker substitutes its own policed client) and
+  `{ kind: "hostfn" }` references that answer only while the invocation runs.
+- **Feeds become pushes.** `client.timeline(roomId)` and the other allowed feeds
   are opened once by key; `.get()` returns the latest snapshot the host pushed,
   and `.subscribe()` fires on each push.
 - **`media.resolve*` mints its own URL.** A `blob:` URL made on the host is
@@ -1231,9 +1250,10 @@ the lane badge and the consent copy are for.
 
 CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL) —
 `worker-src 'self' blob:` is already there for the sandbox lane. In this repo the
-policy is one constant in `apps/web/vite.config.ts` applied to **both** the dev
-server and `vite preview`, so the browser smoke test (which runs against
-`preview`) actually exercises it. Hosts that render `TumultShell` without the
+policy is one constant in `apps/web/vite.config.ts`: the dev server sends it as a
+header, and the build writes it into `index.html` as a `<meta>` — which is what
+production (Vercel) and the browser smoke test's `preview` both serve, so the
+test exercises exactly the deployed policy. Hosts that render `TumultShell` without the
 installer simply have no install UI: the extension API itself is unchanged and
 needs no CSP relaxation.
 

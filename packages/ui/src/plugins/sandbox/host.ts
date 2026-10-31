@@ -33,6 +33,7 @@ import {
     CLIENT_FEEDS,
     CLIENT_METHODS,
     CONTEXT_METHODS,
+    INVOKE_FN,
     SANDBOX_PROTOCOL_VERSION,
     wireError,
     type ContextMethod,
@@ -40,6 +41,7 @@ import {
     type SandboxCapabilities,
     type WorkerMessage,
 } from "./protocol.ts";
+import { checkCall, invocationRoom } from "./policy.ts";
 
 /** A `Worker`-shaped handle, so `@tumult/ui` never names the DOM type itself. */
 export interface SandboxWorker {
@@ -92,6 +94,39 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     // independent spaces and can never collide.
     let nextInvokeId = 1;
     let nextFeedId = 1;
+
+    // What the plugin may touch right now (see policy.ts): the rooms of the
+    // invocations the user triggered that are still running, counted because
+    // two can overlap in one room, and the feeds opened for each so they close
+    // when the room's last invocation settles.
+    const activeRooms = new Map<string, number>();
+    const roomFeeds = new Map<string, Set<number>>();
+    /** Host functions passed into each running invocation (INVOKE_FN). */
+    const invokeFns = new Map<number, ((...a: unknown[]) => unknown)[]>();
+
+    function enterRoom(roomId: string): void {
+        activeRooms.set(roomId, (activeRooms.get(roomId) ?? 0) + 1);
+    }
+
+    function leaveRoom(roomId: string): void {
+        const left = (activeRooms.get(roomId) ?? 1) - 1;
+        if (left > 0) {
+            activeRooms.set(roomId, left);
+            return;
+        }
+        activeRooms.delete(roomId);
+        for (const feedId of roomFeeds.get(roomId) ?? []) closeFeed(feedId);
+        roomFeeds.delete(roomId);
+    }
+
+    function closeFeed(feedId: number): void {
+        try {
+            feedSubscriptions.get(feedId)?.unsubscribe();
+        } catch (error) {
+            console.error(`[tumult] sandbox "${id}" feed unsubscribe failed`, error);
+        }
+        feedSubscriptions.delete(feedId);
+    }
 
     /** Read the two synchronous members off the real client (never guess). */
     function readCapabilities(): SandboxCapabilities {
@@ -162,6 +197,18 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
         const shell = ctx;
         if (!shell) throw new Error("the sandbox plugin is not installed yet");
 
+        // A function the host itself passed into a running invocation.
+        if (method === INVOKE_FN) {
+            const [invokeId, fnId, ...rest] = args;
+            const fn = typeof invokeId === "number" && typeof fnId === "number" ? invokeFns.get(invokeId)?.[fnId] : undefined;
+            if (!fn) throw new Error("that callback is no longer available (its invocation has finished)");
+            return await fn(...rest);
+        }
+
+        // The policy, before anything is dispatched (security finding F1).
+        const refusal = checkCall(method, args, new Set(activeRooms.keys()));
+        if (refusal) throw new Error(refusal);
+
         // `ctx.selection` / `ctx.actions` are the shell's live objects, not part
         // of `ChatClient`, so they are answered here rather than through the
         // client reflection below.
@@ -177,7 +224,14 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             const accessor = client[method];
             if (typeof accessor !== "function") throw new Error(`client.${method} is not available`);
             const source = (accessor as (...a: unknown[]) => Subscribable<unknown>).apply(shell.client, args);
-            return subscribeFeed(source);
+            const feedId = subscribeFeed(source);
+            // Allowed only for an invoked room (checkCall), so it lives only as
+            // long as that room's invocations do.
+            const roomId = args[0] as string;
+            const feeds = roomFeeds.get(roomId) ?? new Set<number>();
+            feeds.add(feedId);
+            roomFeeds.set(roomId, feeds);
+            return feedId;
         }
 
         // Plain subscribable properties (`rooms`, `connection`, …) are "called"
@@ -202,12 +256,45 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     /** Ask the Worker to run a callback the plugin registered (`run`, `match`). */
     function invoke(callbackId: number, args: unknown[]): Promise<unknown> {
         const invokeId = nextInvokeId++;
-        return new Promise<unknown>((resolve, reject) => {
+        // The user ran this command / clicked this action in a room: that room
+        // is open to the plugin until the invocation settles (policy.ts).
+        const roomId = invocationRoom(args);
+        if (roomId) enterRoom(roomId);
+        const fns: ((...a: unknown[]) => unknown)[] = [];
+        invokeFns.set(invokeId, fns);
+        const result = new Promise<unknown>((resolve, reject) => {
             pendingInvokes.set(invokeId, { resolve, reject });
             // The callback id leads the args envelope; the shim resolves it
             // against its own table, so one wire id serves both sides.
-            worker?.postMessage({ kind: "invoke", id: invokeId, args: [callbackId, ...args] });
-        });
+            worker?.postMessage({ kind: "invoke", id: invokeId, args: [callbackId, ...args.map((arg) => toWire(arg, invokeId, fns))] });
+        }).finally(() => invokeFns.delete(invokeId));
+        return roomId ? result.finally(() => leaveRoom(roomId)) : result;
+    }
+
+    /**
+     * An invocation's arguments as plain data. The composer hands a command
+     * `{ roomId, client, args, raw }` and an action `{ …, setDraft }`: the live
+     * client and functions cannot be structured-cloned (DataCloneError — every
+     * sandboxed command failed when run), so the client becomes a
+     * `{ kind: "client" }` marker the Worker swaps for its own bridged client,
+     * and each function a `{ kind: "hostfn" }` reference held only for this
+     * invocation (see INVOKE_FN).
+     */
+    function toWire(value: unknown, invokeId: number, fns: ((...a: unknown[]) => unknown)[]): unknown {
+        if (value === ctx?.client) return { kind: "client" };
+        if (typeof value === "function") {
+            fns.push(value as (...a: unknown[]) => unknown);
+            return { kind: "hostfn", invoke: invokeId, fn: fns.length - 1 };
+        }
+        if (Array.isArray(value)) return value.map((entry) => toWire(entry, invokeId, fns));
+        if (typeof value !== "object" || value === null) return value;
+        // Only plain data objects are walked; anything else (a class instance,
+        // a feed) has no business crossing and is dropped rather than cloned.
+        const proto = Object.getPrototypeOf(value);
+        if (proto !== Object.prototype && proto !== null) return undefined;
+        const out: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(value)) out[key] = toWire(entry, invokeId, fns);
+        return out;
     }
 
     /**
@@ -268,6 +355,9 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             }
         }
         feedSubscriptions.clear();
+        activeRooms.clear();
+        roomFeeds.clear();
+        invokeFns.clear();
         worker?.terminate();
         worker = null;
         ctx = null;
