@@ -379,6 +379,8 @@ export class MatrixChatClient implements ChatClient {
     private readonly ownPresenceState = new Observable<OwnPresenceView | null>(null);
     /** Coalesces `m.presence` bursts for our own user into one read. */
     private ownPresenceHeartbeat: ReturnType<typeof setInterval> | null = null;
+    /** Removes the browser online/offline listeners (watchNetwork). */
+    private unwatchNetwork: (() => void) | null = null;
     /** Mirrors `ownPresence` into the rosters, so our row matches the bar. */
     private selfPresenceSubscription: Subscription | null = null;
     private readonly ownPresenceRefresh = new ThrottledTask(() => {
@@ -755,6 +757,7 @@ export class MatrixChatClient implements ChatClient {
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
             await this.refreshSecurity();
+            this.watchNetwork(client);
         } catch (error) {
             // Leave nothing half-built. A failed start that leaves a client or an
             // open store behind means the next attempt builds a second client on
@@ -804,7 +807,37 @@ export class MatrixChatClient implements ChatClient {
         }
     }
 
+    /**
+     * Follow the browser's own view of the network. Left to the sync loop, an
+     * outage is noticed only when the current long-poll fails — measured at
+     * 0–30 s by the network-outage test — and recovery waits out the SDK's
+     * retry back-off. The browser knows at once: on `offline` say so
+     * ("reconnecting"), on `online` restart the sync now. A no-op outside a
+     * browser. Undone by stop().
+     */
+    private watchNetwork(client: MatrixClient): void {
+        const target = globalThis as {
+            addEventListener?: (type: string, listener: () => void) => void;
+            removeEventListener?: (type: string, listener: () => void) => void;
+        };
+        if (typeof target.addEventListener !== "function") return;
+        const onOffline = (): void => {
+            if (this.connectionState.get() === "syncing") this.connectionState.set("reconnecting");
+        };
+        const onOnline = (): void => {
+            client.retryImmediately();
+        };
+        target.addEventListener("offline", onOffline);
+        target.addEventListener("online", onOnline);
+        this.unwatchNetwork = () => {
+            target.removeEventListener?.("offline", onOffline);
+            target.removeEventListener?.("online", onOnline);
+        };
+    }
+
     public async stop(): Promise<void> {
+        this.unwatchNetwork?.();
+        this.unwatchNetwork = null;
         // Persist the last good list before anything tears it down, so a clean
         // close (as opposed to a logout, which clears the cache afterwards)
         // leaves it intact for the next boot. The flush re-checks its

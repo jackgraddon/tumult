@@ -136,9 +136,11 @@ describe("losing the network and getting it back", { skip: !enabled && "set TEST
             const copies = (await serverBodies(erin, roomId)).filter((b) => b === offlineSend).length;
             assert.equal(copies, 1, `the offline message arrived ${copies} times`);
 
-            // Detection must be prompt: a stale "connected" for most of a
-            // minute is the bug this test exists to catch.
-            assert.ok(detectedS <= 45, `the app took ${detectedS} s to notice the network was gone`);
+            // Detection must be prompt. Left to the sync loop it took 0–30 s
+            // (whenever the current long-poll happened to fail); the app now
+            // follows the browser's `offline` event, so anything past a few
+            // seconds means that wiring broke.
+            assert.ok(detectedS <= 10, `the app took ${detectedS} s to notice the network was gone`);
         }),
     );
 });
