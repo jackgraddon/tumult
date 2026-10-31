@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { MatrixClient } from "matrix-js-sdk";
+import { EventStatus, type MatrixClient } from "matrix-js-sdk";
 
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
 import { retryTextMessage, sendTextMessage } from "../src/rooms/send.ts";
@@ -301,10 +301,27 @@ describe("sendTextMessage", () => {
     });
 });
 
+/**
+ * A room as the client really has it: `pendingEventOrdering: "chronological"`
+ * (client.ts), so local echoes sit in the live timeline and
+ * getPendingEvents() THROWS — with the SDK's own message. The old stub
+ * returned events from getPendingEvents(), agreeing with the code's mistake:
+ * "try again" threw on every real click.
+ */
+function chronologicalRoom(events: unknown[]): unknown {
+    return {
+        getLiveTimeline: () => ({ getEvents: () => events }),
+        getPendingEvents: () => {
+            throw new Error("Cannot call getPendingEvents with pendingEventOrdering == chronological");
+        },
+    };
+}
+
 describe("retryTextMessage", () => {
-    it("re-sends the pending echo via resendEvent(event, room)", async () => {
-        const event = { getId: () => "$failed:x" };
-        const room = { getPendingEvents: () => [event] };
+    it("re-sends the failed echo from the live timeline via resendEvent(event, room)", async () => {
+        const event = { getId: () => "$failed:x", status: EventStatus.NOT_SENT };
+        const sent = { getId: () => "$sent:x", status: null };
+        const room = chronologicalRoom([sent, event]);
         const resends: unknown[][] = [];
         const matrix = {
             getRoom: (id: string) => (id === "!r:x" ? room : null),
@@ -323,9 +340,9 @@ describe("retryTextMessage", () => {
         await assert.rejects(() => retryTextMessage(matrix, "!gone:x", "$e:x"), /No such room/);
     });
 
-    it("rejects when the event is not a pending echo", async () => {
+    it("rejects when the event is not a failed echo", async () => {
         const matrix = {
-            getRoom: () => ({ getPendingEvents: () => [] }),
+            getRoom: () => chronologicalRoom([{ getId: () => "$e:x", status: null }]),
         } as unknown as MatrixClient;
         await assert.rejects(() => retryTextMessage(matrix, "!r:x", "$e:x"), /No failed event/);
     });

@@ -560,8 +560,15 @@ export class MatrixChatClient implements ChatClient {
                 this.connectionState.set(next);
                 // Back from an outage: deliver what the user sent into it.
                 if (client && next === "syncing" && (previous === "reconnecting" || previous === "error")) {
-                    const resent = resendAfterOutage(client);
-                    if (resent > 0) console.debug(`[tumult] resent ${resent} message(s) sent during the outage`);
+                    // Never let this throw: it runs inside the SDK's sync-state
+                    // emitter, and an exception there aborts the sync loop
+                    // ("Sync startup aborted with an error" — seen on CI).
+                    try {
+                        const resent = resendAfterOutage(client);
+                        if (resent > 0) console.debug(`[tumult] resent ${resent} message(s) sent during the outage`);
+                    } catch (error) {
+                        console.error("[tumult] could not resend messages after the outage", error);
+                    }
                 }
                 if (state === SyncState.Error && data?.error) {
                     console.error("[tumult] sync error", data.error);
