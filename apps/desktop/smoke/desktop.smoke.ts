@@ -362,7 +362,63 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         assert.deepEqual(consoleErrors, []);
     });
 
+    // A login starts on the app's /login route; only there may an
+    // authorization request open the (chromeless) sign-in window.
+    async function toLoginPage(): Promise<void> {
+        // Signed out, as a real login starts (an earlier test stored a session,
+        // and the router sends a signed-in app from /login to /dms).
+        // The previous test may have left a navigation in flight (closing the
+        // sign-in window reloads /login), so retry a context lost to it.
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await page.waitForLoadState("load");
+                await page.evaluate(() => localStorage.removeItem("tumult.session"));
+                await page.evaluate(() => window.location.assign("app://tumult/login"));
+                break;
+            } catch (error) {
+                if (attempt >= 5 || !String(error).includes("Execution context was destroyed")) throw error;
+                await page.waitForTimeout(200);
+            }
+        }
+        await page.waitForURL("app://tumult/login", { timeout: 10_000, waitUntil: "load" });
+        await page.waitForTimeout(300);
+        // A signed-in app redirects /login away, and then no sign-in window may open.
+        assert.equal(page.url(), "app://tumult/login", "the app must be signed out on its login page to start a login");
+    }
+
+    it("does not open a sign-in window for an authorization URL outside the login page", async () => {
+        await page.evaluate(() => window.location.assign("app://tumult/dms"));
+        await page.waitForURL(/^app:\/\/tumult\/dms/, { timeout: 10_000, waitUntil: "load" });
+        await page.waitForTimeout(300);
+        const before = (await opened()).length;
+        const authorize = new URL(`${idpOrigin}/authorize`);
+        authorize.searchParams.set("response_type", "code");
+        authorize.searchParams.set("redirect_uri", "http://127.0.0.1/auth/callback");
+        await page.evaluate((url) => window.location.assign(url), authorize.href);
+        await page.waitForTimeout(1_000);
+        assert.equal(app.windows().length, 1, "a look-alike sign-in window was opened from /dms");
+        assert.deepEqual((await opened()).slice(before), [authorize.href], "it goes to the system browser instead, like any other link");
+        assert.match(page.url(), /^app:\/\/tumult\/dms/);
+    });
+
+    it("returns to the login page when the auth window is closed without finishing", async () => {
+        await toLoginPage();
+        const authorize = new URL(`${idpOrigin}/login-page`);
+        authorize.searchParams.set("response_type", "code");
+        authorize.searchParams.set("redirect_uri", "http://127.0.0.1/auth/callback");
+        const child = app.waitForEvent("window");
+        await page.evaluate((url) => window.location.assign(url), authorize.href);
+        const authPage = await child;
+        await authPage.waitForLoadState("load");
+        // An IdP page gets no permissions: its top-level origin is not the app's.
+        const notifications = await authPage.evaluate(async () => (await navigator.permissions.query({ name: "notifications" })).state);
+        assert.equal(notifications, "denied");
+        await authPage.close();
+        await page.waitForURL(/^app:\/\/tumult\/(login|dms)/, { timeout: 10_000 });
+    });
+
     it("runs the MAS flow in a child window and replays the loopback redirect into the app", async () => {
+        await toLoginPage();
         const navigations: string[] = [];
         page.on("framenavigated", (frame) => {
             if (frame === page.mainFrame()) navigations.push(frame.url());
@@ -374,6 +430,10 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         authorize.searchParams.set("state", "smoke-state");
         authorize.searchParams.set("response_mode", "fragment");
 
+        // The fake client's completeLogin() writes no session (the real one
+        // does), so stand one in now — after we are on /login, which is what
+        // lets the sign-in window open — or the router bounces /dms to /login.
+        await page.evaluate((session) => localStorage.setItem("tumult.session", JSON.stringify(session)), SESSION);
         const child = app.waitForEvent("window");
         await page.evaluate((url) => window.location.assign(url), authorize.href);
         const authPage = await child;
@@ -393,18 +453,4 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         assert.equal(app.windows().length, 1);
     });
 
-    it("returns to the login page when the auth window is closed without finishing", async () => {
-        const authorize = new URL(`${idpOrigin}/login-page`);
-        authorize.searchParams.set("response_type", "code");
-        authorize.searchParams.set("redirect_uri", "http://127.0.0.1/auth/callback");
-        const child = app.waitForEvent("window");
-        await page.evaluate((url) => window.location.assign(url), authorize.href);
-        const authPage = await child;
-        await authPage.waitForLoadState("load");
-        // An IdP page gets no permissions: its top-level origin is not the app's.
-        const notifications = await authPage.evaluate(async () => (await navigator.permissions.query({ name: "notifications" })).state);
-        assert.equal(notifications, "denied");
-        await authPage.close();
-        await page.waitForURL(/^app:\/\/tumult\/(login|dms)/, { timeout: 10_000 });
-    });
 });

@@ -82,3 +82,40 @@ export function permissionAllowed(query: PermissionQuery): boolean {
 export function callOriginFrom(url: string | undefined): string | null {
     return /^https?:\/\/[^/?#]+/.exec(url ?? "")?.[0] ?? null;
 }
+
+/**
+ * The origin that is really asking for a permission. Electron's
+ * `requestingUrl` is the frame's URL, NOT its security origin: the plugin
+ * sandbox frame lives at app://tumult/sandbox.html but runs with an OPAQUE
+ * origin (sandbox="allow-scripts", no allow-same-origin), so trusting the URL
+ * would treat plugin code as the app. Prefer the security origin when Electron
+ * gives one, and never let the sandbox page count as the app — so the
+ * allow-list holds by itself, not only because Chromium also refuses.
+ */
+export function askingOrigin(details: { securityOrigin?: string | undefined; requestingOrigin?: string | undefined; requestingUrl?: string | undefined }): string | null {
+    if (details.requestingUrl && isSandboxFrameUrl(details.requestingUrl)) return null;
+    if (details.securityOrigin !== undefined) return originOf(details.securityOrigin);
+    return originOf(details.requestingOrigin) ?? originOf(details.requestingUrl);
+}
+
+/** The plugin sandbox page or its script, served on the app's host but opaque at runtime. */
+export function isSandboxFrameUrl(url: string): boolean {
+    const parsed = parse(url);
+    return (
+        parsed !== null &&
+        parsed.protocol === `${APP_SCHEME}:` &&
+        parsed.host === APP_HOST &&
+        (parsed.pathname === "/sandbox.html" || parsed.pathname === "/sandbox.js")
+    );
+}
+
+/**
+ * Whether the app window is where a login starts (its /login route), so an
+ * authorization request may open the sign-in window. Anywhere else, a URL
+ * that merely LOOKS like an authorization request must not get a chromeless
+ * window that could pass for the real sign-in.
+ */
+export function loginPending(currentUrl: string): boolean {
+    const parsed = parse(currentUrl);
+    return parsed !== null && isAppUrl(currentUrl) && (parsed.pathname === "/login" || parsed.pathname.startsWith("/login/"));
+}

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { callOriginFrom, externalUrl, isAppUrl, originOf, permissionAllowed } from "../src/policy.ts";
+import { askingOrigin, callOriginFrom, externalUrl, isAppUrl, isSandboxFrameUrl, loginPending, originOf, permissionAllowed } from "../src/policy.ts";
 
 describe("isAppUrl", () => {
     it("is app://tumult only", () => {
@@ -76,5 +76,40 @@ describe("callOriginFrom", () => {
         assert.equal(callOriginFrom(""), null);
         assert.equal(callOriginFrom(undefined), null);
         assert.equal(callOriginFrom("javascript:x"), null);
+    });
+});
+
+describe("askingOrigin", () => {
+    it("never treats the opaque plugin sandbox frame as the app, whatever Electron reports", () => {
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/sandbox.html" }), null);
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/sandbox.html", requestingOrigin: "app://tumult" }), null);
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/sandbox.js", securityOrigin: "app://tumult" }), null);
+        assert.ok(isSandboxFrameUrl("app://tumult/sandbox.html?x=1"));
+        assert.ok(!isSandboxFrameUrl("app://tumult/dms"));
+    });
+    it("prefers the security origin over the frame URL", () => {
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/dms", securityOrigin: "null" }), null);
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/dms", securityOrigin: "app://tumult" }), "app://tumult");
+        assert.equal(askingOrigin({ requestingUrl: "https://call.example/room", securityOrigin: "https://call.example" }), "https://call.example");
+    });
+    it("falls back to the requesting origin, then the URL", () => {
+        assert.equal(askingOrigin({ requestingOrigin: "app://tumult", requestingUrl: "app://tumult/dms" }), "app://tumult");
+        assert.equal(askingOrigin({ requestingUrl: "app://tumult/dms" }), "app://tumult");
+    });
+    it("so the sandbox frame gets nothing even inside the app window", () => {
+        const origin = askingOrigin({ requestingUrl: "app://tumult/sandbox.html" });
+        for (const permission of ["media", "notifications", "clipboard-sanitized-write", "display-capture"]) {
+            assert.equal(permissionAllowed({ permission, requestingOrigin: origin, topOrigin: "app://tumult", callOrigin: null }), false, permission);
+        }
+    });
+});
+
+describe("loginPending", () => {
+    it("is true only on the app's login route", () => {
+        assert.ok(loginPending("app://tumult/login"));
+        assert.ok(loginPending("app://tumult/login?next=%2Fdms"));
+        assert.ok(!loginPending("app://tumult/dms"));
+        assert.ok(!loginPending("app://tumult/loginx"));
+        assert.ok(!loginPending("https://evil.example/login"));
     });
 });

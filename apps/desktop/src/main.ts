@@ -18,7 +18,7 @@ import type { Session, WebContents } from "electron";
 
 import { callbackTarget, DESKTOP_REDIRECT_URI, isAuthorizationRequest } from "./auth.ts";
 import { pluginAssetResponse } from "./plugin-asset.ts";
-import { callOriginFrom, externalUrl, isAppUrl, originOf, permissionAllowed } from "./policy.ts";
+import { askingOrigin, callOriginFrom, externalUrl, isAppUrl, loginPending, originOf, permissionAllowed } from "./policy.ts";
 import { APP_ORIGIN, APP_SCHEME, contentTypeFor, requestPath, route } from "./protocol.ts";
 
 /** Defined by `scripts/build.ts` from the same env the web build reads. */
@@ -101,7 +101,11 @@ async function handleApp(request: Request): Promise<Response> {
     if (decision.kind === "plugin-asset") {
         // `net.fetch` is looked up per call (Chromium's network stack: the
         // system proxy applies), not captured.
-        return pluginAssetResponse(request.method, decision.query, (input, init) => net.fetch(input, init), decision.headers);
+        // `credentials: "omit"`: the default session is shared with the sign-in
+        // window, and a GitHub cookie from an upstream login must not ride along
+        // (the Vercel function this mirrors never has user cookies).
+        const fetchUpstream = (input: string, init?: RequestInit) => net.fetch(input, { ...init, credentials: "omit" });
+        return pluginAssetResponse(request.method, decision.query, fetchUpstream, decision.headers);
     }
     if (decision.kind === "not-found") {
         return new Response("Not found", { status: 404, headers: { ...decision.headers, "Content-Type": "text/plain; charset=utf-8" } });
@@ -121,17 +125,24 @@ function harden(ses: Session): void {
     ses.setPermissionRequestHandler((contents, permission, callback, details) => {
         const allowed = permissionAllowed({
             permission,
-            requestingOrigin: originOf(details.requestingUrl),
+            requestingOrigin: askingOrigin({
+                securityOrigin: "securityOrigin" in details ? (details as { securityOrigin?: string }).securityOrigin : undefined,
+                requestingUrl: details.requestingUrl,
+            }),
             topOrigin: originOf(contents.getURL()),
             callOrigin: CALL_ORIGIN,
         });
-        if (!allowed) console.warn(`[tumult] denied permission ${permission} for ${originOf(details.requestingUrl) ?? "unknown origin"}`);
+        if (!allowed) console.warn(`[tumult] denied permission ${permission} for ${details.requestingUrl ?? "unknown frame"}`);
         callback(allowed);
     });
     ses.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
         permissionAllowed({
             permission,
-            requestingOrigin: originOf(details.requestingUrl) ?? originOf(requestingOrigin),
+            requestingOrigin: askingOrigin({
+                securityOrigin: details.securityOrigin,
+                requestingOrigin,
+                requestingUrl: details.requestingUrl,
+            }),
             topOrigin: contents ? originOf(contents.getURL()) : originOf(details.embeddingOrigin),
             callOrigin: CALL_ORIGIN,
         }),
@@ -287,7 +298,7 @@ function createMainWindow(): BrowserWindow {
             void window.loadURL(callback);
             return;
         }
-        if (isAuthorizationRequest(target)) {
+        if (isAuthorizationRequest(target) && loginPending(window.webContents.getURL())) {
             openAuthWindow(target);
             return;
         }
