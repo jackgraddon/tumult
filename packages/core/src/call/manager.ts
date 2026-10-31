@@ -151,6 +151,11 @@ export class CallManager {
             void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent, roomId).catch(logFeedError);
         };
         const onToDevice = (event: MatrixEvent): void => {
+            // Call keys travel this way; a "MissingKey" in the call app is
+            // either a key that never arrived or one fed without `encrypted`.
+            if (event.getType().startsWith("io.element.call.")) {
+                console.debug(`[tumult] call: feeding ${event.getType()} from ${event.getSender()} (encrypted: ${event.isEncrypted()})`);
+            }
             void api.feedToDevice(event.getEffectiveEvent() as unknown as ToDeviceMessage, event.isEncrypted()).catch(logFeedError);
         };
         this.client.on(ClientEvent.Event, onEvent);

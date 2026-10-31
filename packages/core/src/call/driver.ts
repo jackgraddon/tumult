@@ -146,6 +146,12 @@ export class CallWidgetDriver extends WidgetDriver {
             out.batch.push(...encryptedBatch.batch);
             out.eventType = encryptedBatch.eventType;
         }
+        // encryptToDeviceMessages SKIPS a device it has no keys for, without
+        // an error; a call key that never leaves shows up only as the other
+        // side's "MissingKey". Say so.
+        if (out.batch.length < batch.length) {
+            console.warn(`[tumult] call: encrypted ${out.batch.length} of ${batch.length} ${eventType} to-device messages; the rest went to devices with no known keys`);
+        }
         await this.client.queueToDevice(out);
     }
 

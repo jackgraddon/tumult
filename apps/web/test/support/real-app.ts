@@ -156,6 +156,10 @@ export async function openDevice(
     const logs: string[] = [];
     page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
     page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}`));
+    // The console names a failed request's status but never its URL.
+    page.on("response", (r) => {
+        if (r.status() >= 400) logs.push(`[http] ${r.status()} ${r.request().method()} ${r.url()}`);
+    });
     return { name, account, context, page, logs };
 }
 
