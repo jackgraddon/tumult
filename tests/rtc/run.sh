@@ -3,14 +3,16 @@
 # down. KEEP=1 leaves the stack running for debugging. Docker or Podman, see
 # tests/container.sh; host networking, see docker-compose.yml.
 #
-# Three suites, in order:
+# Four suites, in order:
 #  1. packages/core/test-integration/{call,voice}.test.ts — Node: the call
 #     widget driver and the native-voice token exchange against the real stack.
 #  2. apps/web/test/rtc-media.test.ts — two Chromium browsers join one video
 #     call through the built app and check each other's mic and camera arrive.
 #  3. apps/web/test/e2ee.test.ts — one account on three devices: recovery
 #     setup, emoji verification, and history restored from the recovery key.
-# RTC_MEDIA=0 skips both browser suites (they need Chromium:
+#  4. apps/web/test/network.test.ts — a device loses the network mid-session:
+#     the app must say so, recover, catch up, and deliver what was sent offline.
+# RTC_MEDIA=0 skips the browser suites (they need Chromium:
 # `playwright install chromium`).
 set -eu
 
@@ -69,4 +71,6 @@ if [ "${RTC_MEDIA:-1}" = "1" ]; then
     # and a modern Synapse (this stack's, not tests/synapse's v1.114).
     echo "$LOG_PREFIX running the encryption trust-flow test..."
     (cd "$ROOT" && pnpm --filter @tumult/web test:e2ee)
+    echo "$LOG_PREFIX running the network-outage test..."
+    (cd "$ROOT" && pnpm --filter @tumult/web test:network)
 fi
