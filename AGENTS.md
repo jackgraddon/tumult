@@ -46,8 +46,9 @@ chat client should be.
 
 - Targets: login, sync, encrypted chat in a plain browser. MAS is the ONLY
   login method.
-- Desktop (Electron, most stable cross-platform) comes later. Ignore
-  desktop-only features for now (tray, updater, deep links, safeStorage).
+- Desktop (Electron, most stable cross-platform): `apps/desktop` packages the
+  web app for Linux and Windows. Desktop-only features stay out of scope
+  (tray, updater, deep links, safeStorage).
   Tauri rejected for now: Linux WebRTC gaps in system webviews.
 - Layout: vertical guild rail (Matrix spaces) + DMs tab + members sidebar.
 - Theming + modularity are v1. Games (custom room events: chess,
@@ -66,7 +67,8 @@ chat client should be.
 - `packages/core`: Matrix client, auth, sync, crypto. No Vue imports.
   `packages/ui`: Vue components, headless behavior + structure, token-driven.
   `packages/theme`: token contract, default theme, theme validator.
-  `apps/web`: shell + routing. `apps/desktop`: later.
+  `apps/web`: shell + routing. `apps/desktop`: Electron shell around the
+  web build (Linux + Windows; see "Desktop (Electron)" below).
 - Core exposes plain snapshots + subscriptions. No SDK types leak to UI. The
   contract LIVES in `packages/core/src/contract.ts` — read it there, this is a
   sketch:
@@ -1132,6 +1134,104 @@ homeserver. A trap listed here has shipped broken at least once.
   per-FILE manifest, not a tarball checksum. `set_always_on_screen` and
   `io.element.device_mute` are acknowledged with `{}` (the frame is always
   mounted; we draw no mute controls).
+
+### Desktop (Electron)
+
+`apps/desktop` (README there) is a shell around `apps/web`'s production
+build. Electron 45.1.0 and electron-builder 26.18.0 are pinned exactly: 45.2.1
+was less than a day old, so pnpm's `minimumReleaseAge` refused it. Rather than
+add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
+`electron-winstaller` is set to `false` (Squirrel is unused; we ship NSIS).
+
+- **Served from `app://tumult/`, never `file://`.** The scheme is privileged
+  (standard, secure, supportFetchAPI, corsEnabled, stream, codeCache) before
+  `ready`.
+  - `protocol.handle` routes by `apps/web/vercel.json`, which is IMPORTED, not
+    restated: files, then `/api/plugin-asset`, then the SPA rewrite (which
+    excludes `/sandbox.*`). Any other `/api/*` path is a 404.
+  - Headers are matched on the request path, so `/sandbox.html` gets its own
+    CSP, as on Vercel.
+  - The app's CSP stays the build's `<meta>`. `'self'` = `app://tumult`.
+  - VERIFIED (smoke test):
+    - Secure context, so WebCrypto works.
+    - String eval and inline script are both refused (probed from a `blob:`
+      script; Playwright's `evaluate` is DevTools code that CSP does not
+      govern, so `new Function` "worked" there).
+    - The real crypto `.wasm` compiles via `compileStreaming` (MIME
+      `application/wasm` + `'wasm-unsafe-eval'`).
+    - No CSP violations or console errors on login or the shell.
+    - Plugin sandbox frame: `src="/sandbox.html"`, `self.origin === "null"`,
+      no localStorage.
+- **Desktop web build = `VITE_DESKTOP=1`**, the ONLY behavioural difference.
+  `chat.real.ts` then registers `DESKTOP_REDIRECT_URI`
+  (`http://127.0.0.1/auth/callback`, in `apps/web/src/desktop.ts`, which the
+  main process bundles too) as `native`.
+  - VERIFIED against matrix.jackg.cc / mas.jackg.cc: dynamic registration
+    with that loopback URI + `native` answered 201, and the authorization
+    request reached MAS's sign-in page in the auth window.
+  - NOT verified on a real IdP: the code exchange after a real sign-in (no
+    credentials were entered). The interception itself is verified against
+    a loopback fake IdP answering 303 with the code in the fragment.
+- **Login runs in a child window.** In the app window, `will-navigate` to an
+  authorization request (`response_type=code` + our `redirect_uri`) is
+  cancelled and the request opened in a child window.
+  - In the child, `will-redirect`/`will-navigate` to the loopback URI is
+    cancelled BEFORE any request is made. The fragment survives (Electron's
+    `will-redirect` URL carries it). The main window then loads
+    `app://tumult/auth/callback#…`, so `completeLogin()` is unchanged.
+  - A `webRequest.onBeforeRequest` backstop cancels the loopback callback URL
+    if anything else requests it. It is filtered by exact origin + path
+    (other ports pass, so a homeserver on 127.0.0.1 still works).
+  - Closing the child window reloads `/login` (LoginView would otherwise sit
+    on its busy state).
+- **Plugin assets.** `apps/web/api/plugin-asset.ts` was split into pure
+  exports (`validateAssetQuery`, `upstreamUrl`, `fetchReleaseAsset`) with the
+  Vercel handler unchanged in behaviour (its 5 tests still pass). The desktop
+  answers `app://tumult/api/plugin-asset` with them via `net.fetch`.
+  VERIFIED: a full sandboxed-plugin install through it (the smoke test stubs
+  `net.fetch` in the main process via `app.evaluate`; no hook in the app).
+- **Permissions.** Only granted when the TOP-level document is `app://tumult`
+  (so IdP pages get nothing):
+  - The app gets `media`, `display-capture`, `notifications` and
+    `clipboard-sanitized-write`. The last is a deliberate addition: the Copy
+    buttons use `navigator.clipboard.writeText`.
+  - The configured Element Call origin gets `media` and `display-capture`.
+  - VERIFIED: geolocation is denied (query + `getCurrentPosition` code 1),
+    notifications are granted, and the IdP page's notifications are denied.
+  - A `fetch` to a loopback http server from `app://` succeeds, so no
+    Local-Network-Access prompt blocks a homeserver on this machine.
+- **Navigation.** The app window never leaves `app://tumult`.
+  - `window.open` always returns null. http(s) goes to `shell.openExternal`,
+    and other schemes (`file:`, custom) are dropped. VERIFIED.
+  - Chromium logs "Not allowed to load local resource" for a
+    `window.open("file:…")` by itself, before the handler runs.
+- **Single-instance lock.** One profile = one IndexedDB = one MatrixClient.
+  Unpackaged runs use `<appData>/Tumult (dev)`, never the installed profile.
+- **Packaging** (electron-builder):
+  - The package is `dist/` + `web/` + `package.json`, with no node_modules.
+    The version is injected from the root package.json.
+  - Fuses: no run-as-node, no NODE_OPTIONS/--inspect, cookie encryption, asar
+    integrity, only-load-from-asar.
+  - VERIFIED on macOS (the dev host): AppImage and deb build. A packaged,
+    fused app (an unsigned mac `dir` build, ad-hoc re-signed) serves
+    `app://tumult/login` from the asar. Without the re-sign, Apple Silicon
+    SIGKILLs it, because the fuses invalidate the signature; that only
+    matters on mac.
+  - rpm needs `rpmbuild` (fails on macOS without it; CI installs `rpm`).
+  - `linux.category` is written VERBATIM as `Categories=<value>;` AFTER
+    `desktop.entry` is merged, so the full list lives in `category`
+    (`"Network;Chat;InstantMessaging"`). VERIFIED by unpacking the deb:
+    `entry.Categories` shipped as `Network;`, then `Utility;`.
+  - `desktopName` + `syncDesktopName` give `StartupWMClass=tumult`.
+- **NOT verified:**
+  - Windows at all (NSIS build, run).
+  - Running on Linux (Wayland/X11), including the AppImage-under-AppArmor
+    caveat in the README.
+  - The display-media handler (macOS screen-recording TCC blocks a headless
+    test).
+  - Element Call inside the desktop (its widget postMessage origin is
+    `app://tumult`).
+  - `desktop.yml` on a runner.
 
 ### Known harmless
 
