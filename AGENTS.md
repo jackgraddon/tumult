@@ -109,13 +109,20 @@ chat client should be.
   never before: the store only gets its `createUser` hook on attach. Nothing
   calls it for you. Getting it backwards throws only once the store has
   presence events to replay, so a cold start looks fine and the NEXT run
-  breaks — do not trust a single clean first run here.
+  breaks — do not trust a single clean first run here. (VERIFIED v45:
+  `store/indexeddb.ts` `startup()` still throws "must be called after
+  assigning it to the client" from inside the presence replay.)
 - Closing the sync store is MANDATORY on stop: call `store.destroy()`.
   `stopClient()` does not close it, and `deleteDatabase` blocks while any
   connection is open. Both of the SDK's `onblocked` handlers only LOG — they
   never resolve or reject — so a surviving connection makes the next
   `clearStores()` hang forever, i.e. logout never returns. (`stopClient()` does
-  stop the crypto backend, so that side is covered.)
+  stop the crypto backend, so that side is covered.) VERIFIED v45: unchanged —
+  `stopClient()` still never touches the store, and both `clearStores()`'s
+  and `indexeddb-local-backend.ts`'s `onblocked` only log. 45's "crypto
+  database stuck open" fix (#5605) is on the RUST crypto store side (Rust
+  objects freed so `deleteRustSdkStore` is not blocked); it does not relax
+  this sync-store rule.
 - Only ONE MatrixClient per IndexedDB, ever: the SDK says two cause data
   corruption and decryption failures. That means start() must collapse
   concurrent calls AND clean up a half-built client when it throws partway —
@@ -138,7 +145,7 @@ chat client should be.
   authorize URL → redirect → `completeAuthorizationCodeGrant` → create client
   with tokens. Scope encodes device ID: generate once, persist, reuse (crypto
   identity is tied to it). Revoke token on logout.
-- VERIFIED v43: the OIDC module is `src/oauth/`, not `src/oidc/`, and the free
+- VERIFIED v43 and v45: the OIDC module is `src/oauth/`, not `src/oidc/`, and the free
   functions older docs name (`registerOidcClient`,
   `completeAuthorizationCodeGrant`, `OidcTokenRefresher`) DO NOT EXIST. It is
   one `OAuth2` class: static `registerClient`, instance
@@ -154,7 +161,8 @@ chat client should be.
   `application_type: "native"`, so a localhost dev server registers as
   `native` even though it is a browser. https deploys register as `web`.
 - The SDK DISCARDS the IdP's error body and throws a bare "Dynamic
-  registration failed". When registration fails, replay the POST to
+  registration failed" (VERIFIED v45: `OAuth2.registerClient` still throws on
+  status >= 400 without reading the body). When registration fails, replay the POST to
   `registration_endpoint` with curl to see the real reason. Core pre-validates
   client metadata so these failures name the offending field.
 - Cache registered client IDs per homeserver AND per client metadata. A client
@@ -370,6 +378,11 @@ chat client should be.
   be an explicit dependency of `apps/web`. It is a transitive dep of
   matrix-js-sdk, so the optimizer cannot resolve it from the app otherwise
   ("Failed to resolve import ... from node_modules/.vite/deps").
+  Since matrix-js-sdk 45 the SDK pins it EXACTLY (`18.9.0`, not a range), so
+  `apps/web` pins the same exact version: a looser range could resolve a
+  second copy, and two wasm builds in one app is two crypto stacks. Bump both
+  together on every SDK upgrade (`pnpm-lock.yaml` must show ONE
+  `@matrix-org/matrix-sdk-crypto-wasm@` entry).
 - esbuild's postinstall is blocked by default in pnpm 10+. It is approved via
   `allowBuilds:` in `pnpm-workspace.yaml` (NOT the `pnpm` key in
   `package.json`, which pnpm 11 ignores). Without it Vite cannot run.
@@ -453,9 +466,10 @@ homeserver. A trap listed here has shipped broken at least once.
   (`{ timeline_limit, required_state }`), not a list — a list-shaped object is
   silently ignored. Each range must be a range ON a list; a separate list per
   range is not window growth.
-- SSS warm-boot is blocked in v43: `sliding-sync.js` keeps `pos` in a local
-  inside `start()` and never calls `setSyncToken`, and `SlidingSyncSdk` only
-  emits `Prepared` after the first network response (`fromCache: false`) — so
+- SSS warm-boot is blocked in v43 and still in v45 (VERIFIED v45:
+  `sliding-sync.ts` keeps `currentPos` as a local inside `start()`, nothing in
+  `sliding-sync*.ts` calls `setSyncToken`, and `SlidingSyncSdk` still emits
+  `Prepared` with `fromCache: false`) — so
   persisting the window restores its SIZE, not offline rooms or a resumed token.
 - The SSS loop emits `ClientEvent.Sync` from
   `invokeLifecycleListeners(SlidingSyncState.Complete)` BEFORE
@@ -783,7 +797,13 @@ homeserver. A trap listed here has shipped broken at least once.
   integration files overran a 20-minute job); in the browser it is churn.
   Found by recording long timers with their creating stack (`node --import` a
   setTimeout wrapper): all of them were `timeoutSignal` ← `SyncApi.doSync`.
-  Fixed by `patches/matrix-js-sdk@43.0.0.patch` (pnpm `patchedDependencies`):
+  VERIFIED v45: still unfixed upstream (`timeoutSignal` still never clears,
+  `fetch.ts` `requestOtherUrl` still calls it), so the patch was re-made as
+  `patches/matrix-js-sdk@45.0.0.patch` (same edit to `lib/http-api/fetch.js`;
+  re-make with `pnpm patch matrix-js-sdk@<ver>` → edit → `pnpm patch-commit`).
+  Confirmed both ways on the upgrade: with the patch the guard passes, with
+  `patchedDependencies` removed it fails after hanging ~60 s on the leaked timer.
+  Fixed by that patch (pnpm `patchedDependencies`):
   clear the timer in `requestOtherUrl`'s `finally`, where `cleanup()` has
   already detached it — so the abort stays an `AbortError` (native
   `AbortSignal.timeout` would throw `TimeoutError`, which the SDK turns into a
@@ -887,9 +907,10 @@ homeserver. A trap listed here has shipped broken at least once.
   matrix-js-sdk `MatrixRTCSession` + `livekit-client` (both Apache-2.0) — chosen
   over Element's `@element-hq/matrixrtc-sdk` (experimental, a git dependency
   that builds Element Call on install, AGPL/commercial: bundling it would put
-  Tumult under AGPL). `VoiceManager` joins the room session with the
-  homeserver's advertised LiveKit transport (`getFocusInUse()` = the oldest
-  member's), gets `{url, jwt}` from lk-jwt-service's LEGACY `/sfu/get`
+  Tumult under AGPL). `VoiceManager` joins the room session on ONE LiveKit
+  transport — the oldest live member's (`focusInUse()` in `voice/manager.ts`),
+  else the homeserver's advertised one — publishes on exactly that one, gets
+  `{url, jwt}` from lk-jwt-service's LEGACY `/sfu/get`
   (`sfu.ts`), and hands frame keys from `EncryptionKeyChanged` to LiveKit's key
   provider. Compatibility mode on purpose: state-event membership (any
   homeserver), identity `<user_id>:<device_id>`. Moving to Matrix-2.0 mode
@@ -972,19 +993,48 @@ homeserver. A trap listed here has shipped broken at least once.
   404s `M_UNRECOGNIZED` on BOTH the unstable and `/v1/rtc/transports` routes, and
   publishes its only focus — `https://livekit-jwt.call.matrix.org` — in the
   well-known. So `voice/sfu.ts`'s `discoverFoci()` tries the CS API and then the
-  well-known, and `join()` borrows the room's focus
-  (`getActiveRoomSession()?.getFocusInUse()`) when this homeserver names none: a
+  well-known (v45's `_unstable_getRTCTransports()` checks `/versions` for
+  `org.matrix.msc4143` first and throws M_UNRECOGNIZED WITHOUT a request when it
+  is absent — same catch, same fallback), and `join()` borrows the room's focus
+  (`focusInUse(getActiveRoomSession()?.memberships)`) when this homeserver names none: a
   member authenticates to the FOCUS's JWT service with their own OpenID token, so
   JOINING a call needs no local transports — only starting one does. Without that
   fallback every matrix.org account was unable to join a call at all (matrix.org
   cannot host, and by extension cannot join). Note the client is deliberately
   hybrid: NEW discovery + OLD state-event membership (matrix.org also has MSC4354
   sticky events off), so a half-match here is a chosen mismatch.
-- `isLivekitTransportConfig` from `matrix-js-sdk/lib/matrixrtc` is NOT null-safe
-  (`object.type`), and `getFocusInUse()` returns `undefined` until a membership
-  names a focus — wrap it (`voice/sfu.ts`'s `isLivekitFocus`), or the join dies on
-  "Cannot read properties of undefined (reading 'type')" instead of its real
-  cause.
+- **matrix-js-sdk 44/45 rewrote the RTC session API** (VERIFIED v45 in
+  `src/matrixrtc/`). What broke and where it went:
+  - `joinRoomSession(fociPreferred, multiSfuFocus, config)` →
+    `join(ownMembershipIdentity, publishedTransports, config)`;
+    `leaveRoomSession()` → `leave()`.
+  - `getFocusInUse()` is GONE with "oldest membership" focus selection: the SDK
+    now writes legacy memberships with `focus_active: { focus_selection:
+    "multi_sfu" }` + `foci_preferred: publishedTransports` and expects a client
+    to subscribe to EVERY member's own transport. We connect to one SFU, so we
+    keep the old rule ourselves (`focusInUse()`: the oldest live membership's
+    first usable LiveKit transport; `memberships` is oldest-first), choose the
+    focus BEFORE joining and publish only on it — so all Tumults meet on one
+    SFU and a multi-SFU client (Element Call) still finds us there.
+  - `isLivekitTransportConfig` / `LivekitTransportConfig` are gone; the
+    replacement `isUnstableLivekitTransport` (null-safe now) also admits the
+    Matrix-2.0 `url`-only variant, which `/sfu/get` cannot use — `isLivekitFocus`
+    additionally requires `livekit_service_url`.
+  - The `memberId` in `ownMembershipIdentity` MUST be `<user_id>:<device_id>`:
+    that is the `membershipID` the SDK writes into a legacy membership, and 45
+    ("Match RTC key messages to member IDs") files an incoming media key only
+    under a membership whose user, device AND member id all match the key
+    message's `member_id` (falling back to `<sender>:<device>`). Any other value
+    and peers never attach our key — every frame we send is undecryptable,
+    with no error. The `backendIdentity` handed to `EncryptionKeyChanged` for a
+    `livekit_service_url` transport is still `<user_id>:<device_id>`, the
+    identity `/sfu/get` assigns (`RTCEncryptionManager.getOwnBackendIdentities`,
+    `CallMembership.parseFromEvent`).
+  - LiveKit request bodies (`LivekitGetTokenRequest`,
+    `LivekitDelegateDelayedLeaveRequest`) name the member by `member_id`, no
+    longer a `member` object; matrix-widget-api 1.20 matches (and types the
+    delegate's `url`). The driver forwards both bodies VERBATIM, so an
+    embedded app on either shape reaches the homeserver intact.
 - Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
   the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
   (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production gets that
@@ -1009,8 +1059,8 @@ homeserver. A trap listed here has shipped broken at least once.
   lk-jwt-service from `tests/rtc/` (`tests/rtc/run.sh`; it skips unless
   `TEST_RTC=1`, because `tests/synapse` is pinned to v1.114.0 and has none of
   the MSCs). Writing the unit tests caught a real bug: `delegateDelayedLeave`
-  needs the SFU WebSocket `url` the call app sends (the widget-api type omits
-  it), not the JWT service url from the transports.
+  needs the SFU WebSocket `url` the call app sends (matrix-widget-api ≤1.19's
+  type omitted it; 1.20 types it), not the JWT service url from the transports.
 - The `tests/rtc` stack runs (VERIFIED on CI, `integration.yml`): Synapse
   v1.163 + LiveKit v1.13 + lk-jwt-service 0.9 on HOST networking, loopback only.
   What it took, each of which failed silently before: lk-jwt-service verifies
@@ -1053,7 +1103,12 @@ homeserver. A trap listed here has shipped broken at least once.
 ### Known harmless
 
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver until MatrixRTC
-  is enabled on it — discovery the SDK probes optimistically.
+  is enabled on it — discovery the SDK probes optimistically (its own
+  `cachedRtcTransports` poller, started by `startClient()`). From v45 the SDK
+  only sends that request when `/versions` advertises `org.matrix.msc4143`
+  (VERIFIED v45 in `client.ts` `_unstable_getRTCTransports`), so a homeserver
+  that does not advertise it should stop showing the 404 at all — not yet
+  observed against this homeserver.
 - On `tests/rtc`, the embedded call's leave DELEGATION fails twice per client:
   `…/io.element.msc4195/rtc/livekit/delegate_delayed_leave` 404s on Synapse
   (that route belongs to lk-jwt-service; nothing forwards it), and the app's
