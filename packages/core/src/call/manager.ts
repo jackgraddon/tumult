@@ -1,6 +1,6 @@
 import { ClientWidgetApi, Widget } from "matrix-widget-api";
 import type { IRoomEvent } from "matrix-widget-api";
-import { ClientEvent, MatrixEventEvent } from "matrix-js-sdk";
+import { ClientEvent, MatrixEventEvent, RoomStateEvent } from "matrix-js-sdk";
 import type { MatrixClient, MatrixEvent } from "matrix-js-sdk";
 import type { CallState, CallView } from "../contract.ts";
 import { Observable } from "../observable.ts";
@@ -144,11 +144,20 @@ export class CallManager {
             // An undecrypted event has no usable type or content yet; it is fed
             // from `Decrypted` below once it has.
             if (event.getType() === "m.room.encrypted") return;
-            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent, roomId).catch(logFeedError);
+            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
         };
         const onDecrypted = (event: MatrixEvent): void => {
             if (event.getRoomId() !== roomId || event.isDecryptionFailure()) return;
-            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent, roomId).catch(logFeedError);
+            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
+        };
+        // The widget API (1.19) syncs room state separately from the timeline:
+        // the app reads call MEMBERSHIP from these update_state pushes, so a
+        // membership that only reached it through feedEvent was invisible.
+        // Without this, neither side learned the other had joined, so neither
+        // sent the other its media key and every track failed with MissingKey.
+        const onState = (event: MatrixEvent): void => {
+            if (event.getRoomId() !== roomId) return;
+            void api.feedStateUpdate(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
         };
         const onToDevice = (event: MatrixEvent): void => {
             // Call keys travel this way; a "MissingKey" in the call app is
@@ -161,6 +170,9 @@ export class CallManager {
         this.client.on(ClientEvent.Event, onEvent);
         this.client.on(MatrixEventEvent.Decrypted, onDecrypted);
         this.client.on(ClientEvent.ToDeviceEvent, onToDevice);
+        this.client.on(RoomStateEvent.Events, onState);
+        // The room the app may act in; also lets the API push initial state.
+        api.setViewedRoomId(roomId);
 
         const timer = setTimeout(() => this.setState("error"), HANDSHAKE_TIMEOUT_MS);
         api.once("ready", () => clearTimeout(timer));
@@ -183,6 +195,7 @@ export class CallManager {
             this.client.off(ClientEvent.Event, onEvent);
             this.client.off(MatrixEventEvent.Decrypted, onDecrypted);
             this.client.off(ClientEvent.ToDeviceEvent, onToDevice);
+            this.client.off(RoomStateEvent.Events, onState);
             api.removeAllListeners();
             api.stop();
         };
