@@ -28,7 +28,7 @@ interface StatusRow {
 // `null` is "not known yet" — rendered as such, never as a red "off".
 const rows = computed<StatusRow[] | null>(() => {
     const status = security.value;
-    if (!status) return null;
+    if (!status?.checked) return null;
     return [
         {
             label: "Cross-signing",

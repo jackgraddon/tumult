@@ -268,8 +268,15 @@ export interface SessionView {
  * running; `backupTrusted` means this device holds the backup decryption key.
  * A fresh device typically reads `{ enabled: true, trusted: false }` — the
  * recovery-key prompt state.
+ *
+ * `checked` is false until this device's crypto has actually answered (it
+ * starts after the first sync), and every other field is then a placeholder.
+ * Act on nothing before it: read as "no backup", the placeholder used to show
+ * every user "Message backup is off — set up recovery" on every boot, and the
+ * button failed because encryption was not running yet.
  */
 export interface SecurityStatus {
+	checked: boolean;
 	crossSigningReady: boolean;
 	backupEnabled: boolean;
 	backupTrusted: boolean;

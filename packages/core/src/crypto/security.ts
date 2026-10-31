@@ -11,6 +11,15 @@ export interface SecurityQueryInput {
     secretStorageReady: boolean;
 }
 
+/** Before this device's crypto has answered: nothing in it may be acted on. */
+export const UNCHECKED_SECURITY: Readonly<SecurityStatus> = {
+    checked: false,
+    crossSigningReady: false,
+    backupEnabled: false,
+    backupTrusted: false,
+    secretStorageReady: false,
+};
+
 /**
  * Fold raw crypto state into the contract snapshot. Pure, so the banner
  * logic and the edge cases (fresh device, no backup at all, backup this
@@ -18,6 +27,7 @@ export interface SecurityQueryInput {
  */
 export function toSecurityStatus(input: SecurityQueryInput): SecurityStatus {
     return {
+        checked: true,
         crossSigningReady: input.crossSigningReady,
         backupEnabled: input.backupPresent,
         backupTrusted: input.backupPresent && input.backupTrusted,

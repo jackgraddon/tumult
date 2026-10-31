@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
 
-import { querySecurityStatus, toSecurityStatus } from "../src/crypto/security.ts";
+import { UNCHECKED_SECURITY, querySecurityStatus, toSecurityStatus } from "../src/crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "../src/crypto/restore.ts";
 
 function stubCrypto(over: Record<string, unknown> = {}): CryptoApi {
@@ -24,12 +24,19 @@ describe("toSecurityStatus", () => {
                 secretStorageReady: true,
             }),
             {
+                checked: true,
                 crossSigningReady: true,
                 backupEnabled: true,
                 backupTrusted: true,
                 secretStorageReady: true,
             },
         );
+    });
+
+    it("is the only way to a checked status: the placeholder is unchecked", () => {
+        // The banner acts on nothing unchecked; a placeholder that claimed to
+        // be checked would show "backup is off" to everyone on every boot.
+        assert.equal(UNCHECKED_SECURITY.checked, false);
     });
 
     it("marks a fresh device with an unopenable backup", () => {
@@ -73,6 +80,7 @@ describe("querySecurityStatus", () => {
             }),
         );
         assert.deepEqual(s, {
+            checked: true,
             crossSigningReady: false,
             backupEnabled: false,
             backupTrusted: false,

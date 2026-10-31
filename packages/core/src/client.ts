@@ -51,7 +51,7 @@ import type {
     VerificationState,
 } from "./contract.ts";
 import { Observable } from "./observable.ts";
-import { querySecurityStatus } from "./crypto/security.ts";
+import { UNCHECKED_SECURITY, querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { sendTextMessage, retryTextMessage } from "./rooms/send.ts";
@@ -355,12 +355,7 @@ export class MatrixChatClient implements ChatClient {
     private readonly sessionState = new Observable<SessionView | null>(null);
     private readonly connectionState = new Observable<ConnectionState>("stopped");
     private readonly roomsState = new Observable<RoomSummary[]>([]);
-    private readonly securityState = new Observable<SecurityStatus>({
-        crossSigningReady: false,
-        backupEnabled: false,
-        backupTrusted: false,
-        secretStorageReady: false,
-    });
+    private readonly securityState = new Observable<SecurityStatus>(UNCHECKED_SECURITY);
     private readonly verificationState = new Observable<VerificationState>({ requests: [] });
     private readonly typingState = new Observable<TypingState>({ rooms: {} });
     private readonly notificationsState = new Observable<NotificationState>({
@@ -871,12 +866,7 @@ export class MatrixChatClient implements ChatClient {
         this.matrix = null;
         this.store = null;
         this.connectionState.set("stopped");
-        this.securityState.set({
-            crossSigningReady: false,
-            backupEnabled: false,
-            backupTrusted: false,
-            secretStorageReady: false,
-        });
+        this.securityState.set(UNCHECKED_SECURITY);
     }
 
     public async logout(): Promise<void> {

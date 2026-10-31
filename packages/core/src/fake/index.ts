@@ -419,6 +419,7 @@ class FakeChatClient implements ChatClient {
         this.rooms = new Observable<RoomSummary[]>(buildRooms());
         // Fake device is fully healthy: the security banner stays hidden.
         this.security = new Observable<SecurityStatus>({
+            checked: true,
             crossSigningReady: true,
             backupEnabled: true,
             backupTrusted: true,

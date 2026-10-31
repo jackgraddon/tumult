@@ -181,6 +181,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             connection: feed<ConnectionState>("connection", "connection", [], "starting"),
             rooms: feed<RoomSummary[]>("rooms", "rooms", [], []),
             security: feed<SecurityStatus>("security", "security", [], {
+                checked: false,
                 crossSigningReady: false,
                 backupEnabled: false,
                 backupTrusted: false,
