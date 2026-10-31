@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import type { ChatClient, OwnPresenceState } from "@tumult/core";
 
@@ -48,7 +49,7 @@ function submit(): void {
             emit("close");
         })
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, "Couldn't update your status");
         })
         .finally(() => {
             busy.value = false;

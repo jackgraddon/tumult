@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, onMounted, provide, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -75,7 +76,7 @@ onMounted(async () => {
         chat.value = client;
         await client.start();
     } catch (cause) {
-        startError.value = cause instanceof Error ? cause.message : String(cause);
+        startError.value = reportError(cause, "Couldn't connect to your homeserver");
     }
     // Install the reference plugins from the app, proving the extension seam
     // lives outside packages/ui and flows through the manifest/permission path.

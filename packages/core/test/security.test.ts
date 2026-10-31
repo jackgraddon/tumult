@@ -109,9 +109,9 @@ describe("restoreFailureMessage", () => {
         assert.match(msg, /set up recovery again/);
         assert.doesNotMatch(msg, /getBackupDecryptor/);
     });
-    it("stays generic otherwise", () => {
-        const msg = restoreFailureMessage(new Error("NetworkError: fetch failed"));
-        assert.match(msg, /connection/);
+    it("translates anything else through describeError", () => {
+        const msg = restoreFailureMessage(new TypeError("NetworkError when attempting to fetch resource."));
+        assert.match(msg, /^Couldn't download the backup: couldn't reach the server\. Check your connection/);
     });
 });
 

@@ -1730,6 +1730,30 @@ describe("browser smoke test (fake client)", () => {
         await closeSettings();
     });
 
+    it("reports a refused join as a sentence, never the raw request error", async () => {
+        // The fake refuses `#forbidden:fake` with a MatrixError-shaped error
+        // whose message embeds the URL; the dialog must show describeError's
+        // sentence instead (AGENTS.md: errors go through @tumult/core/errors).
+        await page.getByRole("button", { name: "Add a server" }).click();
+        await page.getByRole("menuitem", { name: "Join a room" }).click();
+        const dialog = page.getByRole("dialog", { name: "Join a room" });
+        await dialog.getByRole("textbox").fill("#forbidden:fake");
+        await dialog.getByRole("button", { name: "Join", exact: true }).click();
+        const alert = dialog.getByRole("alert");
+        await alert.waitFor({ timeout: 5_000 });
+        const text = (await alert.textContent())?.trim() ?? "";
+        assert.equal(text, "Couldn't join #forbidden:fake: you don't have permission to do that here.");
+        assert.doesNotMatch(text, /https?:\/\//);
+        assert.doesNotMatch(text, /\bM_[A-Z_]+/);
+        // The raw error still reaches developers, with the same context. It is
+        // this test's expected error, so take it out of the whole-run check.
+        const logged = consoleErrors.findIndex((line) => line.startsWith("[tumult] Couldn't join #forbidden:fake"));
+        assert.notEqual(logged, -1, "the raw error was not logged");
+        consoleErrors.splice(logged, 1);
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden" });
+    });
+
     it("floats a row's hover actions instead of resizing the row", async () => {
         // The regression this guards: the affordances used to sit in the flow
         // and be `display: none` until hover, so hovering grew the row and

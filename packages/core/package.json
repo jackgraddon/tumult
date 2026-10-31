@@ -24,6 +24,10 @@
       "types": "./dist/media/classify.d.ts",
       "import": "./dist/media/classify.js"
     },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
     "./session": {
       "types": "./dist/auth/session.d.ts",
       "import": "./dist/auth/session.js"

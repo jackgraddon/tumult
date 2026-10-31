@@ -636,6 +636,7 @@ class FakeChatClient implements ChatClient {
     }
 
     public async joinRoom(idOrAlias: string): Promise<string> {
+        if (idOrAlias === FORBIDDEN_ROOM_ALIAS) throw forbiddenJoin(idOrAlias);
         const existing = (this.rooms as Observable<RoomSummary[]>)
             .get()
             .find((r) => r.id === idOrAlias);
@@ -1325,4 +1326,23 @@ class FakeChatClient implements ChatClient {
 
 export function createFakeChatClient(options: FakeOptions = {}): ChatClient {
     return new FakeChatClient(options.seed ?? 1337);
+}
+
+/**
+ * A room the fake refuses to join, so the browser smoke test can watch a
+ * failed request reach the user. The error has a MatrixError's SHAPE — its
+ * `message` embeds the request URL, as the SDK's does — without importing the
+ * SDK into the fake build.
+ */
+export const FORBIDDEN_ROOM_ALIAS = "#forbidden:fake";
+
+function forbiddenJoin(idOrAlias: string): Error {
+    const url = `https://fake.invalid/_matrix/client/v3/join/${encodeURIComponent(idOrAlias)}`;
+    const data = { errcode: "M_FORBIDDEN", error: "You are not invited to this room." };
+    return Object.assign(new Error(`MatrixError: [403] ${data.error} (${url})`), {
+        name: data.errcode,
+        errcode: data.errcode,
+        httpStatus: 403,
+        data,
+    });
 }

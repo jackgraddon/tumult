@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import { useSubscribable } from "../subscribable.ts";
 import type { ChatClient } from "@tumult/core";
@@ -70,7 +71,7 @@ async function restore(): Promise<void> {
         restoreVerified.value = await props.client.restoreBackup(key);
         restored.value = true;
     } catch (cause) {
-        restoreError.value = cause instanceof Error ? cause.message : String(cause);
+        restoreError.value = reportError(cause, "Couldn't restore your messages");
     } finally {
         restoring.value = false;
     }
@@ -88,7 +89,7 @@ async function runSetup(): Promise<void> {
             setupStage.value = "ready";
         }
     } catch (cause) {
-        restoreError.value = cause instanceof Error ? cause.message : String(cause);
+        restoreError.value = reportError(cause, "Couldn't set up recovery");
         setupStage.value = "error";
     }
 }
