@@ -13,7 +13,8 @@ export interface StagedAttachment {
     altText: string;
     width?: number;
     height?: number;
-    status: "staged" | "sending" | "failed";
+    /** `converting`: a HEIC being turned into JPEG; the tray cannot send yet. */
+    status: "converting" | "staged" | "sending" | "failed";
 }
 
 export type PreviewKind = "image" | "video" | "audio" | "file";

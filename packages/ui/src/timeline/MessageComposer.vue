@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { AttachmentSendResult, ChatClient, MessageView, OutgoingAttachment } from "@tumult/core";
 
 import { fileIcon, formatBytes, previewKind, settleTray, toOutgoing } from "./attachments.ts";
+import { heicToJpeg, looksHeic } from "./heic.ts";
 import type { StagedAttachment } from "./attachments.ts";
 
 import { useComposerActions, type ComposerAction, type ComposerActionContext } from "./composer-actions.ts";
@@ -158,6 +159,7 @@ function executeCommand(resolved: ResolvedCommand): void {
 function submit(): void {
     const body = draft.value.trim();
     if (props.disabled) return;
+    if (converting.value) return;
     if (pending.value.length > 0) {
         // With files staged the draft is their caption, never a command.
         void sendTray(body);
@@ -185,11 +187,25 @@ const tray = ref<StagedAttachment[]>([]);
 let nextAttachmentId = 1;
 /** Everything not already on its way: staged plus failed (a send retries both). */
 const pending = computed(() => tray.value.filter((item) => item.status !== "sending"));
+/** Send waits for every HEIC to finish converting rather than send it raw. */
+const converting = computed(() => tray.value.some((item) => item.status === "converting"));
 const canStage = computed(() => !!props.sendAttachments && !props.disabled);
 
 function stage(files: Iterable<File>): void {
     if (!canStage.value) return;
     for (const file of files) {
+        if (looksHeic(file)) {
+            const item: StagedAttachment = {
+                id: nextAttachmentId++,
+                file,
+                previewUrl: null,
+                altText: "",
+                status: "converting",
+            };
+            tray.value = [...tray.value, item];
+            void convertHeic(item.id, file);
+            continue;
+        }
         const kind = previewKind(file);
         const item: StagedAttachment = {
             id: nextAttachmentId++,
@@ -201,6 +217,26 @@ function stage(files: Iterable<File>): void {
         tray.value = [...tray.value, item];
         if (kind === "image" && item.previewUrl) measureImage(item.id, item.previewUrl);
     }
+}
+
+/**
+ * Swap a HEIC for its JPEG. A file that does not decode stays as it is and
+ * sends as a plain file chip — honest, if not viewable everywhere.
+ */
+async function convertHeic(id: number, file: File): Promise<void> {
+    let converted: File | null = null;
+    try {
+        converted = await heicToJpeg(file);
+    } catch (error) {
+        console.warn(`[tumult] could not convert "${file.name}" to JPEG; sending it as-is`, error);
+    }
+    // Removed while converting: nothing to update.
+    if (!tray.value.some((item) => item.id === id)) return;
+    const previewUrl = converted ? URL.createObjectURL(converted) : null;
+    tray.value = tray.value.map((item) =>
+        item.id === id ? { ...item, file: converted ?? item.file, previewUrl, status: "staged" as const } : item,
+    );
+    if (previewUrl) measureImage(id, previewUrl);
 }
 
 /** Intrinsic size goes on the event so receivers reserve the box pre-decode. */
@@ -390,7 +426,8 @@ function onDrop(event: DragEvent): void {
                 </div>
                 <span class="tumult-composer-attachment-name" :title="item.file.name">{{ item.file.name }}</span>
                 <span class="tumult-composer-attachment-meta">
-                    <template v-if="item.status === 'sending'">Uploading…</template>
+                    <template v-if="item.status === 'converting'">Converting to JPEG…</template>
+                    <template v-else-if="item.status === 'sending'">Uploading…</template>
                     <template v-else-if="item.status === 'failed'">Upload failed — send to retry</template>
                     <template v-else>{{ formatBytes(item.file.size) }}</template>
                 </span>
@@ -457,7 +494,7 @@ function onDrop(event: DragEvent): void {
             <button
                 class="tumult-composer-send"
                 type="submit"
-                :disabled="disabled || (draft.trim().length === 0 && pending.length === 0)"
+                :disabled="disabled || converting || (draft.trim().length === 0 && pending.length === 0)"
             >
                 Send
             </button>

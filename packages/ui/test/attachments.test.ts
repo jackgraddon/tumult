@@ -9,6 +9,7 @@ import {
     toOutgoing,
     type StagedAttachment,
 } from "../src/timeline/attachments.ts";
+import { jpegName, looksHeic } from "../src/timeline/heic.ts";
 import { mediaText } from "../src/timeline/renderers/mediaText.ts";
 
 function staged(id: number, name: string, type: string, altText = ""): StagedAttachment {
@@ -50,6 +51,21 @@ describe("attachment tray helpers", () => {
     it("fails the whole batch when the client threw (no per-file results)", () => {
         const items = [staged(1, "a.png", "image/png"), staged(2, "b.png", "image/png")];
         assert.deepEqual(settleTray(items, null).keep.map((i) => i.status), ["failed", "failed"]);
+    });
+});
+
+describe("HEIC detection", () => {
+    it("matches by type, or by extension only when the type is missing", () => {
+        assert.equal(looksHeic(new File([], "a.HEIC", { type: "image/heic" })), true);
+        assert.equal(looksHeic(new File([], "a.heif", { type: "" })), true);
+        assert.equal(looksHeic(new File([], "a.heic", { type: "application/octet-stream" })), true);
+        assert.equal(looksHeic(new File([], "a.heic", { type: "image/png" })), false);
+        assert.equal(looksHeic(new File([], "a.png", { type: "image/png" })), false);
+    });
+
+    it("renames to .jpg", () => {
+        assert.equal(jpegName("IMG_3947.HEIC"), "IMG_3947.jpg");
+        assert.equal(jpegName("photo"), "photo.jpg");
     });
 });
 

@@ -477,6 +477,30 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(await card.count(), 0);
     });
 
+    it("converts a staged HEIC to JPEG, previews it, and sends the JPEG", async () => {
+        // A real 64x48 HEIC (made with macOS `sips`) — Firefox cannot decode it natively.
+        const heic = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/red.heic"));
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "IMG_3947.HEIC", mimeType: "image/heic", buffer: heic },
+        ]);
+        const card = page.locator(".tumult-composer-attachment");
+        const thumb = card.locator("img.tumult-composer-attachment-thumb");
+        await thumb.waitFor({ timeout: 30_000 });
+        assert.equal(await card.locator(".tumult-composer-attachment-name").textContent(), "IMG_3947.jpg");
+        assert.equal(await card.getAttribute("data-status"), "staged");
+        await page.waitForFunction(
+            () => (document.querySelector("img.tumult-composer-attachment-thumb") as HTMLImageElement | null)?.naturalWidth === 64,
+            undefined,
+            { timeout: 10_000 },
+        );
+
+        await page.locator(".tumult-composer-input").press("Enter");
+        const img = page.locator(".tumult-row img.tumult-media-message-image[alt='IMG_3947.jpg']").last();
+        await img.waitFor({ timeout: 10_000 });
+        assert.equal(await img.getAttribute("data-dims"), "true", "the JPEG's measured size should travel on the event");
+        assert.equal(await card.count(), 0);
+    });
+
     it("renders a member decoration from an app-installed plugin", async () => {
         // Alice seeds power level 100, so the admin badge's `match` accepts her.
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });
