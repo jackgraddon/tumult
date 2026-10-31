@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**294 tokens** — 91 primitives, 111 semantic, 92 component.
+**296 tokens** — 91 primitives, 111 semantic, 94 component.
 
 ## Primitives
 
@@ -264,6 +264,8 @@ everything built on it.
 | `--composer-bg` | color | `var(--surface-pane)` | Composer background. |
 | `--composer-input-bg` | color | `var(--surface-inset)` | Composer input background. |
 | `--composer-input-border` | color | `var(--border-default)` | Composer input border. |
+| `--composer-attachment-width` | size | `160px` | Width of one staged attachment card in the composer tray. |
+| `--composer-attachment-thumb-height` | size | `96px` | Height of a staged attachment's thumbnail / file-icon box. |
 | `--members-bg` | color | `var(--surface-pane)` | Members pane. |
 | `--member-dot-size` | size | `var(--presence-dot-size)` | Presence dot. |
 | `--member-shield-size` | size | `var(--verified-badge-size)` | Shield shown in place of a verified member's presence dot. |

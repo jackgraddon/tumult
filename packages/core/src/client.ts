@@ -17,6 +17,9 @@ import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
+    AttachmentSendResult,
+    OutgoingAttachment,
+    SendAttachmentsOptions,
     VoiceSettings,
     VoiceVideoSource,
     VoiceView,
@@ -55,7 +58,7 @@ import { UNCHECKED_SECURITY, querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { resendAfterOutage, sendTextMessage, retryTextMessage } from "./rooms/send.ts";
-import { sendMediaMessage } from "./rooms/media.ts";
+import { sendAttachments, sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
@@ -997,6 +1000,18 @@ export class MatrixChatClient implements ChatClient {
         const client = this.matrix;
         if (!client) throw new Error("Cannot send before start()");
         await sendMediaMessage(client, roomId, file, body);
+    }
+
+    public async sendAttachments(
+        roomId: string,
+        attachments: readonly OutgoingAttachment[],
+        options: SendAttachmentsOptions = {},
+    ): Promise<AttachmentSendResult[]> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot send before start()");
+        return sendAttachments(client, roomId, attachments, options, (body, replyTo) =>
+            sendTextMessage(client, roomId, body, replyTo),
+        );
     }
 
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {

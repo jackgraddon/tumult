@@ -239,6 +239,8 @@
     "composer-bg": "var(--surface-pane)",
     "composer-input-bg": "var(--surface-inset)",
     "composer-input-border": "var(--border-default)",
+    "composer-attachment-width": "160px",
+    "composer-attachment-thumb-height": "96px",
     "members-bg": "var(--surface-pane)",
     "member-dot-size": "var(--presence-dot-size)",
     "member-shield-size": "var(--verified-badge-size)",

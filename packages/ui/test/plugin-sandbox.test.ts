@@ -113,6 +113,7 @@ function makeClient(overrides: Partial<ChatClient> = {}): {
         send: record("send"),
         retry: record("retry"),
         sendMediaMessage: record("sendMediaMessage", "mxc://sent"),
+        sendAttachments: record("sendAttachments", []),
         toggleReaction: record("toggleReaction"),
         edit: record("edit"),
         sendTyping: record("sendTyping"),

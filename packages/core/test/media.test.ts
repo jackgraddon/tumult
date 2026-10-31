@@ -5,7 +5,8 @@ import type { MatrixClient } from "matrix-js-sdk";
 import { MediaResolver, parseMxc } from "../src/media/resolver.ts";
 import { isTerminalMediaError } from "../src/media/classify.ts";
 import { decryptAttachment } from "../src/media/attachment.ts";
-import { sendMediaMessage } from "../src/rooms/media.ts";
+import { sendAttachments, sendMediaMessage } from "../src/rooms/media.ts";
+import { ALT_TEXT_KEY } from "../src/contract.ts";
 import type { EncryptedAttachment } from "../src/contract.ts";
 
 /** Unpadded base64 (standard alphabet) — matches the wire format. */
@@ -227,6 +228,7 @@ describe("sendMediaMessage", () => {
         assert.deepEqual(send[2], {
             msgtype: "m.image",
             body: "photo.png",
+            filename: "photo.png",
             url: "mxc://hs/uploaded",
             info: { mimetype: "image/png", size: 3 },
         });
@@ -283,6 +285,103 @@ describe("sendMediaMessage", () => {
             () => sendMediaMessage(matrix, "!r:x", new File(["x"], "a.png", { type: "image/png" })),
             /M_FORBIDDEN/,
         );
+    });
+});
+
+describe("sendAttachments", () => {
+    function stubMatrix(failUploadOf?: string) {
+        const sends: Record<string, unknown>[] = [];
+        const texts: [string, string | undefined][] = [];
+        let n = 0;
+        const matrix = {
+            uploadContent: async (file: File) => {
+                if (file.name === failUploadOf) throw new Error("M_TOO_LARGE");
+                return { content_uri: `mxc://hs/${++n}` };
+            },
+            sendMessage: async (_roomId: string, content: Record<string, unknown>) => {
+                sends.push(content);
+                return { event_id: `$${sends.length}` };
+            },
+        } as unknown as MatrixClient;
+        const sendText = async (body: string, replyTo?: string) => {
+            texts.push([body, replyTo]);
+        };
+        return { matrix, sends, texts, sendText };
+    }
+    const png = (name: string) => new File(["png"], name, { type: "image/png" });
+
+    it("puts one file's caption in body beside filename (MSC2530), alt text namespaced", async () => {
+        const { matrix, sends, texts, sendText } = stubMatrix();
+        const results = await sendAttachments(
+            matrix,
+            "!r:x",
+            [{ file: png("cat.png"), altText: " A grey cat asleep ", width: 640, height: 480 }],
+            { caption: " look at him ", replyToEventId: "$parent" },
+            sendText,
+        );
+        assert.deepEqual(results, [{ ok: true }]);
+        assert.deepEqual(texts, []);
+        assert.deepEqual(sends, [
+            {
+                msgtype: "m.image",
+                body: "look at him",
+                filename: "cat.png",
+                url: "mxc://hs/1",
+                info: { mimetype: "image/png", size: 3, w: 640, h: 480 },
+                [ALT_TEXT_KEY]: "A grey cat asleep",
+                "m.relates_to": { "m.in_reply_to": { event_id: "$parent" } },
+            },
+        ]);
+    });
+
+    it("keeps body == filename (no caption) when there is no caption, even with alt text", async () => {
+        const { matrix, sends, sendText } = stubMatrix();
+        await sendAttachments(matrix, "!r:x", [{ file: png("cat.png"), altText: "a cat" }], {}, sendText);
+        assert.equal(sends[0]?.["body"], "cat.png");
+        assert.equal(sends[0]?.["filename"], "cat.png");
+        assert.equal(sends[0]?.[ALT_TEXT_KEY], "a cat");
+    });
+
+    it("omits blank alt text and never puts dims on a generic file", async () => {
+        const { matrix, sends, sendText } = stubMatrix();
+        const pdf = new File(["d"], "doc.pdf", { type: "application/pdf" });
+        await sendAttachments(matrix, "!r:x", [{ file: pdf, altText: "  ", width: 1, height: 1 }], {}, sendText);
+        assert.deepEqual(sends[0], {
+            msgtype: "m.file",
+            body: "doc.pdf",
+            filename: "doc.pdf",
+            url: "mxc://hs/1",
+            info: { mimetype: "application/pdf", size: 1 },
+        });
+    });
+
+    it("sends several files' caption as a text message first, carrying the reply", async () => {
+        const { matrix, sends, texts, sendText } = stubMatrix();
+        await sendAttachments(matrix, "!r:x", [{ file: png("a.png") }, { file: png("b.png") }], {
+            caption: "two shots",
+            replyToEventId: "$parent",
+        }, sendText);
+        assert.deepEqual(texts, [["two shots", "$parent"]]);
+        assert.deepEqual(sends.map((c) => [c["body"], c["filename"], c["m.relates_to"]]), [
+            ["a.png", "a.png", undefined],
+            ["b.png", "b.png", undefined],
+        ]);
+    });
+
+    it("reports a failed upload per file and still sends the rest, in order", async () => {
+        const { matrix, sends, sendText } = stubMatrix("b.png");
+        const results = await sendAttachments(
+            matrix,
+            "!r:x",
+            [{ file: png("a.png") }, { file: png("b.png") }, { file: png("c.png") }],
+            {},
+            sendText,
+        );
+        assert.equal(results[0]?.ok, true);
+        assert.equal(results[1]?.ok, false);
+        assert.match(String((results[1] as { error: unknown }).error), /M_TOO_LARGE/);
+        assert.equal(results[2]?.ok, true);
+        assert.deepEqual(sends.map((c) => c["filename"]), ["a.png", "c.png"]);
     });
 });
 

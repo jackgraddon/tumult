@@ -54,6 +54,8 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "composer-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Composer background." },
     { name: "composer-input-bg", tier: "component", kind: "color", value: v("surface-inset"), description: "Composer input background." },
     { name: "composer-input-border", tier: "component", kind: "color", value: v("border-default"), description: "Composer input border." },
+    { name: "composer-attachment-width", tier: "component", kind: "size", description: "Width of one staged attachment card in the composer tray." },
+    { name: "composer-attachment-thumb-height", tier: "component", kind: "size", description: "Height of a staged attachment's thumbnail / file-icon box." },
 
     // Members
     { name: "members-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Members pane." },

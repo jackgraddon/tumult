@@ -517,6 +517,28 @@ export interface EncryptedAttachment {
 	/** Version string (currently `"v2"`). */
 	v: string;
 }
+interface OutgoingAttachment {
+	file: File | Blob;
+	/** Filename on the event; defaults to `File.name`, else `"file"`. */
+	name?: string;
+	/** Description for screen readers; images only in the UI. */
+	altText?: string;
+	/** Intrinsic pixel size (images/video), so receivers reserve the box. */
+	width?: number;
+	height?: number;
+}
+interface SendAttachmentsOptions {
+	/** Message text sent with the files; blank means none. */
+	caption?: string;
+	/** Reply target; the relation goes on the first event sent. */
+	replyToEventId?: string;
+}
+type AttachmentSendResult = {
+	ok: true;
+} | {
+	ok: false;
+	error: unknown;
+};
 export interface ChatClient {
 	/**
 	 * Begin MAS login.
@@ -610,6 +632,16 @@ export interface ChatClient {
 	 * — when omitted, the filename is used.
 	 */
 	sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void>;
+	/**
+	 * Upload and send staged attachments in order, with an optional caption.
+	 *
+	 * One file carries the caption on its own event (MSC2530: `filename` +
+	 * a differing `body`); several files get the caption as a text message
+	 * sent first. Alt text rides under {@link ALT_TEXT_KEY}. Never rejects for
+	 * a single file: each result says whether that file landed, because a
+	 * failed upload has no local echo to show the failure.
+	 */
+	sendAttachments(roomId: string, attachments: readonly OutgoingAttachment[], options?: SendAttachmentsOptions): Promise<AttachmentSendResult[]>;
 	/**
 	 * Toggle our `emoji` reaction on a message: sends `m.reaction` when we
 	 * haven't reacted, redacts our reaction when we have. The feed maps the

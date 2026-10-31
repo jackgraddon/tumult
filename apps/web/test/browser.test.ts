@@ -420,6 +420,51 @@ describe("browser smoke test (fake client)", () => {
             .waitFor({ timeout: 10_000 });
     });
 
+    it("stages attachments, removes one, and sends the rest with alt text and a caption", async () => {
+        const svg = (fill: string) =>
+            Buffer.from(
+                `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="100%" height="100%" fill="${fill}"/></svg>`,
+            );
+        const rowsBefore = await page.locator(".tumult-row").count();
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "wrong.svg", mimeType: "image/svg+xml", buffer: svg("red") },
+            { name: "cat.svg", mimeType: "image/svg+xml", buffer: svg("grey") },
+        ]);
+        const cards = page.locator(".tumult-composer-attachment");
+        await cards.nth(1).waitFor({ timeout: 5_000 });
+        assert.equal(await cards.count(), 2, "both picked files should stage, not send");
+        await page.waitForTimeout(400);
+        assert.equal(await page.locator(".tumult-row").count(), rowsBefore, "picking a file must not send it");
+        // The thumbnail is the picked bytes, previewed locally.
+        assert.match((await cards.first().locator("img").getAttribute("src")) ?? "", /^blob:/);
+
+        await page.locator('button[aria-label="Remove wrong.svg"]').click();
+        assert.equal(await cards.count(), 1, "removing a staged file should drop its card");
+        assert.equal(await cards.first().locator(".tumult-composer-attachment-name").textContent(), "cat.svg");
+
+        await page.locator('input[aria-label="Alt text for cat.svg"]').fill("A grey square");
+        const input = page.locator(".tumult-composer-input");
+        await input.fill("my cat, captioned");
+        await input.press("Enter");
+
+        // One media row: the MSC2530 caption under the image, alt text on the <img>.
+        const row = page.locator(".tumult-row", { has: page.locator(".tumult-media-message-caption") }).last();
+        await row.waitFor({ timeout: 10_000 });
+        assert.equal(await row.locator(".tumult-media-message-caption").textContent(), "my cat, captioned");
+        const img = row.locator("img.tumult-media-message-image");
+        await img.waitFor({ timeout: 10_000 });
+        assert.equal(await img.getAttribute("alt"), "A grey square");
+        // The tray measured the image, so the event reserves its box (40x30).
+        assert.equal(await img.getAttribute("data-dims"), "true");
+        assert.equal(await cards.count(), 0, "the tray should clear once its files landed");
+        assert.equal(await input.inputValue(), "", "the caption should leave the composer");
+        assert.equal(
+            await page.locator(".tumult-row", { hasText: "wrong.svg" }).count(),
+            0,
+            "the removed file must never be sent",
+        );
+    });
+
     it("renders a member decoration from an app-installed plugin", async () => {
         // Alice seeds power level 100, so the admin badge's `match` accepts her.
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });

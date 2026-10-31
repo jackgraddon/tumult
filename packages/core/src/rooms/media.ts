@@ -1,6 +1,8 @@
-import { MsgType, type MatrixClient } from "matrix-js-sdk";
+import type { MatrixClient } from "matrix-js-sdk";
 import { uploadWithRefresh } from "../util/token-refresh.ts";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
+import type { AttachmentSendResult, OutgoingAttachment, SendAttachmentsOptions } from "../contract.ts";
+import { attachmentContent } from "./attachment-content.ts";
 
 /**
  * Upload a media file and send it as an `m.room.message`.
@@ -17,24 +19,62 @@ export async function sendMediaMessage(
     file: File | Blob,
     body?: string,
 ): Promise<void> {
-    const { content_uri } = await uploadWithRefresh(matrix, file);
-    const msgtype = msgtypeForFile(file);
-    const name = file instanceof File ? file.name : "file";
-    const content = {
-        msgtype,
-        body: body ?? name,
-        url: content_uri,
-        info: {
-            mimetype: file.type,
-            size: file.size,
-        },
-    } as RoomMessageEventContent;
-    await matrix.sendMessage(roomId, content);
+    await sendOneAttachment(matrix, roomId, { file }, body);
 }
 
-function msgtypeForFile(file: File | Blob): MsgType {
-    if (file.type.startsWith("image/")) return MsgType.Image;
-    if (file.type.startsWith("video/")) return MsgType.Video;
-    if (file.type.startsWith("audio/")) return MsgType.Audio;
-    return MsgType.File;
+/**
+ * Send staged attachments, in order, with an optional caption.
+ *
+ * Caption placement follows MSC2530 (spec v1.10): a media event whose
+ * `filename` differs from its `body` carries `body` as its caption. One file
+ * takes the caption on its own event; several files cannot share one, so the
+ * caption goes out first as a plain text message (the reply relation rides on
+ * whichever event goes first). Each file settles independently — a failed
+ * upload has no local echo, so the per-file result is the only place the
+ * failure can surface, and the batch carries on past it.
+ */
+export async function sendAttachments(
+    matrix: MatrixClient,
+    roomId: string,
+    attachments: readonly OutgoingAttachment[],
+    options: SendAttachmentsOptions,
+    sendText: (body: string, replyToEventId?: string) => Promise<void>,
+): Promise<AttachmentSendResult[]> {
+    const caption = options.caption?.trim() ?? "";
+    let replyTo = options.replyToEventId;
+    if (caption && attachments.length > 1) {
+        // A text failure surfaces in-timeline through its own echo.
+        await sendText(caption, replyTo).catch(() => undefined);
+        replyTo = undefined;
+    }
+    const results: AttachmentSendResult[] = [];
+    for (const attachment of attachments) {
+        try {
+            await sendOneAttachment(
+                matrix,
+                roomId,
+                attachment,
+                attachments.length === 1 ? caption : "",
+                replyTo,
+            );
+            results.push({ ok: true });
+        } catch (error) {
+            results.push({ ok: false, error });
+        }
+        replyTo = undefined;
+    }
+    return results;
+}
+
+async function sendOneAttachment(
+    matrix: MatrixClient,
+    roomId: string,
+    attachment: OutgoingAttachment,
+    caption?: string,
+    replyToEventId?: string,
+): Promise<void> {
+    const { content_uri } = await uploadWithRefresh(matrix, attachment.file);
+    const content = attachmentContent(attachment, content_uri, caption);
+    if (replyToEventId) content["m.relates_to"] = { "m.in_reply_to": { event_id: replyToEventId } };
+    await matrix.sendMessage(roomId, content as unknown as RoomMessageEventContent);
 }

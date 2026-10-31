@@ -1,4 +1,7 @@
 export type {
+    AttachmentSendResult,
+    OutgoingAttachment,
+    SendAttachmentsOptions,
     CallState,
     CallView,
     ChatClient,
@@ -49,7 +52,8 @@ export { Observable } from "./observable.ts";
 export { selectSpaceTree } from "./selectors/spaceTree.ts";
 export { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 export { sendTextMessage } from "./rooms/send.ts";
-export { sendMediaMessage } from "./rooms/media.ts";
+export { sendAttachments, sendMediaMessage } from "./rooms/media.ts";
+export { attachmentContent } from "./rooms/attachment-content.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
 export { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 export { readOwnPresence } from "./rooms/own-presence.ts";
@@ -78,4 +82,4 @@ export { hasStoredSession } from "./auth/session.ts";
 export { isTerminalMediaError } from "./media/classify.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 
-export { CALL_MEMBER_EVENT_TYPE, DEFAULT_VOICE_SETTINGS, membersCanJoinCalls } from "./contract.ts";
+export { ALT_TEXT_KEY, CALL_MEMBER_EVENT_TYPE, DEFAULT_VOICE_SETTINGS, membersCanJoinCalls } from "./contract.ts";

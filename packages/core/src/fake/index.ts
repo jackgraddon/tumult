@@ -1,4 +1,7 @@
 import type {
+    AttachmentSendResult,
+    OutgoingAttachment,
+    SendAttachmentsOptions,
     VoiceSettings,
     VoiceVideoSource,
     VoiceView,
@@ -32,6 +35,7 @@ import type {
 } from "../contract.ts";
 import { CALL_MEMBER_EVENT_TYPE } from "../contract.ts";
 import { Observable } from "../observable.ts";
+import { attachmentContent } from "../rooms/attachment-content.ts";
 import { fallbackName } from "../rooms/profile.ts";
 import { assertProfileFieldKey } from "../rooms/profile-fields.ts";
 
@@ -506,6 +510,8 @@ class FakeChatClient implements ChatClient {
 
     public async stop(): Promise<void> {
         (this.connection as Observable<ConnectionState>).set("stopped");
+        for (const url of this.sentMedia.values()) URL.revokeObjectURL(url);
+        this.sentMedia.clear();
     }
 
     public timeline(roomId: string): Subscribable<MessageView[]> {
@@ -809,14 +815,55 @@ class FakeChatClient implements ChatClient {
         // No-op in fake.
     }
 
+    /** Sent attachments keep their real bytes so the timeline shows what was picked. */
+    private readonly sentMedia = new Map<string, string>();
+    private sentMediaSeq = 0;
+
+    public async sendAttachments(
+        roomId: string,
+        attachments: readonly OutgoingAttachment[],
+        options: SendAttachmentsOptions = {},
+    ): Promise<AttachmentSendResult[]> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return attachments.map(() => ({ ok: false, error: new Error("Unknown room") }));
+        const caption = options.caption?.trim() ?? "";
+        let replyTo = options.replyToEventId;
+        // Same placement rule as the real client (rooms/media.ts).
+        if (caption && attachments.length > 1) {
+            await this.send(roomId, caption, replyTo);
+            replyTo = undefined;
+        }
+        const results: AttachmentSendResult[] = [];
+        for (const attachment of attachments) {
+            const url = `mxc://fake/sent/${++this.sentMediaSeq}`;
+            this.sentMedia.set(url, URL.createObjectURL(attachment.file));
+            const content = attachmentContent(attachment, url, attachments.length === 1 ? caption : "");
+            if (replyTo) content["m.relates_to"] = { "m.in_reply_to": { event_id: replyTo } };
+            const echo: MessageView = msg(
+                `${roomId}:local-${Date.now()}-${this.sentMediaSeq}`,
+                "@demo:example.com",
+                String(content["body"]),
+                Date.now(),
+                { status: "sending", type: "m.room.message", content },
+            );
+            obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+            setTimeout(() => {
+                obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
+            }, 300);
+            results.push({ ok: true });
+            replyTo = undefined;
+        }
+        return results;
+    }
+
     public async resolveMedia(uri: string, _size: number): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return fixtureMedia(uri) ?? uri;
+        return this.sentMedia.get(uri) ?? fixtureMedia(uri) ?? uri;
     }
 
     public async resolveMediaDownload(uri: string): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return fixtureMedia(uri) ?? uri;
+        return this.sentMedia.get(uri) ?? fixtureMedia(uri) ?? uri;
     }
 
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {

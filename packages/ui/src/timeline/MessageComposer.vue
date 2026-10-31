@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import type { ChatClient, MessageView } from "@tumult/core";
+import type { AttachmentSendResult, ChatClient, MessageView, OutgoingAttachment } from "@tumult/core";
+
+import { fileIcon, formatBytes, previewKind, settleTray, toOutgoing } from "./attachments.ts";
+import type { StagedAttachment } from "./attachments.ts";
 
 import { useComposerActions, type ComposerAction, type ComposerActionContext } from "./composer-actions.ts";
 import { useCommands, type Command, type ResolvedCommand } from "./commands.ts";
@@ -15,11 +18,19 @@ const props = defineProps<{
     client?: ChatClient;
     /** Message being replied to; shows the quote strip until sent or cancelled. */
     replyTo?: MessageView | null;
+    /**
+     * Sends the staged tray with the draft as its caption. Without it there is
+     * no attach button and nothing can be staged (the thread composer), rather
+     * than a picker whose files go nowhere.
+     */
+    sendAttachments?: (
+        attachments: OutgoingAttachment[],
+        caption: string,
+    ) => Promise<AttachmentSendResult[]>;
 }>();
 
 const emit = defineEmits<{
     send: [body: string];
-    sendFile: [file: File];
     cancelReply: [];
 }>();
 
@@ -146,7 +157,13 @@ function executeCommand(resolved: ResolvedCommand): void {
 
 function submit(): void {
     const body = draft.value.trim();
-    if (!body || props.disabled) return;
+    if (props.disabled) return;
+    if (pending.value.length > 0) {
+        // With files staged the draft is their caption, never a command.
+        void sendTray(body);
+        return;
+    }
+    if (!body) return;
     const resolved = commands && props.roomId && props.client ? commands.resolve(body) : null;
     if (resolved) {
         executeCommand(resolved);
@@ -162,20 +179,129 @@ function openFilePicker(): void {
     fileInput.value?.click();
 }
 
+// --- Attachment tray -------------------------------------------------------
+
+const tray = ref<StagedAttachment[]>([]);
+let nextAttachmentId = 1;
+/** Everything not already on its way: staged plus failed (a send retries both). */
+const pending = computed(() => tray.value.filter((item) => item.status !== "sending"));
+const canStage = computed(() => !!props.sendAttachments && !props.disabled);
+
+function stage(files: Iterable<File>): void {
+    if (!canStage.value) return;
+    for (const file of files) {
+        const kind = previewKind(file);
+        const item: StagedAttachment = {
+            id: nextAttachmentId++,
+            file,
+            previewUrl: kind === "image" || kind === "video" ? URL.createObjectURL(file) : null,
+            altText: "",
+            status: "staged",
+        };
+        tray.value = [...tray.value, item];
+        if (kind === "image" && item.previewUrl) measureImage(item.id, item.previewUrl);
+    }
+}
+
+/** Intrinsic size goes on the event so receivers reserve the box pre-decode. */
+function measureImage(id: number, url: string): void {
+    const img = new Image();
+    img.onload = () => setDims(id, img.naturalWidth, img.naturalHeight);
+    img.src = url;
+}
+
+function onVideoMetadata(id: number, event: Event): void {
+    const video = event.target as HTMLVideoElement;
+    setDims(id, video.videoWidth, video.videoHeight);
+}
+
+function setDims(id: number, width: number, height: number): void {
+    if (!(width > 0) || !(height > 0)) return;
+    tray.value = tray.value.map((item) => (item.id === id ? { ...item, width, height } : item));
+}
+
+function setAltText(id: number, altText: string): void {
+    tray.value = tray.value.map((item) => (item.id === id ? { ...item, altText } : item));
+}
+
+function release(items: readonly StagedAttachment[]): void {
+    for (const item of items) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+}
+
+function removeStaged(id: number): void {
+    const item = tray.value.find((candidate) => candidate.id === id);
+    if (!item || item.status === "sending") return;
+    release([item]);
+    tray.value = tray.value.filter((candidate) => candidate.id !== id);
+    inputEl.value?.focus();
+}
+
+async function sendTray(caption: string): Promise<void> {
+    const send = props.sendAttachments;
+    if (!send) return;
+    const batch = pending.value;
+    const ids = new Set(batch.map((item) => item.id));
+    tray.value = tray.value.map((item) => (ids.has(item.id) ? { ...item, status: "sending" as const } : item));
+    draft.value = "";
+    clearTyping();
+    let results: AttachmentSendResult[] | null = null;
+    try {
+        results = await send(toOutgoing(batch), caption);
+    } catch (error) {
+        console.error("[tumult] attachment send failed", error);
+    }
+    for (const [i, result] of (results ?? []).entries()) {
+        if (!result.ok) console.error(`[tumult] upload of "${batch[i]?.file.name}" failed`, result.error);
+    }
+    // Settle against the batch as sent (alt text included), then splice the
+    // survivors back where they were; anything staged meanwhile stays put.
+    const { keep, sent } = settleTray(batch, results);
+    release(sent);
+    const kept = new Map(keep.map((item) => [item.id, item]));
+    tray.value = tray.value.flatMap((item) => {
+        if (!ids.has(item.id)) return [item];
+        const survivor = kept.get(item.id);
+        return survivor ? [survivor] : [];
+    });
+}
+
+onBeforeUnmount(() => release(tray.value));
+
 function onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file && !props.disabled) {
-        emit("sendFile", file);
-    }
+    stage(Array.from(input.files ?? []));
     // Reset so picking the same file again fires the change event.
     input.value = "";
+}
+
+/** Pasted files stage; pasted text falls through to the input untouched. */
+function onPaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0 || !canStage.value) return;
+    event.preventDefault();
+    stage(files);
+}
+
+function hasFiles(event: DragEvent): boolean {
+    return !!event.dataTransfer && Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function onDragOver(event: DragEvent): void {
+    if (!canStage.value || !hasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function onDrop(event: DragEvent): void {
+    if (!canStage.value || !hasFiles(event)) return;
+    event.preventDefault();
+    stage(Array.from(event.dataTransfer?.files ?? []));
 }
 </script>
 
 <template>
     <!-- Root is a column wrapper so the reply strip sits above the input row. -->
-    <div class="tumult-composer">
+    <div class="tumult-composer" @dragover="onDragOver" @drop="onDrop">
         <div v-if="replyTo" class="tumult-composer-reply" role="status">
             <div class="tumult-composer-reply-text">
                 <span class="tumult-composer-reply-name" :title="replyTo.senderId">
@@ -212,25 +338,84 @@ function onFileSelected(event: Event): void {
                 </span>
             </button>
         </div>
+        <!-- Staged attachments: nothing uploads until the message is sent. -->
+        <ul v-if="tray.length > 0" class="tumult-composer-tray" aria-label="Attachments">
+            <li
+                v-for="item in tray"
+                :key="item.id"
+                class="tumult-composer-attachment"
+                :data-status="item.status"
+                :data-kind="previewKind(item.file)"
+            >
+                <div class="tumult-composer-attachment-preview">
+                    <img
+                        v-if="previewKind(item.file) === 'image' && item.previewUrl"
+                        class="tumult-composer-attachment-thumb"
+                        :src="item.previewUrl"
+                        :alt="item.altText || item.file.name"
+                    />
+                    <video
+                        v-else-if="previewKind(item.file) === 'video' && item.previewUrl"
+                        class="tumult-composer-attachment-thumb"
+                        :src="item.previewUrl"
+                        muted
+                        preload="metadata"
+                        @loadedmetadata="onVideoMetadata(item.id, $event)"
+                    ></video>
+                    <Icon v-else :name="fileIcon(item.file)" />
+                    <button
+                        type="button"
+                        class="tumult-composer-attachment-remove"
+                        :aria-label="`Remove ${item.file.name}`"
+                        :title="`Remove ${item.file.name}`"
+                        :disabled="item.status === 'sending'"
+                        @click="removeStaged(item.id)"
+                    >
+                        <Icon name="close" />
+                    </button>
+                </div>
+                <span class="tumult-composer-attachment-name" :title="item.file.name">{{ item.file.name }}</span>
+                <span class="tumult-composer-attachment-meta">
+                    <template v-if="item.status === 'sending'">Uploading…</template>
+                    <template v-else-if="item.status === 'failed'">Upload failed — send to retry</template>
+                    <template v-else>{{ formatBytes(item.file.size) }}</template>
+                </span>
+                <input
+                    v-if="previewKind(item.file) === 'image'"
+                    class="tumult-composer-attachment-alt"
+                    type="text"
+                    placeholder="Alt text"
+                    :aria-label="`Alt text for ${item.file.name}`"
+                    :value="item.altText"
+                    :disabled="item.status === 'sending'"
+                    @input="setAltText(item.id, ($event.target as HTMLInputElement).value)"
+                    @keydown.enter.prevent="submit"
+                />
+            </li>
+        </ul>
         <form class="tumult-composer-row" @submit.prevent="submit">
             <label class="tumult-composer-label" for="tumult-composer-input">Message</label>
-            <button
-                class="tumult-composer-attach"
-                type="button"
-                title="Attach a file"
-                :disabled="disabled"
-                @click="openFilePicker"
-            >
-                <Icon name="paperclip" />
-            </button>
-            <input
-                ref="fileInput"
-                class="tumult-composer-file"
-                type="file"
-                tabindex="-1"
-                aria-hidden="true"
-                @change="onFileSelected"
-            />
+            <template v-if="sendAttachments">
+                <button
+                    class="tumult-composer-attach"
+                    type="button"
+                    title="Attach files"
+                    aria-label="Attach files"
+                    :disabled="disabled"
+                    @click="openFilePicker"
+                >
+                    <Icon name="paperclip" />
+                </button>
+                <input
+                    ref="fileInput"
+                    class="tumult-composer-file"
+                    type="file"
+                    multiple
+                    tabindex="-1"
+                    aria-hidden="true"
+                    @change="onFileSelected"
+                />
+            </template>
             <button
                 v-for="action in visibleActions"
                 :key="action.id"
@@ -253,8 +438,13 @@ function onFileSelected(event: Event): void {
                 :placeholder="sendDisabledReason ?? 'Send a message'"
                 autocomplete="off"
                 :disabled="disabled"
+                @paste="onPaste"
             />
-            <button class="tumult-composer-send" type="submit" :disabled="disabled || draft.trim().length === 0">
+            <button
+                class="tumult-composer-send"
+                type="submit"
+                :disabled="disabled || (draft.trim().length === 0 && pending.length === 0)"
+            >
                 Send
             </button>
         </form>
@@ -318,6 +508,94 @@ function onFileSelected(event: Event): void {
 .tumult-composer-reply-cancel:focus-visible {
     outline: var(--focus-ring-outline) solid var(--focus-ring-color);
     border-radius: var(--radius-sm);
+}
+.tumult-composer-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-2) var(--space-3) 0;
+    padding: 0;
+    list-style: none;
+}
+.tumult-composer-attachment {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: var(--composer-attachment-width);
+    padding: var(--space-1-5);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-pane);
+}
+.tumult-composer-attachment[data-status="failed"] {
+    border-color: var(--danger);
+}
+.tumult-composer-attachment[data-status="sending"] {
+    opacity: var(--state-disabled-opacity);
+}
+.tumult-composer-attachment-preview {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: var(--composer-attachment-thumb-height);
+    border-radius: var(--radius-sm);
+    background: var(--surface-hover);
+    color: var(--text-muted);
+    overflow: hidden;
+}
+.tumult-composer-attachment-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.tumult-composer-attachment-remove {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    display: grid;
+    place-items: center;
+    padding: var(--space-0-5);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--surface-pane);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.tumult-composer-attachment-remove:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+.tumult-composer-attachment-remove:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+}
+.tumult-composer-attachment-remove:disabled {
+    cursor: not-allowed;
+}
+.tumult-composer-attachment-name {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-composer-attachment-meta {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+.tumult-composer-attachment[data-status="failed"] .tumult-composer-attachment-meta {
+    color: var(--danger);
+}
+.tumult-composer-attachment-alt {
+    min-width: 0;
+    padding: var(--space-0-5) var(--space-1-5);
+    border: var(--border-width) solid var(--composer-input-border);
+    border-radius: var(--radius-sm);
+    background: var(--composer-input-bg);
+    color: var(--input-text);
+    font: inherit;
+    font-size: var(--text-xs);
+}
+.tumult-composer-attachment-alt:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 .tumult-composer-label {
     position: absolute;

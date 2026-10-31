@@ -49,6 +49,7 @@ export const CLIENT_METHODS = [
     "send",
     "retry",
     "sendMediaMessage",
+    "sendAttachments",
     "toggleReaction",
     "edit",
     "sendTyping",

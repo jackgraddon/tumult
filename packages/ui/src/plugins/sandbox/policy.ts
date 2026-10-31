@@ -108,6 +108,7 @@ export const CLIENT_RULES: Readonly<Record<keyof ChatClient, BridgeRule>> = {
     markRead: "deny",
     markThreadRead: "deny",
     sendMediaMessage: "deny",
+    sendAttachments: "deny",
     resolveMedia: "deny",
     resolveMediaDownload: "deny",
     resolveEncryptedMedia: "deny",

@@ -638,6 +638,16 @@ homeserver. A trap listed here has shipped broken at least once.
   sites (media, room avatar, profile avatar) go through one core wrapper gated on
   `httpStatus === 401` / `M_UNKNOWN_TOKEN`.
 - `--accent-primary` does not exist (only `--accent`).
+- Attachments STAGE in the composer tray (pick/paste/drop) and go out through
+  `sendAttachments`, never on pick. Captions are MSC2530 (spec v1.10): a media
+  event whose `filename` differs from `body` carries `body` as its caption, so
+  `body` can no longer double as alt text — alt text rides under
+  `ALT_TEXT_KEY` (`cc.jackg.tumult.alt_text`) and `mediaText()` splits
+  name/caption/alt on read. Several files cannot share one caption: it goes
+  first as a text event. An upload has NO local echo, so `sendAttachments`
+  returns per-file results and a failed file stays in the tray marked failed
+  (the tray is its only surface). The content builder
+  (`rooms/attachment-content.ts`) is SDK-free so the fake echoes the real shape.
 
 ### Timeline layout (virtualized rows)
 

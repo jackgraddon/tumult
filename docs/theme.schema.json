@@ -971,6 +971,14 @@
                     "type": "string",
                     "description": "Composer input border."
                 },
+                "composer-attachment-width": {
+                    "type": "string",
+                    "description": "Width of one staged attachment card in the composer tray."
+                },
+                "composer-attachment-thumb-height": {
+                    "type": "string",
+                    "description": "Height of a staged attachment's thumbnail / file-icon box."
+                },
                 "members-bg": {
                     "type": "string",
                     "description": "Members pane."
@@ -2155,6 +2163,14 @@
                     "composer-input-border": {
                         "type": "string",
                         "description": "Composer input border."
+                    },
+                    "composer-attachment-width": {
+                        "type": "string",
+                        "description": "Width of one staged attachment card in the composer tray."
+                    },
+                    "composer-attachment-thumb-height": {
+                        "type": "string",
+                        "description": "Height of a staged attachment's thumbnail / file-icon box."
                     },
                     "members-bg": {
                         "type": "string",
@@ -3341,6 +3357,14 @@
                     "composer-input-border": {
                         "type": "string",
                         "description": "Composer input border."
+                    },
+                    "composer-attachment-width": {
+                        "type": "string",
+                        "description": "Width of one staged attachment card in the composer tray."
+                    },
+                    "composer-attachment-thumb-height": {
+                        "type": "string",
+                        "description": "Height of a staged attachment's thumbnail / file-icon box."
                     },
                     "members-bg": {
                         "type": "string",

@@ -217,6 +217,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             send: call("send"),
             retry: call("retry"),
             sendMediaMessage: call("sendMediaMessage"),
+            sendAttachments: call("sendAttachments"),
             toggleReaction: call("toggleReaction"),
             edit: call("edit"),
             sendTyping: call("sendTyping"),
