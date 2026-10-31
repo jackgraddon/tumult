@@ -205,9 +205,20 @@ describe("embedded Element Call through the real app", { skip: !enabled && "set 
                 await poll(`${p.name}'s call frame never loaded`, async () => Boolean(callFrame(p)), (ok) => ok, 60_000);
                 // The panel says "joined" only once the call app reports it
                 // joined (io.element.join), so this is the widget handshake.
+                // Until this asserted it, a frame showing the call app's own
+                // home page (no handshake at all) passed as "joined".
                 await p.page.locator(".tumult-call").waitFor({ timeout: 60_000 });
-                await p.page.locator(".tumult-call-error").waitFor({ state: "detached", timeout: 5_000 }).catch(() => {});
-                assert.equal(await p.page.locator(".tumult-call-error").count(), 0, `${p.name}: "The call app did not respond"`);
+                await poll(
+                    `${p.name}'s call never reported joined`,
+                    async () => {
+                        // A lobby, if the app shows one, wants a click.
+                        const join = callFrame(p)?.getByRole("button", { name: /^join/i });
+                        if (join && (await join.count().catch(() => 0)) > 0) await join.first().click().catch(() => {});
+                        return (await p.page.locator(".tumult-call-state").textContent())?.trim() ?? "";
+                    },
+                    (state) => state === "Connected",
+                    90_000,
+                );
             }
         }),
     );

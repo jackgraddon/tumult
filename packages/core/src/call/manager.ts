@@ -101,7 +101,12 @@ export class CallManager {
                 origin: globalThis.location.origin,
                 intent: callIntent(video, isDm),
             }),
-            waitForIframeLoad: true,
+            // The call app announces itself with ContentLoaded (as Element Web
+            // expects: it sets this false too). With `true` the host instead
+            // starts the handshake on the iframe's `load` event, which has
+            // usually fired before attach() can listen, so the capabilities
+            // exchange never began and the app logged "Improper sequence".
+            waitForIframeLoad: false,
         });
         const url = widget.getCompleteUrl({
             widgetRoomId: roomId,
