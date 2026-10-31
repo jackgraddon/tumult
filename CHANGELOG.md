@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.1](https://github.com/jackgraddon/tumult/compare/v0.4.0...v0.4.1) (2026-10-31)
+
+
+### Features
+
+* **composer:** convert staged HEIC photos to JPEG before sending ([8b2b2be](https://github.com/jackgraddon/tumult/commit/8b2b2be13d1fab9352935d9d3cc70564e7941b48))
+* **composer:** refuse staged files over the homeserver's upload limit ([7d6c2f0](https://github.com/jackgraddon/tumult/commit/7d6c2f07c73eb992df2996d18661f3e3711d73b7))
+* **composer:** stage attachments in a tray with alt text and MSC2530 captions ([1f3b610](https://github.com/jackgraddon/tumult/commit/1f3b610539b4ccc47bd7b9b33dd5a0e4e5c93ef2))
+
+
+### Bug Fixes
+
+* **composer:** a failed attachment says why, through the shared translator ([1fe540c](https://github.com/jackgraddon/tumult/commit/1fe540cf788118f1eca4c2cc2ea78d47dc6dacb6))
+* **composer:** show the file chip when a staged preview cannot decode (HEIC) ([aba25d8](https://github.com/jackgraddon/tumult/commit/aba25d83610703496bbbec4a9255b88bda79eb09))
+* **errors:** translate every failed request into a readable sentence ([071beaa](https://github.com/jackgraddon/tumult/commit/071beaa75303ebcb9faf549c28624541e4e5f60d))
+
 ## [0.4.0](https://github.com/jackgraddon/tumult/compare/v0.3.4...v0.4.0) (2026-10-31)
 
 
