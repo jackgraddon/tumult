@@ -32,7 +32,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);

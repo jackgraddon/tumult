@@ -60,15 +60,15 @@ const sourceFiles = [
 const names = new Set(ALL_TOKENS.map((t) => t.name));
 const referenced = new Set<string>();
 for (const token of ALL_TOKENS) {
-    for (const m of (token.value ?? "").matchAll(REF)) referenced.add(m[1]);
+    for (const m of (token.value ?? "").matchAll(REF)) referenced.add(m[1]!);
 }
 for (const file of walk(join(repo, "packages", "theme", "themes"), [".json"])) {
     const raw = readFileSync(file, "utf8");
-    for (const m of raw.matchAll(REF)) referenced.add(m[1]);
+    for (const m of raw.matchAll(REF)) referenced.add(m[1]!);
 }
 for (const file of sourceFiles) {
     const raw = readFileSync(file, "utf8");
-    for (const m of raw.matchAll(REF)) referenced.add(m[1]);
+    for (const m of raw.matchAll(REF)) referenced.add(m[1]!);
 }
 
 describe("token coverage", () => {
@@ -96,7 +96,7 @@ describe("token coverage", () => {
             const raw = readFileSync(file, "utf8");
             const local = new Set([...raw.matchAll(DECL)].map((m) => m[1]));
             for (const m of raw.matchAll(REF)) {
-                if (names.has(m[1]) || local.has(`--${m[1]}`)) continue;
+                if (names.has(m[1]!) || local.has(`--${m[1]}`)) continue;
                 unresolved.push(`${relative(repo, file)}: --${m[1]}`);
             }
         }

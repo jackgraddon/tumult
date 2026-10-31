@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { ClientEvent, RoomMemberEvent } from "matrix-js-sdk";
 import type { MatrixClient, Room, RoomMember } from "matrix-js-sdk";
 
 import { TypingTracker } from "../src/typing/tracker.ts";
@@ -12,7 +13,9 @@ function room(roomId: string, members: RoomMember[]): Room {
     return { roomId, getMembers: () => members } as unknown as Room;
 }
 
-function stubMatrix(rooms: Room[], selfId = "@me:localhost"): MatrixClient {
+type StubMatrix = MatrixClient & { fire(event: string): void };
+
+function stubMatrix(rooms: Room[], selfId = "@me:localhost"): StubMatrix {
     const listeners = new Map<string, Set<() => void>>();
     return {
         getUserId: () => selfId,
@@ -26,10 +29,10 @@ function stubMatrix(rooms: Room[], selfId = "@me:localhost"): MatrixClient {
         removeListener: (event: string, fn: () => void) => {
             listeners.get(event)?.delete(fn);
         },
-        emit: (event: string) => {
+        fire: (event: string) => {
             for (const fn of listeners.get(event) ?? []) fn();
         },
-    } as unknown as MatrixClient;
+    } as unknown as StubMatrix;
 }
 
 describe("TypingTracker", () => {
@@ -50,7 +53,7 @@ describe("TypingTracker", () => {
         const tracker = new TypingTracker(matrix);
         assert.deepEqual(tracker.snapshot, { rooms: {} });
         alice.typing = true;
-        matrix.emit("RoomMember.typing");
+        matrix.fire(RoomMemberEvent.Typing);
         assert.deepEqual(tracker.snapshot, { rooms: { "!a": ["@alice"] } });
     });
 
@@ -72,8 +75,8 @@ describe("TypingTracker", () => {
         const matrix = stubMatrix([]);
         const tracker = new TypingTracker(matrix);
         tracker.detachAll();
-        matrix.emit("RoomMember.typing");
-        matrix.emit("sync");
+        matrix.fire(RoomMemberEvent.Typing);
+        matrix.fire(ClientEvent.Sync);
         assert.deepEqual(tracker.snapshot, { rooms: {} });
     });
 });

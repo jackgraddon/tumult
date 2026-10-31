@@ -89,7 +89,7 @@ function shape(menu: MessageMenu): string[] {
 
 function label(menu: MessageMenu, id: string): string | undefined {
     const entry = menu.entries.find((e) => e.kind === "item" && e.id === id);
-    return entry?.label;
+    return entry?.kind === "item" ? entry.label : undefined;
 }
 
 describe("buildMessageMenu", () => {

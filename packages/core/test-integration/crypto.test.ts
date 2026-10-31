@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type MatrixClient } from "matrix-js-sdk";
-import { EventType, MsgType, ClientEvent, SyncState } from "matrix-js-sdk";
+import { EventType, MsgType, ClientEvent, SyncState, Visibility } from "matrix-js-sdk";
 
 const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://localhost:8008";
 
@@ -23,7 +23,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -125,7 +125,7 @@ describe("end-to-end E2EE roundtrip against real Synapse", { timeout: 240000 }, 
             // Alice creates an encrypted room and invites Bob.
             const room = await aliceClient.createRoom({
                 name: "crypto-roundtrip",
-                visibility: "private",
+                visibility: Visibility.Private,
                 initial_state: [
                     {
                         type: EventType.RoomEncryption,

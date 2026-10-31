@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createClient, type MatrixClient } from "matrix-js-sdk";
+import { createClient, PendingEventOrdering } from "matrix-js-sdk";
+import type { MatrixClient } from "matrix-js-sdk";
 
 import { TimelineFeed } from "../src/timeline/feed.ts";
 import { sendTextMessage } from "../src/rooms/send.ts";
@@ -24,7 +25,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -106,11 +107,10 @@ describe("inline replies against real Synapse", () => {
 
         const bobClient: MatrixClient = createClient({
             baseUrl: BASE,
-            pendingEventOrdering: "chronological",
         });
         await bobClient.loginWithPassword(bob.userId, "testtesttest");
         const feedB = new TimelineFeed(bobClient);
-        await bobClient.startClient({ initialSyncLimit: 10 });
+        await bobClient.startClient({ initialSyncLimit: 10, pendingEventOrdering: PendingEventOrdering.Chronological });
         let feedA: TimelineFeed | null = null;
         let aliceClient: MatrixClient | null = null;
         try {

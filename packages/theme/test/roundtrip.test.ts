@@ -26,24 +26,24 @@ function parseCss(css: string): {
     while ((m = re.exec(css)) !== null) {
         const kind = m[2]; // "mode" or "density" or undefined
         const name = m[3]; // the mode/density name
-        const body = m[4];
+        const body = m[4] ?? "";
         const declarations = body.split(/\n/).map((s) => s.trim()).filter((s) => s && s.startsWith("--"));
         const tokens: Record<string, string> = {};
         for (const line of declarations) {
             // format: --name: value; (value may not contain ;)
             const mm = line.match(/^--([\w-]+):\s*(.+?);?$/);
             if (mm) {
-                tokens[mm[1]] = mm[2].trim();
+                tokens[mm[1]!] = mm[2]!.trim();
             }
         }
         if (!kind) {
             // base block
             for (const k of Object.keys(tokens)) {
-                base[k] = tokens[k];
+                base[k] = tokens[k]!;
             }
-        } else if (kind === "mode") {
+        } else if (kind === "mode" && name) {
             modes[name] = tokens;
-        } else if (kind === "density") {
+        } else if (kind === "density" && name) {
             densities[name] = tokens;
         }
     }
@@ -54,13 +54,13 @@ describe("theme v2 roundtrip", () => {
     it("roundtrips the default theme: validate → serialize → parse → deep-equal", () => {
         const json = readFileSync(defaultTheme, "utf8");
         const doc = JSON.parse(json) as ThemeJson;
-        const res = validateTheme(doc as any);
+        const res = validateTheme(doc);
         assert.ok(res.valid, "default theme should validate");
         const css = serializeTheme({
             name: doc.name,
             tokens: doc.tokens,
-            modes: doc.modes,
-            densities: doc.densities,
+            ...(doc.modes ? { modes: doc.modes } : {}),
+            ...(doc.densities ? { densities: doc.densities } : {}),
             validation: res,
         });
         const parsed = parseCss(css);
@@ -77,11 +77,11 @@ describe("theme v2 roundtrip", () => {
             modes: { light: { "surface-base": "#ffffff" } },
             densities: { compact: { "space-4": "12px" } },
         };
-        const res = validateTheme(doc as any);
+        const res = validateTheme(doc);
         assert.ok(res.valid);
         const css1 = serializeTheme({ name: doc.name, tokens: doc.tokens, modes: doc.modes, densities: doc.densities, validation: res });
         const parsed = parseCss(css1);
-        const res2 = validateTheme({ version: 1, name: "default", tokens: parsed.base, modes: parsed.modes, densities: parsed.densities } as any);
+        const res2 = validateTheme({ version: 1, name: "default", tokens: parsed.base, modes: parsed.modes, densities: parsed.densities });
         const css2 = serializeTheme({ name: doc.name, tokens: parsed.base, modes: parsed.modes, densities: parsed.densities, validation: res2 });
         assert.equal(css2, css1);
     });
@@ -92,7 +92,7 @@ describe("theme v2 roundtrip", () => {
             name: "default",
             tokens: { "space-4": "16px", "radius-sm": "4px" } as Record<string, string>,
         };
-        const res = validateTheme(doc as any);
+        const res = validateTheme(doc);
         assert.ok(res.valid);
         const css = serializeTheme({ name: doc.name, tokens: doc.tokens, validation: res });
         const parsed = parseCss(css);

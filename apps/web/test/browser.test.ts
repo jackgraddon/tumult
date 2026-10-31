@@ -299,7 +299,7 @@ describe("browser smoke test (fake client)", () => {
         // an unreserved layout would have jumped.
         await page.waitForFunction(
             () => {
-                const images = Array.from(document.querySelectorAll("img.tumult-media-message-image"));
+                const images = Array.from(document.querySelectorAll<HTMLImageElement>("img.tumult-media-message-image"));
                 return (
                     images.length >= 2 &&
                     images.every((img) => img.complete && img.naturalWidth > 0)
@@ -310,7 +310,7 @@ describe("browser smoke test (fake client)", () => {
         );
         const measured = await page.evaluate(() => {
             const root = getComputedStyle(document.documentElement);
-            const images = Array.from(document.querySelectorAll("img.tumult-media-message-image")).map(
+            const images = Array.from(document.querySelectorAll<HTMLImageElement>("img.tumult-media-message-image")).map(
                 (img) => ({
                     intrinsicW: img.style.getPropertyValue("--media-intrinsic-w"),
                     ratio: img.style.getPropertyValue("--media-intrinsic-ratio"),
@@ -2465,6 +2465,7 @@ describe("browser smoke test (fake client)", () => {
         await page.getByLabel("Toggle room list").click();
         await page.waitForTimeout(100);
         const gridNone = await getGrid();
+        assert.ok(gridNone, "grid template must be readable");
         assert.ok(gridNone?.includes("0px"), `both closed: all pane tracks should be 0: ${gridNone}`);
         assert.ok(gridNone?.includes("minmax(0,1fr)") || gridNone?.includes("1fr") || gridNone.split(/\s+/).length === 4, "timeline must remain flexible even when both panes closed");
         const rlNone = await checkRoomlist();
@@ -2477,6 +2478,7 @@ describe("browser smoke test (fake client)", () => {
         await page.getByLabel("Toggle room list").click();
         await page.waitForTimeout(100);
         const gridFinal = await getGrid();
+        assert.ok(gridFinal, "grid template must be readable");
         assert.ok(gridFinal?.includes("minmax(0,1fr)") || gridFinal?.includes("1fr") || gridFinal.split(/\s+/).length === 4, "final state must have flexible center");
     });
 });

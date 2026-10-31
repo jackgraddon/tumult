@@ -27,8 +27,10 @@ describe("buildSpaceMenu", () => {
         const closed = buildSpaceMenu("!s:x", null, false, true);
         assert.equal(shape(open)[0], "toggle-collapse");
         const label = (m: SpaceMenu) => m.entries.find((e) => e.kind === "item" && e.id === "toggle-collapse");
-        assert.equal(label(open)?.kind === "item" && label(open)?.label, "Collapse category");
-        assert.equal(label(closed)?.kind === "item" && label(closed)?.label, "Expand category");
+        const o = label(open);
+        const c = label(closed);
+        assert.equal(o?.kind === "item" && o.label, "Collapse category");
+        assert.equal(c?.kind === "item" && c.label, "Expand category");
     });
 
     it("leads with mark-as-read only when something is unread", () => {

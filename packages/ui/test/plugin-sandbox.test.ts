@@ -17,7 +17,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import type { ChatClient } from "@tumult/core/contract";
+import type { ChatClient, RoomSummary } from "@tumult/core/contract";
 
 import { SANDBOX_LIMITS, sandboxPlugin, type SandboxWorker } from "../src/plugins/sandbox/host.ts";
 import { createSandboxRuntime, type SandboxScope } from "../src/plugins/sandbox/worker/runtime.ts";
@@ -203,6 +203,8 @@ function makeContext(
         },
         addMemberDecoration: () => () => undefined,
         addSettingsTab: () => () => undefined,
+        addActivityRenderer: () => () => undefined,
+        addPane: () => () => undefined,
         injectStylesheet: (css) => {
             hooks.onStyles?.(css);
             return () => undefined;
@@ -386,7 +388,7 @@ describe("sandbox bridge", () => {
         const created: Blob[] = [];
         let refusal = "";
         const { client, calls } = makeClient({
-            resolveMedia: async () => new ArrayBuffer(4),
+            resolveMedia: async () => "blob:media/1",
         });
         const fake = makeWorker({
             createObjectUrl: (blob) => {
@@ -558,7 +560,7 @@ describe("sandbox bridge", () => {
         const ROOM = "!here:example.org";
         const refusals: string[] = [];
         const actions: { run: (...args: unknown[]) => Promise<unknown> }[] = [];
-        const note = (p: Promise<unknown>): Promise<void> => p.then(() => refusals.push("ALLOWED"), (e: Error) => void refusals.push(e.message));
+        const note = (p: Promise<unknown>): Promise<void> => p.then(() => void refusals.push("ALLOWED"), (e: Error) => void refusals.push(e.message));
         const { calls, client } = await bridge(
             {
                 manifest: MANIFEST,
@@ -669,22 +671,29 @@ function liveFeed<T>(value: T): { feed: { get(): T; subscribe(l: (v: T) => void)
 }
 
 /** A minimal `RoomSummary` for feed tests. */
-function room(id: string): unknown {
+function room(id: string): RoomSummary {
     return {
         id,
         name: id,
         topic: null,
+        avatarUrl: null,
         isSpace: false,
         parentSpaceIds: [],
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
+        joinRule: "invite",
+        historyVisibility: "shared",
+        canonicalAlias: null,
+        favourite: false,
+        favouriteOrder: null,
+        muted: false,
     };
 }
 
 /** A minimal subscribable whose value is fixed at construction. */
-function subscribable<T>(value: T): ChatClient["rooms"] {
-    const listeners = new Set<(next: T) => void>();
+function subscribable(value: RoomSummary[]): ChatClient["rooms"] {
+    const listeners = new Set<(next: RoomSummary[]) => void>();
     return {
         get: () => value,
         subscribe(listener) {

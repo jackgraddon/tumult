@@ -5,6 +5,7 @@ import { EventStatus, type MatrixClient } from "matrix-js-sdk";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
 import { retryTextMessage, sendTextMessage } from "../src/rooms/send.ts";
 import { createFakeChatClient } from "../src/fake/index.ts";
+import type { RoomSummary } from "../src/contract.ts";
 
 interface StubEvent {
     getStateKey(): string | undefined;
@@ -180,7 +181,7 @@ describe("snapshotRooms", () => {
 });
 
 describe("sameRoomSummaries", () => {
-    const a = {
+    const a: RoomSummary = {
         id: "!r:x",
         name: "general",
         topic: null,
@@ -193,6 +194,9 @@ describe("sameRoomSummaries", () => {
         joinRule: "invite",
         historyVisibility: "shared",
         canonicalAlias: null,
+        favourite: false,
+        favouriteOrder: null,
+        muted: false,
     };
     it("is true for identical snapshots", () => {
         assert.equal(sameRoomSummaries([a], [{ ...a }]), true);
@@ -210,7 +214,7 @@ describe("sameRoomSummaries", () => {
 
 describe("mergeRoomSummaries", () => {
     // A complete RoomSummary, mirroring the one above; override per case.
-    const base = {
+    const base: RoomSummary = {
         id: "!r:x",
         name: "general",
         topic: null,
@@ -220,9 +224,12 @@ describe("mergeRoomSummaries", () => {
         unreadCount: 1,
         highlightCount: 0,
         fullyReadEventId: null,
-        joinRule: "invite" as const,
-        historyVisibility: "shared" as const,
+        joinRule: "invite",
+        historyVisibility: "shared",
         canonicalAlias: null,
+        favourite: false,
+        favouriteOrder: null,
+        muted: false,
     };
     const mk = (id: string, over: Partial<typeof base> = {}): typeof base => ({ ...base, ...over, id });
     it("keeps seed-only rooms when next is a partial subset", () => {
@@ -241,8 +248,8 @@ describe("mergeRoomSummaries", () => {
         assert.equal(merged.length, 1);
         // The live snapshot's values must replace the cached ones, not merge
         // fields (a stale unread from the seed must not survive).
-        assert.equal(merged[0].name, "new");
-        assert.equal(merged[0].unreadCount, 5);
+        assert.equal(merged[0]?.name, "new");
+        assert.equal(merged[0]?.unreadCount, 5);
     });
     it("orders next first, then appends seed-only rows", () => {
         // A filled-in window that re-sorts itself: new rooms lead, then the
@@ -273,7 +280,7 @@ describe("mergeRoomSummaries", () => {
         const next = [mk("!a:x", { name: "live" }), mk("!b:x")];
         const merged = mergeRoomSummaries(seed, next);
         assert.equal(merged.length, 2);
-        assert.equal(merged[0].name, "live");
+        assert.equal(merged[0]?.name, "live");
         assert.notEqual(merged, next);
     });
 });

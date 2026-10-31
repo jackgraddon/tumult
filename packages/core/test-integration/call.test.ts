@@ -63,7 +63,7 @@ describe("call widget driver against a real MatrixRTC Synapse", { skip: !enabled
         const { rtc_transports: transports } = await driver.getRtcTransports();
         const livekit = transports.find((t) => t.type === "livekit");
         assert.ok(livekit, `no livekit transport in ${JSON.stringify(transports)}`);
-        assert.match(livekit.livekit_service_url ?? "", /^https?:\/\//);
+        assert.match(String(livekit.livekit_service_url ?? ""), /^https?:\/\//);
     });
 
     it("sends the call-membership state event and reads it back", { timeout: 30000 }, async () => {

@@ -27,6 +27,8 @@ function voice(overrides: Partial<VoiceView> = {}): VoiceView {
         error: null,
         muted: false,
         deafened: false,
+        camera: false,
+        screen: false,
         participants: [],
         ...overrides,
     };
@@ -63,8 +65,8 @@ describe("buildCallStrip", () => {
             ROOM,
             voice({
                 participants: [
-                    { userId: SELF, deviceId: "A", speaking: false, muted: true },
-                    { userId: "@alice:example.com", deviceId: "B", speaking: true, muted: false },
+                    { userId: SELF, deviceId: "A", speaking: false, muted: true, camera: false, screen: false, screenAudio: false },
+                    { userId: "@alice:example.com", deviceId: "B", speaking: true, muted: false, camera: false, screen: false, screenAudio: false },
                 ],
             }),
             // The membership feed may lag; the session wins.
@@ -102,8 +104,8 @@ describe("buildCallStrip", () => {
             ROOM,
             voice({
                 participants: [
-                    { userId: "@alice:example.com", deviceId: "A", speaking: false, muted: true },
-                    { userId: "@alice:example.com", deviceId: "B", speaking: true, muted: false },
+                    { userId: "@alice:example.com", deviceId: "A", speaking: false, muted: true, camera: false, screen: false, screenAudio: false },
+                    { userId: "@alice:example.com", deviceId: "B", speaking: true, muted: false, camera: false, screen: false, screenAudio: false },
                 ],
             }),
             {},

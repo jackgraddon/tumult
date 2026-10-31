@@ -26,7 +26,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -204,12 +204,12 @@ describe("message completeness against real Synapse", () => {
 
         const aliceClient = clientFor(alice);
         try {
-            let page1: Awaited<ReturnType<typeof searchRoomHistory>> | null = null;
+            const found: { page: Awaited<ReturnType<typeof searchRoomHistory>> | null } = { page: null };
             await waitFor("search to index the newest message", async () => {
-                page1 = await searchRoomHistory(aliceClient, room, token);
-                return (page1?.hits.length ?? 0) > 0;
+                found.page = await searchRoomHistory(aliceClient, room, token);
+                return found.page.hits.length > 0;
             });
-            const first = page1;
+            const first = found.page;
             assert.ok(first);
             assert.equal(first.total, 12, "room-scoped count is exact");
             assert.equal(first.hits.length, 10, "one full page");

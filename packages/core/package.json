@@ -37,7 +37,7 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b --watch",
-    "typecheck": "tsc -b --noEmit false",
+    "typecheck": "tsc -b --noEmit false && tsc -p tsconfig.test.json",
     "test": "node --test \"test/**/*.test.ts\"",
     "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "test:integration": "node --test \"test-integration/**/*.test.ts\""

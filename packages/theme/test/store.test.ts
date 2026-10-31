@@ -226,6 +226,7 @@ describe("ThemeStore", () => {
             ],
             active: "jury",
             mode: "dark",
+            density: "cozy",
             advancedCss: "",
         });
 
@@ -247,6 +248,7 @@ describe("ThemeStore", () => {
             themes: [{ name: "stale", json: theme("stale"), css: "/* stale cache */" }],
             active: "stale",
             mode: "dark",
+            density: "cozy",
             advancedCss: "",
         });
         const store = new ThemeStore(storage);

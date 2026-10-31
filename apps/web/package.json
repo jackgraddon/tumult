@@ -9,7 +9,7 @@
     "prebuild": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "build": "vue-tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -p tsconfig.json",
+    "typecheck": "vue-tsc -p tsconfig.json && vue-tsc -p tsconfig.test.json",
     "test": "node --test test/plugin-asset.test.ts",
     "pretest:browser": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "test:browser": "node --test --import tsx test/browser.test.ts",

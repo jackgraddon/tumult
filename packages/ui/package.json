@@ -11,7 +11,7 @@
     "src"
   ],
   "scripts": {
-    "typecheck": "vue-tsc -p tsconfig.json && pnpm test:template",
+    "typecheck": "vue-tsc -p tsconfig.json && vue-tsc -p tsconfig.test.json && pnpm test:template",
     "test": "node --test \"test/**/*.test.ts\"",
     "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "test:template": "vue-tsc -p ../../templates/plugin/tsconfig.json --noEmit && tsc -p ../../templates/plugin/tsconfig.workspace.json --noEmit",

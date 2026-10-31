@@ -78,6 +78,7 @@ describe("AvatarMedia request-id discipline", () => {
 
         const old_ = r.handles[0];
         const next = r.handles[1];
+        assert.ok(old_ && next);
         next.resolve("blob:/new"); // current request settles
         await next.promise;
         assert.deepEqual(c.seen, ["∅", "∅", "blob:/new"]);
@@ -127,7 +128,7 @@ describe("AvatarMedia request-id discipline", () => {
         const media = new AvatarMedia(c.commit);
         media.run({ src: "mxc://hs/id", resolveMedia: r.resolveMedia });
         // 32 is the md request id in the resolver call.
-        assert.equal(r.handles[0].size, 32);
+        assert.equal(r.handles[0]?.size, 32);
         r.last()!.reject(new Error("stop")); // just settle so the promise doesn't dangle
         void r.last()!.promise;
     });

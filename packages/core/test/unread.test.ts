@@ -105,8 +105,8 @@ describe("UnreadTracker", () => {
         tracker.update();
         // Only $t5 counts: $t3 is self, $t4 is not a message type.
         assert.equal(tracker.getUnread("!a:x").total, 1);
-        assert.equal(published[0]?.["!a:x"].total, 1);
-        assert.equal(published[0]?.["!a:x"].highlight, 0);
+        assert.equal(published[0]?.["!a:x"]?.total, 1);
+        assert.equal(published[0]?.["!a:x"]?.highlight, 0);
     });
 
     it("uses the read receipt when m.fully_read is absent (old/read rooms)", () => {

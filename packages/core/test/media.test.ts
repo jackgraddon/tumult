@@ -112,7 +112,7 @@ describe("MediaResolver", () => {
         const { matrix, calls } = stub();
         const resolver = new MediaResolver(matrix);
         await resolver.resolve("mxc://hs/id", 10_000);
-        assert.equal(calls[0]?.query["width"], "1024");
+        assert.equal(calls[0]?.query?.["width"], "1024");
         resolver.dispose();
     });
 
