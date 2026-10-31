@@ -120,17 +120,18 @@ describe("call widget driver against a real MatrixRTC Synapse", { skip: !enabled
 
 describe("LiveKit token exchange", { skip: process.env["TEST_RTC_TOKEN"] !== "1" && "set TEST_RTC_TOKEN=1 once lk-jwt-service can reach the homeserver" }, () => {
     it("mints a JWT for a member of the room", { timeout: 30000 }, async () => {
-        const { driver, roomId, userId, client } = await setup();
+        const { driver, roomId } = await setup();
         const { rtc_transports: transports } = await driver.getRtcTransports();
         const url = transports[0]?.livekit_service_url;
         assert.ok(url, "no transport advertised");
+        // matrix-js-sdk 45 / matrix-widget-api 1.20 shape: the member by `member_id`.
         const { jwt } = await driver.getRtcLivekitToken({
             server_name: "localhost",
             url: "ws://localhost:7880",
             room_id: roomId,
             slot_id: "m.call#ROOM",
-            member: { id: "m1", claimed_user_id: userId, claimed_device_id: client.getDeviceId() ?? "" },
-        } as never);
+            member_id: "m1",
+        });
         // A LiveKit access token is a JWT: three base64url segments.
         assert.match(jwt, /^[\w-]+\.[\w-]+\.[\w-]+$/);
     });

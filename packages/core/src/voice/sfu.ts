@@ -1,6 +1,19 @@
 import type { IOpenIDToken, MatrixClient } from "matrix-js-sdk";
-import { isLivekitTransportConfig } from "matrix-js-sdk/lib/matrixrtc/index.js";
-import type { LivekitTransportConfig } from "matrix-js-sdk/lib/matrixrtc/index.js";
+import { isUnstableLivekitTransport } from "matrix-js-sdk/lib/matrixrtc/index.js";
+
+/**
+ * A LiveKit transport that names a JWT service (`livekit_service_url`), which
+ * is what our legacy `/sfu/get` exchange needs. matrix-js-sdk 44 folded its
+ * `LivekitTransportConfig` into `UnstableLivekitTransport`, a union that also
+ * admits the Matrix-2.0 `url`-only variant (token from the homeserver's
+ * `/rtc/livekit/get_token`); a `url`-only transport is useless to `/sfu/get`,
+ * so it is filtered out here rather than failing later at the token step.
+ */
+export interface LivekitTransportConfig {
+    type: "livekit";
+    livekit_service_url: string;
+    [key: string]: unknown;
+}
 
 /** Where to connect and the token to connect with. */
 export interface SfuConfig {
@@ -42,7 +55,10 @@ const TRANSPORTS_PATH = "/_matrix/client/unstable/org.matrix.msc4143/rtc/transpo
  *    official/unofficial split.
  *
  * Both are tried, in that order, because supporting only the first leaves every
- * matrix.org account unable to join a call at all. Nothing here throws: the
+ * matrix.org account unable to join a call at all. Since matrix-js-sdk 45,
+ * `_unstable_getRTCTransports()` first checks `/versions` for
+ * `org.matrix.msc4143` and throws M_UNRECOGNIZED WITHOUT making the request
+ * when it is absent (matrix.org's case), which lands in the same catch. Nothing here throws: the
  * attempt list is what the caller turns into an honest error message.
  */
 export async function discoverFoci(
@@ -110,13 +126,14 @@ function livekitFoci(document: unknown): LivekitTransportConfig[] {
 }
 
 /**
- * The SDK's own `isLivekitTransportConfig` is NOT null-safe (it reads
- * `object.type` directly, so it throws on `undefined`), and both of our sources
- * can hand us nothing: `getFocusInUse()` returns `undefined` until a membership
- * names a focus, and a well-known array can hold anything.
+ * A transport we can connect through: a LiveKit one naming a JWT service.
+ * Our sources can hand us anything — a membership's `foci_preferred`, a
+ * well-known array — so this is the one guard all of them pass through.
+ * (v43's `isLivekitTransportConfig` threw on `undefined`; v45's
+ * `isUnstableLivekitTransport` is null-safe, but the `null` check stays cheap.)
  */
 export function isLivekitFocus(value: unknown): value is LivekitTransportConfig {
-    return value != null && isLivekitTransportConfig(value);
+    return value != null && isUnstableLivekitTransport(value) && "livekit_service_url" in value;
 }
 
 function reason(error: unknown): string {

@@ -25,4 +25,4 @@ overrides:
   minimatch@10: ">=11.0.1"
 
 patchedDependencies:
-  matrix-js-sdk@43.0.0: patches/matrix-js-sdk@43.0.0.patch
+  matrix-js-sdk@45.0.0: patches/matrix-js-sdk@45.0.0.patch

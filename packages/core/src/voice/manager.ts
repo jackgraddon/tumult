@@ -5,7 +5,7 @@ import type { MatrixClient } from "matrix-js-sdk";
 import type { VoiceParticipant, VoiceSettings, VoiceVideoSource, VoiceView } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { getSfuConfig, discoverFoci, isLivekitFocus } from "./sfu.ts";
-import type { FocusDiscovery, SfuConfig } from "./sfu.ts";
+import type { FocusDiscovery, LivekitTransportConfig, SfuConfig } from "./sfu.ts";
 import { DEFAULT_VOICE_SETTINGS } from "../contract.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "./media.ts";
 
@@ -27,10 +27,28 @@ export interface VoiceManagerOptions {
 }
 
 /** The slice of the SDK's session this manager uses, so tests can stub it. */
-type Session = Pick<
-    MatrixRTCSession,
-    "joinRoomSession" | "leaveRoomSession" | "getFocusInUse" | "reemitEncryptionKeys" | "memberships" | "on" | "off"
->;
+type Session = Pick<MatrixRTCSession, "join" | "leave" | "reemitEncryptionKeys" | "memberships" | "on" | "off">;
+
+/**
+ * The transport the call is ON: the oldest live membership's first usable
+ * LiveKit focus. `memberships` is kept oldest-first by the SDK
+ * (`sessionMembershipsForSlot` sorts by `createdTs`).
+ *
+ * This is the "oldest membership" focus selection matrix-js-sdk 44 REMOVED
+ * (with `getFocusInUse()`; the SDK now writes `focus_selection: "multi_sfu"`
+ * and expects each client to subscribe to every member's own transport). We
+ * connect to ONE SFU per call, so we keep the rule ourselves: everyone who
+ * follows it meets on one SFU, and a multi-SFU client still finds us, since we
+ * publish on exactly that transport.
+ */
+export function focusInUse(memberships: Session["memberships"]): LivekitTransportConfig | null {
+    for (const membership of memberships) {
+        if (membership.isExpired()) continue;
+        const focus = membership.transports.find(isLivekitFocus);
+        if (focus) return focus;
+    }
+    return null;
+}
 
 /**
  * Native voice: joins a room's MatrixRTC session, finds the SFU, and connects
@@ -39,7 +57,8 @@ type Session = Pick<
  * Protocol choices (each one a place to revisit when Element Call's defaults move):
  *  - membership is a room STATE event, not a sticky event, so it works on any
  *    homeserver (Element Call's "compatibility" mode);
- *  - the SFU is the OLDEST member's transport, from `session.getFocusInUse()`;
+ *  - the SFU is the OLDEST member's transport (`focusInUse`, our own copy of
+ *    the rule the SDK dropped in 44), and we publish on exactly that one;
  *  - frame keys are per participant, minted and exchanged by the SDK session
  *    (`manageMediaKeys`) and handed to the media engine as they change.
  *
@@ -124,26 +143,29 @@ export class VoiceManager {
         let media: VoiceMedia | null = null;
         let teardown = (): void => undefined;
         try {
+            const userId = this.client.getUserId();
+            const deviceId = this.client.getDeviceId();
+            if (!userId || !deviceId) throw new Error("Cannot join voice without a device id");
             const discovery = await discoverFoci(this.client, this.options.fetch);
             if (!live()) return;
-            const foci = discovery.foci.map((t) => ({
-                type: "livekit" as const,
-                livekit_service_url: t.livekit_service_url,
-                // The alias the JWT service maps this Matrix room to.
-                livekit_alias: roomId,
-            }));
-            if (foci.length === 0) {
-                // Our homeserver named no focus — but a call already under way
-                // has one, and a member authenticates against the FOCUS's JWT
-                // service with their own OpenID token, never against their own
-                // homeserver. So joining needs no local transports at all; this
-                // is what lets an account on a homeserver with no RTC (e.g.
-                // matrix.org) join a call hosted by someone else's.
-                const running = this.client.matrixRTC.getActiveRoomSession(room);
-                const inUse = running?.getFocusInUse();
-                if (!isLivekitFocus(inUse)) throw new Error(noFocus(discovery));
-                foci.push({ type: "livekit", livekit_service_url: inUse.livekit_service_url, livekit_alias: roomId });
-            }
+            // A call already under way decides the SFU (see focusInUse). And
+            // when our homeserver names no focus, the running call's is the
+            // ONLY one: a member authenticates against the FOCUS's JWT service
+            // with their own OpenID token, never against their own homeserver.
+            // So joining needs no local transports at all; this is what lets
+            // an account on a homeserver with no RTC (e.g. matrix.org) join a
+            // call hosted by someone else's.
+            const running = this.client.matrixRTC.getActiveRoomSession(room);
+            const chosen = focusInUse(running?.memberships ?? []) ?? discovery.foci[0];
+            if (!chosen) throw new Error(noFocus(discovery));
+            const published = [
+                {
+                    type: "livekit" as const,
+                    livekit_service_url: chosen.livekit_service_url,
+                    // The alias the JWT service maps this Matrix room to.
+                    livekit_alias: roomId,
+                },
+            ];
 
             media = await this.options.createMedia();
             if (!live()) {
@@ -177,15 +199,28 @@ export class VoiceManager {
             };
             this.active = { roomId, session: rtc, media: engine, teardown, serviceUrl: null };
 
-            rtc.joinRoomSession(foci, undefined, { manageMediaKeys: true, callIntent: this.camera ? "video" : "audio" });
+            // memberId MUST be `<user>:<device>`: that is the `membershipID`
+            // the SDK writes into a legacy (state-event) membership, and since
+            // matrix-js-sdk 45 a peer files an incoming media key under the
+            // membership whose user, device AND member id all match the key's
+            // — any other value and our keys never attach, so every frame we
+            // send stays undecryptable. It is also the LiveKit identity
+            // `/sfu/get` assigns, i.e. the `identity` EncryptionKeyChanged hands us.
+            rtc.join({ userId, deviceId, memberId: `${userId}:${deviceId}` }, published, {
+                manageMediaKeys: true,
+                callIntent: this.camera ? "video" : "audio",
+            });
             rtc.reemitEncryptionKeys();
 
+            // The same rule, read from the session we joined: at once when a
+            // call is already running (its oldest member's focus), otherwise
+            // when our own membership lands. Like v43's getFocusInUse(), this
+            // does not wait for our membership when others are there, so the
+            // membership PUT and the SFU connect still run in parallel.
             const focus = await this.waitForFocus(rtc, live);
             if (!live()) return;
             const serviceUrl = focus.livekit_service_url;
             if (this.active) this.active.serviceUrl = serviceUrl;
-            const deviceId = this.client.getDeviceId();
-            if (!deviceId) throw new Error("Cannot join voice without a device id");
             const sfu: SfuConfig = await getSfuConfig(this.client, serviceUrl, roomId, deviceId, this.options.fetch);
             if (!live()) return;
 
@@ -231,7 +266,7 @@ export class VoiceManager {
         active.media.disconnect();
         // Remove our membership so the room list stops showing a ghost; if this
         // fails the delayed-leave event the SDK scheduled cleans up server-side.
-        await active.session.leaveRoomSession().catch((error: unknown) => console.error("[tumult] could not leave the voice session", error));
+        await active.session.leave().catch((error: unknown) => console.error("[tumult] could not leave the voice session", error));
         this.feed.set(null);
     }
 
@@ -316,10 +351,7 @@ export class VoiceManager {
     }
 
     private async waitForFocus(session: Session, live: () => boolean): Promise<{ livekit_service_url: string }> {
-        const find = (): { livekit_service_url: string } | null => {
-            const focus = session.getFocusInUse();
-            return isLivekitFocus(focus) ? focus : null;
-        };
+        const find = (): { livekit_service_url: string } | null => focusInUse(session.memberships);
         const now = find();
         if (now) return now;
         return new Promise((resolve, reject) => {
@@ -345,7 +377,7 @@ export class VoiceManager {
         teardown();
         media?.disconnect();
         // A failed join may already have written our membership.
-        await session?.leaveRoomSession().catch(() => undefined);
+        await session?.leave().catch(() => undefined);
     }
 
     /**
@@ -368,7 +400,7 @@ export class VoiceManager {
         this.reconnecting = false;
         active?.teardown();
         active?.media.disconnect();
-        void active?.session.leaveRoomSession().catch(() => undefined);
+        void active?.session.leave().catch(() => undefined);
         if (roomId) this.publish({ roomId, state: "error", error: describeVoiceError(error), participants: [] });
     }
 

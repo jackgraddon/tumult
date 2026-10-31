@@ -1,8 +1,8 @@
 diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
-index dde6d845be2926397f2a4bdc3b09325748cd1adc..784357788af0c5313ea498b5189b019792f3c50a 100644
+index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..73b03398dd7e77bba449a47874d8482ad15e7056 100644
 --- a/lib/http-api/fetch.js
 +++ b/lib/http-api/fetch.js
-@@ -210,8 +210,16 @@ export class FetchHttpApi {
+@@ -213,8 +213,16 @@ export class FetchHttpApi {
      const timeout = opts.localTimeoutMs ?? this.opts.localTimeoutMs;
      const keepAlive = opts.keepAlive ?? false;
      const signals = [this.abortController.signal];
@@ -20,7 +20,7 @@ index dde6d845be2926397f2a4bdc3b09325748cd1adc..784357788af0c5313ea498b5189b0197
      }
      if (opts.abortSignal) {
        signals.push(opts.abortSignal);
-@@ -267,6 +275,9 @@ export class FetchHttpApi {
+@@ -270,6 +278,9 @@ export class FetchHttpApi {
        throw new ConnectionError("fetch failed", e);
      } finally {
        cleanup();

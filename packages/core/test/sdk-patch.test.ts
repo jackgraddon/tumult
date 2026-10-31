@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { createClient, Method } from "matrix-js-sdk";
 
 /**
- * Guards patches/matrix-js-sdk@43.0.0.patch. Upstream's request timeout
+ * Guards patches/matrix-js-sdk@45.0.0.patch. Upstream's request timeout
  * (`timeoutSignal`) never clears its timer, so every request with a local
  * timeout left one running for the whole timeout — 110 s per /sync — which kept
  * Node processes alive after stopClient() (found by a handle diagnostic on the

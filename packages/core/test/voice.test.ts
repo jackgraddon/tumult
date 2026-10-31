@@ -5,7 +5,7 @@ import { MatrixError, type MatrixClient } from "matrix-js-sdk";
 
 import type { VoiceView } from "../src/contract.ts";
 import { Observable } from "../src/observable.ts";
-import { VoiceManager, describeVoiceError } from "../src/voice/manager.ts";
+import { VoiceManager, describeVoiceError, focusInUse } from "../src/voice/manager.ts";
 import { DEFAULT_VOICE_SETTINGS } from "../src/contract.ts";
 import { normalizeVoiceSettings } from "../src/voice/settings.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "../src/voice/media.ts";
@@ -19,21 +19,41 @@ const LIVEKIT = { type: "livekit", livekit_service_url: SERVICE };
 // enum, not with a hand-typed guess — see AGENTS.md on stubbing via enums).
 import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 
+interface FakeMembership {
+    userId: string;
+    isExpired: () => boolean;
+    transports: unknown[];
+}
+
+const member = (userId: string, ...transports: unknown[]): FakeMembership => ({ userId, isExpired: () => false, transports });
+
+/**
+ * The SDK session as the manager sees it (matrix-js-sdk 45: `join` / `leave`,
+ * no `getFocusInUse`). `focus` stands for the room's call membership: when set,
+ * the session holds one live member publishing on it. `landOnJoin` makes our
+ * own membership arrive as the real one does once the state event round-trips:
+ * publishing on the transport we joined with.
+ */
 class FakeSession extends EventEmitter {
-    memberships: { userId: string; isExpired: () => boolean }[] = [];
+    private explicit: FakeMembership[] | null = null;
     focus: unknown = null;
+    landOnJoin = false;
     joined: unknown[][] = [];
     left = 0;
     reemitted = 0;
-    joinRoomSession(...args: unknown[]): void {
-        this.joined.push(args);
+    get memberships(): FakeMembership[] {
+        return this.explicit ?? (this.focus == null ? [] : [member("@host:x", this.focus)]);
     }
-    async leaveRoomSession(): Promise<boolean> {
+    set memberships(memberships: FakeMembership[]) {
+        this.explicit = memberships;
+    }
+    join(...args: unknown[]): void {
+        this.joined.push(args);
+        if (this.landOnJoin) this.focus = (args[1] as unknown[])[0];
+    }
+    async leave(): Promise<boolean> {
         this.left++;
         return true;
-    }
-    getFocusInUse(): unknown {
-        return this.focus;
     }
     reemitEncryptionKeys(): void {
         this.reemitted++;
@@ -121,7 +141,10 @@ function setup(
     } = {},
 ) {
     const session = new FakeSession();
-    session.focus = "focus" in opts ? opts.focus : LIVEKIT;
+    // By default our membership lands on join; a test passing `focus` drives
+    // the room's membership by hand instead.
+    if ("focus" in opts) session.focus = opts.focus;
+    else session.landOnJoin = true;
     const existing = new FakeSession();
     existing.focus = opts.existingFocus ?? null;
     const rtcManager = new EventEmitter() as EventEmitter & { getRoomSession: () => FakeSession; getActiveRoomSession: (r: { roomId: string }) => FakeSession | undefined };
@@ -132,6 +155,7 @@ function setup(
     const client = {
         getRoom: (id: string) => (id === ROOM ? { roomId: ROOM } : null),
         getRooms: () => [{ roomId: ROOM }],
+        getUserId: () => "@me:localhost",
         getDeviceId: () => (opts.deviceId === undefined ? "DEV" : opts.deviceId),
         getDomain: () => "localhost",
         getOpenIdToken: async () => ({ access_token: "oidc", matrix_server_name: "localhost" }),
@@ -248,13 +272,33 @@ describe("discoverFoci", () => {
     });
 });
 
+describe("focusInUse", () => {
+    const at = (memberships: FakeMembership[]) => focusInUse(memberships as never);
+
+    it("is the oldest live member's first usable LiveKit transport", () => {
+        const other = { type: "livekit", livekit_service_url: "https://other.example" };
+        assert.deepEqual(at([member("@a:x", { type: "turn" }, LIVEKIT), member("@b:x", other)]), LIVEKIT);
+        assert.equal(at([]), null);
+    });
+
+    it("skips expired members and ones we cannot get a token for", () => {
+        const expired = { ...member("@old:x", { type: "livekit", livekit_service_url: "https://gone.example" }), isExpired: () => true };
+        // A Matrix-2.0 `url`-only transport needs /get_token; /sfu/get cannot use it.
+        const urlOnly = member("@new:x", { type: "livekit", url: "wss://sfu.example" });
+        assert.deepEqual(at([expired, urlOnly, member("@c:x", null, LIVEKIT)]), LIVEKIT);
+    });
+});
+
 describe("VoiceManager.join", () => {
     it("joins the session with the advertised LiveKit transport, then connects the SFU it is given", async () => {
         const { manager, session, media, feed, fetchCalls } = setup();
         await manager.join(ROOM);
-        const [foci, multiSfu, config] = session.joined[0] as [unknown[], unknown, Record<string, unknown>];
-        assert.deepEqual(foci, [{ type: "livekit", livekit_service_url: SERVICE, livekit_alias: ROOM }]);
-        assert.equal(multiSfu, undefined);
+        const [identity, published, config] = session.joined[0] as [unknown, unknown[], Record<string, unknown>];
+        // memberId is the legacy membershipID the SDK writes (`<user>:<device>`):
+        // v45 peers only attach our media keys to a membership whose member id
+        // matches the one in the key message.
+        assert.deepEqual(identity, { userId: "@me:localhost", deviceId: "DEV", memberId: "@me:localhost:DEV" });
+        assert.deepEqual(published, [{ type: "livekit", livekit_service_url: SERVICE, livekit_alias: ROOM }]);
         assert.equal(config["manageMediaKeys"], true);
         assert.equal(config["callIntent"], "audio");
         assert.equal(session.reemitted, 1, "keys minted before the listener attached are replayed");
@@ -422,11 +466,10 @@ describe("VoiceManager.join", () => {
         const { manager, session, feed, fetchCalls } = setup({
             transports: new Error("M_UNRECOGNIZED"),
             wellKnown: { "org.matrix.msc4143.rtc_foci": [{ type: "livekit", livekit_service_url: MATRIX_ORG }] },
-            focus: { type: "livekit", livekit_service_url: MATRIX_ORG },
         });
         await manager.join(ROOM);
         assert.notEqual(feed.get()?.state, "error");
-        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: MATRIX_ORG, livekit_alias: ROOM }]);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: MATRIX_ORG, livekit_alias: ROOM }]);
         assert.equal(fetchCalls[0]?.[0], `${MATRIX_ORG}/sfu/get`);
     });
 
@@ -438,12 +481,34 @@ describe("VoiceManager.join", () => {
         const { manager, session, feed, fetchCalls } = setup({
             transports: new Error("M_UNRECOGNIZED"),
             existingFocus: { type: "livekit", livekit_service_url: HOST },
-            focus: { type: "livekit", livekit_service_url: HOST },
         });
         await manager.join(ROOM);
         assert.notEqual(feed.get()?.state, "error");
-        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
         assert.equal(fetchCalls[0]?.[0], `${HOST}/sfu/get`, "the token comes from the focus in use, not from our own homeserver");
+    });
+
+    // matrix-js-sdk 44 dropped "oldest membership" focus selection; we keep it,
+    // so every Tumult in a call meets on ONE SFU even when their homeservers
+    // advertise different ones.
+    it("publishes on a running call's focus even when our homeserver names its own", async () => {
+        const HOST = "https://jwt.host.example";
+        const { manager, session, fetchCalls } = setup({ existingFocus: { type: "livekit", livekit_service_url: HOST } });
+        await manager.join(ROOM);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
+        assert.equal(fetchCalls[0]?.[0], `${HOST}/sfu/get`);
+    });
+
+    it("connects to the OLDEST member's focus when two calls started at once", async () => {
+        const OLDER = "https://jwt.older.example";
+        const { manager, session, fetchCalls } = setup({ focus: null });
+        const joining = manager.join(ROOM);
+        await new Promise((r) => setImmediate(r));
+        // Our membership landed second, behind someone who started on another SFU.
+        session.memberships = [member("@first:x", { type: "livekit", livekit_service_url: OLDER }), member("@me:localhost", LIVEKIT)];
+        session.emit(MatrixRTCSessionEvent.MembershipsChanged, [], []);
+        await joining;
+        assert.equal(fetchCalls[0]?.[0], `${OLDER}/sfu/get`);
     });
 
     it("removes our membership and the media engine when the SFU connection fails", async () => {
@@ -688,10 +753,10 @@ describe("VoiceManager controls", () => {
 describe("VoiceManager.start (who is in voice)", () => {
     it("publishes each room's participants and follows session start / end", () => {
         const { manager, session, rtcManager, roomsFeed } = setup();
-        session.memberships = [{ userId: "@a:x", isExpired: () => false }, { userId: "@old:x", isExpired: () => true }];
+        session.memberships = [member("@a:x"), { ...member("@old:x"), isExpired: () => true }];
         manager.start();
         assert.deepEqual(roomsFeed.get(), { [ROOM]: ["@a:x"] }, "an expired membership is not a participant");
-        session.memberships = [{ userId: "@a:x", isExpired: () => false }, { userId: "@b:x", isExpired: () => false }];
+        session.memberships = [member("@a:x"), member("@b:x")];
         session.emit(MatrixRTCSessionEvent.MembershipsChanged, [], []);
         assert.deepEqual(roomsFeed.get(), { [ROOM]: ["@a:x", "@b:x"] });
         session.memberships = [];

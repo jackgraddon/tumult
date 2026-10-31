@@ -48,8 +48,8 @@
   },
   "dependencies": {
     "livekit-client": "^2.23.0",
-    "matrix-js-sdk": "^43.0.0",
-    "matrix-widget-api": "^1.19.0"
+    "matrix-js-sdk": "^45.0.0",
+    "matrix-widget-api": "^1.20.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

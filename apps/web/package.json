@@ -20,7 +20,7 @@
     "test:element-call": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/element-call.test.ts"
   },
   "dependencies": {
-    "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",
+    "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
     "@tumult/core": "workspace:*",
     "@tumult/theme": "workspace:*",
     "@tumult/ui": "workspace:*",
