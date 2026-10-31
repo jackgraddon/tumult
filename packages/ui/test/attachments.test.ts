@@ -49,9 +49,30 @@ describe("attachment tray helpers", () => {
         assert.deepEqual(keep.map((i) => [i.id, i.status]), [[2, "failed"]]);
     });
 
+    it("says WHY a file did not land, as a sentence — no URL, no errcode", () => {
+        const items = [staged(1, "a.png", "image/png"), staged(2, "huge.mov", "video/quicktime")];
+        // The shape a MatrixError has (and what describeError reads): the SDK's
+        // own message embeds the request URL, which must never reach the card.
+        const tooLarge = Object.assign(new Error("MatrixError: [413] M_TOO_LARGE (https://hs.example/_matrix/media/v3/upload)"), {
+            name: "MatrixError",
+            errcode: "M_TOO_LARGE",
+            httpStatus: 413,
+            data: { errcode: "M_TOO_LARGE", error: "Upload request body is too large" },
+        });
+        const { keep } = settleTray(items, [{ ok: true }, { ok: false, error: tooLarge }], undefined, 50 * 1024 * 1024);
+        const failure = keep[0]?.failure ?? "";
+        assert.ok(failure.length > 0, "a failed file carries its reason");
+        assert.doesNotMatch(failure, /https?:|_matrix|M_[A-Z]/, failure);
+        assert.match(failure, /large|50/i, failure);
+    });
+
     it("fails the whole batch when the client threw (no per-file results)", () => {
         const items = [staged(1, "a.png", "image/png"), staged(2, "b.png", "image/png")];
         assert.deepEqual(settleTray(items, null).keep.map((i) => i.status), ["failed", "failed"]);
+        const offline = Object.assign(new Error("fetch failed: Failed to fetch"), { name: "ConnectionError" });
+        const reasons = settleTray(items, null, offline).keep.map((i) => i.failure);
+        assert.equal(reasons[0], reasons[1], "one throw, one reason for every file");
+        assert.doesNotMatch(reasons[0] ?? "", /Failed to fetch/, "the raw fetch error never reaches the card");
     });
 });
 

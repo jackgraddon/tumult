@@ -1,4 +1,5 @@
 import type { AttachmentSendResult, OutgoingAttachment } from "@tumult/core";
+import { describeError } from "@tumult/core/errors";
 
 /**
  * One file staged in the composer tray. `failed` keeps the file in the tray
@@ -18,6 +19,12 @@ export interface StagedAttachment {
      * `too-large`: over the homeserver's `m.upload.size`; never sent.
      */
     status: "converting" | "staged" | "sending" | "failed" | "too-large";
+    /**
+     * Why a `failed` file did not land, as a sentence (`describeError`): the
+     * server's reason ("Too large…", "You don't have permission…", offline),
+     * never a bare "failed" and never the raw request error.
+     */
+    failure?: string;
 }
 
 /**
@@ -87,13 +94,23 @@ export function toOutgoing(items: readonly StagedAttachment[]): OutgoingAttachme
 export function settleTray(
     items: readonly StagedAttachment[],
     results: readonly AttachmentSendResult[] | null,
+    /** What the send threw, when it threw outright instead of reporting per file. */
+    thrown?: unknown,
+    /** The homeserver's upload limit, so a "too large" reason can name it. */
+    maxUploadBytes?: number | null,
 ): { keep: StagedAttachment[]; sent: StagedAttachment[] } {
     const keep: StagedAttachment[] = [];
     const sent: StagedAttachment[] = [];
+    const aligned = results !== null && results.length === items.length;
     items.forEach((item, i) => {
-        const ok = results && results.length === items.length ? results[i]?.ok === true : false;
-        if (ok) sent.push(item);
-        else keep.push({ ...item, status: "failed" });
+        const result = aligned ? results[i] : undefined;
+        if (result?.ok) {
+            sent.push(item);
+            return;
+        }
+        const cause = result && !result.ok ? result.error : thrown;
+        const failure = describeError(cause, undefined, { maxUploadBytes: maxUploadBytes ?? null });
+        keep.push({ ...item, status: "failed", ...(failure ? { failure } : {}) });
     });
     return { keep, sent };
 }

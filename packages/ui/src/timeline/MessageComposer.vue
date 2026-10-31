@@ -316,9 +316,11 @@ async function sendTray(caption: string): Promise<void> {
     draft.value = "";
     clearTyping();
     let results: AttachmentSendResult[] | null = null;
+    let thrown: unknown;
     try {
         results = await send(toOutgoing(batch), caption);
     } catch (error) {
+        thrown = error;
         console.error("[tumult] attachment send failed", error);
     }
     for (const [i, result] of (results ?? []).entries()) {
@@ -326,7 +328,7 @@ async function sendTray(caption: string): Promise<void> {
     }
     // Settle against the batch as sent (alt text included), then splice the
     // survivors back where they were; anything staged meanwhile stays put.
-    const { keep, sent } = settleTray(batch, results);
+    const { keep, sent } = settleTray(batch, results, thrown, uploadLimit.value);
     release(sent);
     const kept = new Map(keep.map((item) => [item.id, item]));
     tray.value = tray.value.flatMap((item) => {
@@ -454,7 +456,7 @@ function onDrop(event: DragEvent): void {
                     <template v-else-if="item.status === 'too-large' && uploadLimit !== null">
                         Too large — this server accepts up to {{ formatBytes(uploadLimit) }}
                     </template>
-                    <template v-else-if="item.status === 'failed'">Upload failed — send to retry</template>
+                    <template v-else-if="item.status === 'failed'">{{ item.failure ?? "Didn't send." }} Send to retry.</template>
                     <template v-else>{{ formatBytes(item.file.size) }}</template>
                 </span>
                 <input
