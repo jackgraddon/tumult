@@ -29,7 +29,8 @@ describe("callUrlTemplate", () => {
             clientLanguage: "en",
         });
         const [path, fragment] = url.split("#?");
-        assert.equal(path, "https://call.example.com/");
+        // At an origin's root, `/` is the app's home page: address index.html.
+        assert.equal(path, "https://call.example.com/index.html");
         const params = new URLSearchParams(fragment);
         assert.equal(params.get("widgetId"), "w1");
         assert.equal(params.get("userId"), "@me:example.com");
@@ -41,6 +42,17 @@ describe("callUrlTemplate", () => {
         assert.equal(params.get("header"), "none");
         // An unsubstituted token would reach the call app as a literal `$…`.
         assert.ok(!url.includes("$"), url);
+    });
+
+    it("addresses a root deploy by index.html and a subdirectory deploy by the directory", () => {
+        const path = (base: string): string =>
+            callUrlTemplate(base, { origin: "https://app.example.com", intent: "start_call" }).split("#?")[0]!;
+        assert.equal(path("https://call.example.com"), "https://call.example.com/index.html");
+        assert.equal(path("http://127.0.0.1:4190/"), "http://127.0.0.1:4190/index.html");
+        // A directory is not `/`, so the router already routes it to the call;
+        // keep the directory (its chunks resolve relative to it).
+        assert.equal(path("https://app.example.com/widgets/element-call/"), "https://app.example.com/widgets/element-call/");
+        assert.equal(path("https://app.example.com/widgets/element-call"), "https://app.example.com/widgets/element-call/");
     });
 });
 

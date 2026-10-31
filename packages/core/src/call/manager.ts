@@ -28,7 +28,15 @@ const HANGUP_TIMEOUT_MS = 2_000;
  * Parameters are documented in element-call `docs/url_params.md`.
  */
 export function callUrlTemplate(base: string, params: { origin: string; intent: string }): string {
-    const root = base.replace(/\/+$/, "");
+    // The app's router sends the path `/` to its standalone home page ("Start
+    // new call") and every other path to the call, widget or not. Element Web
+    // never notices: it serves the package from a subdirectory. A call app
+    // deployed at an origin's root must be addressed by its `index.html`,
+    // which still resolves the package's relative chunks (VERIFIED in the
+    // Element Call browser test: at `/` the handshake completed and the frame
+    // still showed the home page).
+    const trimmed = base.replace(/\/+$/, "");
+    const root = new URL(`${trimmed}/`).pathname === "/" ? `${trimmed}/index.html` : `${trimmed}/`;
     const query = [
         "widgetId=$matrix_widget_id",
         `parentUrl=${encodeURIComponent(params.origin)}`,
@@ -44,7 +52,7 @@ export function callUrlTemplate(base: string, params: { origin: string; intent: 
         "header=none",
         "confineToRoom=true",
     ].join("&");
-    return `${root}/#?${query}`;
+    return `${root}#?${query}`;
 }
 
 /** Element Call's intent for a call: voice-only and DM variants are distinct. */
