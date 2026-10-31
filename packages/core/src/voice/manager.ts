@@ -206,10 +206,9 @@ export class VoiceManager {
             // — any other value and our keys never attach, so every frame we
             // send stays undecryptable. It is also the LiveKit identity
             // `/sfu/get` assigns, i.e. the `identity` EncryptionKeyChanged hands us.
-            rtc.join({ userId, deviceId, memberId: `${userId}:${deviceId}` }, published, {
-                manageMediaKeys: true,
-                callIntent: this.camera ? "video" : "audio",
-            });
+            const identity = { userId, deviceId, memberId: `${userId}:${deviceId}` };
+            const joinConfig = { manageMediaKeys: true, callIntent: this.camera ? "video" : "audio" } as const;
+            rtc.join(identity, published, joinConfig);
             rtc.reemitEncryptionKeys();
 
             // The same rule, read from the session we joined: at once when a
@@ -220,6 +219,19 @@ export class VoiceManager {
             const focus = await this.waitForFocus(rtc, live);
             if (!live()) return;
             const serviceUrl = focus.livekit_service_url;
+            // Two calls started at once: an older membership landed after we
+            // chose, so we connect to ITS SFU — and must not keep advertising
+            // ours. Since 44 a multi-SFU client (Element Call) subscribes to
+            // each member's published transport, so a stale `foci_preferred`
+            // makes us invisible to it. The session has no way to change the
+            // published transports in place, so leave and rejoin with the one
+            // we are actually on (keys are re-minted and re-emitted).
+            if (serviceUrl !== published[0]?.livekit_service_url) {
+                await rtc.leave();
+                if (!live()) return;
+                rtc.join(identity, [{ type: "livekit", livekit_service_url: serviceUrl, livekit_alias: roomId }], joinConfig);
+                rtc.reemitEncryptionKeys();
+            }
             if (this.active) this.active.serviceUrl = serviceUrl;
             const sfu: SfuConfig = await getSfuConfig(this.client, serviceUrl, roomId, deviceId, this.options.fetch);
             if (!live()) return;

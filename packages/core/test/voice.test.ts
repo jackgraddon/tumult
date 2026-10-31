@@ -509,6 +509,10 @@ describe("VoiceManager.join", () => {
         session.emit(MatrixRTCSessionEvent.MembershipsChanged, [], []);
         await joining;
         assert.equal(fetchCalls[0]?.[0], `${OLDER}/sfu/get`);
+        // …and we stop advertising the SFU we are not on: a multi-SFU client
+        // subscribes to each member's published transport.
+        assert.equal(session.left, 1, "the first membership (wrong SFU) is withdrawn");
+        assert.deepEqual(session.joined.at(-1)?.[1], [{ type: "livekit", livekit_service_url: OLDER, livekit_alias: ROOM }]);
     });
 
     it("removes our membership and the media engine when the SFU connection fails", async () => {

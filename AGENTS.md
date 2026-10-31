@@ -1014,8 +1014,14 @@ homeserver. A trap listed here has shipped broken at least once.
     to subscribe to EVERY member's own transport. We connect to one SFU, so we
     keep the old rule ourselves (`focusInUse()`: the oldest live membership's
     first usable LiveKit transport; `memberships` is oldest-first), choose the
-    focus BEFORE joining and publish only on it — so all Tumults meet on one
-    SFU and a multi-SFU client (Element Call) still finds us there.
+    focus BEFORE joining and publish only on it. If an older membership lands
+    after we chose (two calls started at once), we connect to ITS SFU and then
+    `leave()` + `join()` again with that transport — the session cannot change
+    published transports in place, and a stale `foci_preferred` would make us
+    invisible to a multi-SFU client. Guaranteed: Tumult clients converge on one
+    SFU. NOT built: subscribing to other SFUs — a v45 Element Call member who
+    joins after us publishes on their own homeserver's SFU, which we never
+    connect to, so they are invisible and inaudible to us (and we to them).
   - `isLivekitTransportConfig` / `LivekitTransportConfig` are gone; the
     replacement `isUnstableLivekitTransport` (null-safe now) also admits the
     Matrix-2.0 `url`-only variant, which `/sfu/get` cannot use — `isLivekitFocus`
