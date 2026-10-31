@@ -1363,17 +1363,45 @@ export class MatrixChatClient implements ChatClient {
 
     public async setupRecovery(): Promise<string> {
         const crypto = this.requireCrypto();
+
+        // Identity first, as Element does: bootstrapSecretStorage stores the
+        // cross-signing keys this device holds, so they must exist by then or
+        // the recovery key can never verify another device. Only when the
+        // ACCOUNT has none — an account with an identity this device cannot
+        // use must be verified (emoji / recovery key), never silently rotated,
+        // which would cut off every other device. The first upload needs no
+        // interactive auth (MSC3967); a server that demands it fails loudly.
+        // Without this, an account set up in Tumult had no identity at all
+        // ("Couldn't sign … MissingSigningKey"), found by the e2ee browser test.
+        if (!(await crypto.userHasCrossSigningKeys(undefined, true))) {
+            await crypto.bootstrapCrossSigning({
+                authUploadDeviceSigningKeys: async (makeRequest) => {
+                    await makeRequest(null);
+                },
+            });
+        }
+
         // Raw random key, not passphrase-derived: MAS accounts may have no
         // password, so password-based 4S is not a safe assumption.
         let encoded: string | undefined;
-        await crypto.bootstrapSecretStorage({
-            createSecretStorageKey: async () => {
-                const generated = await crypto.createRecoveryKeyFromPassphrase();
-                encoded = generated.encodedPrivateKey;
-                return generated;
-            },
-            setupNewKeyBackup: true,
-        });
+        try {
+            await crypto.bootstrapSecretStorage({
+                createSecretStorageKey: async () => {
+                    const generated = await crypto.createRecoveryKeyFromPassphrase();
+                    encoded = generated.encodedPrivateKey;
+                    // The SDK asks getSecretStorageKey for this very key moments
+                    // later, to store the backup and cross-signing keys under it.
+                    // Without it held, the callback answered null and setup died
+                    // AFTER creating the server backup: a backup nobody had the
+                    // key to, and no recovery key ever shown.
+                    this.heldSecretKey = generated.privateKey;
+                    return generated;
+                },
+                setupNewKeyBackup: true,
+            });
+        } finally {
+            this.heldSecretKey = null;
+        }
         await this.refreshSecurity();
         // Empty when secret storage already existed: the account keeps its
         // old key and there is nothing new to save. Never null — callers
