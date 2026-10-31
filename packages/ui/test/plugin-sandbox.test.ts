@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 
 import type { ChatClient } from "@tumult/core/contract";
 
-import { sandboxPlugin, type SandboxWorker } from "../src/plugins/sandbox/host.ts";
+import { SANDBOX_LIMITS, sandboxPlugin, type SandboxWorker } from "../src/plugins/sandbox/host.ts";
 import { createSandboxRuntime, type SandboxScope } from "../src/plugins/sandbox/worker/runtime.ts";
 import type { HostMessage, WorkerMessage } from "../src/plugins/sandbox/protocol.ts";
 import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types.ts";
@@ -615,6 +615,40 @@ describe("sandbox bridge", () => {
 
         await assert.rejects(Promise.resolve((kept as unknown as (t: string) => Promise<unknown>)("later")), /no longer available/);
         assert.deepEqual(drafts, ["rewritten"], "a finished invocation's setDraft does nothing");
+    });
+
+    it("fails a plugin that floods contributions, rather than letting it stall the app (F4)", async () => {
+        const failures: string[] = [];
+        await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    for (let i = 0; i <= SANDBOX_LIMITS.contributions; i++) {
+                        ctx.addCommand({ name: `flood${i}`, run: () => undefined });
+                    }
+                    return () => undefined;
+                },
+            },
+            { onFailed: (_id, error) => failures.push(error.message) },
+        );
+        assert.equal(failures.length, 1);
+        assert.match(failures[0]!, /more than 64 contributions/);
+    });
+
+    it("fails a plugin that floods the bridge with calls (F4)", async () => {
+        const failures: string[] = [];
+        await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    for (let i = 0; i <= SANDBOX_LIMITS.callsInFlight; i++) ctx.client.send("!r:example.org", "x").catch(() => undefined);
+                    return () => undefined;
+                },
+            },
+            { onFailed: (_id, error) => failures.push(error.message) },
+        );
+        assert.equal(failures.length, 1);
+        assert.match(failures[0]!, /more than 64 concurrent calls/);
     });
 });
 

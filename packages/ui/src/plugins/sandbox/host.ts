@@ -63,6 +63,20 @@ export interface SandboxHost {
     onFailed?(id: string, error: Error): void;
 }
 
+/**
+ * Hard ceilings on what one sandboxed plugin may hold on the host. Generous
+ * against any real plugin (the shipped ones make 1–2 contributions and open
+ * one feed at a time) and small against a flood: crossing one fails the plugin.
+ */
+export const SANDBOX_LIMITS = {
+    /** addCommand / addComposerAction / injectStylesheet, over the plugin's life. */
+    contributions: 64,
+    /** Feeds open at once (only invoked-room timelines are allowed at all). */
+    feeds: 16,
+    /** Bridge calls awaiting an answer at once. */
+    callsInFlight: 64,
+} as const;
+
 /** A verified bundle ready to run in a Worker. */
 export interface SandboxEntry {
     manifest: PluginManifest;
@@ -370,6 +384,8 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             dead = false;
             const active = host.createWorker();
             worker = active;
+            let callsInFlight = 0;
+            let contributions = 0;
 
             const fail = (error: Error): void => {
                 if (dead) return;
@@ -386,22 +402,47 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
                 const message = event.data as WorkerMessage;
                 if (!message || typeof message !== "object") return;
                 switch (message.kind) {
-                    case "call":
-                        void handleCall(message.method, message.args).then(
-                            (value) => {
-                                active.postMessage({ kind: "result", id: message.id, ok: true, value });
-                            },
-                            (error: unknown) => {
-                                active.postMessage({
-                                    kind: "result",
-                                    id: message.id,
-                                    ok: false,
-                                    error: error instanceof Error ? error.message : String(error),
-                                });
-                            },
-                        );
+                    case "call": {
+                        // Caps, not queues (security review F4): the plugin's
+                        // code shares the Worker realm with the runtime, so it
+                        // can post raw protocol messages and skip any restraint
+                        // there. A Worker past a cap is hostile or broken, and
+                        // is failed — uninstalled and disabled — before it can
+                        // stall the app (and again on every boot).
+                        if (callsInFlight >= SANDBOX_LIMITS.callsInFlight) {
+                            fail(new Error(`made more than ${SANDBOX_LIMITS.callsInFlight} concurrent calls`));
+                            break;
+                        }
+                        if (feedSubscriptions.size >= SANDBOX_LIMITS.feeds) {
+                            fail(new Error(`opened more than ${SANDBOX_LIMITS.feeds} feeds`));
+                            break;
+                        }
+                        callsInFlight += 1;
+                        void handleCall(message.method, message.args)
+                            .then(
+                                (value) => {
+                                    active.postMessage({ kind: "result", id: message.id, ok: true, value });
+                                },
+                                (error: unknown) => {
+                                    active.postMessage({
+                                        kind: "result",
+                                        id: message.id,
+                                        ok: false,
+                                        error: error instanceof Error ? error.message : String(error),
+                                    });
+                                },
+                            )
+                            .finally(() => {
+                                callsInFlight -= 1;
+                            });
                         break;
+                    }
                     case "contribution":
+                        contributions += 1;
+                        if (contributions > SANDBOX_LIMITS.contributions) {
+                            fail(new Error(`made more than ${SANDBOX_LIMITS.contributions} contributions`));
+                            break;
+                        }
                         try {
                             applyContribution(message);
                         } catch (error) {
