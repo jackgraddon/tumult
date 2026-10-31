@@ -233,7 +233,7 @@ describe("CallWidgetDriver", () => {
 
         it("passes the homeserver's RTC transports straight through", async () => {
             const result = await new CallWidgetDriver(stub().client, ROOM).getRtcTransports();
-            assert.deepEqual(result, { transports: [{ type: "livekit", livekit_service_url: "https://jwt.example.com" }] });
+            assert.deepEqual(result, { rtc_transports: [{ type: "livekit", livekit_service_url: "https://jwt.example.com" }] });
         });
 
         it("forwards a LiveKit token request field-for-field and returns only the jwt", async () => {

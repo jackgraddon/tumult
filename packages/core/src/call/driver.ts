@@ -187,7 +187,11 @@ export class CallWidgetDriver extends WidgetDriver {
     }
 
     public override async getRtcTransports(): Promise<Awaited<ReturnType<WidgetDriver["getRtcTransports"]>>> {
-        return { transports: await this.client._unstable_getRTCTransports() } as never;
+        // The widget API's key is `rtc_transports` (MSC4143's unstable
+        // response key). This once returned `{ transports }` behind an
+        // `as never`, so Element Call read `undefined`, concluded the server
+        // could not host calls and showed MISSING_MATRIX_RTC_TRANSPORT.
+        return { rtc_transports: await this.client._unstable_getRTCTransports() };
     }
 
     public override async getRtcLivekitToken(data: Parameters<WidgetDriver["getRtcLivekitToken"]>[0]) {

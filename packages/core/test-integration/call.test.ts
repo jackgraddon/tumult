@@ -60,7 +60,7 @@ describe("call widget driver against a real MatrixRTC Synapse", { skip: !enabled
 
     it("serves the RTC transports the homeserver is configured with", { timeout: 30000 }, async () => {
         const { driver } = await setup();
-        const { transports } = (await driver.getRtcTransports()) as { transports: { type: string; livekit_service_url?: string }[] };
+        const { rtc_transports: transports } = await driver.getRtcTransports();
         const livekit = transports.find((t) => t.type === "livekit");
         assert.ok(livekit, `no livekit transport in ${JSON.stringify(transports)}`);
         assert.match(livekit.livekit_service_url ?? "", /^https?:\/\//);
@@ -121,7 +121,7 @@ describe("call widget driver against a real MatrixRTC Synapse", { skip: !enabled
 describe("LiveKit token exchange", { skip: process.env["TEST_RTC_TOKEN"] !== "1" && "set TEST_RTC_TOKEN=1 once lk-jwt-service can reach the homeserver" }, () => {
     it("mints a JWT for a member of the room", { timeout: 30000 }, async () => {
         const { driver, roomId, userId, client } = await setup();
-        const { transports } = (await driver.getRtcTransports()) as { transports: { livekit_service_url?: string }[] };
+        const { rtc_transports: transports } = await driver.getRtcTransports();
         const url = transports[0]?.livekit_service_url;
         assert.ok(url, "no transport advertised");
         const { jwt } = await driver.getRtcLivekitToken({
