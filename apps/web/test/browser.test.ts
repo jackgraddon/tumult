@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -915,13 +915,15 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("gives a sandboxed plugin no route to the app's storage or an unpoliced worker", async () => {
-        // A Worker made from the app's own origin shares that origin's storage:
-        // IndexedDB holds the SDK's crypto store (this device's keys) and the
-        // plugin store, where a forged trusted-lane record would run in-page on
-        // the next boot. A nested Worker would start with a fresh, unstripped
-        // global. The probe is the most sandboxed plugin there is — ["styles"]
-        // only — and reports what it reached through the one channel it has:
-        // a custom property in CSS it injects.
+        // The app's origin holds IndexedDB with the SDK's crypto store (this
+        // device's keys) and the plugin store, where a forged trusted-lane
+        // record would run in-page on the next boot. Two layers keep a sandboxed
+        // plugin off it, and BOTH are asserted: the plugin's Worker lives in an
+        // opaque-origin frame (`self.origin === "null"`, so the browser itself
+        // refuses the app's storage), and inside it the runtime still withdraws
+        // IndexedDB, caches and nested Workers. The probe is the most sandboxed
+        // plugin there is — ["styles"] only — and reports what it reached through
+        // the one channel it has: a custom property in CSS it injects.
         const isolated = await browser.newContext({ viewport: VIEWPORT });
         try {
             await isolated.addInitScript((session) => {
@@ -930,6 +932,8 @@ describe("browser smoke test (fake client)", () => {
             const bundle = `export const plugin = { manifest: { id: "cc.example.probe", name: "Probe", version: "1.0.0", permissions: ["styles"] }, async install(ctx) {
   const found = {};
   const g = globalThis;
+  found.origin = g.origin;
+  found.localStorage = typeof g.localStorage !== "undefined";
   found.indexedDB = typeof g.indexedDB !== "undefined" && g.indexedDB !== null;
   try { const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Object.getPrototypeOf(g)), "indexedDB") || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(g), "indexedDB"); found.viaPrototype = !!(d && d.get && d.get.call(g)); } catch (e) { found.viaPrototype = false; }
   try { const dbs = await g.indexedDB.databases(); found.databases = dbs.map((x) => x.name).filter((n) => /tumult/.test(n || "")); } catch (e) { found.databases = []; }
@@ -988,9 +992,59 @@ describe("browser smoke test (fake client)", () => {
             const found = JSON.parse(JSON.parse(reported)) as Record<string, unknown>;
             assert.deepEqual(
                 found,
-                { indexedDB: false, viaPrototype: false, databases: [], openedPluginStore: false, Worker: false, caches: false, BroadcastChannel: false },
+                {
+                    origin: "null",
+                    localStorage: false,
+                    indexedDB: false,
+                    viaPrototype: false,
+                    databases: [],
+                    openedPluginStore: false,
+                    Worker: false,
+                    caches: false,
+                    BroadcastChannel: false,
+                },
                 `a sandboxed plugin reached: ${reported}`,
             );
+
+            // The frame itself, below the runtime's withdrawal: exactly
+            // `allow-scripts`, an opaque origin, and none of the app's storage
+            // even with every global intact.
+            const frameElement = probe.locator("iframe[data-tumult-plugin-sandbox]");
+            assert.equal(await frameElement.count(), 1, "one sandboxed plugin should mean one sandbox frame");
+            assert.equal(await frameElement.getAttribute("sandbox"), "allow-scripts");
+            assert.equal(await frameElement.getAttribute("allow"), "");
+            assert.equal(await frameElement.getAttribute("referrerpolicy"), "no-referrer");
+            assert.equal(await frameElement.getAttribute("aria-hidden"), "true");
+            assert.ok(await frameElement.evaluate((el) => (el as HTMLIFrameElement).inert && (el as HTMLIFrameElement).hidden), "the frame must be hidden and inert");
+            const frame = await (await frameElement.elementHandle())?.contentFrame();
+            assert.ok(frame, "the sandbox frame has no document");
+            const inside = (await frame.evaluate(`(async () => {
+                const out = { origin: self.origin };
+                try { out.localStorage = typeof localStorage.getItem("tumult.session"); } catch (e) { out.localStorage = "throws"; }
+                try { out.databases = (await indexedDB.databases()).map((d) => d.name); } catch (e) { out.databases = "throws"; }
+                try { await caches.keys(); out.caches = "reachable"; } catch (e) { out.caches = "throws"; }
+                out.csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") ?? null;
+                return out;
+            })()`)) as { origin: string; localStorage: string; databases: unknown; caches: string; csp: string | null };
+            assert.equal(inside.origin, "null", "the sandbox frame is not opaque");
+            assert.equal(inside.localStorage, "throws", "the sandbox frame can reach localStorage");
+            assert.ok(
+                inside.databases === "throws" || (Array.isArray(inside.databases) && !inside.databases.some((name) => /tumult/.test(String(name)))),
+                `the sandbox frame sees the app's databases: ${JSON.stringify(inside.databases)}`,
+            );
+            assert.equal(inside.caches, "throws", "the sandbox frame can reach CacheStorage");
+
+            // The frame's policy travels in its own <meta> (preview sends no
+            // headers), and vercel.json's header for the page must say the
+            // same thing plus the one directive a meta cannot carry.
+            assert.ok(inside.csp, "the sandbox page carries no CSP meta");
+            assert.match(inside.csp, /default-src 'none'/);
+            const vercel = JSON.parse(readFileSync(join(appRoot, "vercel.json"), "utf8")) as {
+                headers: { source: string; headers: { key: string; value: string }[] }[];
+            };
+            const rule = vercel.headers.find((entry) => entry.source === "/sandbox.html");
+            const header = rule?.headers.find((entry) => entry.key === "Content-Security-Policy")?.value;
+            assert.equal(header, `${inside.csp}; frame-ancestors 'self'`, "vercel.json's sandbox CSP drifted from the page's meta");
         } finally {
             await isolated.close();
         }

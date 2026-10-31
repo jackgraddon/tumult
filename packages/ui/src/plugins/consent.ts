@@ -40,7 +40,8 @@ export const LANE_SUMMARY = {
     sandbox: {
         label: "Sandboxed",
         blurb:
-            "This plugin runs in an isolated background worker. When you run one of its commands " +
+            "This plugin runs in an isolated background worker, walled off from the app and its " +
+            "storage. When you run one of its commands " +
             "or actions, it can read and act in that room — send, reply, react — and only until it " +
             "finishes. It cannot see your other rooms, your account, your encryption keys or your " +
             "devices, and has no access to the page or the DOM.",

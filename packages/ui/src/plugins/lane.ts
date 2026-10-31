@@ -4,7 +4,8 @@
  * A plugin's lane is computed from the permissions it asks for, at load
  * time, by the host: nothing in the manifest can claim a lane, and there is
  * no reviewer to petition. A plugin that only needs data-in/capability-out
- * APIs (commands, composer actions, stylesheets) is loaded into a Worker and
+ * APIs (commands, composer actions, stylesheets) is loaded into a Worker inside an
+ * opaque-origin sandbox frame (`sandbox/frame.ts`) and
  * reaches the shell exclusively through the RPC bridge — no DOM, no window,
  * no session storage. A plugin that contributes a live Vue component (a
  * timeline renderer, a member decoration, a settings tab) cannot be

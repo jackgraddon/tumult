@@ -119,7 +119,7 @@ export class AppPluginInstallController implements PluginInstallControls {
     private hostFor(id: string, lane: "sandbox" | "trusted"): SandboxHost {
         if (lane !== "sandbox") return sandboxHost;
         return {
-            createWorker: sandboxHost.createWorker,
+            createTransport: sandboxHost.createTransport,
             onFailed: (failedId, error) => {
                 console.error(`[tumult] sandboxed plugin "${failedId}" failed`, error);
                 this.registry?.uninstall(failedId);
@@ -337,8 +337,10 @@ export class AppPluginInstallController implements PluginInstallControls {
      * recorded hash fail closed. It is NOT proof of consent: the hash lives in
      * the same record, so anything that can write the store can write a
      * matching pair. Who can write it is therefore the real boundary:
-     *  - a SANDBOXED plugin cannot — its Worker has IndexedDB withdrawn
-     *    (sandbox/worker/shim.ts, proven by the smoke test);
+     *  - a SANDBOXED plugin cannot — its Worker runs inside an opaque-origin
+     *    frame (sandbox/frame.ts), so the app's IndexedDB is not its origin's,
+     *    and IndexedDB is withdrawn there too (sandbox/worker/shim.ts); both
+     *    are proven by the smoke test;
      *  - in-page code (a trusted plugin, or an XSS) can, and could persist by
      *    other means too (a service worker, say). That is inherent to running
      *    in-page, which is exactly what the trusted-lane consent warns about.

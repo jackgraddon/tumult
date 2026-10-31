@@ -799,6 +799,45 @@ homeserver. A trap listed here has shipped broken at least once.
   (`raw.githubusercontent.com`, a git-tree file) is CORS-open and stays direct.
 - The release API JSON (`/releases/latest`) IS CORS-open and is fetched
   directly — that part of the install flow never needed the proxy.
+- **The sandbox lane is an opaque-origin frame with a Worker inside**
+  (`packages/ui/src/plugins/sandbox/frame.ts`; mounted by
+  `apps/web/src/plugins/installer.ts`): `<iframe sandbox="allow-scripts">` on
+  the real page `/sandbox.html`, its classic bootstrap `/sandbox.js`, both built
+  by `vite.config.ts`'s `sandboxFrame` plugin. `host.ts` only sees a
+  `SandboxTransport` (postMessage/terminate/addEventListener), so the protocol,
+  policy, caps and `fail()` did not change. The old lane was a same-origin
+  module Worker that had to DELETE the app origin's storage globals;
+  `shim.ts`'s `lockDown()` stays as defense in depth. Each of these VERIFIED in
+  Firefox and Chromium (headless Playwright; Safari not tested):
+  - The bootstrap must be a CLASSIC script: an opaque-origin document fetches
+    `type="module"` scripts in CORS mode, and our own server sends no
+    `Access-Control-Allow-Origin` ("from origin 'null' has been blocked by CORS
+    policy"). Hence the IIFE builds, with the inner Worker inlined as a string.
+  - CSP `'self'` in the frame's own meta DOES match `/sandbox.js` even though
+    the document's origin is opaque (dropping `'self'` blocks it), so no hash is
+    needed. A blob Worker minted in the frame, and `import(blobUrl)` of the
+    plugin inside that (classic) Worker, both work.
+  - `blob:` URLs are origin-bound: a Worker on a `blob:` the APP minted fails
+    inside the opaque frame (Chromium `SecurityError`, Firefox a security
+    error event) — the frame must mint its own blobs.
+  - `srcdoc` must NOT be used: a sandboxed `srcdoc` frame inherits the parent's
+    CSP (a parent `worker-src 'none'` blocked the srcdoc frame's Worker even
+    though its own meta allowed it).
+  - The host posts the port with `targetOrigin: "*"` — an opaque origin has no
+    name to target; the bootstrap takes only the FIRST port and only from
+    `event.source === parent`, and trust rests on port identity, never
+    `event.origin`.
+  - The inner Worker is load-bearing: a 1.5 s busy loop in the sandboxed
+    frame's DOCUMENT stalled the parent's timers ~1.5 s (same main thread, on
+    a same-site localhost), while the same loop in a Worker inside the frame
+    left them at ~20–30 ms.
+  - The browser smoke test asserts the plugin sees `origin === "null"`, the
+    frame's `sandbox` is exactly `allow-scripts`, the frame cannot read
+    localStorage/CacheStorage/the app's databases, and that `vercel.json`'s
+    `/sandbox.html` CSP header equals the page's meta + `frame-ancestors
+    'self'`. NOT verified: the Vercel deploy itself (the global
+    `frame-ancestors 'none'` rule excludes `/sandbox.html` by a negative
+    lookahead, `/((?!sandbox\\.html$).*)` — check a deploy frames it).
 
 ### Calls (embedded Element Call, Phase A)
 

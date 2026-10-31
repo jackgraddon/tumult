@@ -43,18 +43,29 @@ import {
 } from "./protocol.ts";
 import { checkCall, invocationRoom } from "./policy.ts";
 
-/** A `Worker`-shaped handle, so `@tumult/ui` never names the DOM type itself. */
-export interface SandboxWorker {
+/**
+ * A `Worker`-shaped channel to wherever the plugin runs, so `@tumult/ui` never
+ * names a DOM type itself. The app's transport is a hidden opaque-origin frame
+ * with a Worker inside (`frame.ts`'s `createFrameTransport`); this module only
+ * needs these three members, so the message switch, the caps and `fail()` do
+ * not care what is behind them. An `error` event — a Worker crash relayed out
+ * of the frame, or a frame that never booted — fails the plugin.
+ */
+export interface SandboxTransport {
     postMessage(message: HostMessage): void;
     terminate(): void;
     addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
     addEventListener(type: "error", listener: (event: { message?: string }) => void): void;
 }
 
-/** What the app must supply to open a Worker — the only DOM coupling. */
+/** What the app must supply to open a transport — the only DOM coupling. */
 export interface SandboxHost {
-    /** Start a module Worker that imports `sandbox/shim.ts` and runs the bundle. */
-    createWorker(): SandboxWorker;
+    /**
+     * Open a fresh transport whose far end runs `sandbox/worker/shim.ts`. Posts
+     * made before it is up must be buffered, not dropped: `init` is posted
+     * synchronously right after this returns.
+     */
+    createTransport(): SandboxTransport;
     /**
      * Called when the plugin dies after a successful `install()` (Worker crash, a
      * throwing `install()`, a bundle that would not import). The caller uninstalls
@@ -94,7 +105,7 @@ export interface SandboxEntry {
 export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     const id = entry.manifest.id;
 
-    let worker: SandboxWorker | null = null;
+    let worker: SandboxTransport | null = null;
     let ctx: PluginContext | null = null;
     let dead = false;
 
@@ -382,7 +393,7 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
         install(shellContext): void {
             ctx = shellContext;
             dead = false;
-            const active = host.createWorker();
+            const active = host.createTransport();
             worker = active;
             let callsInFlight = 0;
             let contributions = 0;

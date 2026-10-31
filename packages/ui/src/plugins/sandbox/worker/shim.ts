@@ -43,18 +43,21 @@ interface WorkerGlobalScope {
 const workerScope = self as unknown as WorkerGlobalScope;
 
 /**
- * What a Worker made from the app's own origin is born with and a plugin must
- * not have. The Worker shares the app's ORIGIN, so without this a sandboxed
- * plugin — even one that declared only ["styles"] — could open the SDK's
- * IndexedDB crypto store (this device's keys) or the plugin store (and forge a
- * trusted-lane record that runs in-page on the next boot), start a nested
- * Worker with a fresh unstripped global, or register a service worker that
- * intercepts the app's requests. Proven in the browser smoke test, which
- * fails if any of these is reachable.
+ * Defense in depth, not the boundary. This Worker is created INSIDE the
+ * sandbox frame (`frame.ts`), whose origin is opaque, so the browser already
+ * refuses it the app's storage: IndexedDB, caches and storage APIs either throw
+ * or open an empty per-opaque-origin store that nothing else can see, and a
+ * `blob:` URL minted by the app cannot even be loaded here. The withdrawal
+ * below is kept anyway, so a plugin never even holds those handles — if a
+ * browser bug, a regression in how the frame is mounted (say, a stray
+ * `allow-same-origin`) or a future transport ever put this Worker back on the
+ * app's origin, the plugin still could not open the SDK's crypto store, forge
+ * a trusted-lane record in the plugin store, start a nested Worker with an
+ * unstripped global, or register a service worker. The browser smoke test
+ * checks both layers: the origin is "null" AND these globals are gone.
  *
- * Network (fetch, WebSocket) stays: there is no token in a Worker (the session
- * is in localStorage, which Workers do not have), and what the plugin can
- * read at all is the policed bridge's business (policy.ts).
+ * Network (fetch, WebSocket) stays: there is no token here, and what the plugin
+ * can read through the app at all is the policed bridge's business (policy.ts).
  */
 const WITHDRAWN_GLOBALS = ["indexedDB", "caches", "Worker", "SharedWorker", "BroadcastChannel", "webkitRequestFileSystem", "webkitRequestFileSystemSync", "webkitResolveLocalFileSystemURL", "webkitResolveLocalFileSystemSyncURL"];
 const WITHDRAWN_NAVIGATOR = ["storage", "locks", "serviceWorker"];

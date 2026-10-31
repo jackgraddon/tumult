@@ -20,6 +20,7 @@
 
 import {
     checkReleaseManifest,
+    createFrameTransport,
     hashBundle,
     hashMismatchReason,
     rawManifestUrl,
@@ -30,7 +31,7 @@ import {
     type PluginManifest,
     type PluginSource,
     type SandboxHost,
-    type SandboxWorker,
+    type SandboxTransport,
 } from "@tumult/ui";
 
 /** A release resolved and verified, sitting on the consent screen. */
@@ -225,7 +226,7 @@ export interface CommitOptions {
      * runs" answer in one place — `deriveLane`, at consent time.
      */
     lane: PluginLane;
-    /** How to open the sandbox Worker (the app's only DOM coupling). */
+    /** How to open the sandbox transport (the app's only DOM coupling). */
     sandboxHost: SandboxHost;
 }
 
@@ -236,20 +237,63 @@ export interface LoadableBundle {
 }
 
 /**
- * Open a module Worker for one plugin. The URL is a local module path so Vite
- * emits it as its own chunk; the shim inside `@tumult/ui` does the rest. A
- * `blob:` worker is deliberately NOT used — `worker-src 'self' blob:` would allow
- * it, but a stable same-origin script URL is easier to audit in devtools.
+ * Mount the hidden sandbox frame for one plugin.
+ *
+ * A real same-server page (`/sandbox.html`, served by `vite.config.ts`'s
+ * `sandboxFrame` plugin), never `srcdoc`: a `srcdoc` document inherits THIS
+ * document's policy, while `/sandbox.html` carries its own much stricter one.
+ * The `sandbox` attribute is exactly `allow-scripts` — no `allow-same-origin`
+ * (that would hand the frame the app's origin and storage back), and nothing
+ * that lets it open, navigate, submit or download. It is out of the layout, the
+ * focus order and the accessibility tree, and sized by attributes because the
+ * theme gate forbids a literal length in a stylesheet.
  */
-export function createSandboxWorker(): SandboxWorker {
-    return new Worker(new URL("./sandbox.worker.ts", import.meta.url), {
-        type: "module",
-        name: "tumult-plugin-sandbox",
-    }) as unknown as SandboxWorker;
+function mountSandboxFrame(onLoad: () => void): { postPort(port: unknown): void; remove(): void } {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.setAttribute("allow", "");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.setAttribute("title", "Plugin sandbox");
+    frame.setAttribute("aria-hidden", "true");
+    frame.setAttribute("tabindex", "-1");
+    frame.setAttribute("width", "0");
+    frame.setAttribute("height", "0");
+    frame.setAttribute("data-tumult-plugin-sandbox", "");
+    frame.hidden = true;
+    frame.inert = true;
+    frame.addEventListener("load", onLoad, { once: true });
+    frame.src = `${import.meta.env.BASE_URL}sandbox.html`;
+    document.body.append(frame);
+    return {
+        postPort(port) {
+            // "*" is forced: the frame's origin is opaque, so there is no origin
+            // to target. Safety is the port itself — the bootstrap accepts the
+            // first port from its parent only, and the channel's other end
+            // never leaves this transport.
+            frame.contentWindow?.postMessage("tumult-sandbox:port", "*", [port as MessagePort]);
+        },
+        remove() {
+            frame.remove();
+        },
+    };
 }
 
-/** The app's default host: real Workers, no failure sink (the caller attaches one). */
-export const sandboxHost: SandboxHost = { createWorker: createSandboxWorker };
+/**
+ * Open a transport for one plugin: an opaque-origin frame with a Worker inside
+ * (see `@tumult/ui`'s `createFrameTransport` for the handshake, the buffering
+ * and the boot deadline).
+ */
+export function createSandboxTransport(): SandboxTransport {
+    return createFrameTransport({
+        mountFrame: mountSandboxFrame,
+        createChannel: () => new MessageChannel(),
+        setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+        clearTimeout: (handle) => window.clearTimeout(handle as number),
+    });
+}
+
+/** The app's default host: real sandbox frames, no failure sink (the caller attaches one). */
+export const sandboxHost: SandboxHost = { createTransport: createSandboxTransport };
 
 /**
  * Load a verified bundle as a `Plugin`, routed by lane.
