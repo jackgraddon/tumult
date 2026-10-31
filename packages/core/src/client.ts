@@ -63,9 +63,8 @@ import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
-import { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 import { readOwnPresence } from "./rooms/own-presence.ts";
-import { assertProfileFieldKey, ProfileFieldStore } from "./rooms/profile-fields.ts";
+import { ProfileController } from "./rooms/profile-controller.ts";
 import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
     createChannel,
@@ -92,6 +91,7 @@ import { AuthStorage, type StoredSession } from "./auth/storage.ts";
 import { toConnectionState, watchNetwork } from "./sync/connection.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
 import { RtcFeature } from "./call/rtc.ts";
+import type { ClientContext } from "./client-context.ts";
 import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
@@ -228,8 +228,15 @@ export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
     private readonly syncModeOption: SyncModeOption;
+    /**
+     * Lazy, read-at-call-time view of this client for the feature modules
+     * (client-context.ts). Built in the constructor body, before them.
+     */
+    private readonly ctx: ClientContext;
     /** Calls + voice: their feeds, managers and voice settings (call/rtc.ts). */
     private readonly rtc: RtcFeature;
+    /** Own profile + MSC4133 fields (rooms/profile-controller.ts). */
+    private readonly profileCtl: ProfileController;
     /** Sync loop actually running; set in bootstrap before startClient. */
     private activeSyncMode: ActiveSyncMode = "classic";
 
@@ -326,15 +333,6 @@ export class MatrixChatClient implements ChatClient {
         permission: "default",
         supported: typeof Notification !== "undefined",
     });
-    private readonly profileState = new Observable<ProfileView | null>(null);
-    /**
-     * MSC4133 support, asked once per started client (`null` = not asked).
-     * Reset on stop: a different session may land on a different server.
-     */
-    private profileFieldsSupport: Promise<boolean> | null = null;
-    private readonly profileFields = new ProfileFieldStore((userId, key) => this.readProfileField(userId, key), {
-        ttlMs: 5 * 60_000,
-    });
     /**
      * Our own presence + status message. `null` until the server tells us —
      * presence is user-level state, not something we can infer from the
@@ -355,11 +353,20 @@ export class MatrixChatClient implements ChatClient {
         this.storage = options.storage ?? AuthStorage.browser();
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
         this.syncModeOption = options.syncMode ?? "auto";
+        // Closures, not values: features read the client, session and
+        // selection live, so a stop/start swap is always seen.
+        this.ctx = {
+            storage: this.storage,
+            matrix: () => this.matrix,
+            session: () => this.stored,
+            selectedRoomId: () => this._selectedRoomId,
+        };
         this.rtc = new RtcFeature({
             storage: this.storage,
             elementCallUrl: options.elementCallUrl || null,
             createE2EEWorker: options.createE2EEWorker ?? null,
         });
+        this.profileCtl = new ProfileController(this.ctx);
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
         this.securityRefresh = new ThrottledTask(() => {
             void this.refreshSecurity();
@@ -412,7 +419,7 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public get profile(): Subscribable<ProfileView | null> {
-        return this.profileState;
+        return this.profileCtl.feed;
     }
 
     public get ownPresence(): Subscribable<OwnPresenceView | null> {
@@ -651,7 +658,7 @@ export class MatrixChatClient implements ChatClient {
             // Profile is a plain HTTP read, independent of the sync loop:
             // seed the feed now rather than waiting for the first batch. A
             // failure publishes the localpart fallback (below) instead.
-            void this.refreshProfile();
+            void this.profileCtl.refresh();
             // Own presence/status is another independent HTTP read: read it
             // now and re-assert the presence the user chose (sliding sync never
             // tells the server we are here), then keep it honest on a
@@ -771,8 +778,7 @@ export class MatrixChatClient implements ChatClient {
         // tracker is gone, so it publishes the empty snapshot.
         this.publishTyping();
         this._selectedRoomId = null;
-        this.profileFieldsSupport = null;
-        this.profileFields.clear();
+        this.profileCtl.resetForStop();
         this.connectionState.set("stopped");
         this.securityState.set(UNCHECKED_SECURITY);
     }
@@ -1076,18 +1082,8 @@ export class MatrixChatClient implements ChatClient {
         await setMemberPowerLevel(client, roomId, userId, powerLevel);
     }
 
-    public async setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {
-        const client = this.matrix;
-        if (!client) throw new Error("Cannot set profile before start()");
-        try {
-            await writeProfile(client, params);
-        } catch (error) {
-            // A half-applied change (name landed, upload failed) must show
-            // what the server actually stored — refresh first, then rethrow.
-            await this.refreshProfile();
-            throw error;
-        }
-        await this.refreshProfile();
+    public setProfile(params: { displayName?: string; avatar?: Blob | null }): Promise<void> {
+        return this.profileCtl.set(params);
     }
 
     public async setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void> {
@@ -1107,53 +1103,15 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public profileFieldsSupported(): Promise<boolean> {
-        const client = this.matrix;
-        if (!client) return Promise.resolve(false);
-        this.profileFieldsSupport ??= client.doesServerSupportExtendedProfiles().catch((error: unknown) => {
-            console.error("[tumult] extended profile support check failed", error);
-            this.profileFieldsSupport = null; // transient — ask again next time
-            return false;
-        });
-        return this.profileFieldsSupport;
+        return this.profileCtl.fieldsSupported();
     }
 
     public profileField(userId: string, key: string): Subscribable<unknown> {
-        return this.profileFields.feed(userId, key);
+        return this.profileCtl.field(userId, key);
     }
 
-    public async setProfileField(key: string, value: unknown): Promise<void> {
-        assertProfileFieldKey(key);
-        const client = this.matrix;
-        const userId = client?.getUserId();
-        if (!client || !userId) throw new Error("Cannot set a profile field before start()");
-        if (!(await this.profileFieldsSupported())) {
-            throw new Error("This homeserver does not support extended profile fields (MSC4133)");
-        }
-        if (value === null || value === undefined) {
-            await client.deleteExtendedProfileProperty(key);
-            this.profileFields.publish(userId, key, null);
-        } else {
-            await client.setExtendedProfileProperty(key, value);
-            this.profileFields.publish(userId, key, value);
-        }
-    }
-
-    /**
-     * One field read for the store: `undefined` when we cannot ask (no client
-     * yet — the store retries on the next watch), `null` when unsupported or
-     * unset (404), the raw value otherwise. Other failures throw, which the
-     * store logs and leaves stale.
-     */
-    private async readProfileField(userId: string, key: string): Promise<unknown> {
-        const client = this.matrix;
-        if (!client) return undefined;
-        if (!(await this.profileFieldsSupported())) return null;
-        try {
-            return (await client.getExtendedProfileProperty(userId, key)) ?? null;
-        } catch (error) {
-            if ((error as { httpStatus?: number }).httpStatus === 404) return null;
-            throw error;
-        }
+    public setProfileField(key: string, value: unknown): Promise<void> {
+        return this.profileCtl.setField(key, value);
     }
 
     public async sendTyping(roomId: string, isTyping: boolean): Promise<void> {
@@ -1528,7 +1486,7 @@ export class MatrixChatClient implements ChatClient {
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
-        this.profileState.set(null);
+        this.profileCtl.feed.set(null);
         this.ownPresenceState.set(null);
         this.roomsState.set([]);
     }
@@ -1696,22 +1654,6 @@ export class MatrixChatClient implements ChatClient {
             this.securityState.set(await querySecurityStatus(crypto));
         } catch (error) {
             console.error("[tumult] security snapshot failed", error);
-        }
-    }
-
-    /**
-     * Publish our profile. Never throws: an offline start still gets a
-     * readable fallback (the mxid localpart), which is just restating the id
-     * we already show — not a name the server ever claimed.
-     */
-    private async refreshProfile(): Promise<void> {
-        const client = this.matrix;
-        const userId = client?.getUserId();
-        if (!client || !userId) return;
-        try {
-            this.profileState.set(await readProfile(client));
-        } catch {
-            this.profileState.set({ userId, displayName: fallbackName(userId), avatarUrl: null });
         }
     }
 
