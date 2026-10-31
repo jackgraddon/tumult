@@ -3,7 +3,7 @@ import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { AttachmentSendResult, ChatClient, MessageView, OutgoingAttachment } from "@tumult/core";
 
-import { fileIcon, formatBytes, previewKind, settleTray, toOutgoing } from "./attachments.ts";
+import { applyUploadLimit, fileIcon, formatBytes, previewKind, settleTray, toOutgoing } from "./attachments.ts";
 import { heicToJpeg, looksHeic } from "./heic.ts";
 import type { StagedAttachment } from "./attachments.ts";
 
@@ -185,14 +185,37 @@ function openFilePicker(): void {
 
 const tray = ref<StagedAttachment[]>([]);
 let nextAttachmentId = 1;
-/** Everything not already on its way: staged plus failed (a send retries both). */
-const pending = computed(() => tray.value.filter((item) => item.status !== "sending"));
+/** What a send takes: staged plus failed (a send retries both). */
+const pending = computed(() =>
+    tray.value.filter((item) => item.status === "staged" || item.status === "failed"),
+);
 /** Send waits for every HEIC to finish converting rather than send it raw. */
 const converting = computed(() => tray.value.some((item) => item.status === "converting"));
 const canStage = computed(() => !!props.sendAttachments && !props.disabled);
 
+/**
+ * The homeserver's advertised `m.upload.size` — read once, the first time a
+ * file is staged. A proxy in front of the server may still refuse less.
+ */
+const uploadLimit = ref<number | null>(null);
+let uploadLimitRequested = false;
+function requestUploadLimit(): void {
+    if (uploadLimitRequested || !props.client) return;
+    uploadLimitRequested = true;
+    void props.client.uploadLimit().then(
+        (limit) => (uploadLimit.value = limit),
+        () => undefined,
+    );
+}
+// Judge every settled file against the limit, whichever arrives last.
+watch([tray, uploadLimit], ([items, limit]) => {
+    const next = applyUploadLimit(items, limit);
+    if (next.some((item, i) => item !== items[i])) tray.value = next;
+});
+
 function stage(files: Iterable<File>): void {
     if (!canStage.value) return;
+    requestUploadLimit();
     for (const file of files) {
         if (looksHeic(file)) {
             const item: StagedAttachment = {
@@ -428,6 +451,9 @@ function onDrop(event: DragEvent): void {
                 <span class="tumult-composer-attachment-meta">
                     <template v-if="item.status === 'converting'">Converting to JPEG…</template>
                     <template v-else-if="item.status === 'sending'">Uploading…</template>
+                    <template v-else-if="item.status === 'too-large' && uploadLimit !== null">
+                        Too large — this server accepts up to {{ formatBytes(uploadLimit) }}
+                    </template>
                     <template v-else-if="item.status === 'failed'">Upload failed — send to retry</template>
                     <template v-else>{{ formatBytes(item.file.size) }}</template>
                 </span>
@@ -578,7 +604,8 @@ function onDrop(event: DragEvent): void {
     border-radius: var(--control-radius);
     background: var(--surface-pane);
 }
-.tumult-composer-attachment[data-status="failed"] {
+.tumult-composer-attachment[data-status="failed"],
+.tumult-composer-attachment[data-status="too-large"] {
     border-color: var(--danger);
 }
 .tumult-composer-attachment[data-status="sending"] {
@@ -632,7 +659,8 @@ function onDrop(event: DragEvent): void {
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
-.tumult-composer-attachment[data-status="failed"] .tumult-composer-attachment-meta {
+.tumult-composer-attachment[data-status="failed"] .tumult-composer-attachment-meta,
+.tumult-composer-attachment[data-status="too-large"] .tumult-composer-attachment-meta {
     color: var(--danger);
 }
 .tumult-composer-attachment-alt {

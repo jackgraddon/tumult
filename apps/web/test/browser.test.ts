@@ -477,6 +477,33 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(await card.count(), 0);
     });
 
+    it("refuses a file over the server's upload limit when staged, and sends the rest", async () => {
+        // The fake advertises m.upload.size = 2 MB.
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "huge.zip", mimeType: "application/zip", buffer: Buffer.alloc(3 * 1024 * 1024) },
+            { name: "small.txt", mimeType: "text/plain", buffer: Buffer.from("fits") },
+        ]);
+        const huge = page.locator(".tumult-composer-attachment", { hasText: "huge.zip" });
+        await page.waitForFunction(
+            () => document.querySelector('.tumult-composer-attachment[data-status="too-large"]') !== null,
+            undefined,
+            { timeout: 5_000 },
+        );
+        assert.equal(
+            (await huge.locator(".tumult-composer-attachment-meta").textContent())?.trim(),
+            "Too large — this server accepts up to 2.0 MB",
+        );
+
+        await page.locator(".tumult-composer-input").press("Enter");
+        await page.locator(".tumult-row", { hasText: "small.txt" }).last().waitFor({ timeout: 10_000 });
+        assert.equal(await page.locator(".tumult-row", { hasText: "huge.zip" }).count(), 0);
+        // The refused file stays until the user removes it; Send has nothing left to take.
+        assert.equal(await huge.count(), 1);
+        assert.equal(await page.locator(".tumult-composer-send").isDisabled(), true);
+        await page.locator('button[aria-label="Remove huge.zip"]').click();
+        assert.equal(await page.locator(".tumult-composer-attachment").count(), 0);
+    });
+
     it("converts a staged HEIC to JPEG, previews it, and sends the JPEG", async () => {
         // A real 64x48 HEIC (made with macOS `sips`) — Firefox cannot decode it natively.
         const heic = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/red.heic"));

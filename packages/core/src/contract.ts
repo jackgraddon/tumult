@@ -752,6 +752,13 @@ export interface ChatClient {
         options?: SendAttachmentsOptions,
     ): Promise<AttachmentSendResult[]>;
     /**
+     * The homeserver's maximum upload size in bytes (`m.upload.size`), or
+     * `null` when it advertises none or the read failed. Read once per
+     * session. A proxy in front of the homeserver may enforce a LOWER limit
+     * the client cannot see, so a file under this can still be refused.
+     */
+    uploadLimit(): Promise<number | null>;
+    /**
      * Toggle our `emoji` reaction on a message: sends `m.reaction` when we
      * haven't reacted, redacts our reaction when we have. The feed maps the
      * result; the returned promise only signals the request finished.

@@ -218,6 +218,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             retry: call("retry"),
             sendMediaMessage: call("sendMediaMessage"),
             sendAttachments: call("sendAttachments"),
+            uploadLimit: call("uploadLimit"),
             toggleReaction: call("toggleReaction"),
             edit: call("edit"),
             sendTyping: call("sendTyping"),

@@ -648,6 +648,12 @@ homeserver. A trap listed here has shipped broken at least once.
   returns per-file results and a failed file stays in the tray marked failed
   (the tray is its only surface). The content builder
   (`rooms/attachment-content.ts`) is SDK-free so the fake echoes the real shape.
+- The tray refuses files over `m.upload.size` (`uploadLimit()`, read once per
+  client; `null` = unknown, blocks nothing) — what Element does. That is the
+  HOMESERVER's limit only: a reverse proxy can be lower and nothing reveals it.
+  VERIFIED on matrix.jackg.cc: nginx's default `client_max_body_size 1m` sat
+  behind the Cloudflare tunnel, and its 413 carries no CORS headers, so the
+  browser reports a CORS error and the XHR an `AbortError` with no status.
 
 ### Timeline layout (virtualized rows)
 

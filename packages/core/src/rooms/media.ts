@@ -66,6 +66,24 @@ export async function sendAttachments(
     return results;
 }
 
+/**
+ * The homeserver's advertised upload limit (`m.upload.size`), or `null` when
+ * it advertises none or the read fails — unknown must never block a send.
+ * Uses the authenticated endpoint on v1.11+ servers, else the legacy one.
+ * This is the HOMESERVER's limit only: a proxy in front of it (nginx's
+ * default is 1 MB) can be lower, and nothing in the protocol reveals that.
+ */
+export async function readUploadLimit(matrix: MatrixClient): Promise<number | null> {
+    try {
+        const authed = await matrix.isVersionSupported("v1.11").catch(() => false);
+        const size = (await matrix.getMediaConfig(authed))["m.upload.size"];
+        return typeof size === "number" && size > 0 ? size : null;
+    } catch (error) {
+        console.warn("[tumult] could not read the media upload limit", error);
+        return null;
+    }
+}
+
 async function sendOneAttachment(
     matrix: MatrixClient,
     roomId: string,

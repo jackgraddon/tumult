@@ -13,8 +13,30 @@ export interface StagedAttachment {
     altText: string;
     width?: number;
     height?: number;
-    /** `converting`: a HEIC being turned into JPEG; the tray cannot send yet. */
-    status: "converting" | "staged" | "sending" | "failed";
+    /**
+     * `converting`: a HEIC being turned into JPEG; the tray cannot send yet.
+     * `too-large`: over the homeserver's `m.upload.size`; never sent.
+     */
+    status: "converting" | "staged" | "sending" | "failed" | "too-large";
+}
+
+/**
+ * Mark files over the homeserver's advertised limit `too-large` (and lift the
+ * mark if the limit turns out higher). Only settled files are judged: a HEIC
+ * is measured after conversion, an upload in flight is left alone. A `null`
+ * limit is unknown, not unlimited-or-zero, so it blocks nothing.
+ */
+export function applyUploadLimit(
+    items: readonly StagedAttachment[],
+    limit: number | null,
+): StagedAttachment[] {
+    return items.map((item) => {
+        if (item.status !== "staged" && item.status !== "failed" && item.status !== "too-large") return item;
+        const over = limit !== null && item.file.size > limit;
+        if (over && item.status !== "too-large") return { ...item, status: "too-large" };
+        if (!over && item.status === "too-large") return { ...item, status: "staged" };
+        return item;
+    });
 }
 
 export type PreviewKind = "image" | "video" | "audio" | "file";

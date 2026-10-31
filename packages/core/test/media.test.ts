@@ -5,7 +5,7 @@ import type { MatrixClient } from "matrix-js-sdk";
 import { MediaResolver, parseMxc } from "../src/media/resolver.ts";
 import { isTerminalMediaError } from "../src/media/classify.ts";
 import { decryptAttachment } from "../src/media/attachment.ts";
-import { sendAttachments, sendMediaMessage } from "../src/rooms/media.ts";
+import { readUploadLimit, sendAttachments, sendMediaMessage } from "../src/rooms/media.ts";
 import { ALT_TEXT_KEY } from "../src/contract.ts";
 import type { EncryptedAttachment } from "../src/contract.ts";
 
@@ -285,6 +285,39 @@ describe("sendMediaMessage", () => {
             () => sendMediaMessage(matrix, "!r:x", new File(["x"], "a.png", { type: "image/png" })),
             /M_FORBIDDEN/,
         );
+    });
+});
+
+describe("readUploadLimit", () => {
+    function stubConfig(opts: { v111: boolean; config?: unknown; fail?: boolean }) {
+        const asked: (boolean | undefined)[] = [];
+        const matrix = {
+            isVersionSupported: async (v: string) => v === "v1.11" && opts.v111,
+            getMediaConfig: async (authed?: boolean) => {
+                asked.push(authed);
+                if (opts.fail) throw new Error("M_UNRECOGNIZED");
+                return opts.config;
+            },
+        } as unknown as MatrixClient;
+        return { matrix, asked };
+    }
+
+    it("reads m.upload.size from the authenticated endpoint on v1.11 servers", async () => {
+        const { matrix, asked } = stubConfig({ v111: true, config: { "m.upload.size": 52428800 } });
+        assert.equal(await readUploadLimit(matrix), 52428800);
+        assert.deepEqual(asked, [true]);
+    });
+
+    it("falls back to the legacy endpoint on older servers", async () => {
+        const { matrix, asked } = stubConfig({ v111: false, config: { "m.upload.size": 1024 } });
+        assert.equal(await readUploadLimit(matrix), 1024);
+        assert.deepEqual(asked, [false]);
+    });
+
+    it("is null (unknown, never blocking) when absent, malformed, or the read fails", async () => {
+        assert.equal(await readUploadLimit(stubConfig({ v111: true, config: {} }).matrix), null);
+        assert.equal(await readUploadLimit(stubConfig({ v111: true, config: { "m.upload.size": "5" } }).matrix), null);
+        assert.equal(await readUploadLimit(stubConfig({ v111: true, fail: true }).matrix), null);
     });
 });
 

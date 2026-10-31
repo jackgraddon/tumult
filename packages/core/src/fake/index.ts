@@ -42,6 +42,9 @@ import { assertProfileFieldKey } from "../rooms/profile-fields.ts";
 /** In-memory cap: dropping the head must not break scroll anchoring. */
 export const FAKE_TIMELINE_CAP = 500;
 
+/** The fake homeserver's `m.upload.size`: small, so the smoke test can exceed it cheaply. */
+export const FAKE_UPLOAD_LIMIT = 2 * 1024 * 1024;
+
 function mulberry32(seed: number): () => number {
     let a = seed >>> 0;
     return () => {
@@ -818,6 +821,10 @@ class FakeChatClient implements ChatClient {
     /** Sent attachments keep their real bytes so the timeline shows what was picked. */
     private readonly sentMedia = new Map<string, string>();
     private sentMediaSeq = 0;
+
+    public async uploadLimit(): Promise<number | null> {
+        return FAKE_UPLOAD_LIMIT;
+    }
 
     public async sendAttachments(
         roomId: string,

@@ -58,7 +58,7 @@ import { UNCHECKED_SECURITY, querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { resendAfterOutage, sendTextMessage, retryTextMessage } from "./rooms/send.ts";
-import { sendAttachments, sendMediaMessage } from "./rooms/media.ts";
+import { readUploadLimit, sendAttachments, sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
@@ -1012,6 +1012,18 @@ export class MatrixChatClient implements ChatClient {
         return sendAttachments(client, roomId, attachments, options, (body, replyTo) =>
             sendTextMessage(client, roomId, body, replyTo),
         );
+    }
+
+    /** Cached per MatrixClient: the limit is server config, not per-request. */
+    private uploadLimitRead: { client: MatrixClient; limit: Promise<number | null> } | null = null;
+
+    public uploadLimit(): Promise<number | null> {
+        const client = this.matrix;
+        if (!client) return Promise.resolve(null);
+        if (this.uploadLimitRead?.client !== client) {
+            this.uploadLimitRead = { client, limit: readUploadLimit(client) };
+        }
+        return this.uploadLimitRead.limit;
     }
 
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {

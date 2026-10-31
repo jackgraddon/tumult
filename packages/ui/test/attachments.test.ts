@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { ALT_TEXT_KEY } from "@tumult/core/contract";
 import {
+    applyUploadLimit,
     fileIcon,
     formatBytes,
     settleTray,
@@ -51,6 +52,31 @@ describe("attachment tray helpers", () => {
     it("fails the whole batch when the client threw (no per-file results)", () => {
         const items = [staged(1, "a.png", "image/png"), staged(2, "b.png", "image/png")];
         assert.deepEqual(settleTray(items, null).keep.map((i) => i.status), ["failed", "failed"]);
+    });
+});
+
+describe("applyUploadLimit", () => {
+    const big = (status: StagedAttachment["status"]): StagedAttachment => ({
+        ...staged(1, "big.png", "image/png"),
+        file: new File([new Uint8Array(100)], "big.png", { type: "image/png" }),
+        status,
+    });
+
+    it("marks settled files over the limit too-large, and lifts it when the limit allows", () => {
+        assert.equal(applyUploadLimit([big("staged")], 50)[0]?.status, "too-large");
+        assert.equal(applyUploadLimit([big("failed")], 50)[0]?.status, "too-large");
+        assert.equal(applyUploadLimit([big("too-large")], 500)[0]?.status, "staged");
+    });
+
+    it("leaves converting/sending files alone and treats an unknown limit as no limit", () => {
+        assert.equal(applyUploadLimit([big("converting")], 50)[0]?.status, "converting");
+        assert.equal(applyUploadLimit([big("sending")], 50)[0]?.status, "sending");
+        assert.equal(applyUploadLimit([big("staged")], null)[0]?.status, "staged");
+    });
+
+    it("returns the same objects when nothing changes", () => {
+        const items = [big("staged")];
+        assert.equal(applyUploadLimit(items, 500)[0], items[0]);
     });
 });
 
