@@ -323,11 +323,15 @@ export interface VerificationState {
 
 /**
  * Lifecycle of the embedded call. `connecting` covers loading the call app and
- * the widget handshake; `joined` is set once the app reports it is in the call;
- * `error` is a failure the user should be told about (the widget never
- * loaded). A clean hang-up is not a state: the call just becomes `null`.
+ * the widget handshake; `joined` is set once the app reports the user joined —
+ * the user's INTENT, not proof that media flows (the app sends it before its
+ * own fatal errors, which it shows only inside the frame); `ended` means the
+ * app hung up but its frame stays up, because a hang-up can come with an error
+ * screen the user still has to read; `error` is a failure the user should be
+ * told about (the widget never loaded). The call becomes `null` once the app
+ * closes (`io.element.close`) or the user leaves.
  */
-export type CallState = "connecting" | "joined" | "error";
+export type CallState = "connecting" | "joined" | "ended" | "error";
 
 /**
  * The call this window is in. There is at most one: a second `joinCall` leaves

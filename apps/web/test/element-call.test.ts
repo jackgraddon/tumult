@@ -216,7 +216,7 @@ describe("embedded Element Call through the real app", { skip: !enabled && "set 
                         if (join && (await join.count().catch(() => 0)) > 0) await join.first().click().catch(() => {});
                         return (await p.page.locator(".tumult-call-state").textContent())?.trim() ?? "";
                     },
-                    (state) => state === "Connected",
+                    (state) => state === "In call",
                     90_000,
                 );
             }
@@ -249,6 +249,18 @@ describe("embedded Element Call through the real app", { skip: !enabled && "set 
                     90_000,
                 );
             }
+        }),
+    );
+    it("hanging up inside the call app ends the call in the app around it", { timeout: 60_000 }, () =>
+        guard(async () => {
+            // The call app sends im.vector.hangup and then io.element.close on a
+            // normal leave: hang-up alone only marks the call ended (an error
+            // screen may still need reading), close takes the frame down.
+            const alice = people[0]!;
+            const frame = callFrame(alice);
+            assert.ok(frame, "alice has no call frame to hang up from");
+            await frame.getByRole("button", { name: /end call|leave|hang ?up/i }).first().click({ timeout: 20_000 });
+            await alice.page.locator(".tumult-call").waitFor({ state: "detached", timeout: 30_000 });
         }),
     );
 });

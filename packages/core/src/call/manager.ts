@@ -14,6 +14,8 @@ import { CallWidgetDriver } from "./driver.ts";
 const ACTION_JOINED = "io.element.join";
 const ACTION_HANGUP = "im.vector.hangup";
 const ACTION_CLOSE = "io.element.close";
+const ACTION_ALWAYS_ON_SCREEN = "set_always_on_screen";
+const ACTION_DEVICE_MUTE = "io.element.device_mute";
 
 /** How long the widget has to finish its handshake before we call it dead. */
 const HANDSHAKE_TIMEOUT_MS = 30_000;
@@ -181,14 +183,31 @@ export class CallManager {
             api.transport.reply(ev.detail, {});
             this.setState("joined");
         });
-        const finished = (ev: CustomEvent): void => {
+        // Hang-up and close are different, as in Element Web: on a fatal call
+        // error the app may leave the session but deliberately does NOT close
+        // ("stay open until the user reads it"), so tearing the frame down on
+        // hang-up would hide its error screen. A normal leave sends hang-up and
+        // then close, so the frame still goes away at once in that case.
+        api.on(`action:${ACTION_HANGUP}`, (ev: CustomEvent) => {
             ev.preventDefault();
             api.transport.reply(ev.detail, {});
-            // The app left (or asked to close): the call is over, so drop it.
+            this.setState("ended");
+        });
+        api.on(`action:${ACTION_CLOSE}`, (ev: CustomEvent) => {
+            ev.preventDefault();
+            api.transport.reply(ev.detail, {});
             void this.leave();
+        });
+        // Requests we have nothing to do for, acknowledged so the app does not
+        // log a rejection: the frame stays mounted for the whole call already
+        // (always-on-screen), and we draw no mute controls of our own (the app
+        // reports `{ audio_enabled, video_enabled }` for a host that does).
+        const acknowledge = (ev: CustomEvent): void => {
+            ev.preventDefault();
+            api.transport.reply(ev.detail, {});
         };
-        api.on(`action:${ACTION_HANGUP}`, finished);
-        api.on(`action:${ACTION_CLOSE}`, finished);
+        api.on(`action:${ACTION_ALWAYS_ON_SCREEN}`, acknowledge);
+        api.on(`action:${ACTION_DEVICE_MUTE}`, acknowledge);
 
         const detach = (): void => {
             clearTimeout(timer);

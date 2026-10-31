@@ -308,7 +308,7 @@ interface VerificationRequestView {
 interface VerificationState {
 	requests: VerificationRequestView[];
 }
-type CallState = "connecting" | "joined" | "error";
+type CallState = "connecting" | "joined" | "ended" | "error";
 interface CallView {
 	roomId: string;
 	url: string;

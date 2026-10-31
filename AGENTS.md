@@ -969,13 +969,25 @@ homeserver. A trap listed here has shipped broken at least once.
     host must call `feedStateUpdate` on every `RoomStateEvent.Events`. The app
     reads call membership from it; fed only through `feedEvent`, neither side
     learned the other joined, sent no key, and every track was `MissingKey`.
-  The panel's "Connected" is the app's `io.element.join`, sent BEFORE a fatal
-  call error — it does not prove media. The release's `.sha256` asset is a
-  per-FILE manifest, not a tarball checksum. Not handled yet (warnings only):
-  `set_always_on_screen`, `io.element.device_mute`; the app's
-  `delegate_delayed_leave` 400s at lk-jwt-service.
+  `io.element.join` is the user's INTENT (sent before the app's own fatal
+  errors, which it shows only inside the frame), so the panel says "In call",
+  never "Connected". Hang-up and close differ, as in Element Web: on a fatal
+  error the app may hang up but deliberately does not close, so hang-up only
+  sets `ended` and the frame (with the app's error screen) stays until close
+  or the user's Leave. The release's `.sha256` asset is a
+  per-FILE manifest, not a tarball checksum. `set_always_on_screen` and
+  `io.element.device_mute` are acknowledged with `{}` (the frame is always
+  mounted; we draw no mute controls).
 
 ### Known harmless
 
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver until MatrixRTC
   is enabled on it — discovery the SDK probes optimistically.
+- On `tests/rtc`, the embedded call's leave DELEGATION fails twice per client:
+  `…/io.element.msc4195/rtc/livekit/delegate_delayed_leave` 404s on Synapse
+  (that route belongs to lk-jwt-service; nothing forwards it), and the app's
+  direct `POST <jwt>/delegate_delayed_leave` 400s (lk-jwt-service's
+  `DelegateDelayedLeaveRequest` fails `validate()`; which field is UNCONFIRMED —
+  its logs are not captured on CI). Delegation is optional: the app falls back
+  to refreshing its own delayed leave (`update_delayed_event` 200), and the
+  call works. Forwarding the MSC4195 route to lk-jwt-service would test it.

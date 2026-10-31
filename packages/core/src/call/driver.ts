@@ -218,6 +218,11 @@ export class CallWidgetDriver extends WidgetDriver {
         // not one of its own SFUs). Passing the data through is the only way to
         // honour it — deriving it here from the RTC transports would send the
         // JWT service URL, which is a different thing.
+        //
+        // A 404 / M_UNRECOGNIZED here means the homeserver does not forward
+        // MSC4195's route to lk-jwt-service (tests/rtc does not). Delegation is
+        // optional: the error goes back to the app, which then keeps its
+        // delayed leave alive itself (update_delayed_event).
         await this.client._unstable_delegateDelayedLeave(data as never);
         return {};
     }
