@@ -60,7 +60,7 @@ for _ in $(seq 1 30); do
 done
 
 echo "$LOG_PREFIX running call and voice integration tests..."
-(cd "$ROOT/packages/core" && node --test --test-force-exit test-integration/call.test.ts test-integration/voice.test.ts)
+(cd "$ROOT/packages/core" && node --test test-integration/call.test.ts test-integration/voice.test.ts)
 
 if [ "${RTC_MEDIA:-1}" = "1" ]; then
     echo "$LOG_PREFIX running the two-browser media test..."

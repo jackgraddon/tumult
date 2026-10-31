@@ -8,6 +8,9 @@ overrides:
   source-map-js: '>=1.2.2'
   minimatch: '>=11.0.1'
 
+patchedDependencies:
+  matrix-js-sdk@43.0.0: c00b31c61bc795cfc1683c954822f62b02dbe2f5d34fb58f4c2e0e9819dc27b0
+
 importers:
 
   .:
@@ -87,7 +90,7 @@ importers:
         version: 2.23.0(@types/dom-mediacapture-record@1.0.22)
       matrix-js-sdk:
         specifier: ^43.0.0
-        version: 43.0.0
+        version: 43.0.0(patch_hash=c00b31c61bc795cfc1683c954822f62b02dbe2f5d34fb58f4c2e0e9819dc27b0)
       matrix-widget-api:
         specifier: ^1.19.0
         version: 1.19.0
@@ -3137,7 +3140,7 @@ snapshots:
 
   matrix-events-sdk@0.0.1: {}
 
-  matrix-js-sdk@43.0.0:
+  matrix-js-sdk@43.0.0(patch_hash=c00b31c61bc795cfc1683c954822f62b02dbe2f5d34fb58f4c2e0e9819dc27b0):
     dependencies:
       '@babel/runtime': 8.0.5
       '@matrix-org/matrix-sdk-crypto-wasm': 18.9.0

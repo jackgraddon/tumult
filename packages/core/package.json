@@ -39,7 +39,7 @@
     "dev": "tsc -b --watch",
     "typecheck": "tsc -b --noEmit false",
     "test": "node --test \"test/**/*.test.ts\"",
-    "test:integration": "node --test --test-force-exit \"test-integration/**/*.test.ts\""
+    "test:integration": "node --test \"test-integration/**/*.test.ts\""
   },
   "dependencies": {
     "livekit-client": "^2.23.0",

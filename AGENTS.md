@@ -744,13 +744,21 @@ homeserver. A trap listed here has shipped broken at least once.
 
 ### Test & module tooling
 
-- After `stopClient()`, something in matrix-js-sdk keeps a Node process alive
-  ~110 s (VERIFIED on CI against Synapse: every integration file finished its
-  tests in 3–50 s, then lingered; twelve files overran a 20-minute job). The
-  runners pass `--test-force-exit`. Root cause NOT found — the test helpers
-  only poll, so the handle is the SDK's; `process.getActiveResourcesInfo()` in
-  an `after()` hook would name it. A browser tab hides this, but it is a
-  stop-path leak all the same.
+- matrix-js-sdk (≤45, `src/http-api/utils.ts` `timeoutSignal`) never clears
+  a request's local-timeout timer: EVERY request with `localTimeoutMs` left a
+  timer running for the whole timeout — 110 s per /sync, 80 s for others. In
+  Node that kept test processes alive ~110 s after `stopClient()` (twelve
+  integration files overran a 20-minute job); in the browser it is churn.
+  Found by recording long timers with their creating stack (`node --import` a
+  setTimeout wrapper): all of them were `timeoutSignal` ← `SyncApi.doSync`.
+  Fixed by `patches/matrix-js-sdk@43.0.0.patch` (pnpm `patchedDependencies`):
+  clear the timer in `requestOtherUrl`'s `finally`, where `cleanup()` has
+  already detached it — so the abort stays an `AbortError` (native
+  `AbortSignal.timeout` would throw `TimeoutError`, which the SDK turns into a
+  ConnectionError → "reconnecting"). pnpm keys a patch to the EXACT version:
+  an SDK upgrade drops it silently, and `test/sdk-patch.test.ts` fails (and
+  hangs on the leaked timer) until it is re-made. No `--test-force-exit`
+  anywhere: a lingering file is a leak to find, not to hide.
 - An integration test that builds `MembersTracker` standalone must call
   `setSelfPresence()` itself: own presence is fed by the client from
   `ownPresence` and is `unknown` until then (two tests asserted `online` and

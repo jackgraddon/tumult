@@ -17,11 +17,11 @@ COMPOSE_FILE="$HERE/docker-compose.yml"
 run_suite() {
     echo "$LOG_PREFIX running integration tests..."
     # Globbed, not a directory: `node --test <dir>` broke on Node 25.
-    # --test-force-exit: after stopClient() something in matrix-js-sdk keeps
-    # each file's process alive ~110 s past its last test, so twelve files
-    # overran CI's 20 minutes on 5-50 s of actual testing.
+    # No --test-force-exit: the ~110 s linger after stopClient() was the SDK's
+    # uncleared request-timeout timer, fixed by patches/matrix-js-sdk@*.patch
+    # (guarded by test/sdk-patch.test.ts). A file that lingers again is a leak.
     cd "$ROOT/packages/core"
-    node --test --test-force-exit ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
+    node --test ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
 }
 
 if [ -n "${TEST_SYNAPSE_URL:-}" ]; then
