@@ -9,7 +9,7 @@
  * deployment without native voice, so it must work on its own.
  *
  * The call app is Element Call's published EMBEDDED package (the release
- * tarball, sha256-checked against the release's checksum file), served by a
+ * tarball, sha256-pinned, see EC_TARBALL_SHA256), served by a
  * small static server on its own origin — the iframe sandbox needs
  * allow-same-origin, which is only safe on a DIFFERENT origin from Tumult.
  * EC_VERSION is pinned; bump it deliberately.
@@ -38,6 +38,13 @@ import { api, createDmAs, enabled, openDevice, poll, register, saveArtifacts, se
 
 const PORT = 4178;
 const EC_PORT = 4190;
+/**
+ * The release's `.sha256` asset is NOT a tarball checksum: it is a manifest
+ * of every unpacked file. This pin was taken after all 157 files in the
+ * v0.26.1 tarball checked out against that manifest (`shasum -c`), with none
+ * extra. Bumping EC_VERSION means repeating that check.
+ */
+const EC_TARBALL_SHA256 = "e1c56f72bda6f8deb5015fbdaead57ea648b70c828c857306914c461dbcae1d7";
 const EC_ORIGIN = `http://127.0.0.1:${EC_PORT}`;
 /** Latest stable (non-rc) release when written; its token path (OpenID → lk-jwt /get_token, /sfu/get) matches tests/rtc. */
 const EC_VERSION = "0.26.1";
@@ -61,14 +68,21 @@ const MIME: Record<string, string> = {
     ".webm": "video/webm",
 };
 
-/** Download the embedded package, check it against the release's sha256, unpack it. */
+/** Download the embedded package, check it against the pinned sha256, unpack it. */
 async function fetchElementCall(dir: string): Promise<string> {
     const base = `https://github.com/element-hq/element-call/releases/download/v${EC_VERSION}`;
     const name = `element-call-embedded-${EC_VERSION}`;
-    const tarball = Buffer.from(await (await fetch(`${base}/${name}.tar.gz`)).arrayBuffer());
-    const expected = (await (await fetch(`${base}/${name}.sha256`)).text()).trim().split(/\s+/)[0] ?? "";
+    // curl, synchronously: an awaited fetch() here stalled the hook with an
+    // empty event loop under node --test (locally and on CI), while the same
+    // fetch in a plain script did not.
+    const download = (url: string): Buffer => {
+        const got = spawnSync("curl", ["-fsSL", "--retry", "3", url], { maxBuffer: 64 * 1024 * 1024 });
+        assert.equal(got.status, 0, `could not download ${url}: ${got.stderr}`);
+        return got.stdout;
+    };
+    const tarball = download(`${base}/${name}.tar.gz`);
     const actual = createHash("sha256").update(tarball).digest("hex");
-    assert.equal(actual, expected, `Element Call ${EC_VERSION} tarball does not match its published sha256`);
+    assert.equal(actual, EC_TARBALL_SHA256, `Element Call ${EC_VERSION} tarball does not match its pinned sha256`);
     const file = join(dir, `${name}.tar.gz`);
     writeFileSync(file, tarball);
     const out = join(dir, "ec");
