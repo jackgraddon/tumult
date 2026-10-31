@@ -11,9 +11,6 @@ import {
     type MatrixEvent,
     type SyncStateData,
 } from "matrix-js-sdk";
-import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
-import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
-import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key.js";
 
 import type {
     AttachmentSendResult,
@@ -53,8 +50,7 @@ import type {
     VerificationState,
 } from "./contract.ts";
 import { Observable } from "./observable.ts";
-import { UNCHECKED_SECURITY, querySecurityStatus } from "./crypto/security.ts";
-import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
+import { CryptoController } from "./crypto/controller.ts";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 import { resendAfterOutage, sendTextMessage, retryTextMessage } from "./rooms/send.ts";
 import { readUploadLimit, sendAttachments, sendMediaMessage } from "./rooms/media.ts";
@@ -193,14 +189,6 @@ const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
  */
 const PROGRESSIVE_REFRESH_MS = 120;
 
-/**
- * Coalesce window for crypto-event-driven security snapshots. A single sync or
- * device-list batch re-emits `KeysChanged` / `DevicesUpdated` many times, and
- * each snapshot walks cross-signing, backup trust and secret storage. Explicit
- * moments (start, restore, setup) still refresh immediately.
- */
-const SECURITY_REFRESH_MS = 250;
-
 export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
@@ -216,6 +204,8 @@ export class MatrixChatClient implements ChatClient {
     private readonly profileCtl: ProfileController;
     /** Own presence/status + its heartbeat (rooms/own-presence-controller.ts). */
     private readonly ownPresenceCtl: OwnPresenceController;
+    /** Security feed, recovery setup/restore, devices (crypto/controller.ts). */
+    private readonly cryptoCtl: CryptoController;
     /** Sync loop actually running; set in bootstrap before startClient. */
     private activeSyncMode: ActiveSyncMode = "classic";
 
@@ -260,11 +250,6 @@ export class MatrixChatClient implements ChatClient {
      */
     private readonly progressiveRefresh: ThrottledTask;
     /**
-     * Coalesces crypto-event security refreshes (see {@link SECURITY_REFRESH_MS}).
-     * Explicit call sites stay immediate and await the query directly.
-     */
-    private readonly securityRefresh: ThrottledTask;
-    /**
      * Debounced writer for the shell's first-paint cache (see `shellCache.ts`).
      * The room list republishes on every sync/receipt burst; this collapses a
      * flood into one localStorage write so a busy room can't churn the cache.
@@ -295,17 +280,10 @@ export class MatrixChatClient implements ChatClient {
     private _rangeManager: SlidingSyncRangeManager | null = null;
     /** The room the UI is showing, fed by `setRoomSelection`. */
     private _selectedRoomId: string | null = null;
-    /**
-     * Pasted recovery key, held ONLY for the duration of a restoreBackup()
-     * call so the SDK's secret-storage requests can use it. Cleared in a
-     * `finally` — never retained, never persisted.
-     */
-    private heldSecretKey: Uint8Array<ArrayBuffer> | null = null;
 
     private readonly sessionState = new Observable<SessionView | null>(null);
     private readonly connectionState = new Observable<ConnectionState>("stopped");
     private readonly roomsState = new Observable<RoomSummary[]>([]);
-    private readonly securityState = new Observable<SecurityStatus>(UNCHECKED_SECURITY);
     private readonly verificationState = new Observable<VerificationState>({ requests: [] });
     private readonly typingState = new Observable<TypingState>({ rooms: {} });
     private readonly notificationsState = new Observable<NotificationState>({
@@ -336,10 +314,8 @@ export class MatrixChatClient implements ChatClient {
         });
         this.profileCtl = new ProfileController(this.ctx);
         this.ownPresenceCtl = new OwnPresenceController(this.ctx);
+        this.cryptoCtl = new CryptoController(this.ctx, { rebuildTimelines: () => this.timelines?.rebuildAll() });
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
-        this.securityRefresh = new ThrottledTask(() => {
-            void this.refreshSecurity();
-        }, SECURITY_REFRESH_MS);
         this.shellPersist = new ThrottledTask(() => this.flushShellCache(), SHELL_CACHE_DEBOUNCE_MS);
     }
 
@@ -356,7 +332,7 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public get security(): Subscribable<SecurityStatus> {
-        return this.securityState;
+        return this.cryptoCtl.feed;
     }
 
     public get verification(): Subscribable<VerificationState> {
@@ -470,12 +446,13 @@ export class MatrixChatClient implements ChatClient {
                 // (`PendingEventOrdering.Chronological`); `detached` would hide
                 // echoes until the server echo arrives, so don't set it.
                 //
-                // `getSecretStorageKey` serves a user-pasted recovery key back
-                // to the SDK during restoreBackup() only — see heldSecretKey.
-                // Outside a restore it returns null (fresh setup has nothing
+                // `getSecretStorageKey` serves the recovery key the crypto
+                // controller holds during setupRecovery() / restoreBackup()
+                // (crypto/controller.ts). Read at CALL time, never captured:
+                // outside those calls it returns null (fresh setup has nothing
                 // cached yet, and we never retain keys).
                 cryptoCallbacks: {
-                    getSecretStorageKey: ({ keys }) => Promise.resolve(serveHeldKey(this.heldSecretKey, keys)),
+                    getSecretStorageKey: ({ keys }) => Promise.resolve(this.cryptoCtl.serveSecretStorageKey(keys)),
                 },
                 store,
             });
@@ -636,20 +613,9 @@ export class MatrixChatClient implements ChatClient {
             this._notifications = new NotificationTracker(client);
             this._notifications.subscribe(() => this.publishNotifications());
             this.publishNotifications();
-            // Key backup state can move at any time (another device rotates
-            // keys, a backup completes). These three cover it; the snapshot
-            // recomputes wholesale on each — but a single crypto batch re-emits
-            // them many times, so the refresh is coalesced (see
-            // SECURITY_REFRESH_MS) rather than run per event.
-            for (const event of [
-                CryptoEvent.KeyBackupStatus,
-                CryptoEvent.KeysChanged,
-                CryptoEvent.DevicesUpdated,
-            ]) {
-                client.on(event, () => {
-                    this.securityRefresh.schedule();
-                });
-            }
+            // Key backup state can move at any time; the crypto controller
+            // registers its coalesced CryptoEvent listeners here, as before.
+            this.cryptoCtl.watch(client);
             // Thread support is OFF by default — without it the SDK treats
             // thread replies as main-timeline events and never creates Thread
             // objects. It is a START option (IStartClientOpts): `supportsThreads()`
@@ -686,7 +652,7 @@ export class MatrixChatClient implements ChatClient {
             });
             // Enabling is silent and best-effort: a backup failure must never
             // break login. Runs inside the snapshot query below.
-            await this.refreshSecurity();
+            await this.cryptoCtl.refresh();
             this.unwatchNetwork = watchNetwork(client, this.connectionState);
         } catch (error) {
             // Leave nothing half-built. A failed start that leaves a client or an
@@ -740,7 +706,7 @@ export class MatrixChatClient implements ChatClient {
         this._selectedRoomId = null;
         this.profileCtl.resetForStop();
         this.connectionState.set("stopped");
-        this.securityState.set(UNCHECKED_SECURITY);
+        this.cryptoCtl.resetForStop();
     }
 
     /**
@@ -782,7 +748,7 @@ export class MatrixChatClient implements ChatClient {
         this.roomRefreshScheduled = false;
         this.clearWarmSeed();
         this.clearProgressiveRefresh();
-        this.securityRefresh.clear();
+        this.cryptoCtl.clearTimers();
         this.ownPresenceCtl.stop();
         this.selfPresenceSubscription?.unsubscribe();
         this.selfPresenceSubscription = null;
@@ -1223,126 +1189,12 @@ export class MatrixChatClient implements ChatClient {
         await timelines.markRead(roomId);
     }
 
-    public async setupRecovery(): Promise<string> {
-        const crypto = this.requireCrypto();
-
-        // Identity first, as Element does: bootstrapSecretStorage stores the
-        // cross-signing keys this device holds, so they must exist by then or
-        // the recovery key can never verify another device. Only when the
-        // ACCOUNT has none — an account with an identity this device cannot
-        // use must be verified (emoji / recovery key), never silently rotated,
-        // which would cut off every other device. The first upload needs no
-        // interactive auth (MSC3967); a server that demands it fails loudly.
-        // Without this, an account set up in Tumult had no identity at all
-        // ("Couldn't sign … MissingSigningKey"), found by the e2ee browser test.
-        if (!(await crypto.userHasCrossSigningKeys(undefined, true))) {
-            await crypto.bootstrapCrossSigning({
-                authUploadDeviceSigningKeys: async (makeRequest) => {
-                    await makeRequest(null);
-                },
-            });
-        }
-
-        // Raw random key, not passphrase-derived: MAS accounts may have no
-        // password, so password-based 4S is not a safe assumption.
-        let encoded: string | undefined;
-        try {
-            await crypto.bootstrapSecretStorage({
-                createSecretStorageKey: async () => {
-                    const generated = await crypto.createRecoveryKeyFromPassphrase();
-                    encoded = generated.encodedPrivateKey;
-                    // The SDK asks getSecretStorageKey for this very key moments
-                    // later, to store the backup and cross-signing keys under it.
-                    // Without it held, the callback answered null and setup died
-                    // AFTER creating the server backup: a backup nobody had the
-                    // key to, and no recovery key ever shown.
-                    this.heldSecretKey = generated.privateKey;
-                    return generated;
-                },
-                setupNewKeyBackup: true,
-            });
-        } finally {
-            this.heldSecretKey = null;
-        }
-        await this.refreshSecurity();
-        // Empty when secret storage already existed: the account keeps its
-        // old key and there is nothing new to save. Never null — callers
-        // distinguish "show this once" from "already set up".
-        return encoded ?? "";
+    public setupRecovery(): Promise<string> {
+        return this.cryptoCtl.setupRecovery();
     }
 
-    public async restoreBackup(recoveryKey: string): Promise<boolean> {
-        const crypto = this.requireCrypto();
-        let decoded: Uint8Array<ArrayBuffer>;
-        try {
-            decoded = decodeRecoveryKey(recoveryKey.trim());
-        } catch {
-            throw new Error("That recovery key doesn't look valid. Check for typos and try again.");
-        }
-        // The pasted key must stay stashed for BOTH halves: the backup unlock
-        // (loadSessionBackupPrivateKeyFromSecretStorage) and the verification
-        // half (bootstrapCrossSigning reads cross-signing keys from 4S).
-        // Both go through getSecretStorageKey → serveHeldKey. Cleared in the
-        // finally below — never retained past this call.
-        this.heldSecretKey = decoded;
-        try {
-            // Primary path: the pasted key opens secret storage (this is what
-            // setupRecovery() shows). The backup key comes from 4S, never from
-            // the pasted bytes directly — the two keys are different.
-            let unlocked = false;
-            try {
-                await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
-                unlocked = true;
-            } catch {
-                unlocked = false;
-            }
-            if (!unlocked) {
-                // Fallback: the pasted key IS the backup decryption key
-                // (backups made outside Tumult never entered secret storage).
-                const check = await crypto.checkKeyBackupAndEnable().catch(() => null);
-                if (!check) {
-                    throw new Error(
-                        "Couldn't unlock secret storage with that key, and this account " +
-                            "has no key backup to try it against directly.",
-                    );
-                }
-                try {
-                    await crypto.storeSessionBackupPrivateKey(decoded, check.backupInfo.version);
-                } catch {
-                    throw new Error("That recovery key doesn't match this account's backup.");
-                }
-            }
-            try {
-                await crypto.restoreKeyBackup();
-            } catch (cause) {
-                console.error("[tumult] key backup restore failed", cause);
-                throw new Error(restoreFailureMessage(cause), { cause });
-            }
-            // Verification half: the same pasted key unlocks 4S, which also
-            // holds the cross-signing private keys. Importing them and
-            // self-signing this device is what flips "Unverified" → verified
-            // in other clients' session lists. Only when 4S has keys the
-            // device lacks — otherwise bootstrapCrossSigning would rotate
-            // the identity, which we never do here.
-            let verified = false;
-            try {
-                const status = await crypto.getCrossSigningStatus();
-                if (shouldVerifyDevice(status)) {
-                    await crypto.bootstrapCrossSigning({});
-                    verified = true;
-                }
-            } catch (cause) {
-                // Verification is best-effort: the backup already restored, and
-                // the device can still be verified later via SAS.
-                console.error("[tumult] cross-signing import failed", cause);
-            }
-            await this.refreshSecurity();
-            // Newly arrived keys upgrade `pending` timelines in place.
-            this.timelines?.rebuildAll();
-            return verified;
-        } finally {
-            this.heldSecretKey = null;
-        }
+    public restoreBackup(recoveryKey: string): Promise<boolean> {
+        return this.cryptoCtl.restoreBackup(recoveryKey);
     }
 
     public async startVerification(): Promise<void> {
@@ -1375,32 +1227,8 @@ export class MatrixChatClient implements ChatClient {
         await verification.mismatchSas(id);
     }
 
-    public async listDevices(): Promise<DeviceView[]> {
-        const client = this.matrix;
-        const session = this.stored;
-        if (!client || !session) throw new Error("Cannot list devices before start()");
-        const { devices } = await client.getDevices();
-        const crypto = client.getCrypto();
-        const out: DeviceView[] = [];
-        for (const d of devices) {
-            let verified = false;
-            if (crypto) {
-                try {
-                    verified = (await crypto.getDeviceVerificationStatus(session.userId, d.device_id))?.isVerified() ?? false;
-                } catch {
-                    verified = false;
-                }
-            }
-            out.push({
-                id: d.device_id,
-                displayName: d.display_name ?? null,
-                lastSeenTs: d.last_seen_ts ?? null,
-                isCurrent: d.device_id === session.deviceId,
-                verified,
-            });
-        }
-        out.sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.id.localeCompare(b.id));
-        return out;
+    public listDevices(): Promise<DeviceView[]> {
+        return this.cryptoCtl.listDevices();
     }
 
     /**
@@ -1592,20 +1420,6 @@ export class MatrixChatClient implements ChatClient {
         this.storage.saveSession(this.stored);
     }
 
-    /**
-     * Recompute the security snapshot. Never throws: crypto queries must not
-     * take down event listeners.
-     */
-    private async refreshSecurity(): Promise<void> {
-        const crypto = this.matrix?.getCrypto();
-        if (!crypto) return;
-        try {
-            this.securityState.set(await querySecurityStatus(crypto));
-        } catch (error) {
-            console.error("[tumult] security snapshot failed", error);
-        }
-    }
-
     /** Persist/restore the sliding-sync room-window upper bound across reloads. */
     private sssWindowStore(): SssWindowStore {
         return {
@@ -1630,12 +1444,6 @@ export class MatrixChatClient implements ChatClient {
             if (member.membership === "join" || member.membership === "invite") ids.push(member.userId);
         }
         return ids;
-    }
-
-    private requireCrypto(): CryptoApi {
-        const crypto = this.matrix?.getCrypto();
-        if (!crypto) throw new Error("Encryption isn't ready yet; wait for sync to start.");
-        return crypto;
     }
 
     /** Publish the manager's current snapshot into the verification feed. */
