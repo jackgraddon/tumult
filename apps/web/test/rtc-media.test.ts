@@ -27,44 +27,35 @@
  * `apps/web/test-results/rtc-media/` (uploaded by the integration workflow).
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { build, preview, type PreviewServer } from "vite";
+import { chromium, type Browser } from "playwright";
 
 import { createDm } from "../../../packages/core/src/rooms/lifecycle.ts";
+import { BASE, api, enabled, openDevice, poll, register, saveArtifacts, serveRealApp, type Device, type RealApp } from "./support/real-app.ts";
 
-const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://127.0.0.1:8018";
-const enabled = process.env["TEST_RTC"] === "1";
 const PORT = 4175;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const appRoot = join(here, "..");
 // matrix-js-sdk is core's dependency, not this app's (pnpm does not hoist):
 // resolve it from core, which is also the copy lifecycle.ts imports.
 const coreRoot = join(here, "..", "..", "..", "packages", "core");
-const resultsDir = join(appRoot, "test-results", "rtc-media");
 
 type Rgb = [number, number, number];
 
-interface Person {
-    name: string;
+interface Person extends Device {
     /** The pure tone this person's fake microphone plays, in Hz. */
     tone: number;
     /** The solid colour this person's fake camera shows. */
     colour: Rgb;
     userId: string;
-    deviceId: string;
     accessToken: string;
     browser: Browser;
-    context: BrowserContext;
-    page: Page;
-    logs: string[];
 }
 
 // Far apart on both axes, so neither a codec nor a resampler can confuse them.
@@ -112,32 +103,6 @@ function writeColour(path: string, [r, g, b]: Rgb): void {
     ]);
     const header = Buffer.from(`YUV4MPEG2 W${width} H${height} F15:1 Ip A1:1 C420jpeg\n`);
     writeFileSync(path, Buffer.concat([header, ...Array.from({ length: 15 }, () => frame)]));
-}
-
-async function api<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
-    const res = await fetch(`${BASE}${path}`, {
-        method,
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const text = await res.text();
-    assert.ok(res.ok, `${method} ${path} → ${res.status}: ${text}`);
-    return JSON.parse(text) as T;
-}
-
-async function register(username: string): Promise<{ userId: string; deviceId: string; accessToken: string }> {
-    const body = { username, password: "testtesttest" };
-    const first = await fetch(`${BASE}/_matrix/client/v3/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    const session = ((await first.json()) as { session: string }).session;
-    const out = await api<{ user_id: string; device_id: string; access_token: string }>("POST", "/_matrix/client/v3/register", null, {
-        ...body,
-        auth: { type: "m.login.dummy", session },
-    });
-    return { userId: out.user_id, deviceId: out.device_id, accessToken: out.access_token };
 }
 
 /**
@@ -248,19 +213,8 @@ function colourOf(rgb: readonly number[]): "red" | "blue" | null {
     return null;
 }
 
-async function poll<T>(label: string, read: () => Promise<T>, done: (value: T) => boolean, timeoutMs: number): Promise<T> {
-    const deadline = Date.now() + timeoutMs;
-    let last = await read();
-    while (!done(last)) {
-        assert.ok(Date.now() < deadline, `${label}; last reading: ${JSON.stringify(last)}`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        last = await read();
-    }
-    return last;
-}
-
 describe("two-browser call media through the real app", { skip: !enabled && "set TEST_RTC=1 (tests/rtc/run.sh)" }, () => {
-    let server: PreviewServer;
+    let app: RealApp;
     let origin: string;
     let workDir: string;
     let roomId: string;
@@ -268,23 +222,11 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
     let failed = false;
 
     before(async () => {
+        // Fixture files (tones and colours) for the fake capture devices.
         workDir = mkdtempSync(join(tmpdir(), "tumult-rtc-media-"));
-
-        // The REAL client with native voice on. The client URI is only used by
-        // the OIDC login this test skips (the session is injected), but the
-        // build refuses to run without one.
-        process.env["VITE_VOICE"] = "1";
-        process.env["VITE_CLIENT_URI"] ??= "https://tumult.test";
-        const outDir = join(workDir, "dist");
-        await build({ root: appRoot, mode: "production", logLevel: "error", build: { outDir } });
-        server = await preview({
-            root: appRoot,
-            mode: "production",
-            logLevel: "error",
-            build: { outDir },
-            preview: { host: "127.0.0.1", port: PORT, strictPort: true },
-        });
-        origin = `http://127.0.0.1:${PORT}`;
+        // The REAL client with native voice on.
+        app = await serveRealApp({ port: PORT, voice: true });
+        origin = app.origin;
 
         const suffix = Date.now().toString(36);
         const accounts = await Promise.all(PEOPLE.map((p) => register(`${p.name}-${suffix}`)));
@@ -321,40 +263,22 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
                     "--autoplay-policy=no-user-gesture-required",
                 ],
             });
-            const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-            await context.grantPermissions(["microphone", "camera"], { origin });
-            const session = {
-                homeserverUrl: BASE,
-                userId: account.userId,
-                deviceId: account.deviceId,
-                clientId: "tumult-rtc-media-test",
-                accessToken: account.accessToken,
-            };
             const processingOff = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-            await context.addInitScript({
-                content:
-                    `localStorage.setItem("tumult.session", ${JSON.stringify(JSON.stringify(session))});\n` +
-                    `localStorage.setItem("tumult.voice.settings", ${JSON.stringify(JSON.stringify(processingOff))});\n` +
-                    CAPTURE_REMOTE_TRACKS,
+            const device = await openDevice(browser, spec.name, account, {
+                origin,
+                permissions: ["microphone", "camera"],
+                initScript: `localStorage.setItem("tumult.voice.settings", ${JSON.stringify(JSON.stringify(processingOff))});\n${CAPTURE_REMOTE_TRACKS}`,
             });
-            const page = await context.newPage();
-            const logs: string[] = [];
-            page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
-            page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}`));
-            people.push({ ...spec, ...account, browser, context, page, logs });
+            people.push({ ...spec, ...device, userId: account.userId, accessToken: account.accessToken, browser });
         }
     });
 
     after(async () => {
         if (failed) {
-            mkdirSync(resultsDir, { recursive: true });
-            for (const p of people) {
-                await p.page.screenshot({ path: join(resultsDir, `${p.name}.png`) }).catch(() => {});
-                writeFileSync(join(resultsDir, `${p.name}.console.log`), p.logs.join("\n"));
-            }
+            await saveArtifacts("rtc-media", people);
         }
         for (const p of people) await p.browser.close().catch(() => {});
-        await server?.close();
+        await app?.close();
         if (workDir) rmSync(workDir, { recursive: true, force: true });
     });
 
