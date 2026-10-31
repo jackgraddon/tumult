@@ -103,7 +103,10 @@ function serveStatic(root: string, port: number): Promise<Server> {
         res.writeHead(200, { "Content-Type": MIME[extname(target)] ?? "application/octet-stream" });
         res.end(readFileSync(target));
     });
-    return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", () => resolve(server));
+    });
 }
 
 interface Person extends Device {
@@ -140,17 +143,23 @@ describe("embedded Element Call through the real app", { skip: !enabled && "set 
 
     before(async () => {
         workDir = mkdtempSync(join(tmpdir(), "tumult-element-call-"));
-        callServer = await serveStatic(await fetchElementCall(workDir), EC_PORT);
+        console.log("[element-call] fetching the call app");
+        const root = await fetchElementCall(workDir);
+        console.log(`[element-call] serving ${root} on ${EC_ORIGIN}`);
+        callServer = await serveStatic(root, EC_PORT);
+        console.log("[element-call] building and serving the real app");
         // No VITE_VOICE: the call menu takes the embedded path. The build puts
         // this origin in the CSP's frame-src.
         app = await serveRealApp({ port: PORT, env: { VITE_ELEMENT_CALL_URL: EC_ORIGIN } });
 
+        console.log(`[element-call] app on ${app.origin}; registering`);
         const suffix = Date.now().toString(36);
         const accounts = await Promise.all(PEOPLE.map((p) => register(`ec-${p.name}-${suffix}`)));
         const [alice, bob] = accounts as [(typeof accounts)[0], (typeof accounts)[0]];
         roomId = await createDmAs(alice, bob.userId);
         await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.accessToken, {});
 
+        console.log(`[element-call] DM ${roomId}; opening browsers`);
         for (const [i, spec] of PEOPLE.entries()) {
             const wav = join(workDir, `${spec.name}.wav`);
             const y4m = join(workDir, `${spec.name}.y4m`);
