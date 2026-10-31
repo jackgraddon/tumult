@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.4](https://github.com/jackgraddon/tumult/compare/v0.3.3...v0.3.4) (2026-10-31)
+
+
+### Features
+
+* **rooms:** admins can open an existing room's calls to members ([24bb720](https://github.com/jackgraddon/tumult/commit/24bb720007a262640fe509969d14c891baacf8b8))
+
+
+### Bug Fixes
+
+* **deps:** clear every pnpm audit advisory, dev dependencies included ([02ec229](https://github.com/jackgraddon/tumult/commit/02ec2293d9e217b23b774f1544aa07ccdc42f158))
+* **deps:** scope the minimatch override to 10.x so pnpm release works ([a049f58](https://github.com/jackgraddon/tumult/commit/a049f586326d498feba73cf6aa982a26c2f907e8))
+* **rooms:** let every member join calls in rooms Tumult creates ([1882f4c](https://github.com/jackgraddon/tumult/commit/1882f4c23cb66b29801cde9546432a376b7ace73))
+* **sdk:** clear matrix-js-sdk's request-timeout timer; drop --test-force-exit ([f6ce5a6](https://github.com/jackgraddon/tumult/commit/f6ce5a65a1eabc57c01bfafec0f7ef2d3517bab2))
+* **security:** no "backup is off" banner before encryption has answered ([fba6dbe](https://github.com/jackgraddon/tumult/commit/fba6dbefe8e02f88d814f90391353edf94a4d01d))
+* **security:** production CSP, workspace lint, capped plugin-asset proxy ([d63674e](https://github.com/jackgraddon/tumult/commit/d63674e7283f664406c17846ef327478ec3f5d1e))
+* **security:** recovery setup creates an identity and shows its key ([c16b185](https://github.com/jackgraddon/tumult/commit/c16b185380bffe1f306875e2668b538b973bec0e))
+* **voice:** no ghost on the SFU after a refused join; say why in a sentence ([7346fa4](https://github.com/jackgraddon/tumult/commit/7346fa420600058ca770e20f58622a5c6ab8d7c6))
+
 ### [0.3.3](https://github.com/jackgraddon/tumult/compare/v0.3.2...v0.3.3) (2026-10-30)
 
 
