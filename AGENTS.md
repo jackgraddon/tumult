@@ -948,9 +948,32 @@ homeserver. A trap listed here has shipped broken at least once.
   `YES_I_KNOW_WHAT_I_AM_DOING` (any other value keeps verification on);
   `federation_domain_whitelist: []` switches federation OFF, so it must be absent;
   LiveKit needs `node_ip: 127.0.0.1` + `enable_loopback_candidate`; and the CSP
-  needs `ws:` in `connect-src` for a plain-ws SFU. Still untested: the embedded
-  Element Call iframe handshake, and `TEST_RTC_TOKEN` (the MSC4195 proxy route
-  needs lk-jwt-service registered as an application service).
+  needs `ws:` in `connect-src` for a plain-ws SFU. Still untested:
+  `TEST_RTC_TOKEN` (the MSC4195 proxy route needs lk-jwt-service registered as
+  an application service).
+- The embedded Element Call is VERIFIED end to end
+  (`apps/web/test/element-call.test.ts`: v0.26.1's embedded tarball, pinned by
+  hash, served on its own origin; two Chromiums must see and hear each other
+  INSIDE the frame). It had never worked; four bugs, each invisible until the
+  one before it was fixed:
+  - `waitForIframeLoad` must be `false` (as Element Web sets it): the app
+    announces itself with ContentLoaded, and `true` waits on an iframe `load`
+    that has usually fired before `attach()` listens ("Improper sequence").
+  - The app's router sends the path `/` to its standalone "Start new call"
+    page, widget mode or not. Element Web serves it from a subdirectory; a
+    ROOT deploy must be addressed as `/index.html` (`callUrlTemplate`).
+  - `getRtcTransports` answers under `rtc_transports`, not `transports` — an
+    `as never` hid it and the tests cast to the same wrong shape; the app
+    showed MISSING_MATRIX_RTC_TRANSPORT.
+  - matrix-widget-api 1.19 syncs room STATE separately (`update_state`): the
+    host must call `feedStateUpdate` on every `RoomStateEvent.Events`. The app
+    reads call membership from it; fed only through `feedEvent`, neither side
+    learned the other joined, sent no key, and every track was `MissingKey`.
+  The panel's "Connected" is the app's `io.element.join`, sent BEFORE a fatal
+  call error — it does not prove media. The release's `.sha256` asset is a
+  per-FILE manifest, not a tarball checksum. Not handled yet (warnings only):
+  `set_always_on_screen`, `io.element.device_mute`; the app's
+  `delegate_delayed_leave` 400s at lk-jwt-service.
 
 ### Known harmless
 
