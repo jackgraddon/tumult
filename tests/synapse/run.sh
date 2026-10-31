@@ -21,11 +21,6 @@ run_suite() {
     # each file's process alive ~110 s past its last test, so twelve files
     # overran CI's 20 minutes on 5-50 s of actual testing.
     cd "$ROOT/packages/core"
-    # TEMPORARY: what keeps a file alive after its tests (removed after).
-    for f in lifecycle members; do
-        echo "$LOG_PREFIX [diag] $f.test.ts without force-exit"
-        timeout 75 node --import "$ROOT/tests/diag-handles.mjs" "test-integration/$f.test.ts" 2>&1 | grep -E "^\[diag\]|^# (pass|fail)" || true
-    done
     node --test --test-force-exit ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
 }
 
