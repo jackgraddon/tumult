@@ -92,6 +92,11 @@ export class AppPluginInstallController implements PluginInstallControls {
         this.thirdPartyIds.value = next;
     }
 
+    /** Registered, and not by us from the store: a plugin compiled into the app. */
+    private isBuiltIn(id: string): boolean {
+        return Boolean(this.registry?.has(id)) && !this.thirdPartyIds.value.has(id) && !this.loaded.has(id);
+    }
+
     /** Attach the shell's registry once it exists (see the class comment). */
     public attach(registry: PluginHost): void {
         this.registry = registry;
@@ -172,6 +177,14 @@ export class AppPluginInstallController implements PluginInstallControls {
         this.busy.value = true;
         try {
             const prepared = await prepareInstall(source);
+            // A third-party plugin must not take over a BUILT-IN plugin's id
+            // (review finding F7): the registry would swap the app's own plugin
+            // for it, silently, under a name the user already trusts.
+            if (this.isBuiltIn(prepared.manifest.id)) {
+                throw new InstallError(
+                    `"${prepared.manifest.id}" is the id of a plugin built into Tumult, so a third-party plugin cannot use it.`,
+                );
+            }
             const previous = (await listInstalls()).find((record) => record.id === prepared.manifest.id) ?? null;
             const summary = previous
                 ? {
@@ -193,6 +206,7 @@ export class AppPluginInstallController implements PluginInstallControls {
                 changed: summary !== null && needsConsent(prepared.manifest, summary),
                 added: summary ? addedPermissions(prepared.manifest, summary) : [],
                 previousVersion: previous?.manifest.version ?? null,
+                previousSource: previous?.source ?? null,
             };
             return { ok: true, error: null };
         } catch (error) {
@@ -330,6 +344,12 @@ export class AppPluginInstallController implements PluginInstallControls {
      *    in-page, which is exactly what the trusted-lane consent warns about.
      */
     private async load(record: InstallRecord): Promise<void> {
+        // Built-ins are registered before restore() (AppView), so a stored
+        // record claiming one's id is refused here and disabled, not loaded
+        // over it (F7) — whether the install flow or a store write made it.
+        if (this.isBuiltIn(record.id)) {
+            throw new InstallError(`"${record.id}" is the id of a plugin built into Tumult; the stored third-party copy was not loaded.`);
+        }
         const actual = await hashBundle(new TextEncoder().encode(record.bundle));
         if (actual !== record.integrity) {
             throw new InstallError(

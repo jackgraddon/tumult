@@ -42,6 +42,16 @@ const description = computed(() => {
 
 const submitLabel = computed(() => (props.pending?.previousVersion ? "Update" : "Install"));
 
+/**
+ * An update from a different repository than the installed copy: the plugin
+ * id is being taken over by someone else (review finding G-F2). Compared
+ * case-insensitively, as GitHub owner/repo names are.
+ */
+const publisherChanged = computed(() => {
+    const pending = props.pending;
+    return Boolean(pending?.previousSource && pending.previousSource.toLowerCase() !== pending.source.toLowerCase());
+});
+
 /** Permissions to list, noting any that are newly requested since last time. */
 const permissions = computed(() => {
     const manifest = props.pending?.manifest;
@@ -67,6 +77,12 @@ const permissions = computed(() => {
         @submit="emit('confirm')"
     >
         <div v-if="props.pending" class="tumult-consent">
+            <p v-if="publisherChanged" class="tumult-consent-lane-warning tumult-consent-publisher" role="alert">
+                Different publisher: the copy you have came from
+                <strong>{{ props.pending.previousSource }}</strong>, and this one comes from
+                <strong>{{ props.pending.source }}</strong>. Updating hands this plugin to a different
+                repository. Only continue if you know why it moved.
+            </p>
             <p v-if="props.pending.changed" class="tumult-consent-changed" role="alert">
                 This release asks for something different from the version you already have. Review
                 the permissions before updating.

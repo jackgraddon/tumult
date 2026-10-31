@@ -67,6 +67,25 @@ function onCancel(): void {
     install?.cancel();
 }
 
+// A trusted-lane plugin ran in-page: unregistering it removes its
+// contributions, but anything it patched or scheduled outlives that until the
+// page reloads (review finding F5). Say so rather than imply it is gone.
+const reloadNeeded = ref(false);
+
+function onDisable(id: string, lane: string): void {
+    install?.disable(id);
+    if (lane === "trusted") reloadNeeded.value = true;
+}
+
+function onRemove(id: string, lane: string): void {
+    install?.remove(id);
+    if (lane === "trusted") reloadNeeded.value = true;
+}
+
+function reload(): void {
+    window.location.reload();
+}
+
 async function onEnable(id: string): Promise<void> {
     if (!install) return;
     installError.value = "";
@@ -80,6 +99,11 @@ async function onEnable(id: string): Promise<void> {
         <h3 class="tumult-settings-heading">Installed plugins</h3>
         <p v-if="manifests.length === 0 && installed.length === 0" class="tumult-settings-note">
             No plugins are installed.
+        </p>
+
+        <p v-if="reloadNeeded" class="tumult-settings-note tumult-plugin-reload" role="status">
+            A trusted plugin keeps running until the page reloads.
+            <button type="button" class="tumult-plugin-button" @click="reload">Reload now</button>
         </p>
 
         <!-- Third-party installs: enable/disable/remove, lane badge, source. -->
@@ -112,7 +136,7 @@ async function onEnable(id: string): Promise<void> {
                         type="button"
                         class="tumult-plugin-button"
                         :disabled="busy"
-                        @click="install?.disable(entry.id)"
+                        @click="onDisable(entry.id, entry.lane)"
                     >
                         Disable
                     </button>
@@ -129,7 +153,7 @@ async function onEnable(id: string): Promise<void> {
                         type="button"
                         class="tumult-plugin-button tumult-plugin-remove"
                         :disabled="busy"
-                        @click="install?.remove(entry.id)"
+                        @click="onRemove(entry.id, entry.lane)"
                     >
                         Remove
                     </button>
