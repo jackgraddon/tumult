@@ -2,11 +2,15 @@
 import { ref, watch } from "vue";
 import { useSubscribable } from "../subscribable.ts";
 import type { ChatClient } from "@tumult/core";
+import { useSecureSurface } from "../plugins/useSecureSurface.ts";
 
 const props = defineProps<{
     client: ChatClient;
     active: boolean;
 }>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface(() => props.active);
 
 const emit = defineEmits<{
     /** Return to the landing chooser. */

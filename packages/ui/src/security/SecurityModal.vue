@@ -13,6 +13,7 @@ import type { ChatClient } from "@tumult/core";
 import { useSubscribable } from "../subscribable.ts";
 import SasVerify from "./SasVerify.vue";
 import BackupRecovery from "./BackupRecovery.vue";
+import { useSecureSurface } from "../plugins/useSecureSurface.ts";
 
 type Step = "landing" | "sas" | "backup";
 
@@ -25,6 +26,9 @@ const props = defineProps<{
      */
     initial?: Step;
 }>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface(() => props.open);
 
 const emit = defineEmits<{
     close: [];

@@ -30,7 +30,9 @@ export const PERMISSION_SUMMARY = {
     "settings-tabs": "Add a tab to the settings window with its own controls.",
     "workspace-panes":
         "Add its own screen to the app — a new tile in the guild rail with a window of its own.",
-    styles: "Change how the app looks by injecting CSS stylesheets.",
+    styles:
+        "Change how the app looks by injecting CSS stylesheets (switched off on security screens, " +
+        "like this one, so they cannot disguise what you are agreeing to).",
 } as const satisfies Record<Permission, string>;
 
 /** The lane names as a user should see them, plus the honest one-liner. */

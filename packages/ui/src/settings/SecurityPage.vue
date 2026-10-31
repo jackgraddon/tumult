@@ -6,8 +6,12 @@ import BackupRecovery from "../security/BackupRecovery.vue";
 import SasVerify from "../security/SasVerify.vue";
 import { useSubscribable } from "../subscribable.ts";
 import type { SettingsTabProps } from "./tabs.ts";
+import { useSecureSurface } from "../plugins/useSecureSurface.ts";
 
 const props = defineProps<SettingsTabProps>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface();
 
 // The same two flows the security modal offers, run in the page: `done` and
 // `back` return here instead of closing anything. The modal stays for the

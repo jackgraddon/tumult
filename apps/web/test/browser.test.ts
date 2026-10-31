@@ -482,6 +482,27 @@ describe("browser smoke test (fake client)", () => {
         await close();
     });
 
+    it("switches plugin stylesheets off while a security screen is open (F3)", async () => {
+        const pluginStyles = page.locator('style[data-tumult-plugin-styles]:not([data-tumult-plugin-styles="shell"])');
+        const states = (): Promise<boolean[]> => pluginStyles.evaluateAll((els) => els.map((el) => (el as HTMLStyleElement).disabled));
+        assert.ok((await pluginStyles.count()) > 0, "the fake app installs plugins that inject CSS");
+        assert.ok((await states()).every((disabled) => !disabled), "plugin CSS is on during normal use");
+
+        await page.locator(".tumult-userbar-gear").click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.getByRole("tab", { name: "Security", exact: true }).click();
+        await page.locator(".tumult-security-rows").waitFor({ timeout: 10_000 });
+        assert.ok((await states()).every((disabled) => disabled), "every plugin stylesheet is off on the Security page");
+
+        await page.getByRole("tab", { name: "My Account", exact: true }).click();
+        // The Security page unmounts on the switch; give that flush a moment.
+        const deadline = Date.now() + 5_000;
+        while ((await states()).some((disabled) => disabled) && Date.now() < deadline) await page.waitForTimeout(50);
+        assert.ok((await states()).every((disabled) => !disabled), "and back on once it is gone");
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
     it("renders a plugin settings tab, styled by the plugin's injected stylesheet", async () => {
         // Two extension points in one flow. The account menu opens the shell's
         // settings dialog: the built-in "Plugins" tab (the shell registering

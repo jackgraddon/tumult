@@ -4,6 +4,7 @@ import { computed } from "vue";
 import RoomDialog from "../rooms/RoomDialog.vue";
 import { LANE_SUMMARY, PERMISSION_SUMMARY } from "../plugins/consent.ts";
 import type { PendingInstall } from "../plugins/installControls.ts";
+import { useSecureSurface } from "./useSecureSurface.ts";
 
 const props = defineProps<{
     open: boolean;
@@ -12,6 +13,9 @@ const props = defineProps<{
     busy?: boolean | undefined;
     error?: string | undefined;
 }>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface(() => props.open);
 
 const emit = defineEmits<{
     close: [];

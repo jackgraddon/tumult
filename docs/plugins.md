@@ -621,10 +621,20 @@ injectStylesheet(css: string): Disposable
 The CSS is **not** scoped — the shell has no shadow root, so a plugin's sheet is
 app-wide. It is app-authored CSS at the same trust level as the module that
 injected it; what the guard buys is that it can never become a **third-party
-request**: `@import` and any `url()` other than `data:`, `blob:` or a
-same-document `#fragment` throw at install (rolling the plugin back) instead of
-failing silently against `style-src 'self'`. The same rule lives in
-`@tumult/theme/runtime` and is what the app's own advanced-CSS opt-in uses.
+request**: `@import`, any `url()` other than `data:`, `blob:` or a
+same-document `#fragment`, and the string forms that need no `url()`
+(`image-set("…")`, `-webkit-image-set("…")`, `src("…")`) throw at install
+(rolling the plugin back). The check reads the CSS as the browser's tokenizer
+does — escapes decoded, comments dropped — so `u\72l(…)` is `url(…)` to it too.
+The same rule lives in `@tumult/theme/runtime` and is what the app's own
+advanced-CSS opt-in uses.
+
+**Plugin CSS is switched off on security screens.** Because it is app-wide, a
+stylesheet could otherwise restyle what protects the user — hide the consent
+screen's warning, relabel "They match" on emoji verification. While the install
+consent dialog, the security dialog, emoji verification, recovery or the
+Security settings page is on screen, every plugin stylesheet is disabled
+(`suspendPluginStyles`, `useSecureSurface`), and comes back when it closes.
 
 **Example — style a class your renderer emits**, with tokens rather than
 literals so an installed theme still drives it (see `docs/themes.md`):
