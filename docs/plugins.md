@@ -29,7 +29,8 @@ Companion to `docs/themes.md` (theming, which shares the same
   `integrity`. There is no central gatekeeper: any repository installs.
 - The **lane is derived, never declared** (`deriveLane`): a plugin whose
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
-  loaded into a **Worker** and reaches the shell only through the bridge; a
+  loaded into a **Worker inside an opaque-origin sandbox frame** and reaches
+  the shell only through the bridge; a
   plugin that contributes a live component (renderer, decoration, settings tab,
   workspace pane) runs **in-page at the app's trust level**, and the consent
   screen says so out loud. The in-page lane is an extension seam, **not** a
@@ -54,7 +55,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/InstallConsentDialog.vue` | the consent screen (a `RoomDialog` composition) |
 | `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind three of the APIs |
 | `packages/ui/src/plugins/sandbox/protocol.ts` | the Worker bridge's wire contract (message kinds, the client method/feed name lists, capability snapshot) |
-| `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle in a Worker and answers its RPCs |
+| `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle over a `SandboxTransport` and answers its RPCs |
+| `packages/ui/src/plugins/sandbox/frame.ts` | `createFrameTransport` (host half: hidden frame, port hand-off, buffering, boot deadline) and `startSandboxFrame` (the frame's bootstrap: first port from the parent only, inner Worker, error relay) |
 | `packages/ui/src/plugins/sandbox/worker/runtime.ts` | the Worker-side runtime factory (rebuilds `PluginContext` over RPC; tested in-process) |
 | `packages/ui/src/plugins/sandbox/worker/shim.ts` | `@tumult/ui/sandbox` — binds the runtime to the real Worker globals |
 | `packages/ui/src/plugins/styles.ts` | `injectStylesheet` — the owner-tagged `<style>` injector and its CSP guard |
@@ -71,7 +73,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
 | `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
-| `apps/web/src/plugins/sandbox.worker.ts` | the app's Worker entry for the sandbox lane (one import of `@tumult/ui/sandbox`) |
+| `apps/web/src/plugins/sandbox.worker.ts` | the sandbox's inner Worker entry (one import of `@tumult/ui/sandbox`), inlined into `/sandbox.js` |
+| `apps/web/src/plugins/sandbox.frame.ts` | the sandbox frame's classic bootstrap, served as `/sandbox.js` by `/sandbox.html` (both built by `vite.config.ts`'s `sandboxFrame` plugin) |
 | `apps/web/src/plugins/store.ts` | IndexedDB persistence for installed third-party plugins |
 | `apps/web/src/plugins/controller.ts` | `PluginInstallControls` implementation — prepare → consent → commit → persist, and the boot restore |
 | `packages/ui/test/plugins.test.ts` | the registry's unit contract (lifecycle, permissions, isolation) |
@@ -1129,7 +1132,7 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 
 | lane | how it loads | what it may declare |
 |---|---|---|
-| `sandbox` | the bundle is loaded and run **inside a Worker**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
+| `sandbox` | the bundle is loaded and run **inside a Worker in an opaque-origin frame**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
 | `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
@@ -1191,10 +1194,27 @@ there is no path where new capabilities arrive without a consent screen.
 A `sandbox`-lane plugin never executes in the page. `loadPlugin` hands the
 verified bundle to `sandboxPlugin()`, which returns a `Plugin` facade — from
 `PluginRegistry`'s point of view an ordinary plugin, same lifecycle and same
-permission gate. Its `install(ctx)` boots a module Worker
-(`apps/web/src/plugins/sandbox.worker.ts`, which is one import of
-`@tumult/ui/sandbox`), posts the bundle text plus the consented manifest, and
-then answers the Worker's requests against the real `ctx` the shell provided.
+permission gate. Its `install(ctx)` opens a transport (`SandboxHost.createTransport`),
+posts the bundle text plus the consented manifest, and then answers the
+Worker's requests against the real `ctx` the shell provided.
+
+The app's transport (`createFrameTransport`, wired in
+`apps/web/src/plugins/installer.ts`) is a hidden
+`<iframe sandbox="allow-scripts" allow="" referrerpolicy="no-referrer">` on
+`/sandbox.html` — a real same-server page with its own `<meta>` CSP
+(`default-src 'none'`; scripts only from `'self'` and `blob:`). With no
+`allow-same-origin` the frame's origin is **opaque** (`"null"`), so the browser
+itself keeps it away from the app's IndexedDB, caches, localStorage and
+`blob:` URLs. The frame's classic bootstrap (`/sandbox.js`) takes the first
+`MessagePort` its parent posts, starts the plugin's Worker from a `blob:` it
+mints itself, and relays between the two. The Worker is what keeps a busy loop
+off the shell: a cross-origin frame can share the app's main thread, a Worker
+does not. Posts made before the frame is up are buffered; a frame that does not
+come up within `FRAME_BOOT_TIMEOUT_MS`, or a Worker that errors, fails the
+plugin. The host posts the port with `targetOrigin: "*"` (an opaque origin has
+no name to target); trust rests on the port, which only this transport holds.
+`@tumult/ui` names no DOM type here — a host may supply any transport with
+`SandboxTransport`'s three members.
 
 The plugin's `ctx` inside the Worker is the *same shape* as the in-page one, with
 seven differences the boundary forces:
@@ -1260,19 +1280,28 @@ Second honest limitation: the boot re-hash catches a *corrupted* record, not a
 *forged* one. The hash sits in the same record, so whatever can write the store
 can write a matching bundle and hash — and a record saying "trusted" then runs
 in-page. So the boundary is who can write it. A **sandboxed** plugin cannot:
-its Worker shares the app's origin, so `sandbox/worker/shim.ts` withdraws
-`indexedDB`, `caches`, nested `Worker`s, `BroadcastChannel` and
+its Worker runs in the opaque-origin sandbox frame, so the app's IndexedDB is
+not its origin's to open — and, as defense in depth, `sandbox/worker/shim.ts`
+still withdraws `indexedDB`, `caches`, nested `Worker`s, `BroadcastChannel` and
 `navigator.storage`/`locks`/`serviceWorker` before the bundle is imported
-(from every prototype too, failing closed if any survives) — the browser smoke
-test fails if a `["styles"]`-only plugin can reach any of them. **In-page**
+(from every prototype too, failing closed if any survives). The browser smoke
+test asserts both layers: the plugin reports `origin === "null"` and none of
+those globals, and the frame itself (`sandbox` exactly `allow-scripts`) cannot
+read localStorage, CacheStorage or the app's databases. **In-page**
 code (a trusted plugin, or an XSS) can write it, and could persist in other
 ways too; that is inherent to running in-page, and what the trusted-lane
 consent warning is about.
 
 ### What the host must allow
 
-CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL) —
-`worker-src 'self' blob:` is already there for the sandbox lane. In this repo the
+CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL), and
+`frame-src` must allow the sandbox page — `'self'`, since CSP cannot name a
+bare path. The sandbox page's own policy is a `<meta>` in `/sandbox.html`
+(so `vite preview`, which sends no headers, enforces it too), mirrored as a
+header for `/sandbox.html` in `apps/web/vercel.json` with `frame-ancestors
+'self'` added; the global `frame-ancestors 'none'` header excludes that one
+path, or production could not frame it. The frame's `connect-src` mirrors the
+app's. In this repo the
 policy is one constant in `apps/web/vite.config.ts`: the dev server sends it as a
 header, and the build writes it into `index.html` as a `<meta>` — which is what
 production (Vercel) and the browser smoke test's `preview` both serve, so the
