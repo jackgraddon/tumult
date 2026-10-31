@@ -42,6 +42,52 @@ interface WorkerGlobalScope {
 
 const workerScope = self as unknown as WorkerGlobalScope;
 
+/**
+ * What a Worker made from the app's own origin is born with and a plugin must
+ * not have. The Worker shares the app's ORIGIN, so without this a sandboxed
+ * plugin — even one that declared only ["styles"] — could open the SDK's
+ * IndexedDB crypto store (this device's keys) or the plugin store (and forge a
+ * trusted-lane record that runs in-page on the next boot), start a nested
+ * Worker with a fresh unstripped global, or register a service worker that
+ * intercepts the app's requests. Proven in the browser smoke test, which
+ * fails if any of these is reachable.
+ *
+ * Network (fetch, WebSocket) stays: there is no token in a Worker (the session
+ * is in localStorage, which Workers do not have), and what the plugin can
+ * read at all is the policed bridge's business (policy.ts).
+ */
+const WITHDRAWN_GLOBALS = ["indexedDB", "caches", "Worker", "SharedWorker", "BroadcastChannel", "webkitRequestFileSystem", "webkitRequestFileSystemSync", "webkitResolveLocalFileSystemURL", "webkitResolveLocalFileSystemSyncURL"];
+const WITHDRAWN_NAVIGATOR = ["storage", "locks", "serviceWorker"];
+
+/**
+ * Delete `name` from `target` AND from every prototype it inherits from:
+ * removing only the own property leaves the prototype's getter, and
+ * `Object.getOwnPropertyDescriptor(proto, "indexedDB").get.call(self)` brings
+ * it straight back (the smoke test checks exactly that route).
+ */
+function withdraw(target: object, name: string): void {
+    for (let holder: object | null = target; holder !== null; holder = Object.getPrototypeOf(holder)) {
+        if (Object.prototype.hasOwnProperty.call(holder, name)) delete (holder as Record<string, unknown>)[name];
+    }
+}
+
+/** Remove the capabilities above, then fail CLOSED if any survived. */
+function lockDown(): void {
+    const global = self as unknown as Record<string, unknown>;
+    for (const name of WITHDRAWN_GLOBALS) withdraw(global, name);
+    const navigatorObject = global["navigator"];
+    if (typeof navigatorObject === "object" && navigatorObject !== null) {
+        for (const name of WITHDRAWN_NAVIGATOR) withdraw(navigatorObject, name);
+    }
+    const survivors = [
+        ...WITHDRAWN_GLOBALS.filter((name) => name in global),
+        ...WITHDRAWN_NAVIGATOR.filter((name) => typeof navigatorObject === "object" && navigatorObject !== null && name in navigatorObject),
+    ];
+    if (survivors.length > 0) {
+        throw new Error(`the sandbox could not withdraw ${survivors.join(", ")}; refusing to run a plugin with them`);
+    }
+}
+
 const scope: SandboxScope = {
     postMessage: (message) => workerScope.postMessage(message),
     addEventListener: (type, listener) => workerScope.addEventListener(type, listener),
@@ -53,6 +99,10 @@ const scope: SandboxScope = {
     // lookup that cannot see our runtime `blob:` URL.
     importModule: (url) => import(/* @vite-ignore */ url) as Promise<unknown>,
 };
+
+// Before anything can import a plugin: a failure here means no runtime, so no
+// `init` is ever answered and the host's handshake fails the plugin closed.
+lockDown();
 
 // Constructing the runtime binds its message handler to the scope, so this is
 // the whole entry point: the bridge is live as soon as `init` arrives.

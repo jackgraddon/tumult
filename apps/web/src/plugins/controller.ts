@@ -316,9 +316,18 @@ export class AppPluginInstallController implements PluginInstallControls {
     }
 
     /**
-     * Re-hash the stored bundle and register it. The re-hash is the point: the
-     * store is editable by anything with page access, so "what runs" is checked
-     * against "what was consented to" every boot.
+     * Re-hash the stored bundle and register it.
+     *
+     * What the re-hash does and does NOT buy (security review G-F1): it catches
+     * a corrupted or half-written record — bytes that no longer match their own
+     * recorded hash fail closed. It is NOT proof of consent: the hash lives in
+     * the same record, so anything that can write the store can write a
+     * matching pair. Who can write it is therefore the real boundary:
+     *  - a SANDBOXED plugin cannot — its Worker has IndexedDB withdrawn
+     *    (sandbox/worker/shim.ts, proven by the smoke test);
+     *  - in-page code (a trusted plugin, or an XSS) can, and could persist by
+     *    other means too (a service worker, say). That is inherent to running
+     *    in-page, which is exactly what the trusted-lane consent warns about.
      */
     private async load(record: InstallRecord): Promise<void> {
         const actual = await hashBundle(new TextEncoder().encode(record.bundle));

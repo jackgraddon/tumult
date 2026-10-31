@@ -895,6 +895,88 @@ describe("browser smoke test (fake client)", () => {
         }
     });
 
+    it("gives a sandboxed plugin no route to the app's storage or an unpoliced worker", async () => {
+        // A Worker made from the app's own origin shares that origin's storage:
+        // IndexedDB holds the SDK's crypto store (this device's keys) and the
+        // plugin store, where a forged trusted-lane record would run in-page on
+        // the next boot. A nested Worker would start with a fresh, unstripped
+        // global. The probe is the most sandboxed plugin there is — ["styles"]
+        // only — and reports what it reached through the one channel it has:
+        // a custom property in CSS it injects.
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        try {
+            await isolated.addInitScript((session) => {
+                window.localStorage.setItem("tumult.session", JSON.stringify(session));
+            }, SESSION);
+            const bundle = `export const plugin = { manifest: { id: "cc.example.probe", name: "Probe", version: "1.0.0", permissions: ["styles"] }, async install(ctx) {
+  const found = {};
+  const g = globalThis;
+  found.indexedDB = typeof g.indexedDB !== "undefined" && g.indexedDB !== null;
+  try { const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Object.getPrototypeOf(g)), "indexedDB") || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(g), "indexedDB"); found.viaPrototype = !!(d && d.get && d.get.call(g)); } catch (e) { found.viaPrototype = false; }
+  try { const dbs = await g.indexedDB.databases(); found.databases = dbs.map((x) => x.name).filter((n) => /tumult/.test(n || "")); } catch (e) { found.databases = []; }
+  try { await new Promise((ok, no) => { const r = g.indexedDB.open("tumult.plugins"); r.onsuccess = () => { r.result.close(); ok(); }; r.onerror = no; }); found.openedPluginStore = true; } catch (e) { found.openedPluginStore = false; }
+  found.Worker = typeof g.Worker === "function";
+  found.caches = typeof g.caches !== "undefined";
+  found.BroadcastChannel = typeof g.BroadcastChannel === "function";
+  ctx.injectStylesheet(":root { --sandbox-probe: " + JSON.stringify(JSON.stringify(found)) + "; }");
+} };\n`;
+            const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bundle));
+            let binary = "";
+            for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+            const integrity = `sha256-${Buffer.from(binary, "binary").toString("base64")}`;
+            const manifest = { id: "cc.example.probe", name: "Probe", version: "1.0.0", author: "Someone", description: "Probe.", permissions: ["styles"], entry: "plugin.js", integrity };
+            await isolated.route("**/api.github.com/repos/example/probe/releases/latest", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        tag_name: "v1.0.0",
+                        assets: [
+                            { name: "tumult.plugin.json", browser_download_url: "https://github.com/example/probe/releases/download/v1.0.0/tumult.plugin.json" },
+                            { name: "plugin.js", browser_download_url: "https://github.com/example/probe/releases/download/v1.0.0/plugin.js" },
+                        ],
+                    }),
+                }),
+            );
+            await isolated.route("**/api/plugin-asset**name=tumult.plugin.json**", (route) =>
+                route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manifest) }),
+            );
+            await isolated.route("**/api/plugin-asset**name=plugin.js**", (route) =>
+                route.fulfill({ status: 200, contentType: "text/javascript", body: bundle }),
+            );
+
+            const probe = await isolated.newPage();
+            await probe.goto(origin, { waitUntil: "domcontentloaded" });
+            await probe.waitForSelector(".tumult-account", { timeout: 10_000 });
+            await probe.locator(".tumult-userbar-gear").click();
+            await probe.getByRole("tab", { name: "Installed" }).click();
+            await probe.locator("#tumult-plugin-url").fill("https://github.com/example/probe");
+            await probe.getByRole("button", { name: "Check" }).click();
+            await probe.locator(".tumult-consent").waitFor({ timeout: 10_000 });
+            await probe.getByRole("button", { name: "Install" }).click();
+            await probe.locator(".tumult-plugin", { has: probe.locator(".tumult-plugin-lane-sandbox") }).waitFor({ timeout: 10_000 });
+            // The settings overlay is a security-adjacent surface but not one
+            // that suspends styles; close it so nothing interferes with reading.
+            await probe.keyboard.press("Escape");
+
+            let reported = "";
+            const deadline = Date.now() + 10_000;
+            while (!reported && Date.now() < deadline) {
+                reported = await probe.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--sandbox-probe").trim());
+                if (!reported) await probe.waitForTimeout(100);
+            }
+            assert.ok(reported, "the probe plugin never reported");
+            const found = JSON.parse(JSON.parse(reported)) as Record<string, unknown>;
+            assert.deepEqual(
+                found,
+                { indexedDB: false, viaPrototype: false, databases: [], openedPluginStore: false, Worker: false, caches: false, BroadcastChannel: false },
+                `a sandboxed plugin reached: ${reported}`,
+            );
+        } finally {
+            await isolated.close();
+        }
+    });
+
     it("takes the guild rail width from its layout token", async () => {
         const state = await readState(page);
         const token = state.tokens["--layout-guild-rail-width"];

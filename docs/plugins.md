@@ -1256,6 +1256,19 @@ meant*. A plugin that bundles something malicious and hashes it honestly is
 still malicious — the hash stops tampering and drift, not intent. That is what
 the lane badge and the consent copy are for.
 
+Second honest limitation: the boot re-hash catches a *corrupted* record, not a
+*forged* one. The hash sits in the same record, so whatever can write the store
+can write a matching bundle and hash — and a record saying "trusted" then runs
+in-page. So the boundary is who can write it. A **sandboxed** plugin cannot:
+its Worker shares the app's origin, so `sandbox/worker/shim.ts` withdraws
+`indexedDB`, `caches`, nested `Worker`s, `BroadcastChannel` and
+`navigator.storage`/`locks`/`serviceWorker` before the bundle is imported
+(from every prototype too, failing closed if any survives) — the browser smoke
+test fails if a `["styles"]`-only plugin can reach any of them. **In-page**
+code (a trusted plugin, or an XSS) can write it, and could persist in other
+ways too; that is inherent to running in-page, and what the trusted-lane
+consent warning is about.
+
 ### What the host must allow
 
 CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL) —
