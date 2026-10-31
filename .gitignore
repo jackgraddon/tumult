@@ -37,3 +37,6 @@ apps/web/test-results/
 # Playwright live session state (contains tokens) — never commit
 apps/web/test/.mas-session.json
 apps/web/test/.live-session.json
+
+# Unit-test coverage (pnpm -r test:coverage)
+coverage/

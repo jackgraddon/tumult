@@ -45,7 +45,37 @@ jobs:
       # Hermetic per-package `test/` suites (core, ui, theme). The Docker-backed
       # integration suites (test-integration/, run via `pnpm test:integration`)
       # are intentionally NOT in this gate: they run in integration.yml.
-      run: pnpm -r test
+      # Same suites as `pnpm -r test`, with Node's built-in coverage (lcov per
+      # package). Reported, not gated: no threshold fails the build.
+      run: pnpm -r test:coverage
+
+    - name: Coverage summary
+      if: always()
+      run: |
+        {
+          echo "### Unit-test coverage"
+          echo ""
+          echo "| Package | Lines | Branches | Functions |"
+          echo "| --- | --- | --- | --- |"
+          for f in packages/*/coverage/lcov.info; do
+            [ -f "$f" ] || continue
+            awk -v pkg="$(basename "$(dirname "$(dirname "$f")")")" -F: '
+              /^LF:/ {lf+=$2} /^LH:/ {lh+=$2}
+              /^BRF:/ {bf+=$2} /^BRH:/ {bh+=$2}
+              /^FNF:/ {ff+=$2} /^FNH:/ {fh+=$2}
+              function pct(h, t) { return t ? sprintf("%.1f%% (%d/%d)", 100*h/t, h, t) : "n/a" }
+              END { printf "| %s | %s | %s | %s |\n", pkg, pct(lh,lf), pct(bh,bf), pct(fh,ff) }
+            ' "$f"
+          done
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload coverage
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-coverage
+        path: packages/*/coverage/lcov.info
+        if-no-files-found: warn
 
     - name: Install Firefox for the browser smoke test
       # The smoke test runs a `--mode fake` build: no homeserver, no network

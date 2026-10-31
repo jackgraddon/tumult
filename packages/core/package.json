@@ -39,6 +39,7 @@
     "dev": "tsc -b --watch",
     "typecheck": "tsc -b --noEmit false",
     "test": "node --test \"test/**/*.test.ts\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "test:integration": "node --test \"test-integration/**/*.test.ts\""
   },
   "dependencies": {
