@@ -54,7 +54,7 @@ import { Observable } from "./observable.ts";
 import { UNCHECKED_SECURITY, querySecurityStatus } from "./crypto/security.ts";
 import { restoreFailureMessage, serveHeldKey, shouldVerifyDevice } from "./crypto/restore.ts";
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
-import { sendTextMessage, retryTextMessage } from "./rooms/send.ts";
+import { resendAfterOutage, sendTextMessage, retryTextMessage } from "./rooms/send.ts";
 import { sendMediaMessage } from "./rooms/media.ts";
 import { sendEditMessage } from "./rooms/edits.ts";
 import { redactEvent } from "./rooms/redact.ts";
@@ -554,7 +554,13 @@ export class MatrixChatClient implements ChatClient {
             // Registered before startClient() — see toConnectionState().
             client.on(ClientEvent.Sync, (state: SyncState, _prev: SyncState | null, data?: SyncStateData) => {
                 const next = toConnectionState(state);
+                const previous = this.connectionState.get();
                 this.connectionState.set(next);
+                // Back from an outage: deliver what the user sent into it.
+                if (client && next === "syncing" && (previous === "reconnecting" || previous === "error")) {
+                    const resent = resendAfterOutage(client);
+                    if (resent > 0) console.debug(`[tumult] resent ${resent} message(s) sent during the outage`);
+                }
                 if (state === SyncState.Error && data?.error) {
                     console.error("[tumult] sync error", data.error);
                 }

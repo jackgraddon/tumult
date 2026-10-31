@@ -1,4 +1,4 @@
-import { MsgType, type MatrixClient } from "matrix-js-sdk";
+import { ConnectionError, EventStatus, MsgType, type MatrixClient } from "matrix-js-sdk";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
 
 /**
@@ -81,4 +81,26 @@ export function retryTextMessage(
     // SENT/failed) republishes through the feed, not this promise.
     matrix.resendEvent(failed, room);
     return Promise.resolve();
+}
+
+/**
+ * Resend every message that failed because the NETWORK was down, once it is
+ * back. Typing into a dead connection used to leave the message "not sent"
+ * forever — after the outage it still needed the user to notice and press
+ * "try again" (found by the network-outage browser test). Only a
+ * ConnectionError is retried: a message the SERVER refused (a MatrixError —
+ * forbidden, too large, rate-limited past the SDK's own retries) would only
+ * fail again, so it stays "not sent" for the user to decide. Returns how many
+ * were resent.
+ */
+export function resendAfterOutage(matrix: MatrixClient): number {
+    let resent = 0;
+    for (const room of matrix.getRooms()) {
+        for (const event of room.getPendingEvents()) {
+            if (event.status !== EventStatus.NOT_SENT || !(event.error instanceof ConnectionError)) continue;
+            matrix.resendEvent(event, room);
+            resent += 1;
+        }
+    }
+    return resent;
 }
