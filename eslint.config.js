@@ -21,6 +21,10 @@ export default tseslint.config(
             ".claude/**",
             "tests/synapse/data/**",
             "tests/rtc/data/**",
+            // The desktop's copies of the web build, and its packages.
+            "apps/desktop/web/**",
+            "apps/desktop/web-fake/**",
+            "apps/desktop/release/**",
         ],
     },
     js.configs.recommended,
@@ -46,6 +50,13 @@ export default tseslint.config(
                 { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
             ],
         },
+    },
+    {
+        // CommonJS on purpose: electron-builder's config and a script Electron
+        // runs directly (apps/desktop). `require` is the module system there.
+        files: ["**/*.cjs"],
+        languageOptions: { sourceType: "commonjs" },
+        rules: { "@typescript-eslint/no-require-imports": "off" },
     },
     {
         // Tests stub the SDK with partial shapes; `any` there is a cast, not a type.

@@ -10,7 +10,13 @@ packages:
 # without this the dev server and build can't run.
 allowBuilds:
   esbuild: true
+  # Electron's postinstall downloads the platform's Electron binary
+  # (apps/desktop); without it `electron .` has nothing to run.
+  electron: true
   vue-demi: true
+  # electron-builder's Squirrel.Windows backend; we package NSIS only, so its
+  # postinstall (a vendored binary copy) is not needed.
+  electron-winstaller: false
 
 # Security floor for transitive dependencies. source-map-js <1.2.2 has an
 # event-loop DoS (GHSA-68fv-2mgg-jv7q); it arrives through Vue's SFC compiler,

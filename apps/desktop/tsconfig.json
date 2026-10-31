@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Type-checking only: esbuild bundles the main process (scripts/build.ts),
+    // Node runs the scripts and tests straight from .ts.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "smoke/**/*.ts", "scripts/**/*.ts"]
+}
