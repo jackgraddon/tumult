@@ -819,7 +819,12 @@ homeserver. A trap listed here has shipped broken at least once.
   `describeVoiceError()` (walks `cause` to the MatrixError: a sentence for
   M_FORBIDDEN, the server's `data.error` otherwise — a MatrixError's `message`
   embeds the request URL); the raw error goes to the console. The media test
-  covers it end to end: Bob's refused join must open ZERO peer connections.
+  covers it end to end. VERIFIED on CI: the membership PUT and the SFU connect
+  run in PARALLEL, so the refusal can land mid-connect; LiveKit then aborts
+  ("user initiated disconnect") but leaves the PC it created unclosed in state
+  `new` (never started ICE — a leaked object, not a participant). So "no ghost"
+  means no PC `connecting`/`connected`, plus Alice's LiveKit count staying 1 —
+  not "zero PCs ever".
   Video and screen share ARE built on the same session (`setVoiceCamera`,
   `setVoiceScreenShare`, `attachVoiceVideo`; callIntent `"video"`): a
   participant's `camera`/`screen` flag is true only once a track is live AND
