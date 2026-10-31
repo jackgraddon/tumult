@@ -91,10 +91,7 @@ import { OAuthLogin, type AuthNavigator, type ClientMetadata } from "./auth/oaut
 import { AuthStorage, type StoredSession } from "./auth/storage.ts";
 import { toConnectionState, watchNetwork } from "./sync/connection.ts";
 import { buildSlidingSync, detectSlidingSync, type ActiveSyncMode, type SlidingSync, type SlidingSyncRangeManager, type SssWindowStore, type SyncModeOption } from "./sync/sliding.ts";
-import { CallManager } from "./call/manager.ts";
-import { VoiceManager } from "./voice/manager.ts";
-import { createLiveKitMedia } from "./voice/media.ts";
-import { normalizeVoiceSettings } from "./voice/settings.ts";
+import { RtcFeature } from "./call/rtc.ts";
 import { SHELL_CACHE_DEBOUNCE_MS, clearShellSnapshot, readShellSnapshot, writeShellSnapshot } from "./shellCache.ts";
 
 export interface ChatClientOptions {
@@ -194,9 +191,6 @@ const SSS_WINDOW_KEY = "tumult.sss.windowEnd";
  * keeps reporting `offline` while we are plainly using the app.
  */
 const PRESENCE_KEY = "tumult.presence.desired";
-// A device preference (which microphone processing it wants), not an account's,
-// so unlike the presence key it survives logout.
-const VOICE_SETTINGS_KEY = "tumult.voice.settings";
 
 /**
  * How often our own presence is re-read and, if the server drifted (idle
@@ -234,8 +228,8 @@ export class MatrixChatClient implements ChatClient {
     private readonly storage: AuthStorage;
     private readonly login_: OAuthLogin;
     private readonly syncModeOption: SyncModeOption;
-    private readonly elementCallUrl: string | null;
-    private readonly createE2EEWorker: (() => Promise<Worker>) | null;
+    /** Calls + voice: their feeds, managers and voice settings (call/rtc.ts). */
+    private readonly rtc: RtcFeature;
     /** Sync loop actually running; set in bootstrap before startClient. */
     private activeSyncMode: ActiveSyncMode = "classic";
 
@@ -255,14 +249,6 @@ export class MatrixChatClient implements ChatClient {
     private _verification: VerificationManager | null = null;
     /** Per-room typing state, alive while the sync loop runs. */
     private _typing: TypingTracker | null = null;
-    /** The embedded call, alive while the sync loop runs. */
-    private _calls: CallManager | null = null;
-    private readonly callState = new Observable<CallView | null>(null);
-    /** Native voice, alive while the sync loop runs. */
-    private _voice: VoiceManager | null = null;
-    private readonly voiceState = new Observable<VoiceView | null>(null);
-    private readonly voiceRoomsState = new Observable<Record<string, string[]>>({});
-    private readonly voiceSettingsState: Observable<VoiceSettings>;
     /** Thread tracking, alive while the sync loop runs. */
     private _threads: ThreadTracker | null = null;
     /** Per-room member rosters, alive while the sync loop runs. */
@@ -369,9 +355,11 @@ export class MatrixChatClient implements ChatClient {
         this.storage = options.storage ?? AuthStorage.browser();
         this.login_ = new OAuthLogin(this.storage, options.clientMetadata, options.navigator);
         this.syncModeOption = options.syncMode ?? "auto";
-        this.elementCallUrl = options.elementCallUrl || null;
-        this.createE2EEWorker = options.createE2EEWorker ?? null;
-        this.voiceSettingsState = new Observable(normalizeVoiceSettings(this.storage.getItem(VOICE_SETTINGS_KEY)));
+        this.rtc = new RtcFeature({
+            storage: this.storage,
+            elementCallUrl: options.elementCallUrl || null,
+            createE2EEWorker: options.createE2EEWorker ?? null,
+        });
         this.progressiveRefresh = new ThrottledTask(() => this.refreshRooms(), PROGRESSIVE_REFRESH_MS);
         this.securityRefresh = new ThrottledTask(() => {
             void this.refreshSecurity();
@@ -404,19 +392,19 @@ export class MatrixChatClient implements ChatClient {
     }
 
     public get call(): Subscribable<CallView | null> {
-        return this.callState;
+        return this.rtc.callFeed;
     }
 
     public get voice(): Subscribable<VoiceView | null> {
-        return this.voiceState;
+        return this.rtc.voiceFeed;
     }
 
     public get voiceSettings(): Subscribable<VoiceSettings> {
-        return this.voiceSettingsState;
+        return this.rtc.voiceSettingsFeed;
     }
 
     public get voiceRooms(): Subscribable<Record<string, string[]>> {
-        return this.voiceRoomsState;
+        return this.rtc.voiceRoomsFeed;
     }
 
     public get notifications(): Subscribable<NotificationState> {
@@ -623,17 +611,7 @@ export class MatrixChatClient implements ChatClient {
                 this.publishVerification();
             }
             this._typing = new TypingTracker(client);
-            if (this.elementCallUrl) this._calls = new CallManager(client, this.elementCallUrl, this.callState);
-            const createE2EEWorker = this.createE2EEWorker;
-            if (createE2EEWorker) {
-                this._voice = new VoiceManager(
-                    client,
-                    { createMedia: () => createLiveKitMedia({ createE2EEWorker }), voiceSettings: () => this.voiceSettingsState.get() },
-                    this.voiceState,
-                    this.voiceRoomsState,
-                );
-                this._voice.start();
-            }
+            this.rtc.attach(client);
             // The tracker owns its own Observable; without this subscription
             // the contract's `typing` feed is published once and never again,
             // so "X is typing…" never appears in the app.
@@ -816,10 +794,7 @@ export class MatrixChatClient implements ChatClient {
         this._verification = null;
         this._typing?.detachAll();
         this._typing = null;
-        this._calls?.detachAll();
-        this._calls = null;
-        this._voice?.detachAll();
-        this._voice = null;
+        this.rtc.detach();
         this._threads?.detachAll();
         this._threads = null;
         this._members?.detachAll();
@@ -1230,76 +1205,62 @@ export class MatrixChatClient implements ChatClient {
         return notifications.requestPermission();
     }
 
-    // Answered from configuration, not from the manager: the managers only
-    // exist after start(), but the shell asks once at setup, before it.
+    // Calls and voice live in call/rtc.ts; these stay explicit methods so tsc
+    // keeps checking `implements ChatClient`.
     public supportsCalls(): boolean {
-        return this.elementCallUrl !== null;
+        return this.rtc.supportsCalls();
     }
 
-    public async joinCall(roomId: string, options: { video: boolean }): Promise<void> {
-        const calls = this._calls;
-        if (!calls) throw new Error("Calls are not supported");
-        // Both write this device's call membership; two at once would fight.
-        await this._voice?.leave();
-        await calls.join(roomId, options.video);
+    public joinCall(roomId: string, options: { video: boolean }): Promise<void> {
+        return this.rtc.joinCall(roomId, options);
     }
 
-    public async leaveCall(): Promise<void> {
-        await this._calls?.leave();
+    public leaveCall(): Promise<void> {
+        return this.rtc.leaveCall();
     }
 
     public attachCall(frame: HTMLIFrameElement): () => void {
-        const calls = this._calls;
-        if (!calls) throw new Error("Calls are not supported");
-        return calls.attach(frame);
+        return this.rtc.attachCall(frame);
     }
 
     public supportsVoice(): boolean {
-        return this.createE2EEWorker !== null;
+        return this.rtc.supportsVoice();
     }
 
-    public async joinVoice(roomId: string, options: { video?: boolean } = {}): Promise<void> {
-        const voice = this._voice;
-        if (!voice) throw new Error("Voice is not supported");
-        await this._calls?.leave();
-        await voice.join(roomId, options);
+    public joinVoice(roomId: string, options: { video?: boolean } = {}): Promise<void> {
+        return this.rtc.joinVoice(roomId, options);
     }
 
-    public async leaveVoice(): Promise<void> {
-        await this._voice?.leave();
+    public leaveVoice(): Promise<void> {
+        return this.rtc.leaveVoice();
     }
 
-    public async setVoiceMuted(muted: boolean): Promise<void> {
-        await this._voice?.setMuted(muted);
+    public setVoiceMuted(muted: boolean): Promise<void> {
+        return this.rtc.setVoiceMuted(muted);
     }
 
-    public async setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void> {
-        const next = normalizeVoiceSettings({ ...this.voiceSettingsState.get(), ...settings });
-        // Persist and publish first: the choice is the user's whether or not a
-        // call is open to apply it to, and a failed re-open must not lose it.
-        this.storage.setItem(VOICE_SETTINGS_KEY, next);
-        this.voiceSettingsState.set(next);
-        await this._voice?.applySettings(next);
+    public setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void> {
+        return this.rtc.setVoiceSettings(settings);
     }
 
-    public async setVoiceCamera(enabled: boolean): Promise<void> {
-        await this._voice?.setCamera(enabled);
+    public setVoiceCamera(enabled: boolean): Promise<void> {
+        return this.rtc.setVoiceCamera(enabled);
     }
 
-    public async setVoiceScreenShare(enabled: boolean): Promise<void> {
-        await this._voice?.setScreenShare(enabled);
+    public setVoiceScreenShare(enabled: boolean): Promise<void> {
+        return this.rtc.setVoiceScreenShare(enabled);
     }
 
     public attachVoiceVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void {
-        return this._voice?.attachVideo(userId, deviceId, source, element) ?? (() => undefined);
+        return this.rtc.attachVoiceVideo(userId, deviceId, source, element);
     }
 
     public setVoiceDeafened(deafened: boolean): void {
-        this._voice?.setDeafened(deafened);
+        this.rtc.setVoiceDeafened(deafened);
     }
 
     public setVoiceUserVolume(userId: string, volume: number): void {
-        this._voice?.setUserVolume(userId, volume);
+        this.rtc.setVoiceUserVolume(userId, volume);
     }
 
     public supportsThreads(): boolean {
