@@ -423,4 +423,51 @@ describe("two-browser call media through the real app", { skip: !enabled && "set
             throw error;
         }
     });
+
+    it("refuses a member a room keeps out of calls: a sentence, and no ghost on the SFU", { timeout: 120_000 }, async () => {
+        const [alice, bob] = people as [Person, Person];
+        try {
+            // A room NOT made by createDm: call membership stays at the
+            // preset's 50, so Alice (creator) may join and Bob (member) may not.
+            const { room_id: closed } = await api<{ room_id: string }>("POST", "/_matrix/client/v3/createRoom", alice.accessToken, {
+                name: "Admins only",
+                preset: "private_chat",
+                invite: [bob.userId],
+                initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
+            });
+            await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(closed)}`, bob.accessToken, {});
+
+            // Alice's call puts a focus in the room. That is what made the old
+            // bug: Bob's refused join still found HER focus, fetched a token
+            // and connected to the SFU as a ghost nobody could close.
+            // Fresh pages: the init script resets the peer-connection record.
+            for (const p of [alice, bob]) {
+                await p.page.goto(`${origin}/dms/${encodeURIComponent(closed)}`, { waitUntil: "load" });
+                await p.page.waitForSelector(".tumult-shell", { timeout: 60_000 });
+            }
+            await alice.page.getByRole("button", { name: "Choose call type" }).click({ timeout: 60_000 });
+            await alice.page.getByRole("menuitem", { name: "Voice" }).click();
+            await alice.page.locator(".tumult-voice").getByText("Voice connected").waitFor({ timeout: 60_000 });
+
+            await bob.page.getByRole("button", { name: "Choose call type" }).click({ timeout: 60_000 });
+            await bob.page.getByRole("menuitem", { name: "Voice" }).click();
+            const bar = bob.page.locator(".tumult-voice");
+            await bar.getByText("permission to join calls").waitFor({ timeout: 60_000 });
+            const shown = (await bar.locator(".tumult-voice-status").textContent()) ?? "";
+            assert.doesNotMatch(shown, /http|MatrixError|MembershipManager/, `raw error shown: ${shown}`);
+            assert.equal(await bar.getByRole("button", { name: "Dismiss" }).count(), 1, "a failed session offers a way out");
+
+            // Give a straggling join every chance to dial the SFU, then check
+            // it never did. Any peer connection at all would be the ghost.
+            await new Promise((resolve) => setTimeout(resolve, 8000));
+            const connections = (await bob.page.evaluate("window.__tumultPeerConnections.length")) as number;
+            assert.equal(connections, 0, "Bob's refused join opened a connection to the SFU");
+
+            await bar.getByRole("button", { name: "Dismiss" }).click();
+            await bob.page.waitForSelector(".tumult-voice", { state: "detached", timeout: 10_000 });
+        } catch (error) {
+            failed = true;
+            throw error;
+        }
+    });
 });

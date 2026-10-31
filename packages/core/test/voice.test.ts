@@ -1,11 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import type { MatrixClient } from "matrix-js-sdk";
+import { MatrixError, type MatrixClient } from "matrix-js-sdk";
 
 import type { VoiceView } from "../src/contract.ts";
 import { Observable } from "../src/observable.ts";
-import { VoiceManager } from "../src/voice/manager.ts";
+import { VoiceManager, describeVoiceError } from "../src/voice/manager.ts";
 import { DEFAULT_VOICE_SETTINGS } from "../src/contract.ts";
 import { normalizeVoiceSettings } from "../src/voice/settings.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "../src/voice/media.ts";
@@ -90,6 +90,20 @@ class FakeMedia implements VoiceMedia {
         this.snap = snap;
         this.listeners.forEach((l) => l());
     }
+}
+
+/**
+ * What the SDK emits when the server refuses our call membership: its own
+ * wrapper around the real MatrixError (MembershipManagerActionScheduler), whose
+ * message embeds the request URL.
+ */
+function refused(): Error {
+    const forbidden = new MatrixError(
+        { errcode: "M_FORBIDDEN", error: "You don't have permission to post that to the room. user_level (0) < send_level (50)" },
+        403,
+        "http://127.0.0.1:8018/_matrix/client/v3/rooms/!r/state/org.matrix.msc3401.call.member/_%40bob",
+    );
+    return new Error(`The MembershipManager shut down because of the end condition: ${forbidden}`, { cause: forbidden });
 }
 
 function setup(
@@ -316,6 +330,54 @@ describe("VoiceManager.join", () => {
         assert.ok(media.log.some(([name]) => name === "disconnect"));
     });
 
+    it("never reaches the SFU when the membership is refused mid-join (no ghost)", async (t) => {
+        t.mock.method(console, "error", () => {});
+        // The real shape: the server refuses the call.member state event while
+        // join() is still waiting for the focus, and the focus then appears
+        // anyway (it is the OTHER member's). join() used to carry on, fetch a
+        // token and connect an engine nothing referenced any more.
+        const { manager, session, media, feed, fetchCalls } = setup({ focus: null });
+        const joining = manager.join(ROOM);
+        await new Promise((r) => setImmediate(r));
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        session.focus = LIVEKIT;
+        session.emit(MatrixRTCSessionEvent.MembershipsChanged);
+        await joining;
+        assert.equal(fetchCalls.length, 0, "no token was asked for");
+        assert.ok(!media.log.some(([name]) => name === "connect"), `connected after the refusal: ${JSON.stringify(media.log)}`);
+        assert.equal(feed.get()?.state, "error");
+        assert.equal(session.left, 1);
+    });
+
+    it("closes an SFU connection the refusal raced (no ghost)", async (t) => {
+        t.mock.method(console, "error", () => {});
+        const { manager, session, media } = setup();
+        let finishConnect!: () => void;
+        media.connect = async (url: string, jwt: string) => {
+            media.log.push(["connect", url, jwt]);
+            await new Promise<void>((resolve) => (finishConnect = resolve));
+        };
+        const joining = manager.join(ROOM);
+        while (!media.log.some(([name]) => name === "connect")) await new Promise((r) => setImmediate(r));
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        finishConnect();
+        await joining;
+        const names = media.log.map(([name]) => name);
+        assert.equal(names.at(-1), "disconnect", `the engine must end disconnected: ${JSON.stringify(names)}`);
+        assert.ok(!names.includes("mic"), "and must not open the microphone");
+    });
+
+    it("tells the user in a sentence why the server refused them", async (t) => {
+        t.mock.method(console, "error", () => {});
+        const { manager, session, feed } = setup();
+        await manager.join(ROOM);
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        await new Promise((r) => setImmediate(r));
+        const shown = feed.get()?.error ?? "";
+        assert.match(shown, /permission to join calls/);
+        assert.doesNotMatch(shown, /http|MatrixError|MembershipManager|\[403\]/, `raw error leaked: ${shown}`);
+    });
+
     it("forwards each frame key the session mints to the media engine, keyed by LiveKit identity", async () => {
         const { manager, session, media } = setup();
         await manager.join(ROOM);
@@ -450,6 +512,24 @@ describe("VoiceManager microphone processing", () => {
         await new Promise((r) => setTimeout(r, 5));
         const applied = media.log.filter(([name]) => name === "processing");
         assert.deepEqual(applied.at(-1)?.[1], RAW);
+    });
+});
+
+describe("describeVoiceError", () => {
+    it("explains a refused membership, however deep the SDK wrapped it", () => {
+        assert.match(describeVoiceError(refused()), /^You don't have permission to join calls in this room/);
+        assert.match(describeVoiceError(new Error("outer", { cause: refused() })), /permission to join calls/);
+    });
+
+    it("uses the server's own words for any other Matrix error, never the URL", () => {
+        const limited = new MatrixError({ errcode: "M_LIMIT_EXCEEDED", error: "Too many requests" }, 429, "http://hs/_matrix/client/v3/x");
+        assert.equal(describeVoiceError(new Error("wrapped", { cause: limited })), "Couldn't join the call: Too many requests");
+        assert.equal(describeVoiceError(new MatrixError({ errcode: "M_UNKNOWN" }, 500, "http://hs/x")), "Couldn't join the call: M_UNKNOWN");
+    });
+
+    it("keeps our own messages as they are", () => {
+        assert.equal(describeVoiceError(new Error("The call server refused us (401): bad token")), "The call server refused us (401): bad token");
+        assert.equal(describeVoiceError("plain"), "plain");
     });
 });
 

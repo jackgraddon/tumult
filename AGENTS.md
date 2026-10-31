@@ -810,9 +810,16 @@ homeserver. A trap listed here has shipped broken at least once.
   applies that override SHALLOWLY, so passing `events` replaces the default
   map and drops `m.room.power_levels`/`m.room.encryption`/`m.room.server_acl`
   from 100 to 50 (VERIFIED in synapse/handlers/room.py). Rooms made BEFORE the
-  fix, or by other clients, still need an admin to lower it. On that refusal
-  the client still connects to LiveKit (a ghost that receives undecryptable
-  media) and the voice bar prints the raw MatrixError + URL — both unfixed.
+  fix, or by other clients, still need an admin to lower it. The refusal
+  arrives as `MembershipManagerError` WHILE `join()` is still awaiting the
+  focus/token, so `fail()` must bump `generation` like `leave()` does —
+  without it join() carried on (finding the OTHER member's focus), fetched a
+  token and connected an engine nothing referenced: a ghost on the SFU. A
+  connect that outlives the stand-down is disconnected again. The bar shows
+  `describeVoiceError()` (walks `cause` to the MatrixError: a sentence for
+  M_FORBIDDEN, the server's `data.error` otherwise — a MatrixError's `message`
+  embeds the request URL); the raw error goes to the console. The media test
+  covers it end to end: Bob's refused join must open ZERO peer connections.
   Video and screen share ARE built on the same session (`setVoiceCamera`,
   `setVoiceScreenShare`, `attachVoiceVideo`; callIntent `"video"`): a
   participant's `camera`/`screen` flag is true only once a track is live AND

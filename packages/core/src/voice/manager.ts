@@ -189,7 +189,14 @@ export class VoiceManager {
             if (!live()) return;
 
             await engine.connect(sfu.url, sfu.jwt);
-            if (!live()) return;
+            if (!live()) {
+                // Whoever stood us down (leave, a refused membership)
+                // disconnected this engine while the connect was in flight,
+                // which it may have outlived. Close it again, or it stays on
+                // the SFU with nothing left that can close it.
+                engine.disconnect();
+                return;
+            }
             // Before the microphone opens, or it opens under the wrong constraints
             // and has to be opened twice.
             await engine.setProcessing(this.settings());
@@ -203,8 +210,9 @@ export class VoiceManager {
             this.publishFromMedia();
         } catch (error) {
             if (!live()) return;
+            console.error("[tumult] could not join voice", error);
             await this.abort(generation, session, media, teardown);
-            this.publish({ roomId, state: "error", error: message(error), participants: [] });
+            this.publish({ roomId, state: "error", error: describeVoiceError(error), participants: [] });
         }
     }
 
@@ -347,6 +355,12 @@ export class VoiceManager {
      */
     private fail(generation: number, error: unknown): void {
         if (generation !== this.generation) return;
+        // Bump, as leave() does: the refusal usually lands while join() is
+        // still awaiting the focus or the token, and without this it carried
+        // on and connected a media engine nothing referenced any more — a
+        // ghost on the SFU, receiving media it had no keys for.
+        this.generation++;
+        console.error("[tumult] the voice session failed", error);
         const roomId = this.active?.roomId ?? this.feed.get()?.roomId;
         const active = this.active;
         this.active = null;
@@ -354,7 +368,7 @@ export class VoiceManager {
         active?.teardown();
         active?.media.disconnect();
         void active?.session.leaveRoomSession().catch(() => undefined);
-        if (roomId) this.publish({ roomId, state: "error", error: message(error), participants: [] });
+        if (roomId) this.publish({ roomId, state: "error", error: describeVoiceError(error), participants: [] });
     }
 
     /**
@@ -466,6 +480,29 @@ function toParticipant(p: MediaSnapshot["participants"][number]): VoiceParticipa
 
 function message(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * A sentence for the voice bar. The SDK wraps a server refusal several layers
+ * deep ("The MembershipManager shut down because of the end condition:
+ * M_FORBIDDEN: MatrixError: [403] … (http://…/state/…)"), and a MatrixError's
+ * `message` embeds the request URL. So walk the `cause` chain to the Matrix
+ * error and say what it means; the raw error goes to the console instead.
+ */
+export function describeVoiceError(error: unknown): string {
+    let current: unknown = error;
+    for (let depth = 0; current != null && depth < 8; depth++) {
+        const { errcode, data } = current as { errcode?: unknown; data?: { error?: unknown } };
+        if (errcode === "M_FORBIDDEN") {
+            return "You don't have permission to join calls in this room. A room admin can allow members to join calls.";
+        }
+        if (typeof errcode === "string") {
+            const said = typeof data?.error === "string" && data.error.length > 0 ? data.error : errcode;
+            return `Couldn't join the call: ${said}`;
+        }
+        current = (current as { cause?: unknown }).cause;
+    }
+    return message(error);
 }
 
 /**
