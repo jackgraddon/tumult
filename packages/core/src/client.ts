@@ -751,42 +751,7 @@ export class MatrixChatClient implements ChatClient {
             await store.destroy().catch(() => undefined);
             // Trackers built before the failure hold listeners on the dead
             // client; a retry would otherwise stack a second set.
-            this.timelines?.detachAll();
-            this.removeDecryptedHook?.();
-            this._verification?.detachAll();
-            this._verification = null;
-            this._typing?.detachAll();
-            this._typing = null;
-            this._calls?.detachAll();
-            this._calls = null;
-            this._voice?.detachAll();
-            this._voice = null;
-            this._threads?.detachAll();
-            this._threads = null;
-            this._members?.detachAll();
-            this._members = null;
-            this._powerLevels?.detachAll();
-            this._powerLevels = null;
-            this._media?.dispose();
-            this._media = null;
-            this._notifications?.detachAll();
-            this._notifications = null;
-            this._unread?.dispose();
-            this._unread = null;
-            this._presence?.detachAll();
-            this._presence = null;
-            this._slidingSync = null;
-            this._rangeManager = null;
-            this.roomRefreshScheduled = false;
-            this.clearWarmSeed();
-            this.clearProgressiveRefresh();
-            this.securityRefresh.clear();
-            this.ownPresenceRefresh.clear();
-            this.stopOwnPresence();
-            this.matrix = null;
-            this.store = null;
-            this.timelines = null;
-            this.removeDecryptedHook = null;
+            this.detachSessionTrackers();
             this.connectionState.set("error");
             throw error;
         }
@@ -822,8 +787,31 @@ export class MatrixChatClient implements ChatClient {
         // surviving connection makes the next logout() hang forever.
         await store?.destroy();
 
+        this.detachSessionTrackers();
+        // Stop-only extras (the failure path in bootstrap skips these; that
+        // drift is known and deliberately kept). publishTyping runs after the
+        // tracker is gone, so it publishes the empty snapshot.
+        this.publishTyping();
+        this._selectedRoomId = null;
+        this.profileFieldsSupport = null;
+        this.profileFields.clear();
+        this.connectionState.set("stopped");
+        this.securityState.set(UNCHECKED_SECURITY);
+    }
+
+    /**
+     * Tear down everything one started session built, shared by stop() and
+     * bootstrap()'s failure path. Both call it only AFTER the client is stopped
+     * and the sync store destroyed. Every step is idempotent and safe on a
+     * half-built start (anything not yet built is null). Each caller keeps its
+     * own extras: stop() its early presence detach, store save and stop-only
+     * resets; the failure path its `error` state.
+     */
+    private detachSessionTrackers(): void {
         this.timelines?.detachAll();
         this.timelines = null;
+        this.removeDecryptedHook?.();
+        this.removeDecryptedHook = null;
         this._verification?.detachAll();
         this._verification = null;
         this._typing?.detachAll();
@@ -844,25 +832,20 @@ export class MatrixChatClient implements ChatClient {
         this._notifications = null;
         this._unread?.dispose();
         this._unread = null;
+        // stop() already detached the poller before stopClient(); detachAll is
+        // idempotent, so the second call here is a no-op on that path.
+        this._presence?.detachAll();
         this._presence = null;
-        this.publishTyping();
-        this.removeDecryptedHook?.();
-        this.removeDecryptedHook = null;
         this._slidingSync = null;
         this._rangeManager = null;
-        this._selectedRoomId = null;
         this.roomRefreshScheduled = false;
         this.clearWarmSeed();
         this.clearProgressiveRefresh();
         this.securityRefresh.clear();
         this.ownPresenceRefresh.clear();
         this.stopOwnPresence();
-        this.profileFieldsSupport = null;
-        this.profileFields.clear();
         this.matrix = null;
         this.store = null;
-        this.connectionState.set("stopped");
-        this.securityState.set(UNCHECKED_SECURITY);
     }
 
     public async logout(): Promise<void> {
@@ -870,11 +853,7 @@ export class MatrixChatClient implements ChatClient {
         await this.stop();
 
         if (session) {
-            this.storage.removeItem(SSS_WINDOW_KEY);
-            this.storage.removeItem(PRESENCE_KEY);
-            // The shell cache is account-scoped; drop it with the session so a
-            // stale room list never bleeds into the next login.
-            clearShellSnapshot(this.storage);
+            this.forgetAccountLocalState();
             try {
                 await this.login_.revoke(session);
             } catch (error) {
@@ -901,12 +880,7 @@ export class MatrixChatClient implements ChatClient {
             }
         }
 
-        this.storage.clearSession();
-        this.stored = null;
-        this.sessionState.set(null);
-        this.profileState.set(null);
-        this.ownPresenceState.set(null);
-        this.roomsState.set([]);
+        this.dropSession();
     }
 
     public timeline(roomId: string): Subscribable<MessageView[]> {
@@ -1571,11 +1545,25 @@ export class MatrixChatClient implements ChatClient {
      */
     private async handleSessionLoggedOut(): Promise<void> {
         await this.stop();
+        this.forgetAccountLocalState();
+        this.dropSession();
+    }
+
+    /**
+     * Remove this account's local, non-secret state: the sliding-sync window,
+     * the chosen presence and the shell cache. The shell cache is
+     * account-scoped; dropping it with the session means a stale room list
+     * never bleeds into (or paints first for) the next login. Shared by
+     * logout() and handleSessionLoggedOut().
+     */
+    private forgetAccountLocalState(): void {
         this.storage.removeItem(SSS_WINDOW_KEY);
         this.storage.removeItem(PRESENCE_KEY);
-        // The shell cache is account-scoped; a dropped session must not paint
-        // the previous account's room list on the next boot.
         clearShellSnapshot(this.storage);
+    }
+
+    /** Forget the session and empty every account-scoped feed. */
+    private dropSession(): void {
         this.storage.clearSession();
         this.stored = null;
         this.sessionState.set(null);
