@@ -157,9 +157,12 @@ describe("encryption trust flows through the real app", { skip: !enabled && "set
                 async () => {
                     await openSettingsTab(a.page, "Security");
                     await openSettingsTab(a.page, "My Account");
-                    return (await a.page.locator(".tumult-account-device", { hasText: b.account.deviceId }).first().textContent({ timeout: 10_000 })) ?? "";
+                    // The status line alone: the row also holds the device name,
+                    // which runs into it ("LXLBYUTSGXVerified · …").
+                    const row = a.page.locator(".tumult-account-device", { hasText: b.account.deviceId }).first();
+                    return ((await row.locator(".tumult-account-device-detail").textContent({ timeout: 10_000 })) ?? "").trim();
                 },
-                (row) => /\bVerified\b/.test(row) && !/Unverified/.test(row),
+                (detail) => detail.startsWith("Verified ·"),
                 60_000,
             );
             await closeSettings(a.page);
