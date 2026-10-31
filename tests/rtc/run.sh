@@ -3,7 +3,8 @@
 # down. KEEP=1 leaves the stack running for debugging. Docker or Podman, see
 # tests/container.sh; host networking, see docker-compose.yml.
 #
-# Four suites, in order:
+# Five suites, in order (5: apps/web/test/element-call.test.ts — the embedded
+# call app path, as a fallback for native voice):
 #  1. packages/core/test-integration/{call,voice}.test.ts — Node: the call
 #     widget driver and the native-voice token exchange against the real stack.
 #  2. apps/web/test/rtc-media.test.ts — two Chromium browsers join one video
@@ -73,4 +74,6 @@ if [ "${RTC_MEDIA:-1}" = "1" ]; then
     (cd "$ROOT" && pnpm --filter @tumult/web test:e2ee)
     echo "$LOG_PREFIX running the network-outage test..."
     (cd "$ROOT" && pnpm --filter @tumult/web test:network)
+    echo "$LOG_PREFIX running the embedded Element Call test..."
+    (cd "$ROOT" && pnpm --filter @tumult/web test:element-call)
 fi

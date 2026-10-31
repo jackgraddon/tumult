@@ -11,12 +11,15 @@
  */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { Browser, BrowserContext, Page } from "playwright";
 import { build, preview } from "vite";
+
+import { createDm } from "../../../../packages/core/src/rooms/lifecycle.ts";
 
 export const BASE = process.env["TEST_SYNAPSE_URL"] ?? "http://127.0.0.1:8018";
 /** Every test using this harness needs the stack; tests/rtc/run.sh sets it. */
@@ -69,6 +72,21 @@ export async function login(userId: string): Promise<Account> {
     return { userId: out.user_id, deviceId: out.device_id, accessToken: out.access_token };
 }
 
+/**
+ * A DM made by Tumult's own `createDm` — the code behind "new DM" — so a test
+ * runs in the room the app really creates (encrypted, calls open to members).
+ * matrix-js-sdk is core's dependency, not this app's (pnpm does not hoist), so
+ * it is resolved from core: the same copy lifecycle.ts imports.
+ */
+export async function createDmAs(creator: Account, otherUserId: string): Promise<string> {
+    const coreRoot = join(here, "..", "..", "..", "..", "packages", "core");
+    const sdk = (await import(pathToFileURL(createRequire(join(coreRoot, "package.json")).resolve("matrix-js-sdk")).href)) as {
+        createClient: (opts: { baseUrl: string; userId: string; accessToken: string; deviceId: string }) => unknown;
+    };
+    const client = sdk.createClient({ baseUrl: BASE, userId: creator.userId, accessToken: creator.accessToken, deviceId: creator.deviceId });
+    return createDm(client as Parameters<typeof createDm>[0], { userId: otherUserId, encrypted: true });
+}
+
 export interface RealApp {
     origin: string;
     close(): Promise<void>;
@@ -78,10 +96,13 @@ export interface RealApp {
  * Build the real client and serve it. The client URI is only used by the OIDC
  * login these tests skip, but the build refuses to run without one.
  */
-export async function serveRealApp(options: { port: number; voice?: boolean }): Promise<RealApp> {
+export async function serveRealApp(options: { port: number; voice?: boolean; env?: Record<string, string> }): Promise<RealApp> {
     const workDir = mkdtempSync(join(tmpdir(), "tumult-real-app-"));
     const outDir = join(workDir, "dist");
     if (options.voice) process.env["VITE_VOICE"] = "1";
+    // Build-time env (e.g. VITE_ELEMENT_CALL_URL). Each test file is its own
+    // process, so this does not leak into another file's build.
+    for (const [key, value] of Object.entries(options.env ?? {})) process.env[key] = value;
     process.env["VITE_CLIENT_URI"] ??= "https://tumult.test";
     await build({ root: appRoot, mode: "production", logLevel: "error", build: { outDir } });
     const server = await preview({

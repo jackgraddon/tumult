@@ -16,7 +16,8 @@
     "test:live": "MAS_LIVE=1 node --test --import tsx test/mas-live.test.ts",
     "test:rtc-media": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/rtc-media.test.ts",
     "test:e2ee": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/e2ee.test.ts",
-    "test:network": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/network.test.ts"
+    "test:network": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/network.test.ts",
+    "test:element-call": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/element-call.test.ts"
   },
   "dependencies": {
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",
