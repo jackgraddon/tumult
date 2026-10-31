@@ -18,8 +18,11 @@ allowBuilds:
 overrides:
   source-map-js: ">=1.2.2"
   # minimatch <11.0.1: ReDoS via globparts amplification (GHSA-g3hv-75wg-m249),
-  # no 10.x fix. Only ESLint uses it, on our own config's patterns.
-  minimatch: ">=11.0.1"
+  # no 10.x fix. The 10.x line (ESLint, on our own config's patterns) takes 11,
+  # whose API it uses unchanged. Scoped to 10.x on purpose: standard-version's
+  # dotgitignore needs 3.x's `minimatch.makeRe`, which 11 removed — an unscoped
+  # override broke `pnpm release` ("minimatch.makeRe is not a function").
+  minimatch@10: ">=11.0.1"
 
 patchedDependencies:
   matrix-js-sdk@43.0.0: patches/matrix-js-sdk@43.0.0.patch
