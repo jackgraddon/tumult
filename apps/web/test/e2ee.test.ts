@@ -24,7 +24,7 @@ import { after, before, describe, it } from "node:test";
 
 import { chromium, type Browser, type Page } from "playwright";
 
-import { api, enabled, login, openDevice, poll, register, saveArtifacts, serveRealApp, type Device, type RealApp } from "./support/real-app.ts";
+import { BASE, api, enabled, login, openDevice, poll, register, saveArtifacts, serveRealApp, type Device, type RealApp } from "./support/real-app.ts";
 
 const PORT = 4176;
 const IDENTITY_READY = "This device is part of your verified identity.";
@@ -121,6 +121,27 @@ describe("encryption trust flows through the real app", { skip: !enabled && "set
             await composer.fill(secret);
             await composer.press("Enter");
             await a.page.locator(".tumult-timeline-pane").getByText(secret).waitFor({ timeout: 30_000 });
+
+            // Device C must later open this message from the backup alone, and
+            // backing a key up is asynchronous: the Rust crypto uploads in a
+            // loop that starts after a random delay of up to 10 s (seen on CI:
+            // C asked before A's upload and got 404). So wait until the
+            // server's backup really holds a key for this room — read through
+            // the backup API — and if it never does, that is the bug.
+            const { version } = await api<{ version: string }>("GET", "/_matrix/client/v3/room_keys/version", a.account.accessToken);
+            await poll(
+                "device A never backed up the message's key",
+                async () => {
+                    const res = await fetch(
+                        `${BASE}/_matrix/client/v3/room_keys/keys/${encodeURIComponent(roomId)}?version=${encodeURIComponent(version)}`,
+                        { headers: { Authorization: `Bearer ${a.account.accessToken}` } },
+                    );
+                    if (!res.ok) return 0;
+                    return Object.keys(((await res.json()) as { sessions?: Record<string, unknown> }).sessions ?? {}).length;
+                },
+                (sessions) => sessions > 0,
+                60_000,
+            );
         }),
     );
 

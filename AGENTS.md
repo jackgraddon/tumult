@@ -682,7 +682,35 @@ homeserver. A trap listed here has shipped broken at least once.
   no `otherDeviceId` exists until the receiver sends ready — wait for Ready
   (120 s, cancellable); receivers never send ready; incoming accepts only while
   Requested.
-- No crypto in Node: verification / 4S paths are manual against matrix.jackg.cc.
+- No crypto in Node, so verification / 4S are tested in a BROWSER:
+  `apps/web/test/e2ee.test.ts` (run by tests/rtc/run.sh, harness in
+  `test/support/real-app.ts`) puts one account on three devices — A sets up
+  recovery, B verifies against A by emoji (both screens must show the same
+  emojis), C restores from the recovery key and must decrypt A's earlier
+  message. It found four bugs in its first runs, each invisible on an account
+  Element had already set up:
+  - The security feed started all-false, which the banner reads as "no
+    backup": every boot showed everyone "Message backup is off" until crypto
+    answered, and clicking it failed. `SecurityStatus.checked` gates it.
+  - `bootstrapSecretStorage` asks `getSecretStorageKey` for the key it JUST
+    created (to store the backup key under it). Our callback only served a key
+    during restore, so setup threw AFTER creating the server backup — a backup
+    nobody had the key to, and no recovery key shown. Hold the new key in
+    `heldSecretKey` for the bootstrap.
+  - Nothing ever created a cross-signing identity (`setupRecovery` only made
+    4S + backup), so there was nothing to verify with. `setupRecovery` now
+    bootstraps cross-signing first — only when the ACCOUNT has none
+    (`userHasCrossSigningKeys(undefined, true)`); an identity this device lacks
+    must be verified, never rotated. First upload needs no UIA (MSC3967).
+  - `BackupRecovery` chose create-vs-enter from a LIVE backupEnabled, so
+    creating the backup flipped the screen to "Enter recovery key" mid-setup
+    and hid the new key. Decided once, when the screen opens.
+  Backing a key up is ASYNC: the Rust backup loop starts after a random delay
+  of up to 10 s and uploads in batches, so a device opened seconds after a
+  message can find 404 in the backup for its session (seen on CI). The test
+  waits for the server's backup to hold the room's key before restoring.
+  Still manual: verifying ANOTHER user, and a MAS server demanding UIA for a
+  cross-signing upload (fails loudly, untested).
 
 ### Performance
 

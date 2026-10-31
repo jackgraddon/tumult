@@ -111,8 +111,11 @@ in `.github/workflows/integration.yml` and never block `main`. That workflow run
 both nightly and on PRs touching `packages/core`, `tests/` or the call UI. The RTC
 run ends with a two-browser media test (`apps/web/test/rtc-media.test.ts`): two
 Chromiums join one encrypted video call through the built app and must hear each
-other's tone and see each other's colour. Its stack uses host networking (Linux;
-Docker Desktop needs host networking enabled); `RTC_MEDIA=0` skips the browsers.
+other's tone and see each other's colour. Then an encryption test
+(`apps/web/test/e2ee.test.ts`) puts one account on three devices: set up
+recovery, verify a second device by emoji, and restore history on a third from
+the recovery key. Its stack uses host networking (Linux; Docker Desktop needs
+host networking enabled); `RTC_MEDIA=0` skips both browser tests.
 
 Locally they need **Docker or Podman** (`tests/container.sh` picks whichever
 works; force one with `CONTAINER_RUNTIME=podman`). With neither, run them on
