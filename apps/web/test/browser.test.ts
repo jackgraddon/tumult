@@ -465,6 +465,18 @@ describe("browser smoke test (fake client)", () => {
         );
     });
 
+    it("falls back to the file chip when the browser cannot decode a staged image", async () => {
+        // HEIC decodes only in Safari; these bytes decode nowhere.
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "IMG_0001.HEIC", mimeType: "image/heic", buffer: Buffer.from("not an image") },
+        ]);
+        const card = page.locator(".tumult-composer-attachment");
+        await card.locator(".tumult-composer-attachment-preview svg").first().waitFor({ timeout: 5_000 });
+        assert.equal(await card.locator("img").count(), 0, "a broken <img> should give way to the chip");
+        await page.locator('button[aria-label="Remove IMG_0001.HEIC"]').click();
+        assert.equal(await card.count(), 0);
+    });
+
     it("renders a member decoration from an app-installed plugin", async () => {
         // Alice seeds power level 100, so the admin badge's `match` accepts her.
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });

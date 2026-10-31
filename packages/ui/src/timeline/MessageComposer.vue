@@ -220,6 +220,18 @@ function setDims(id: number, width: number, height: number): void {
     tray.value = tray.value.map((item) => (item.id === id ? { ...item, width, height } : item));
 }
 
+/**
+ * The browser cannot decode this file (HEIC outside Safari, TIFF, …): show
+ * the file chip instead of a broken image. The file itself still sends.
+ */
+function dropPreview(id: number): void {
+    tray.value = tray.value.map((item) => {
+        if (item.id !== id || !item.previewUrl) return item;
+        URL.revokeObjectURL(item.previewUrl);
+        return { ...item, previewUrl: null };
+    });
+}
+
 function setAltText(id: number, altText: string): void {
     tray.value = tray.value.map((item) => (item.id === id ? { ...item, altText } : item));
 }
@@ -353,6 +365,7 @@ function onDrop(event: DragEvent): void {
                         class="tumult-composer-attachment-thumb"
                         :src="item.previewUrl"
                         :alt="item.altText || item.file.name"
+                        @error="dropPreview(item.id)"
                     />
                     <video
                         v-else-if="previewKind(item.file) === 'video' && item.previewUrl"
@@ -361,6 +374,7 @@ function onDrop(event: DragEvent): void {
                         muted
                         preload="metadata"
                         @loadedmetadata="onVideoMetadata(item.id, $event)"
+                        @error="dropPreview(item.id)"
                     ></video>
                     <Icon v-else :name="fileIcon(item.file)" />
                     <button
