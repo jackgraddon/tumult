@@ -1,6 +1,8 @@
 import { createChatClient } from "@tumult/core";
 import type { ChatClient } from "@tumult/core";
 
+import { DESKTOP_REDIRECT_URI } from "./desktop.ts";
+
 /**
  * MAS will not accept a loopback address as `client_uri`, so it cannot be
  * derived from `window.location` during local development. It identifies the
@@ -40,15 +42,23 @@ const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
  */
 const voiceEnabled = import.meta.env.VITE_VOICE === "1";
 
-const redirectUri = `${window.location.origin}/auth/callback`;
+/**
+ * The desktop build (`VITE_DESKTOP=1`, built by `apps/desktop`) is served from
+ * `app://tumult`, which MAS will not take as a redirect URI. It registers a
+ * loopback URI instead, which the Electron main process intercepts and turns
+ * back into this app's own callback route (see `desktop.ts`).
+ */
+const desktop = import.meta.env.VITE_DESKTOP === "1";
+
+const redirectUri = desktop ? DESKTOP_REDIRECT_URI : `${window.location.origin}/auth/callback`;
 
 /**
  * A browser app served over http can only be on loopback, and MAS only permits
  * a loopback redirect for a `native` client. So the application type follows
  * from how this instance is actually served: https deployment registers as
- * `web`, local dev registers as `native`.
+ * `web`, local dev registers as `native`. The desktop is `native` by definition.
  */
-const applicationType = window.location.protocol === "https:" ? "web" : "native";
+const applicationType = !desktop && window.location.protocol === "https:" ? "web" : "native";
 
 /**
  * The single ChatClient for this window.

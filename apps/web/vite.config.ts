@@ -173,6 +173,23 @@ export default defineConfig(({ mode }) => {
         );
     }
 
+    // The desktop shell (`apps/desktop`) builds THIS config with
+    // `VITE_DESKTOP=1` and serves the output from `app://tumult/`. The flag is
+    // the build's ONLY behavioural difference, and it lives in `chat.real.ts`
+    // (a loopback redirect URI, registered as `native`). Everything below is
+    // deliberately the same: under `app://tumult` the CSP's `'self'` IS that
+    // origin (assets, the plugin sandbox frame, `/api/plugin-asset`, which the
+    // main process answers), and the meta policy is what the desktop enforces
+    // too — its protocol handler adds `vercel.json`'s headers, not a policy of
+    // its own. Verified by `apps/desktop/smoke/desktop.smoke.ts`.
+    const desktop = env.VITE_DESKTOP === "1";
+    if (desktop && mode === "development") {
+        // The desktop loads a built bundle over app://; a dev server's
+        // http://localhost origin would register a different redirect URI and
+        // bypass the main process's protocol handler entirely.
+        throw new Error("VITE_DESKTOP=1 is for `vite build` (apps/desktop/scripts/build-web.ts), not the dev server.");
+    }
+
     // The embedded call app (Element Call) is a cross-origin iframe, so its
     // origin must be named in `frame-src`; without the directive a frame falls
     // back to `default-src 'self'` and is blocked. Unset means calls are off
