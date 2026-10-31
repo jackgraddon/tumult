@@ -58,6 +58,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     // Members
     { name: "members-bg", tier: "component", kind: "color", value: v("surface-pane"), description: "Members pane." },
     { name: "member-dot-size", tier: "component", kind: "size", value: v("presence-dot-size"), description: "Presence dot." },
+    { name: "member-shield-size", tier: "component", kind: "size", value: v("verified-badge-size"), description: "Shield shown in place of a verified member's presence dot." },
     { name: "member-badge-radius", tier: "component", kind: "radius", value: v("radius-full"), description: "Member role badge." },
     { name: "member-item-padding-y", tier: "component", kind: "spacing", value: v("space-1"), description: "Member row vertical padding (density anchor)." },
 

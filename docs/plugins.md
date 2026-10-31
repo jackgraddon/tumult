@@ -467,7 +467,10 @@ interface MemberDecoration {
 `match` runs on **every roster rebuild** (presence, power level, renames), so
 keep it cheap. `MemberView` gives `userId`, `displayName`, `avatarUrl`,
 `membership`, `powerLevel`, `isSelf`, `presence` (`"online" \| "unavailable" \|
-"offline" \| "unknown"`; `unavailable` is "Away") and `lastActiveTs`.
+"offline" \| "unknown"`; `unavailable` is "Away"), `verification`
+(`"verified" \| "unverified" \| "unknown"` — cross-signing trust in their
+identity; `unknown` until the crypto layer answers, never a guessed
+`unverified`) and `lastActiveTs`.
 
 **Example — a badge for a permission level:**
 

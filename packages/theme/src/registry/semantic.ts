@@ -108,6 +108,7 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "timeline-gutter-width", tier: "semantic", kind: "size", value: v("prim-size-md"), description: "Message gutter." },
     { name: "badge-min-size", tier: "semantic", kind: "size", value: v("prim-size-xs"), description: "Unread badge." },
     { name: "presence-dot-size", tier: "semantic", kind: "size", value: v("prim-size-2xs"), description: "Presence dot." },
+    { name: "verified-badge-size", tier: "semantic", kind: "size", value: v("prim-size-xs"), description: "Verified-identity shield (replaces the presence dot)." },
 
     // Borders
     { name: "border-width", tier: "semantic", kind: "border-width", value: v("prim-border-width"), description: "Default border." },

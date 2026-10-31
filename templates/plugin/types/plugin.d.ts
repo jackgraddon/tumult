@@ -418,6 +418,7 @@ export interface OwnPresenceView {
 	presence: OwnPresenceState;
 	statusMessage: string | null;
 }
+type MemberVerification = "verified" | "unverified" | "unknown";
 /** One member of a room, as the members pane needs it. */
 export interface MemberView {
 	userId: string;
@@ -431,6 +432,8 @@ export interface MemberView {
 	powerLevel: number;
 	isSelf: boolean;
 	presence: PresenceState;
+	/** Whether we have cryptographically verified this user's identity. */
+	verification: MemberVerification;
 	/**
 	 * Approximate last-activity time (ms since epoch) derived from live
 	 * presence, `null` when presence is unknown. A moment ago for `online`.

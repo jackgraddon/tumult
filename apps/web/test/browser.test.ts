@@ -426,6 +426,25 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
     });
 
+    it("shows a shield in place of the presence dot for a verified member", async () => {
+        // The fake marks Alice verified and Bob known-but-unverified.
+        const alice = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Alice/ }) }).first();
+        const bob = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Bob/ }) }).first();
+        await alice.waitFor({ timeout: 10_000 });
+        const shield = alice.locator(".tumult-member-shield");
+        assert.equal(await shield.count(), 1, "a verified member shows the shield");
+        assert.equal(await alice.locator(".tumult-member-dot").count(), 0, "the shield replaces the dot, it is not added beside it");
+        assert.equal(await shield.getAttribute("data-presence"), "online", "the shield still carries presence");
+        assert.match((await shield.getAttribute("title")) ?? "", /^Verified · Online$/);
+        assert.match(await alice.locator(".tumult-member-name").textContent() ?? "", /, verified$/, "screen readers hear it");
+        assert.equal(await bob.locator(".tumult-member-shield").count(), 0, "unverified keeps the dot");
+        assert.equal(await bob.locator(".tumult-member-dot").count(), 1);
+        // Rows are virtualized on an estimate: the shield must not be what sets
+        // the row's height, so it stays within the avatar beside it.
+        const [shieldBox, avatarBox] = await Promise.all([shield.boundingBox(), alice.locator(".tumult-avatar").first().boundingBox()]);
+        assert.ok(shieldBox && avatarBox && shieldBox.height <= avatarBox.height, `shield ${shieldBox?.height} taller than avatar ${avatarBox?.height}`);
+    });
+
     it("renders a member's activity from a profile field in place of the status line", async () => {
         // The fake seeds Alice's showcase field; the fake-only showcase plugin
         // registers the renderer. Nothing else should carry a subtitle.

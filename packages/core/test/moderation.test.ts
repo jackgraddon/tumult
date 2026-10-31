@@ -71,6 +71,7 @@ function stubMatrix(rooms: Room[]): MatrixClient & { emit: (event: string, ...ar
         getUserId: () => selfId,
         getRoom: (roomId: string) => rooms.find((r) => (r as StubRoom).roomId === roomId),
         getUser: () => undefined,
+        getCrypto: () => undefined,
         on: (event: string, fn: (...args: unknown[]) => void) => {
             const set = listeners.get(event) ?? new Set();
             set.add(fn);

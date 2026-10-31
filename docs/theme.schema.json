@@ -715,6 +715,10 @@
                     "type": "string",
                     "description": "Presence dot."
                 },
+                "verified-badge-size": {
+                    "type": "string",
+                    "description": "Verified-identity shield (replaces the presence dot)."
+                },
                 "border-width": {
                     "type": "string",
                     "description": "Default border."
@@ -974,6 +978,10 @@
                 "member-dot-size": {
                     "type": "string",
                     "description": "Presence dot."
+                },
+                "member-shield-size": {
+                    "type": "string",
+                    "description": "Shield shown in place of a verified member's presence dot."
                 },
                 "member-badge-radius": {
                     "type": "string",
@@ -1892,6 +1900,10 @@
                         "type": "string",
                         "description": "Presence dot."
                     },
+                    "verified-badge-size": {
+                        "type": "string",
+                        "description": "Verified-identity shield (replaces the presence dot)."
+                    },
                     "border-width": {
                         "type": "string",
                         "description": "Default border."
@@ -2151,6 +2163,10 @@
                     "member-dot-size": {
                         "type": "string",
                         "description": "Presence dot."
+                    },
+                    "member-shield-size": {
+                        "type": "string",
+                        "description": "Shield shown in place of a verified member's presence dot."
                     },
                     "member-badge-radius": {
                         "type": "string",
@@ -3070,6 +3086,10 @@
                         "type": "string",
                         "description": "Presence dot."
                     },
+                    "verified-badge-size": {
+                        "type": "string",
+                        "description": "Verified-identity shield (replaces the presence dot)."
+                    },
                     "border-width": {
                         "type": "string",
                         "description": "Default border."
@@ -3329,6 +3349,10 @@
                     "member-dot-size": {
                         "type": "string",
                         "description": "Presence dot."
+                    },
+                    "member-shield-size": {
+                        "type": "string",
+                        "description": "Shield shown in place of a verified member's presence dot."
                     },
                     "member-badge-radius": {
                         "type": "string",

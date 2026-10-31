@@ -331,8 +331,9 @@ function member(
     membership: MemberView["membership"],
     presence: MemberView["presence"],
     lastActiveTs: number | null,
+    verification: MemberView["verification"] = "unknown",
 ): MemberView {
-    return { userId, displayName, avatarUrl: null, membership, powerLevel, isSelf: false, presence, lastActiveTs };
+    return { userId, displayName, avatarUrl: null, membership, powerLevel, isSelf: false, presence, verification, lastActiveTs };
 }
 
 /**
@@ -362,8 +363,9 @@ function buildRoster(roomId: string, self: MemberView): MemberView[] {
     }
     return sortMembers([
         self,
-        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000),
-        member("@bob:example.com", "Bob", 50, "join", "offline", now - 3 * 3_600_000),
+        // Alice is verified (the shield in the members pane), Bob known but not.
+        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000, "verified"),
+        member("@bob:example.com", "Bob", 50, "join", "offline", now - 3 * 3_600_000, "unverified"),
         member("@carol:example.com", "Carol", 0, "join", "unknown", null),
         member("@erin:example.com", "Erin", 0, "invite", "unknown", null),
         // General demos the Banned section: Mallory is banned, so she is absent
@@ -1136,6 +1138,8 @@ class FakeChatClient implements ChatClient {
             powerLevel: 100,
             isSelf: true,
             presence: this.ownPresenceValue,
+            // The fake has no crypto, so our own identity's trust is unknown.
+            verification: "unknown",
             lastActiveTs: Date.now(),
         };
     }

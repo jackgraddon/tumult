@@ -16,6 +16,7 @@ function member(overrides: Partial<MemberView> = {}): MemberView {
         powerLevel: 0,
         isSelf: false,
         presence: "online",
+        verification: "unknown",
         lastActiveTs: null,
         ...overrides,
     };

@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**292 tokens** — 91 primitives, 110 semantic, 91 component.
+**294 tokens** — 91 primitives, 111 semantic, 92 component.
 
 ## Primitives
 
@@ -195,6 +195,7 @@ everything built on it.
 | `--timeline-gutter-width` | size | `var(--prim-size-md)` | Message gutter. |
 | `--badge-min-size` | size | `var(--prim-size-xs)` | Unread badge. |
 | `--presence-dot-size` | size | `var(--prim-size-2xs)` | Presence dot. |
+| `--verified-badge-size` | size | `var(--prim-size-xs)` | Verified-identity shield (replaces the presence dot). |
 | `--border-width` | border-width | `var(--prim-border-width)` | Default border. |
 | `--border-width-medium` | border-width | `var(--prim-border-width-medium)` | Thin ring (hollow presence dot). |
 | `--border-width-strong` | border-width | `var(--prim-border-width-strong)` | Emphasis border. |
@@ -265,6 +266,7 @@ everything built on it.
 | `--composer-input-border` | color | `var(--border-default)` | Composer input border. |
 | `--members-bg` | color | `var(--surface-pane)` | Members pane. |
 | `--member-dot-size` | size | `var(--presence-dot-size)` | Presence dot. |
+| `--member-shield-size` | size | `var(--verified-badge-size)` | Shield shown in place of a verified member's presence dot. |
 | `--member-badge-radius` | radius | `var(--radius-full)` | Member role badge. |
 | `--member-item-padding-y` | spacing | `var(--space-1)` | Member row vertical padding (density anchor). |
 | `--button-primary-bg` | color | `var(--accent)` | Primary button. |
