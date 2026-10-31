@@ -17,6 +17,7 @@
       "@tumult/core": ["../core/src/index.ts"],
       "@tumult/core/selectors": ["../core/src/selectors/spaceTree.ts"],
       "@tumult/core/media": ["../core/src/media/classify.ts"],
+      "@tumult/core/errors": ["../core/src/errors.ts"],
       "@tumult/core/*": ["../core/src/*"],
       "@tumult/theme": ["./src/index.ts"],
       "@tumult/theme/runtime": ["./src/runtime.ts"],

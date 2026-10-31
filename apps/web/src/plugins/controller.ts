@@ -14,6 +14,7 @@
  * `confirm()` refuse with a message instead of throwing into a void.
  */
 
+import { reportError } from "@tumult/core/errors";
 import { shallowRef, type Ref } from "vue";
 import {
     hashBundle,
@@ -53,7 +54,10 @@ export interface PluginHost {
 }
 
 function fail(error: unknown): InstallOutcome {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    // An InstallError is the installer's own sentence; anything else (a fetch
+    // that never answered, IndexedDB) is translated and logged.
+    if (error instanceof InstallError) return { ok: false, error: error.message };
+    return { ok: false, error: reportError(error, "Couldn't install the plugin") || "The install was cancelled." };
 }
 
 export class AppPluginInstallController implements PluginInstallControls {

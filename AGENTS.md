@@ -408,6 +408,22 @@ chat client should be.
 - **Where truth lives:** `packages/core/src/contract.ts` is the UI↔data boundary, `AGENTS.md` is repo ops + verified Matrix traps. Reference both rather than duplicating. Author-facing references: `docs/themes.md` (theme documents + loader), the generated `docs/tokens.md` + `docs/theme.schema.json` (emitted by the theme build, guarded by `packages/theme/test/docs.test.ts`), and `docs/plugins.md` (extension API for authors + hosts, guarded by `packages/ui/test/docs.test.ts`).
 - **Stack pins:** Vue 3 + Vite (not Nuxt), Reka headless, `@tanstack/vue-virtual`, TypeScript 5.x (vue-tsc compatible), `rewriteRelativeImportExtensions` on for packages / off for `apps/web`, `optimizeDeps.exclude` must list `@matrix-org/matrix-sdk-crypto-wasm` and it is an explicit dependency of `apps/web`.
 - **Invariants to preserve:** one `ChatClient` per renderer, recompute-not-patch, chrome-vs-panes (`inert` + 0-width tracks), per-shell registry via provide/inject (never a module singleton), use whole-statement `import type` in SFCs (not inline `type` specifiers), CSP must allow `'wasm-unsafe-eval'` and `media-src blob:`, hover affordances in the virtualized timeline are out-of-flow (`.tumult-row-actions`, absolutely positioned at the row's top-right) — an in-flow hover control grows the row and shifts every message under the pointer.
+- **Errors are sentences, never the raw error.** Every surface that reports a
+  failure calls `reportError(error, "Couldn't ban Bob")` (or the pure
+  `describeError`) from `@tumult/core/errors` — UI-safe, no SDK import, it
+  reads errors by SHAPE (`errcode`/`httpStatus`/`data`/`name`, walking `cause`)
+  — and shows what it returns: "Couldn't ban Bob: you don't have permission to
+  do that here." Never `error.message`/`String(error)`: a `MatrixError`'s
+  message embeds the request URL, a `ConnectionError` wraps "Failed to fetch".
+  `reportError` logs the raw error with the same context, so nothing is
+  swallowed. An abort returns `""` (show nothing). The app's own plain-`Error`
+  sentences pass through when short and clean; `{ verbatimOwn: true }` keeps
+  long diagnostic ones (login's metadata validation, voice discovery) as-is.
+  Errors a dialog is meant to show (`onRedactMessage`) still propagate — the
+  translation happens AT the surface. `describeVoiceError` keeps its M_FORBIDDEN
+  call-power hint and delegates the rest. Tests build real SDK error classes
+  (`packages/core/test/errors.test.ts`); the fake refuses `#forbidden:fake` so
+  the smoke test watches one failure reach a dialog.
 - **Icons are names, not glyphs.** First-party chrome and the plugin API
   (`WorkspacePane.icon`, `ComposerAction.icon`) draw through `<Icon name>`
   (`packages/ui/src/icons/`), never emoji or text symbols. A bare name is a

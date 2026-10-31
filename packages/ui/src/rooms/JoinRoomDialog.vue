@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -42,7 +43,7 @@ function submit(): void {
         .joinRoom(idOrAlias)
         .then((roomId) => emit("created", roomId))
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, `Couldn't join ${idOrAlias}`);
         })
         .finally(() => {
             busy.value = false;

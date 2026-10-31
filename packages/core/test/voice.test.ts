@@ -521,10 +521,10 @@ describe("describeVoiceError", () => {
         assert.match(describeVoiceError(new Error("outer", { cause: refused() })), /permission to join calls/);
     });
 
-    it("uses the server's own words for any other Matrix error, never the URL", () => {
+    it("translates any other Matrix error through describeError, never the URL", () => {
         const limited = new MatrixError({ errcode: "M_LIMIT_EXCEEDED", error: "Too many requests" }, 429, "http://hs/_matrix/client/v3/x");
-        assert.equal(describeVoiceError(new Error("wrapped", { cause: limited })), "Couldn't join the call: Too many requests");
-        assert.equal(describeVoiceError(new MatrixError({ errcode: "M_UNKNOWN" }, 500, "http://hs/x")), "Couldn't join the call: M_UNKNOWN");
+        assert.equal(describeVoiceError(new Error("wrapped", { cause: limited })), "Couldn't join the call: you're doing that too often. Wait a moment and try again.");
+        assert.equal(describeVoiceError(new MatrixError({ errcode: "M_UNKNOWN" }, 500, "http://hs/x")), "Couldn't join the call: the server ran into a problem. Try again in a moment.");
     });
 
     it("keeps our own messages as they are", () => {

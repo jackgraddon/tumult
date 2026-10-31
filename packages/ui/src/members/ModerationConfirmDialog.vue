@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, ref, watch } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -90,7 +91,7 @@ function submit(): void {
     void promise
         .then(() => emit("close"))
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, `Couldn't ${action.kind} ${action.member.displayName}`);
         })
         .finally(() => {
             busy.value = false;

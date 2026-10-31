@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import type { ChatClient, VerificationRequestView } from "@tumult/core";
 import { useSubscribable } from "../subscribable.ts";
@@ -50,7 +51,7 @@ async function start(): Promise<void> {
     try {
         await props.client.startVerification();
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't start verification");
         phase.value = "error";
     }
 }
@@ -85,7 +86,7 @@ async function acceptIncoming(): Promise<void> {
     try {
         await props.client.acceptVerification(req.id);
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't accept the verification request");
         phase.value = "error";
     }
 }
@@ -97,7 +98,7 @@ async function confirm(): Promise<void> {
         await props.client.confirmSas(req.id);
         phase.value = "done";
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't confirm the emojis");
         phase.value = "error";
     }
 }
@@ -109,7 +110,7 @@ async function mismatch(): Promise<void> {
         await props.client.mismatchSas(req.id);
         phase.value = "error";
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't cancel the verification");
         phase.value = "error";
     }
 }

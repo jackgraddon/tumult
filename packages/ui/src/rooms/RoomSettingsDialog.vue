@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, onScopeDispose, ref, watch } from "vue";
 import type {
     ChatClient,
@@ -155,7 +156,7 @@ function submit(): void {
             emit("close");
         })
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, "Couldn't save room settings");
         })
         .finally(() => {
             busy.value = false;

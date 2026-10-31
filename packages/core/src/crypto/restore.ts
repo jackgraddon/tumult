@@ -3,6 +3,8 @@
  * routing and every failure message are unit-testable without a crypto stack.
  */
 
+import { describeError } from "../errors.ts";
+
 /**
  * Serve a user-pasted key to the SDK's secret-storage requests.
  *
@@ -35,7 +37,7 @@ export function restoreFailureMessage(cause: unknown): string {
             "on a device that can still read history."
         );
     }
-    return "Couldn't download the backup. Check your connection and try again.";
+    return describeError(cause, "Couldn't download the backup");
 }
 
 export interface CrossSigningStatusLike {

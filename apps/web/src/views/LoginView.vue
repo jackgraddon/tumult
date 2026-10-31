@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref } from "vue";
 
 import { chat } from "../chat.ts";
@@ -15,7 +16,7 @@ async function submit(): Promise<void> {
         // so `busy` is only ever cleared on the failure path.
         await chat.login({ homeserverUrl: homeserverUrl.value });
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't start signing in", { verbatimOwn: true });
         busy.value = false;
     }
 }

@@ -18,6 +18,7 @@
  * `commit()` — this module never installs without being told to.
  */
 
+import { describeError } from "@tumult/core/errors";
 import {
     checkReleaseManifest,
     createFrameTransport,
@@ -187,7 +188,7 @@ async function downloadBundle(resolved: ResolvedRelease, source: PluginSource): 
         throw new InstallError(`Could not download ${entry} from ${source.owner}/${source.repo}.`);
     }
     if (!response.ok) {
-        throw new InstallError(`Could not download ${entry} (HTTP ${response.status}).`);
+        throw new InstallError(describeError({ httpStatus: response.status }, `Couldn't download ${entry}`));
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     const actual = await hashBundle(bytes);

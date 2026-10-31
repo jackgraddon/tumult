@@ -1,3 +1,4 @@
+import { describeError } from "../errors.ts";
 import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixRTCSession } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import type { MatrixClient } from "matrix-js-sdk";
@@ -478,10 +479,6 @@ function toParticipant(p: MediaSnapshot["participants"][number]): VoiceParticipa
     return { userId, deviceId, speaking: p.speaking, muted: p.muted, camera: p.camera, screen: p.screen, screenAudio: p.screenAudio };
 }
 
-function message(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * A sentence for the voice bar. The SDK wraps a server refusal several layers
  * deep ("The MembershipManager shut down because of the end condition:
@@ -492,17 +489,14 @@ function message(error: unknown): string {
 export function describeVoiceError(error: unknown): string {
     let current: unknown = error;
     for (let depth = 0; current != null && depth < 8; depth++) {
-        const { errcode, data } = current as { errcode?: unknown; data?: { error?: unknown } };
-        if (errcode === "M_FORBIDDEN") {
+        if ((current as { errcode?: unknown }).errcode === "M_FORBIDDEN") {
             return "You don't have permission to join calls in this room. A room admin can turn on “Members can join calls” in room settings.";
-        }
-        if (typeof errcode === "string") {
-            const said = typeof data?.error === "string" && data.error.length > 0 ? data.error : errcode;
-            return `Couldn't join the call: ${said}`;
         }
         current = (current as { cause?: unknown }).cause;
     }
-    return message(error);
+    // Voice's own failures (no focus, a refused SFU token) are already
+    // diagnostic sentences written here; only request failures need translating.
+    return describeError(error, "Couldn't join the call", { verbatimOwn: true });
 }
 
 /**

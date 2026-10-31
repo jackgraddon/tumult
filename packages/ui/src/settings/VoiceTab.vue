@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, ref } from "vue";
 import { DEFAULT_VOICE_SETTINGS } from "@tumult/core/contract";
 import type { VoiceSettings } from "@tumult/core";
@@ -49,7 +50,7 @@ async function change(change: Partial<VoiceSettings>): Promise<void> {
         await props.client.setVoiceSettings(change);
     } catch (cause) {
         // The choice is saved even when re-opening the live microphone fails.
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't save voice settings");
     }
 }
 
