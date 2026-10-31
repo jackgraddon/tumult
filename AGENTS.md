@@ -841,7 +841,12 @@ homeserver. A trap listed here has shipped broken at least once.
   applies that override SHALLOWLY, so passing `events` replaces the default
   map and drops `m.room.power_levels`/`m.room.encryption`/`m.room.server_acl`
   from 100 to 50 (VERIFIED in synapse/handlers/room.py). Rooms made BEFORE the
-  fix, or by other clients, still need an admin to lower it. The refusal
+  fix, or by other clients, are opened by an admin with room settings'
+  "Members can join calls" (`RoomSettingsPatch.membersCanJoinCalls`; the
+  read-modify-write is `rooms/calls.ts`, the read rule
+  `membersCanJoinCalls()` in contract.ts). Closing sets max(50,
+  state_default, users_default + 1): closing to state_default alone would
+  leave a room whose state_default is 0 open. The refusal
   arrives as `MembershipManagerError` WHILE `join()` is still awaiting the
   focus/token, so `fail()` must bump `generation` like `leave()` does —
   without it join() carried on (finding the OTHER member's focus), fetched a

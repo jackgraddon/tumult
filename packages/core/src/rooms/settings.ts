@@ -6,6 +6,7 @@ import {
 } from "matrix-js-sdk/lib/@types/partials.js";
 
 import type { HistoryVisibility, JoinRule, RoomSettingsPatch } from "../contract.ts";
+import { setMembersCanJoinCalls } from "./calls.ts";
 
 /**
  * Settings live in state events (`m.room.name`/`topic`/`avatar`,
@@ -148,5 +149,8 @@ export async function updateRoomSettings(
                 ? {}
                 : { alias: patch.canonicalAlias.trim() };
         await matrix.sendStateEvent(roomId, EventType.RoomCanonicalAlias, content);
+    }
+    if (patch.membersCanJoinCalls !== undefined) {
+        await setMembersCanJoinCalls(matrix, roomId, patch.membersCanJoinCalls);
     }
 }

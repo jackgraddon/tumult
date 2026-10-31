@@ -494,7 +494,7 @@ export function describeVoiceError(error: unknown): string {
     for (let depth = 0; current != null && depth < 8; depth++) {
         const { errcode, data } = current as { errcode?: unknown; data?: { error?: unknown } };
         if (errcode === "M_FORBIDDEN") {
-            return "You don't have permission to join calls in this room. A room admin can allow members to join calls.";
+            return "You don't have permission to join calls in this room. A room admin can turn on “Members can join calls” in room settings.";
         }
         if (typeof errcode === "string") {
             const said = typeof data?.error === "string" && data.error.length > 0 ? data.error : errcode;

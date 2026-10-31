@@ -30,6 +30,7 @@ import type {
     UserSearchResult,
     VerificationState,
 } from "../contract.ts";
+import { CALL_MEMBER_EVENT_TYPE } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { fallbackName } from "../rooms/profile.ts";
 import { assertProfileFieldKey } from "../rooms/profile-fields.ts";
@@ -402,6 +403,8 @@ class FakeChatClient implements ChatClient {
     private readonly memberFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly powerLevelFeeds = new Map<string, Observable<RoomPowerLevelsView | null>>();
+    /** A room's `call.member` level once room settings has set it (else state_default). */
+    private readonly callMemberLevels = new Map<string, number>();
     private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
     /** Our own presence; the roster's self row mirrors `ownPresence`, like core. */
@@ -689,6 +692,11 @@ class FakeChatClient implements ChatClient {
                 return next;
             }),
         );
+        if (patch.membersCanJoinCalls !== undefined) {
+            // Same levels the real write picks: the default user level, or 50.
+            this.callMemberLevels.set(roomId, patch.membersCanJoinCalls ? 0 : 50);
+            this.publishRoom(roomId);
+        }
     }
 
     public async invite(roomId: string, userId: string): Promise<void> {
@@ -1161,7 +1169,9 @@ class FakeChatClient implements ChatClient {
             kick: 50,
             redact: 50,
             invite: 0,
-            events: {},
+            // No entry means state_default (50): admins-only calls, until room
+            // settings opens them — the shape of a room made by another client.
+            events: this.callMemberLevels.has(roomId) ? { [CALL_MEMBER_EVENT_TYPE]: this.callMemberLevels.get(roomId)! } : {},
             myPowerLevel,
             canKick: myPowerLevel >= 50,
             canBan: myPowerLevel >= 50,

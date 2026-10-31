@@ -7,7 +7,9 @@ import type {
     RoomSettingsPatch,
     RoomSummary,
 } from "@tumult/core";
+import { membersCanJoinCalls } from "@tumult/core/contract";
 
+import { useRoomPower } from "../members/power.ts";
 import Avatar from "../primitives/Avatar.vue";
 import RoomDialog from "./RoomDialog.vue";
 
@@ -31,6 +33,23 @@ const removing = ref(false);
 const busy = ref(false);
 const error = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
+
+// Who may join calls is a power level, not a summary field, so it is read off
+// the live power-levels feed (subscribed only while the dialog is open). A room
+// made by another client — or by Tumult before it opened them — can keep calls
+// to admins, and this is how an admin opens them. `null` = not touched yet, so
+// the toggle follows the live value until the user changes it.
+const power = useRoomPower(props.client, () => (props.open ? props.room?.id : undefined));
+const offersCalls = computed(() => props.client.supportsVoice() || props.client.supportsCalls());
+const callsOpenLive = computed(() => (power.value ? membersCanJoinCalls(power.value) : null));
+const callsOpenEdit = ref<boolean | null>(null);
+const callsOpen = computed({
+    get: () => callsOpenEdit.value ?? callsOpenLive.value ?? false,
+    set: (value: boolean) => {
+        callsOpenEdit.value = value;
+    },
+});
+const callsChanged = computed(() => callsOpenEdit.value !== null && callsOpenEdit.value !== callsOpenLive.value);
 
 // The Reka content unmounts on close but this
 // component's script state survives, so seed from the live summary on every
@@ -61,6 +80,7 @@ watch(
         canonicalAlias.value = room?.canonicalAlias ?? "";
         file.value = null;
         removing.value = false;
+        callsOpenEdit.value = null;
         busy.value = false;
         error.value = "";
     },
@@ -82,7 +102,8 @@ const dirty = computed(() => {
         historyVisibility.value !== room.historyVisibility ||
         canonicalAlias.value.trim() !== (room.canonicalAlias ?? "") ||
         file.value !== null ||
-        (removing.value && (room.avatarUrl ?? null) !== null)
+        (removing.value && (room.avatarUrl ?? null) !== null) ||
+        callsChanged.value
     );
 });
 
@@ -125,6 +146,7 @@ function submit(): void {
     if (trimmedAlias !== (room.canonicalAlias ?? "")) {
         patch.canonicalAlias = trimmedAlias === "" ? null : trimmedAlias;
     }
+    if (callsChanged.value) patch.membersCanJoinCalls = callsOpen.value;
     busy.value = true;
     error.value = "";
     props.client
@@ -244,6 +266,19 @@ function submit(): void {
             />
             <p class="tumult-dialog-hint">
                 The address people use to find and join this room. Leave empty to remove it.
+            </p>
+        </div>
+        <div v-if="offersCalls && power" class="tumult-dialog-field">
+            <label class="tumult-dialog-check">
+                <input v-model="callsOpen" type="checkbox" :disabled="!power.canSetPowerLevel" />
+                Members can join calls
+            </label>
+            <p class="tumult-dialog-hint">
+                {{
+                    power.canSetPowerLevel
+                        ? "Off means only moderators and admins can join this room's calls."
+                        : "Only someone who can change this room's permissions can change this."
+                }}
             </p>
         </div>
     </RoomDialog>

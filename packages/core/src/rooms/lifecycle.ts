@@ -11,6 +11,7 @@ import type {
     CreateSpaceParams,
     UserSearchResult,
 } from "../contract.ts";
+import { setMembersCanJoinCalls } from "./calls.ts";
 
 const MEGOLM = "m.megolm.v1.aes-sha2";
 
@@ -21,31 +22,16 @@ const MEGOLM = "m.megolm.v1.aes-sha2";
  * `org.matrix.msc3401.call.member` STATE event, and the presets leave state
  * events at `state_default` (50) — so without this only the creator could join
  * and everyone else was refused with M_FORBIDDEN. Element creates rooms with
- * it at 0; so do we.
- *
- * A follow-up write, not `power_level_content_override` on createRoom: Synapse
- * applies that override with a SHALLOW update, so passing `events` replaces the
- * whole default map and silently drops `m.room.power_levels`,
- * `m.room.encryption`, `m.room.server_acl` (100) and friends to 50. Those
- * defaults also differ by room version (v12 puts tombstone at 150) and by
- * server config, so they cannot be restated here. Reading the room's actual
- * levels and raising one entry is right for all of them.
+ * it at 0; so do we. How the write is done (and why not on createRoom) is
+ * `setMembersCanJoinCalls`'s business.
  *
  * Never throws: the room already exists, and reporting a failed create for it
- * would be worse than calls being admin-only in it. The failure is logged.
+ * would be worse than calls being admin-only in it. The failure is logged, and
+ * an admin can still open them from room settings.
  */
 async function allowCallsForMembers(matrix: MatrixClient, roomId: string): Promise<void> {
     try {
-        const current = (await matrix.getStateEvent(roomId, EventType.RoomPowerLevels, "")) as {
-            events?: Record<string, number>;
-        };
-        if (current.events?.[EventType.GroupCallMemberPrefix] === 0) return;
-        await matrix.sendStateEvent(
-            roomId,
-            EventType.RoomPowerLevels,
-            { ...current, events: { ...current.events, [EventType.GroupCallMemberPrefix]: 0 } } as never,
-            "",
-        );
+        await setMembersCanJoinCalls(matrix, roomId, true);
     } catch (error) {
         console.warn(`[tumult] could not open calls to members of ${roomId}; only admins can join them`, error);
     }

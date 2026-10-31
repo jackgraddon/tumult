@@ -2253,6 +2253,29 @@ describe("browser smoke test (fake client)", () => {
         }
     });
 
+    it("lets an admin open a room's calls to members from room settings", async () => {
+        // Fake rooms carry no call.member level, so state_default (50) applies:
+        // admins-only calls, the shape of a room another client made.
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        const openSettings = async (): Promise<void> => {
+            await page.getByRole("button", { name: "Room settings" }).click();
+            await page.getByRole("dialog", { name: "Room settings" }).waitFor({ timeout: 10_000 });
+        };
+        const toggle = page.getByRole("checkbox", { name: "Members can join calls" });
+
+        await openSettings();
+        assert.equal(await toggle.isChecked(), false, "a room with no override keeps calls to admins");
+        await toggle.check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await page.getByRole("dialog", { name: "Room settings" }).waitFor({ state: "detached", timeout: 10_000 });
+
+        await openSettings();
+        assert.equal(await toggle.isChecked(), true, "reopening shows the saved setting");
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog", { name: "Room settings" }).waitFor({ state: "detached", timeout: 10_000 });
+    });
+
     it("reports no console errors across the whole run", () => {
         assert.deepEqual(consoleErrors, []);
     });

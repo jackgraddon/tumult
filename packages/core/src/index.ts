@@ -78,4 +78,4 @@ export { hasStoredSession } from "./auth/session.ts";
 export { isTerminalMediaError } from "./media/classify.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
 
-export { DEFAULT_VOICE_SETTINGS } from "./contract.ts";
+export { CALL_MEMBER_EVENT_TYPE, DEFAULT_VOICE_SETTINGS, membersCanJoinCalls } from "./contract.ts";

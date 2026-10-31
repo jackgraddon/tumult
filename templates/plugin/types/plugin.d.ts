@@ -199,6 +199,12 @@ export interface RoomSettingsPatch {
 	historyVisibility?: HistoryVisibility;
 	/** Full `#alias:server` form; `null` (or empty after trim) removes it. */
 	canonicalAlias?: string | null;
+	/**
+	 * Whether members (not only admins) may join the room's calls — the power
+	 * level of {@link CALL_MEMBER_EVENT_TYPE}. A room power-levels write, so it
+	 * needs `canSetPowerLevel`. Read it back with {@link membersCanJoinCalls}.
+	 */
+	membersCanJoinCalls?: boolean;
 }
 export interface RoomSummary {
 	id: string;

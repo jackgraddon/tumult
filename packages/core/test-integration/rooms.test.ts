@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createClient, type MatrixClient } from "matrix-js-sdk";
 
 import { createDm } from "../src/rooms/lifecycle.ts";
+import { updateRoomSettings } from "../src/rooms/settings.ts";
 import { selectSpaceTree } from "../src/selectors/spaceTree.ts";
 import { snapshotRooms } from "../src/rooms/snapshot.ts";
 
@@ -199,5 +200,37 @@ describe("rooms against real Synapse", () => {
         assert.equal(events["m.room.power_levels"], 100);
         assert.equal(events["m.room.encryption"], 100);
         assert.equal(levels["state_default"], 50, "other state stays admin-only");
+    });
+
+    it("lets an admin open and close an existing room's calls from room settings", { timeout: 60000 }, async () => {
+        // A room another client made (or Tumult before createDm opened calls):
+        // calls are admins-only, and room settings is the way to change that.
+        const suffix = Date.now().toString(36);
+        const alice = await register(`setta-${suffix}`, "testtesttest");
+        const bob = await register(`settb-${suffix}`, "testtesttest");
+        const CALL_MEMBER = "org.matrix.msc3401.call.member";
+        const stateKey = encodeURIComponent(`_${bob.userId}_TEST`);
+        const roomId = (await api("POST", "/_matrix/client/v3/createRoom", alice.token, {
+            preset: "private_chat",
+            invite: [bob.userId],
+        }))["room_id"] as string;
+        await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.token, {});
+        const bobJoinsCall = (): Promise<Record<string, unknown>> =>
+            api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {});
+
+        await assert.rejects(bobJoinsCall(), /403/, "admins-only to begin with");
+        const aliceClient = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
+
+        await updateRoomSettings(aliceClient, roomId, { membersCanJoinCalls: true });
+        await bobJoinsCall();
+
+        await updateRoomSettings(aliceClient, roomId, { membersCanJoinCalls: false });
+        await assert.rejects(bobJoinsCall(), /403/, "closed again");
+        const levels = await api("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels/`, alice.token);
+        assert.equal((levels["events"] as Record<string, number>)["m.room.power_levels"], 100, "nothing else was lowered");
+
+        // And a member cannot open them for themselves.
+        const bobClient = createClient({ baseUrl: BASE, userId: bob.userId, accessToken: bob.token });
+        await assert.rejects(updateRoomSettings(bobClient, roomId, { membersCanJoinCalls: true }), /403|permission/i);
     });
 });

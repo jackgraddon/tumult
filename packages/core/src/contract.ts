@@ -195,6 +195,29 @@ export interface RoomSettingsPatch {
     historyVisibility?: HistoryVisibility;
     /** Full `#alias:server` form; `null` (or empty after trim) removes it. */
     canonicalAlias?: string | null;
+    /**
+     * Whether members (not only admins) may join the room's calls — the power
+     * level of {@link CALL_MEMBER_EVENT_TYPE}. A room power-levels write, so it
+     * needs `canSetPowerLevel`. Read it back with {@link membersCanJoinCalls}.
+     */
+    membersCanJoinCalls?: boolean;
+}
+
+/**
+ * The state event a MatrixRTC member sends to join a call (compatibility
+ * mode, see voice/sfu.ts). Being STATE, the room's `state_default` (50 under
+ * the presets) gates it unless `events` lowers it — which is why a room can
+ * let only its admins join calls.
+ */
+export const CALL_MEMBER_EVENT_TYPE = "org.matrix.msc3401.call.member";
+
+/**
+ * Whether a member at the room's default level may join its calls. Pure, and
+ * here (a value module with no SDK import) so the room-settings dialog can
+ * show the setting without pulling the client into the UI bundle.
+ */
+export function membersCanJoinCalls(levels: Pick<RoomPowerLevelsView, "events" | "stateDefault" | "usersDefault">): boolean {
+    return (levels.events[CALL_MEMBER_EVENT_TYPE] ?? levels.stateDefault) <= levels.usersDefault;
 }
 
 export interface RoomSummary {
