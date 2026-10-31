@@ -60,7 +60,8 @@ describe("CryptoController", () => {
 
     it("setupRecovery serves the generated key during bootstrapSecretStorage and clears it after", async () => {
         const privateKey = new Uint8Array([1, 2, 3]);
-        let ctl!: CryptoController;
+        let matrix: MatrixClient | null = null;
+        const ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => undefined });
         let servedDuring: unknown = "not asked";
         const crypto = stubCrypto({
             userHasCrossSigningKeys: async () => true,
@@ -71,15 +72,15 @@ describe("CryptoController", () => {
                 servedDuring = ctl.serveSecretStorageKey(KEY_ID);
             },
         });
-        const matrix = client(crypto);
-        ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => undefined });
+        matrix = client(crypto);
         assert.equal(await ctl.setupRecovery(), "EsTc 1234");
         assert.deepEqual(servedDuring, ["abc", privateKey]);
         assert.equal(ctl.serveSecretStorageKey(KEY_ID), null);
     });
 
     it("setupRecovery clears the held key when bootstrap throws", async () => {
-        let ctl!: CryptoController;
+        let matrix: MatrixClient | null = null;
+        const ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => undefined });
         const crypto = stubCrypto({
             userHasCrossSigningKeys: async () => true,
             createRecoveryKeyFromPassphrase: async () => ({ privateKey: new Uint8Array([9]), encodedPrivateKey: "k" }),
@@ -89,8 +90,7 @@ describe("CryptoController", () => {
                 throw new Error("4S failed");
             },
         });
-        const matrix = client(crypto);
-        ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => undefined });
+        matrix = client(crypto);
         await assert.rejects(ctl.setupRecovery(), /4S failed/);
         assert.equal(ctl.serveSecretStorageKey(KEY_ID), null);
     });
@@ -99,9 +99,10 @@ describe("CryptoController", () => {
         const raw = new Uint8Array(32).fill(7);
         const recoveryKey = encodeRecoveryKey(raw);
         assert.ok(recoveryKey);
-        let ctl!: CryptoController;
-        const served: Record<string, unknown> = {};
+        let matrix: MatrixClient | null = null;
         let rebuilds = 0;
+        const ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => void rebuilds++ });
+        const served: Record<string, unknown> = {};
         const crypto = stubCrypto({
             loadSessionBackupPrivateKeyFromSecretStorage: async () => {
                 served.unlock = ctl.serveSecretStorageKey(KEY_ID);
@@ -117,8 +118,7 @@ describe("CryptoController", () => {
                 served.import = ctl.serveSecretStorageKey(KEY_ID);
             },
         });
-        const matrix = client(crypto);
-        ctl = new CryptoController(context(() => matrix), { rebuildTimelines: () => void rebuilds++ });
+        matrix = client(crypto);
         assert.equal(await ctl.restoreBackup(recoveryKey), true);
         assert.deepEqual(served.unlock, ["abc", raw]);
         assert.deepEqual(served.import, ["abc", raw]);
