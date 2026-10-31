@@ -419,6 +419,29 @@ chat client should be.
 ## Context for agents
 
 - **Where truth lives:** `packages/core/src/contract.ts` is the UI↔data boundary, `AGENTS.md` is repo ops + verified Matrix traps. Reference both rather than duplicating. Author-facing references: `docs/themes.md` (theme documents + loader), the generated `docs/tokens.md` + `docs/theme.schema.json` (emitted by the theme build, guarded by `packages/theme/test/docs.test.ts`), and `docs/plugins.md` (extension API for authors + hosts, guarded by `packages/ui/test/docs.test.ts`).
+- **Real-client module map.** `packages/core/src/client.ts` (`MatrixChatClient`)
+  keeps the LIFECYCLE inline — start's `starting ??=` collapse, bootstrap's
+  statement + listener-registration order, `this.matrix = client` before the
+  trackers, both teardown paths (`detachSessionTrackers()` shared, each path's
+  own extras explicit), logout/clearStores — plus every contract method as an
+  explicit forward (so `implements ChatClient` stays checked) and the per-start
+  trackers that already live in their own modules (timelines, typing, threads,
+  members, verification…). Features with state of their own are classes built
+  ONCE in the constructor body (their Observables survive stop/start; no field
+  initializers that touch them, no parameter properties): `call/rtc.ts`
+  (`RtcFeature`: call + voice), `rooms/profile-controller.ts`,
+  `rooms/own-presence-controller.ts`, `crypto/controller.ts` (security,
+  recovery, held key, devices), `rooms/room-list.ts` (`RoomListPublisher`:
+  rooms feed, unread, coalescing, warm seed, shell cache, `debugUnread`).
+  `sync/connection.ts` holds `toConnectionState` + `watchNetwork`. Features
+  reach the SDK only through `client-context.ts` (`ClientContext`: type-only,
+  lazy getters read at call time — never cache a client) and register their
+  SDK listeners via `attach`/`start`/`watch(client)` called at the exact
+  bootstrap line the code used to occupy; the room-list listeners stay inline.
+  No test constructs `MatrixChatClient` itself: the per-feature tests
+  (`test/{connection,rtc-feature,profile-controller,own-presence-controller,
+  crypto-controller,room-list}.test.ts`) plus the real-app browser suites are
+  the coverage.
 - **Stack pins:** Vue 3 + Vite (not Nuxt), Reka headless, `@tanstack/vue-virtual`, TypeScript 5.x (vue-tsc compatible), `rewriteRelativeImportExtensions` on for packages / off for `apps/web`, `optimizeDeps.exclude` must list `@matrix-org/matrix-sdk-crypto-wasm` and it is an explicit dependency of `apps/web`.
 - **Invariants to preserve:** one `ChatClient` per renderer, recompute-not-patch, chrome-vs-panes (`inert` + 0-width tracks), per-shell registry via provide/inject (never a module singleton), use whole-statement `import type` in SFCs (not inline `type` specifiers), CSP must allow `'wasm-unsafe-eval'` and `media-src blob:`, hover affordances in the virtualized timeline are out-of-flow (`.tumult-row-actions`, absolutely positioned at the row's top-right) — an in-flow hover control grows the row and shifts every message under the pointer.
 - **Errors are sentences, never the raw error.** Every surface that reports a
@@ -518,7 +541,8 @@ homeserver. A trap listed here has shipped broken at least once.
 - SSS never sends `set_presence`, so the server kept reporting us `offline`
   while the app was open (and our member row, hardcoded `online`, disagreed
   with the bar). Now: our own member row mirrors `ownPresence` (ONE source),
-  and `announcePresence()` re-asserts the user's last chosen presence
+  and `OwnPresenceController.announce()` (`rooms/own-presence-controller.ts`)
+  re-asserts the user's last chosen presence
   (`tumult.presence.desired`, default `online`) on start and every 60 s,
   keeping the current `status_msg` (resent so the write cannot drop it).
 - `unavailable` ("Away") is a member `PresenceState`, not folded into
@@ -742,7 +766,10 @@ homeserver. A trap listed here has shipped broken at least once.
     created (to store the backup key under it). Our callback only served a key
     during restore, so setup threw AFTER creating the server backup — a backup
     nobody had the key to, and no recovery key shown. Hold the new key in
-    `heldSecretKey` for the bootstrap.
+    `heldSecretKey` (`crypto/controller.ts`) for the bootstrap; the
+    `createClient` callback reads it through
+    `CryptoController.serveSecretStorageKey()` at CALL time — capturing the
+    value would reintroduce both this bug and the restore one above.
   - Nothing ever created a cross-signing identity (`setupRecovery` only made
     4S + backup), so there was nothing to verify with. `setupRecovery` now
     bootstraps cross-signing first — only when the ACCOUNT has none

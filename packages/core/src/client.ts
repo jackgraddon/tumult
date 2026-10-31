@@ -511,7 +511,7 @@ export class MatrixChatClient implements ChatClient {
             }
             // Profile is a plain HTTP read, independent of the sync loop:
             // seed the feed now rather than waiting for the first batch. A
-            // failure publishes the localpart fallback (below) instead.
+            // failure publishes the localpart fallback (profile-controller.ts).
             void this.profileCtl.refresh();
             // Own presence/status is another independent HTTP read: read it
             // now, re-assert the user's choice, keep it honest on a heartbeat
