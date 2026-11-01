@@ -130,6 +130,8 @@ describe("sameTimeline", () => {
             id: "$m:x",
             type: "m.room.message",
             senderId: "@alice:localhost",
+            senderName: "alice",
+            senderAvatarUrl: null,
             body: "hello",
             timestamp: 1,
             status: "sent",
@@ -179,7 +181,7 @@ describe("assignLatestReaders", () => {
     });
 
     it("ignores unknown ids", () => {
-        const out = assignLatestReaders(ids, () => [], "@me");
+        const out = assignLatestReaders(ids, () => []);
         assert.deepEqual(out.get("$1"), []);
     });
 });

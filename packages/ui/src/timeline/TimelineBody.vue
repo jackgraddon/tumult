@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { onScopeDispose, shallowRef, watch } from "vue";
-import type { ChatClient, MessageView, Subscribable, Subscription, ThreadSummary } from "@tumult/core";
+import type {
+    AttachmentSendResult,
+    ChatClient,
+    MessageView,
+    OutgoingAttachment,
+    Subscribable,
+    Subscription,
+    ThreadSummary,
+} from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 import { useFeedsReady } from "../feedsReady.ts";
@@ -42,7 +50,6 @@ const messages = source ? useSubscribable(source) : null;
 // feed that will not come (a failed start), and saying "loading" would lie.
 const feedsReady = useFeedsReady(props.client);
 const session = useSubscribable(props.client.session);
-const typing = useSubscribable(props.client.typing);
 
 // Power levels gate the message menu's moderation actions. `useRoomPower`
 // resolves to null while the feed is unknown (and before start(), where
@@ -155,12 +162,21 @@ async function onSend(body: string): Promise<void> {
     }
 }
 
-async function onSendFile(file: File): Promise<void> {
-    try {
-        await props.client.sendMediaMessage(props.roomId, file);
-    } catch (error) {
-        console.error("[tumult] media send failed", error);
-    }
+/**
+ * The tray's send: the reply target travels with it like a text send. Errors
+ * are not caught here — the composer keeps failed files in its tray, which is
+ * the only surface an upload failure has (no echo exists before the upload).
+ */
+function sendAttachments(
+    attachments: OutgoingAttachment[],
+    caption: string,
+): Promise<AttachmentSendResult[]> {
+    const target = replyTo.value;
+    replyTo.value = null;
+    return props.client.sendAttachments(props.roomId, attachments, {
+        caption,
+        ...(target ? { replyToEventId: target.id } : {}),
+    });
 }
 </script>
 
@@ -175,7 +191,7 @@ async function onSendFile(file: File): Promise<void> {
             :client="props.client"
             :reply-to="replyTo"
             @send="onSend"
-            @send-file="onSendFile"
+            :send-attachments="sendAttachments"
             @cancel-reply="cancelReply"
         />
     </div>

@@ -3,7 +3,33 @@ enable_registration: true
 enable_registration_without_verification: true
 report_stats: false
 url_preview_enabled: false
-federation_domain_whitelist: []
+# No federation_domain_whitelist: an empty one switches federation OFF, and
+# lk-jwt-service verifies every OpenID token over the federation API.
+public_baseurl: http://127.0.0.1:8018/
+# Replaces the generated listener list (host networking, so ports are real).
+# Loopback only: open registration must not face a LAN.
+listeners:
+  # Client API (and plain federation) for the test runner and the browsers.
+  - port: 8018
+    bind_addresses: ["127.0.0.1"]
+    type: http
+    tls: false
+    x_forwarded: false
+    resources:
+      - names: [client, federation]
+        compress: false
+  # Federation over TLS: where lk-jwt-service resolves server name `localhost`
+  # (no .well-known, no SRV → port 8448). Self-signed; the service is told to
+  # skip verification.
+  - port: 8448
+    bind_addresses: ["127.0.0.1"]
+    type: http
+    tls: true
+    resources:
+      - names: [federation]
+        compress: false
+tls_certificate_path: /tls/tls.crt
+tls_private_key_path: /tls/tls.key
 rc_registration: { per_second: 1000, burst_count: 1000 }
 rc_login:
   address: { per_second: 1000, burst_count: 1000 }
@@ -22,4 +48,4 @@ experimental_features:
 matrix_rtc:
   transports:
     - type: livekit
-      livekit_service_url: http://localhost:8090
+      livekit_service_url: http://127.0.0.1:8090

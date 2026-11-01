@@ -238,7 +238,10 @@ describe("VerificationManager publishing", () => {
         } as unknown as CryptoApi;
         const manager = new VerificationManager(matrix, crypto);
 
-        const sasData = { emoji: [["🔑", "key"]], decimal: [1, 2, 3] };
+        const sasData: { emoji: [string, string][]; decimal: [number, number, number] } = {
+            emoji: [["🔑", "key"]],
+            decimal: [1, 2, 3],
+        };
 
         // Transition to started to create the verifier and bind listeners
         stub.setPhase(3);
@@ -252,8 +255,8 @@ describe("VerificationManager publishing", () => {
 
         const state = manager.state;
         assert.equal(state.requests.length, 1);
-        assert.deepEqual(state.requests[0].sasEmoji, sasData.emoji);
-        assert.deepEqual(state.requests[0].sasDecimal, sasData.decimal);
+        assert.deepEqual(state.requests[0]?.sasEmoji, sasData.emoji);
+        assert.deepEqual(state.requests[0]?.sasDecimal, sasData.decimal);
         manager.detachAll();
     });
 });

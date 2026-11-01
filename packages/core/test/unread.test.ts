@@ -85,8 +85,7 @@ function stubClient(rooms: Room[], pageFails = false): MatrixClient & { paginate
 }
 
 function makeTracker(client: MatrixClient, published: Array<Record<string, UnreadCounts>>): UnreadTracker {
-    let tracker!: UnreadTracker;
-    tracker = new UnreadTracker(client, () => {
+    const tracker: UnreadTracker = new UnreadTracker(client, () => {
         const snapshot: Record<string, UnreadCounts> = {};
         for (const room of client.getRooms()) snapshot[room.roomId] = tracker.getUnread(room.roomId);
         published.push(snapshot);
@@ -106,8 +105,8 @@ describe("UnreadTracker", () => {
         tracker.update();
         // Only $t5 counts: $t3 is self, $t4 is not a message type.
         assert.equal(tracker.getUnread("!a:x").total, 1);
-        assert.equal(published[0]?.["!a:x"].total, 1);
-        assert.equal(published[0]?.["!a:x"].highlight, 0);
+        assert.equal(published[0]?.["!a:x"]?.total, 1);
+        assert.equal(published[0]?.["!a:x"]?.highlight, 0);
     });
 
     it("uses the read receipt when m.fully_read is absent (old/read rooms)", () => {
@@ -256,8 +255,7 @@ describe("UnreadTracker", () => {
             };
             return room;
         });
-        let tracker!: UnreadTracker;
-        tracker = new UnreadTracker(stubClient(rooms), () => tracker.update());
+        const tracker: UnreadTracker = new UnreadTracker(stubClient(rooms), () => tracker.update());
         tracker.update();
         assert.equal(visits, 20, "each room visited exactly once; the re-entrant call bailed early");
         assert.equal(tracker.getUnread("!r0:x").total, 1);

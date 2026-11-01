@@ -1,0 +1,113 @@
+name: Desktop builds
+
+# Builds the Electron desktop app (apps/desktop) for Linux (AppImage, deb, rpm)
+# and Windows (NSIS x64) and uploads the packages as workflow ARTIFACTS. It
+# publishes nothing: no GitHub release, no update feed.
+#
+# Build-time env: the desktop bundles a REAL-client web build, which needs
+# VITE_CLIENT_URI (apps/web/vite.config.ts fails the build without it). It is
+# a public URL identifying the application to the IdP — not a secret — so it
+# comes from a repository VARIABLE (Settings → Secrets and variables → Actions →
+# Variables), set once:
+#   gh variable set VITE_CLIENT_URI --body https://tumult.example.org
+# Optional, same mechanism: VITE_ELEMENT_CALL_URL, VITE_VOICE.
+# (release.yml gets the web deploy's env from `vercel pull` instead; the desktop
+# has no Vercel project, and needs no Vercel token to build.)
+
+on:
+  workflow_dispatch:
+  # Build on a published release, not on the tag push itself.
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            dist: dist:linux
+            artifact: tumult-desktop-linux
+            files: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+              apps/desktop/release/*.rpm
+          - os: windows-latest
+            dist: dist:win
+            artifact: tumult-desktop-windows
+            files: |
+              apps/desktop/release/*.exe
+    runs-on: ${{ matrix.os }}
+    env:
+      VITE_CLIENT_URI: ${{ vars.VITE_CLIENT_URI }}
+      VITE_ELEMENT_CALL_URL: ${{ vars.VITE_ELEMENT_CALL_URL }}
+      VITE_VOICE: ${{ vars.VITE_VOICE }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+
+    - name: Require VITE_CLIENT_URI
+      run: |
+        if [ -z "$VITE_CLIENT_URI" ]; then
+          echo "::error::Set the repository variable VITE_CLIENT_URI (see the comment at the top of desktop.yml)."
+          exit 1
+        fi
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v6
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'pnpm'
+
+    - name: Install Dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Linux packaging and sandbox prerequisites
+      if: runner.os == 'Linux'
+      run: |
+        # rpmbuild for the rpm target; xvfb for a headless display.
+        sudo apt-get update
+        sudo apt-get install -y rpm xvfb
+        # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor,
+        # which Chromium's sandbox needs; node_modules' chrome-sandbox is not
+        # setuid either. The app keeps its sandbox ON — the runner is opened up
+        # instead. (Installed packages: deb/rpm make chrome-sandbox setuid.)
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+    - name: Unit tests (desktop)
+      run: pnpm --filter @tumult/desktop test
+
+    - name: Desktop smoke test (Linux, under xvfb)
+      if: runner.os == 'Linux'
+      # pretest:smoke builds core, theme, the FAKE desktop web build and the
+      # main process; no homeserver or network is needed.
+      run: |
+        pnpm --filter @tumult/desktop run pretest:smoke
+        xvfb-run -a pnpm --filter @tumult/desktop exec node --test --import tsx smoke/desktop.smoke.ts
+
+    - name: Desktop smoke test (Windows)
+      if: runner.os == 'Windows'
+      run: pnpm --filter @tumult/desktop test:smoke
+
+    - name: Package
+      # dist:* rebuild core/theme, the REAL desktop web build and the main
+      # process, then run electron-builder with --publish never.
+      run: pnpm --filter @tumult/desktop ${{ matrix.dist }}
+
+    - name: Upload packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: ${{ matrix.files }}
+        if-no-files-found: error

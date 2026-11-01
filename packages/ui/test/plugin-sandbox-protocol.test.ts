@@ -106,7 +106,7 @@ describe("sandbox protocol", () => {
     it("refuses the component extension points the sandbox lane cannot carry", async () => {
         const ctx = await captureContext();
         for (const [name, call] of Object.entries({
-            addRenderer: () => ctx.addRenderer({} as never),
+            addRenderer: () => ctx.addRenderer("x", {} as never),
             addMemberDecoration: () => ctx.addMemberDecoration({} as never),
             addSettingsTab: () => ctx.addSettingsTab({} as never),
         })) {

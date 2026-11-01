@@ -294,7 +294,7 @@ export class TimelineFeed {
     public async jumpTo(roomId: string, eventId: string): Promise<boolean> {
         // Building the feed first catches "already loaded" without spending
         // a page (attach() snapshots whatever the SDK timeline already holds).
-        this.feeds.get(roomId) ?? this.create(roomId);
+        if (!this.feeds.has(roomId)) this.create(roomId);
         const held = (): boolean =>
             this.feeds.get(roomId)?.obs.get().some((m) => m.id === eventId) ?? false;
         if (held()) return true;

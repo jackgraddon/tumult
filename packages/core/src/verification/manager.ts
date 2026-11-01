@@ -1,4 +1,5 @@
 import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
+import { describeError } from "../errors.ts";
 import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
 import type { MatrixClient } from "matrix-js-sdk";
 import { VerificationRequestEvent, VerificationPhase } from "matrix-js-sdk/lib/crypto-api/verification.js";
@@ -7,7 +8,6 @@ import { VerifierEvent } from "matrix-js-sdk/lib/crypto-api/verification.js";
 import type { VerificationRequest } from "matrix-js-sdk/lib/crypto-api/verification";
 
 import type { VerificationRequestView, VerificationState } from "../contract.ts";
-import { Observable } from "../observable.ts";
 
 interface TrackedRequest {
     request: VerificationRequest;
@@ -213,8 +213,7 @@ export class VerificationManager {
             console.debug("[tumult] verification SAS started");
             return verifier;
         } catch (cause) {
-            const detail = cause instanceof Error ? cause.message : String(cause);
-            throw new Error(`Couldn't start emoji verification: ${detail}`);
+            throw new Error(describeError(cause, "Couldn't start emoji verification"), { cause });
         }
     }
 

@@ -46,11 +46,50 @@ export function injectStylesheet(css: string, owner: string): Disposable {
     element.dataset["tumultPluginStyles"] = owner;
     element.textContent = css;
     document.head.append(element);
+    if (owner !== SHELL_OWNER) {
+        pluginStyles.add(element);
+        // `disabled` only takes once the sheet exists, i.e. after append.
+        element.disabled = suspensions > 0;
+    }
 
     let removed = false;
     return () => {
         if (removed) return;
         removed = true;
+        pluginStyles.delete(element);
         element.remove();
     };
+}
+
+/** The shell's own stylesheets (registry.injectStylesheet) are never suspended. */
+const SHELL_OWNER = "shell";
+const pluginStyles = new Set<HTMLStyleElement>();
+let suspensions = 0;
+
+/**
+ * Turn every PLUGIN stylesheet off until the returned function is called.
+ *
+ * Plugin CSS applies app-wide, so a plugin with the `styles` permission —
+ * which a sandboxed plugin may hold — could restyle the screens that protect
+ * the user: hide the consent screen's warning, relabel "They match" on emoji
+ * verification, overlay the recovery key (security review finding F3). CSS
+ * cannot be scoped away from a sandboxed plugin (it has no DOM of its own to
+ * scope to), so instead the security surfaces switch plugin CSS off while they
+ * are on screen. Counted, so overlapping surfaces nest; the release is
+ * idempotent. Stylesheets injected while suspended start disabled.
+ */
+export function suspendPluginStyles(): () => void {
+    suspensions += 1;
+    applySuspension();
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        suspensions -= 1;
+        applySuspension();
+    };
+}
+
+function applySuspension(): void {
+    for (const element of pluginStyles) element.disabled = suspensions > 0;
 }

@@ -1,11 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import type { MatrixClient } from "matrix-js-sdk";
+import { MatrixError, type MatrixClient } from "matrix-js-sdk";
 
 import type { VoiceView } from "../src/contract.ts";
 import { Observable } from "../src/observable.ts";
-import { VoiceManager } from "../src/voice/manager.ts";
+import { VoiceManager, describeVoiceError, focusInUse } from "../src/voice/manager.ts";
+import { DEFAULT_VOICE_SETTINGS } from "../src/contract.ts";
+import { normalizeVoiceSettings } from "../src/voice/settings.ts";
 import { parseIdentity, type MediaSnapshot, type VoiceMedia } from "../src/voice/media.ts";
 import { discoverFoci, getSfuConfig } from "../src/voice/sfu.ts";
 
@@ -17,21 +19,41 @@ const LIVEKIT = { type: "livekit", livekit_service_url: SERVICE };
 // enum, not with a hand-typed guess — see AGENTS.md on stubbing via enums).
 import { MatrixRTCSessionEvent, MatrixRTCSessionManagerEvents } from "matrix-js-sdk/lib/matrixrtc/index.js";
 
+interface FakeMembership {
+    userId: string;
+    isExpired: () => boolean;
+    transports: unknown[];
+}
+
+const member = (userId: string, ...transports: unknown[]): FakeMembership => ({ userId, isExpired: () => false, transports });
+
+/**
+ * The SDK session as the manager sees it (matrix-js-sdk 45: `join` / `leave`,
+ * no `getFocusInUse`). `focus` stands for the room's call membership: when set,
+ * the session holds one live member publishing on it. `landOnJoin` makes our
+ * own membership arrive as the real one does once the state event round-trips:
+ * publishing on the transport we joined with.
+ */
 class FakeSession extends EventEmitter {
-    memberships: { userId: string; isExpired: () => boolean }[] = [];
+    private explicit: FakeMembership[] | null = null;
     focus: unknown = null;
+    landOnJoin = false;
     joined: unknown[][] = [];
     left = 0;
     reemitted = 0;
-    joinRoomSession(...args: unknown[]): void {
-        this.joined.push(args);
+    get memberships(): FakeMembership[] {
+        return this.explicit ?? (this.focus == null ? [] : [member("@host:x", this.focus)]);
     }
-    async leaveRoomSession(): Promise<boolean> {
+    set memberships(memberships: FakeMembership[]) {
+        this.explicit = memberships;
+    }
+    join(...args: unknown[]): void {
+        this.joined.push(args);
+        if (this.landOnJoin) this.focus = (args[1] as unknown[])[0];
+    }
+    async leave(): Promise<boolean> {
         this.left++;
         return true;
-    }
-    getFocusInUse(): unknown {
-        return this.focus;
     }
     reemitEncryptionKeys(): void {
         this.reemitted++;
@@ -52,6 +74,9 @@ class FakeMedia implements VoiceMedia {
     }
     async setMicrophone(enabled: boolean): Promise<void> {
         this.log.push(["mic", enabled]);
+    }
+    async setProcessing(settings: unknown): Promise<void> {
+        this.log.push(["processing", settings]);
     }
     cameraError: Error | null = null;
     async setCamera(enabled: boolean): Promise<void> {
@@ -87,6 +112,20 @@ class FakeMedia implements VoiceMedia {
     }
 }
 
+/**
+ * What the SDK emits when the server refuses our call membership: its own
+ * wrapper around the real MatrixError (MembershipManagerActionScheduler), whose
+ * message embeds the request URL.
+ */
+function refused(): Error {
+    const forbidden = new MatrixError(
+        { errcode: "M_FORBIDDEN", error: "You don't have permission to post that to the room. user_level (0) < send_level (50)" },
+        403,
+        "http://127.0.0.1:8018/_matrix/client/v3/rooms/!r/state/org.matrix.msc3401.call.member/_%40bob",
+    );
+    return new Error(`The MembershipManager shut down because of the end condition: ${forbidden}`, { cause: forbidden });
+}
+
 function setup(
     opts: {
         transports?: unknown[] | Error;
@@ -98,10 +137,14 @@ function setup(
         existingFocus?: unknown;
         fetchImpl?: typeof fetch;
         reconnectDelaysMs?: number[];
+        voiceSettings?: () => { echoCancellation: boolean; noiseSuppression: boolean; autoGainControl: boolean };
     } = {},
 ) {
     const session = new FakeSession();
-    session.focus = "focus" in opts ? opts.focus : LIVEKIT;
+    // By default our membership lands on join; a test passing `focus` drives
+    // the room's membership by hand instead.
+    if ("focus" in opts) session.focus = opts.focus;
+    else session.landOnJoin = true;
     const existing = new FakeSession();
     existing.focus = opts.existingFocus ?? null;
     const rtcManager = new EventEmitter() as EventEmitter & { getRoomSession: () => FakeSession; getActiveRoomSession: (r: { roomId: string }) => FakeSession | undefined };
@@ -112,6 +155,7 @@ function setup(
     const client = {
         getRoom: (id: string) => (id === ROOM ? { roomId: ROOM } : null),
         getRooms: () => [{ roomId: ROOM }],
+        getUserId: () => "@me:localhost",
         getDeviceId: () => (opts.deviceId === undefined ? "DEV" : opts.deviceId),
         getDomain: () => "localhost",
         getOpenIdToken: async () => ({ access_token: "oidc", matrix_server_name: "localhost" }),
@@ -136,7 +180,7 @@ function setup(
         }) as unknown as typeof fetch);
     const feed = new Observable<VoiceView | null>(null);
     const roomsFeed = new Observable<Record<string, string[]>>({});
-    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl, ...(opts.reconnectDelaysMs ? { reconnectDelaysMs: opts.reconnectDelaysMs } : {}) }, feed, roomsFeed);
+    const manager = new VoiceManager(client, { createMedia: async () => media, fetch: fetchImpl, ...(opts.reconnectDelaysMs ? { reconnectDelaysMs: opts.reconnectDelaysMs } : {}), ...(opts.voiceSettings ? { voiceSettings: opts.voiceSettings } : {}) }, feed, roomsFeed);
     return { manager, session, media, feed, roomsFeed, rtcManager, fetchCalls };
 }
 
@@ -228,18 +272,38 @@ describe("discoverFoci", () => {
     });
 });
 
+describe("focusInUse", () => {
+    const at = (memberships: FakeMembership[]) => focusInUse(memberships as never);
+
+    it("is the oldest live member's first usable LiveKit transport", () => {
+        const other = { type: "livekit", livekit_service_url: "https://other.example" };
+        assert.deepEqual(at([member("@a:x", { type: "turn" }, LIVEKIT), member("@b:x", other)]), LIVEKIT);
+        assert.equal(at([]), null);
+    });
+
+    it("skips expired members and ones we cannot get a token for", () => {
+        const expired = { ...member("@old:x", { type: "livekit", livekit_service_url: "https://gone.example" }), isExpired: () => true };
+        // A Matrix-2.0 `url`-only transport needs /get_token; /sfu/get cannot use it.
+        const urlOnly = member("@new:x", { type: "livekit", url: "wss://sfu.example" });
+        assert.deepEqual(at([expired, urlOnly, member("@c:x", null, LIVEKIT)]), LIVEKIT);
+    });
+});
+
 describe("VoiceManager.join", () => {
     it("joins the session with the advertised LiveKit transport, then connects the SFU it is given", async () => {
         const { manager, session, media, feed, fetchCalls } = setup();
         await manager.join(ROOM);
-        const [foci, multiSfu, config] = session.joined[0] as [unknown[], unknown, Record<string, unknown>];
-        assert.deepEqual(foci, [{ type: "livekit", livekit_service_url: SERVICE, livekit_alias: ROOM }]);
-        assert.equal(multiSfu, undefined);
+        const [identity, published, config] = session.joined[0] as [unknown, unknown[], Record<string, unknown>];
+        // memberId is the legacy membershipID the SDK writes (`<user>:<device>`):
+        // v45 peers only attach our media keys to a membership whose member id
+        // matches the one in the key message.
+        assert.deepEqual(identity, { userId: "@me:localhost", deviceId: "DEV", memberId: "@me:localhost:DEV" });
+        assert.deepEqual(published, [{ type: "livekit", livekit_service_url: SERVICE, livekit_alias: ROOM }]);
         assert.equal(config["manageMediaKeys"], true);
         assert.equal(config["callIntent"], "audio");
         assert.equal(session.reemitted, 1, "keys minted before the listener attached are replayed");
         assert.deepEqual(fetchCalls, [[`${SERVICE}/sfu/get`, { room: ROOM, openid_token: { access_token: "oidc", matrix_server_name: "localhost" }, device_id: "DEV" }]]);
-        assert.deepEqual(media.log, [["connect", "wss://sfu.example.com", "tok"], ["mic", true], ["deafen", false]]);
+        assert.deepEqual(media.log, [["connect", "wss://sfu.example.com", "tok"], ["processing", { echoCancellation: true, noiseSuppression: true, autoGainControl: true }], ["mic", true], ["deafen", false]]);
         assert.equal(feed.get()?.roomId, ROOM);
     });
 
@@ -249,15 +313,15 @@ describe("VoiceManager.join", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@bob:example.com:XYZ", speaking: true, muted: true, camera: false, screen: false },
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: true, muted: true, camera: false, screen: false, screenAudio: false },
             ],
         });
         const view = feed.get();
         assert.equal(view?.state, "connected");
         assert.deepEqual(view?.participants, [
-            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false, camera: false, screen: false },
-            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true, camera: false, screen: false },
+            { userId: "@me:localhost", deviceId: "DEV", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+            { userId: "@bob:example.com", deviceId: "XYZ", speaking: true, muted: true, camera: false, screen: false, screenAudio: false },
         ]);
         media.change({ ...media.snap, connection: "reconnecting" });
         assert.equal(feed.get()?.state, "reconnecting");
@@ -310,6 +374,54 @@ describe("VoiceManager.join", () => {
         assert.ok(media.log.some(([name]) => name === "disconnect"));
     });
 
+    it("never reaches the SFU when the membership is refused mid-join (no ghost)", async (t) => {
+        t.mock.method(console, "error", () => {});
+        // The real shape: the server refuses the call.member state event while
+        // join() is still waiting for the focus, and the focus then appears
+        // anyway (it is the OTHER member's). join() used to carry on, fetch a
+        // token and connect an engine nothing referenced any more.
+        const { manager, session, media, feed, fetchCalls } = setup({ focus: null });
+        const joining = manager.join(ROOM);
+        await new Promise((r) => setImmediate(r));
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        session.focus = LIVEKIT;
+        session.emit(MatrixRTCSessionEvent.MembershipsChanged);
+        await joining;
+        assert.equal(fetchCalls.length, 0, "no token was asked for");
+        assert.ok(!media.log.some(([name]) => name === "connect"), `connected after the refusal: ${JSON.stringify(media.log)}`);
+        assert.equal(feed.get()?.state, "error");
+        assert.equal(session.left, 1);
+    });
+
+    it("closes an SFU connection the refusal raced (no ghost)", async (t) => {
+        t.mock.method(console, "error", () => {});
+        const { manager, session, media } = setup();
+        let finishConnect!: () => void;
+        media.connect = async (url: string, jwt: string) => {
+            media.log.push(["connect", url, jwt]);
+            await new Promise<void>((resolve) => (finishConnect = resolve));
+        };
+        const joining = manager.join(ROOM);
+        while (!media.log.some(([name]) => name === "connect")) await new Promise((r) => setImmediate(r));
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        finishConnect();
+        await joining;
+        const names = media.log.map(([name]) => name);
+        assert.equal(names.at(-1), "disconnect", `the engine must end disconnected: ${JSON.stringify(names)}`);
+        assert.ok(!names.includes("mic"), "and must not open the microphone");
+    });
+
+    it("tells the user in a sentence why the server refused them", async (t) => {
+        t.mock.method(console, "error", () => {});
+        const { manager, session, feed } = setup();
+        await manager.join(ROOM);
+        session.emit(MatrixRTCSessionEvent.MembershipManagerError, refused());
+        await new Promise((r) => setImmediate(r));
+        const shown = feed.get()?.error ?? "";
+        assert.match(shown, /permission to join calls/);
+        assert.doesNotMatch(shown, /http|MatrixError|MembershipManager|\[403\]/, `raw error leaked: ${shown}`);
+    });
+
     it("forwards each frame key the session mints to the media engine, keyed by LiveKit identity", async () => {
         const { manager, session, media } = setup();
         await manager.join(ROOM);
@@ -354,11 +466,10 @@ describe("VoiceManager.join", () => {
         const { manager, session, feed, fetchCalls } = setup({
             transports: new Error("M_UNRECOGNIZED"),
             wellKnown: { "org.matrix.msc4143.rtc_foci": [{ type: "livekit", livekit_service_url: MATRIX_ORG }] },
-            focus: { type: "livekit", livekit_service_url: MATRIX_ORG },
         });
         await manager.join(ROOM);
         assert.notEqual(feed.get()?.state, "error");
-        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: MATRIX_ORG, livekit_alias: ROOM }]);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: MATRIX_ORG, livekit_alias: ROOM }]);
         assert.equal(fetchCalls[0]?.[0], `${MATRIX_ORG}/sfu/get`);
     });
 
@@ -370,12 +481,38 @@ describe("VoiceManager.join", () => {
         const { manager, session, feed, fetchCalls } = setup({
             transports: new Error("M_UNRECOGNIZED"),
             existingFocus: { type: "livekit", livekit_service_url: HOST },
-            focus: { type: "livekit", livekit_service_url: HOST },
         });
         await manager.join(ROOM);
         assert.notEqual(feed.get()?.state, "error");
-        assert.deepEqual(session.joined[0]?.[0], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
         assert.equal(fetchCalls[0]?.[0], `${HOST}/sfu/get`, "the token comes from the focus in use, not from our own homeserver");
+    });
+
+    // matrix-js-sdk 44 dropped "oldest membership" focus selection; we keep it,
+    // so every Tumult in a call meets on ONE SFU even when their homeservers
+    // advertise different ones.
+    it("publishes on a running call's focus even when our homeserver names its own", async () => {
+        const HOST = "https://jwt.host.example";
+        const { manager, session, fetchCalls } = setup({ existingFocus: { type: "livekit", livekit_service_url: HOST } });
+        await manager.join(ROOM);
+        assert.deepEqual(session.joined[0]?.[1], [{ type: "livekit", livekit_service_url: HOST, livekit_alias: ROOM }]);
+        assert.equal(fetchCalls[0]?.[0], `${HOST}/sfu/get`);
+    });
+
+    it("connects to the OLDEST member's focus when two calls started at once", async () => {
+        const OLDER = "https://jwt.older.example";
+        const { manager, session, fetchCalls } = setup({ focus: null });
+        const joining = manager.join(ROOM);
+        await new Promise((r) => setImmediate(r));
+        // Our membership landed second, behind someone who started on another SFU.
+        session.memberships = [member("@first:x", { type: "livekit", livekit_service_url: OLDER }), member("@me:localhost", LIVEKIT)];
+        session.emit(MatrixRTCSessionEvent.MembershipsChanged, [], []);
+        await joining;
+        assert.equal(fetchCalls[0]?.[0], `${OLDER}/sfu/get`);
+        // …and we stop advertising the SFU we are not on: a multi-SFU client
+        // subscribes to each member's published transport.
+        assert.equal(session.left, 1, "the first membership (wrong SFU) is withdrawn");
+        assert.deepEqual(session.joined.at(-1)?.[1], [{ type: "livekit", livekit_service_url: OLDER, livekit_alias: ROOM }]);
     });
 
     it("removes our membership and the media engine when the SFU connection fails", async () => {
@@ -405,6 +542,76 @@ describe("VoiceManager.join", () => {
         assert.equal(feed.get(), null);
         assert.ok(!media.log.some(([name]) => name === "connect"), "never connected after being cancelled");
         assert.equal(session.left, 1);
+    });
+});
+
+describe("VoiceManager microphone processing", () => {
+    const RAW = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+    it("applies the stored settings before the microphone opens, so it opens once under the right constraints", async () => {
+        const { manager, media } = setup({ voiceSettings: () => RAW });
+        await manager.join(ROOM);
+        const names = media.log.map(([name]) => name);
+        assert.ok(names.indexOf("processing") > names.indexOf("connect"));
+        assert.ok(names.indexOf("processing") < names.indexOf("mic"), "settings first, then the microphone");
+        assert.deepEqual(media.log.find(([name]) => name === "processing")?.[1], RAW);
+    });
+
+    it("defaults to processing on when nothing was configured", async () => {
+        const { manager, media } = setup();
+        await manager.join(ROOM);
+        assert.deepEqual(media.log.find(([name]) => name === "processing")?.[1], { echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    });
+
+    it("re-applies a change to a live call, and ignores one when no call is open", async () => {
+        const { manager, media } = setup();
+        await manager.applySettings(RAW);
+        assert.ok(!media.log.some(([name]) => name === "processing"));
+        await manager.join(ROOM);
+        await manager.applySettings(RAW);
+        assert.deepEqual(media.log.at(-1), ["processing", RAW]);
+    });
+
+    it("reads the settings again when it re-dials, so a change made mid-call is not undone", async () => {
+        let current = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        const { manager, media } = setup({ reconnectDelaysMs: [0], voiceSettings: () => current });
+        await manager.join(ROOM);
+        current = RAW;
+        media.change({ ...media.snap, connection: "disconnected" });
+        await new Promise((r) => setTimeout(r, 5));
+        const applied = media.log.filter(([name]) => name === "processing");
+        assert.deepEqual(applied.at(-1)?.[1], RAW);
+    });
+});
+
+describe("describeVoiceError", () => {
+    it("explains a refused membership, however deep the SDK wrapped it", () => {
+        assert.match(describeVoiceError(refused()), /^You don't have permission to join calls in this room/);
+        assert.match(describeVoiceError(new Error("outer", { cause: refused() })), /permission to join calls/);
+    });
+
+    it("translates any other Matrix error through describeError, never the URL", () => {
+        const limited = new MatrixError({ errcode: "M_LIMIT_EXCEEDED", error: "Too many requests" }, 429, "http://hs/_matrix/client/v3/x");
+        assert.equal(describeVoiceError(new Error("wrapped", { cause: limited })), "Couldn't join the call: you're doing that too often. Wait a moment and try again.");
+        assert.equal(describeVoiceError(new MatrixError({ errcode: "M_UNKNOWN" }, 500, "http://hs/x")), "Couldn't join the call: the server ran into a problem. Try again in a moment.");
+    });
+
+    it("keeps our own messages as they are", () => {
+        assert.equal(describeVoiceError(new Error("The call server refused us (401): bad token")), "The call server refused us (401): bad token");
+        assert.equal(describeVoiceError("plain"), "plain");
+    });
+});
+
+describe("normalizeVoiceSettings", () => {
+    it("completes anything stored into a full settings object", () => {
+        assert.deepEqual(normalizeVoiceSettings(null), DEFAULT_VOICE_SETTINGS);
+        assert.deepEqual(normalizeVoiceSettings({ noiseSuppression: false }), { echoCancellation: true, noiseSuppression: false, autoGainControl: true });
+    });
+
+    it("falls back per field on a mistyped value and drops unknown ones", () => {
+        const out = normalizeVoiceSettings({ echoCancellation: "no", autoGainControl: false, voiceIsolation: true });
+        assert.deepEqual(out, { echoCancellation: true, noiseSuppression: true, autoGainControl: false });
+        assert.ok(!("voiceIsolation" in out));
     });
 });
 
@@ -458,12 +665,25 @@ describe("VoiceManager video", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true },
-                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: true, screen: false },
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: true, screen: false, screenAudio: false },
             ],
         });
         assert.equal(feed.get()?.screen, true, "a share the browser ended would flip this back off");
         assert.equal(feed.get()?.participants[1]?.camera, true);
+    });
+
+    it("says whether each screen share carries audio, since a browser may capture video only", async () => {
+        const { manager, media, feed } = setup();
+        await manager.join(ROOM);
+        media.change({
+            connection: "connected",
+            participants: [
+                { identity: "@me:localhost:DEV", speaking: false, muted: false, camera: false, screen: true, screenAudio: false },
+                { identity: "@bob:example.com:XYZ", speaking: false, muted: false, camera: false, screen: true, screenAudio: true },
+            ],
+        });
+        assert.deepEqual(feed.get()?.participants.map((p) => p.screenAudio), [false, true]);
     });
 
     it("attaches a participant's track by LiveKit identity, and is inert outside a session", async () => {
@@ -513,9 +733,9 @@ describe("VoiceManager controls", () => {
         media.change({
             connection: "connected",
             participants: [
-                { identity: "@bob:x:A", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@bob:x:B", speaking: false, muted: false, camera: false, screen: false },
-                { identity: "@eve:x:C", speaking: false, muted: false, camera: false, screen: false },
+                { identity: "@bob:x:A", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@bob:x:B", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
+                { identity: "@eve:x:C", speaking: false, muted: false, camera: false, screen: false, screenAudio: false },
             ],
         });
         manager.setUserVolume("@bob:x", 5);
@@ -537,10 +757,10 @@ describe("VoiceManager controls", () => {
 describe("VoiceManager.start (who is in voice)", () => {
     it("publishes each room's participants and follows session start / end", () => {
         const { manager, session, rtcManager, roomsFeed } = setup();
-        session.memberships = [{ userId: "@a:x", isExpired: () => false }, { userId: "@old:x", isExpired: () => true }];
+        session.memberships = [member("@a:x"), { ...member("@old:x"), isExpired: () => true }];
         manager.start();
         assert.deepEqual(roomsFeed.get(), { [ROOM]: ["@a:x"] }, "an expired membership is not a participant");
-        session.memberships = [{ userId: "@a:x", isExpired: () => false }, { userId: "@b:x", isExpired: () => false }];
+        session.memberships = [member("@a:x"), member("@b:x")];
         session.emit(MatrixRTCSessionEvent.MembershipsChanged, [], []);
         assert.deepEqual(roomsFeed.get(), { [ROOM]: ["@a:x", "@b:x"] });
         session.memberships = [];

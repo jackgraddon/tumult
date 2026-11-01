@@ -13,10 +13,11 @@ defineEmits<{
     <!--
         Healthy devices render nothing. Fresh devices (backup this device
         can't open) prompt for the recovery key; accounts with no backup at
-        all prompt for setup.
+        all prompt for setup. Nothing either, until the status is known: the
+        placeholder before crypto starts reads as "no backup".
     -->
     <div
-        v-if="!status.backupEnabled || !status.backupTrusted"
+        v-if="status.checked && (!status.backupEnabled || !status.backupTrusted)"
         class="tumult-security-banner"
         role="status"
     >

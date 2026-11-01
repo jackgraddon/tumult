@@ -715,6 +715,10 @@
                     "type": "string",
                     "description": "Presence dot."
                 },
+                "verified-badge-size": {
+                    "type": "string",
+                    "description": "Verified-identity shield (replaces the presence dot)."
+                },
                 "border-width": {
                     "type": "string",
                     "description": "Default border."
@@ -807,13 +811,13 @@
                     "type": "string",
                     "description": "Dialog width before viewport clamp."
                 },
-                "layout-voice-tile-min-width": {
+                "layout-voice-stage-height": {
                     "type": "string",
-                    "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                    "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                 },
-                "layout-voice-stage-max-height": {
+                "layout-voice-strip-height": {
                     "type": "string",
-                    "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                    "description": "Height of the row of small tiles beside a spotlit participant or screen."
                 },
                 "layout-settings-nav-width": {
                     "type": "string",
@@ -967,6 +971,14 @@
                     "type": "string",
                     "description": "Composer input border."
                 },
+                "composer-attachment-width": {
+                    "type": "string",
+                    "description": "Width of one staged attachment card in the composer tray."
+                },
+                "composer-attachment-thumb-height": {
+                    "type": "string",
+                    "description": "Height of a staged attachment's thumbnail / file-icon box."
+                },
                 "members-bg": {
                     "type": "string",
                     "description": "Members pane."
@@ -974,6 +986,10 @@
                 "member-dot-size": {
                     "type": "string",
                     "description": "Presence dot."
+                },
+                "member-shield-size": {
+                    "type": "string",
+                    "description": "Shield shown in place of a verified member's presence dot."
                 },
                 "member-badge-radius": {
                     "type": "string",
@@ -1892,6 +1908,10 @@
                         "type": "string",
                         "description": "Presence dot."
                     },
+                    "verified-badge-size": {
+                        "type": "string",
+                        "description": "Verified-identity shield (replaces the presence dot)."
+                    },
                     "border-width": {
                         "type": "string",
                         "description": "Default border."
@@ -1984,13 +2004,13 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
-                    "layout-voice-tile-min-width": {
+                    "layout-voice-stage-height": {
                         "type": "string",
-                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                        "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                     },
-                    "layout-voice-stage-max-height": {
+                    "layout-voice-strip-height": {
                         "type": "string",
-                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                        "description": "Height of the row of small tiles beside a spotlit participant or screen."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",
@@ -2144,6 +2164,14 @@
                         "type": "string",
                         "description": "Composer input border."
                     },
+                    "composer-attachment-width": {
+                        "type": "string",
+                        "description": "Width of one staged attachment card in the composer tray."
+                    },
+                    "composer-attachment-thumb-height": {
+                        "type": "string",
+                        "description": "Height of a staged attachment's thumbnail / file-icon box."
+                    },
                     "members-bg": {
                         "type": "string",
                         "description": "Members pane."
@@ -2151,6 +2179,10 @@
                     "member-dot-size": {
                         "type": "string",
                         "description": "Presence dot."
+                    },
+                    "member-shield-size": {
+                        "type": "string",
+                        "description": "Shield shown in place of a verified member's presence dot."
                     },
                     "member-badge-radius": {
                         "type": "string",
@@ -3070,6 +3102,10 @@
                         "type": "string",
                         "description": "Presence dot."
                     },
+                    "verified-badge-size": {
+                        "type": "string",
+                        "description": "Verified-identity shield (replaces the presence dot)."
+                    },
                     "border-width": {
                         "type": "string",
                         "description": "Default border."
@@ -3162,13 +3198,13 @@
                         "type": "string",
                         "description": "Dialog width before viewport clamp."
                     },
-                    "layout-voice-tile-min-width": {
+                    "layout-voice-stage-height": {
                         "type": "string",
-                        "description": "Narrowest video tile in a call; the stage fits as many per row as this allows."
+                        "description": "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled."
                     },
-                    "layout-voice-stage-max-height": {
+                    "layout-voice-strip-height": {
                         "type": "string",
-                        "description": "Tallest the video stage above the timeline may grow before it scrolls."
+                        "description": "Height of the row of small tiles beside a spotlit participant or screen."
                     },
                     "layout-settings-nav-width": {
                         "type": "string",
@@ -3322,6 +3358,14 @@
                         "type": "string",
                         "description": "Composer input border."
                     },
+                    "composer-attachment-width": {
+                        "type": "string",
+                        "description": "Width of one staged attachment card in the composer tray."
+                    },
+                    "composer-attachment-thumb-height": {
+                        "type": "string",
+                        "description": "Height of a staged attachment's thumbnail / file-icon box."
+                    },
                     "members-bg": {
                         "type": "string",
                         "description": "Members pane."
@@ -3329,6 +3373,10 @@
                     "member-dot-size": {
                         "type": "string",
                         "description": "Presence dot."
+                    },
+                    "member-shield-size": {
+                        "type": "string",
+                        "description": "Shield shown in place of a verified member's presence dot."
                     },
                     "member-badge-radius": {
                         "type": "string",

@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import type { ChatClient, VerificationRequestView } from "@tumult/core";
 import { useSubscribable } from "../subscribable.ts";
+import { useSecureSurface } from "../plugins/useSecureSurface.ts";
 
 const props = defineProps<{
     client: ChatClient;
     active: boolean;
 }>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface(() => props.active);
 
 const emit = defineEmits<{
     /** Return to the landing chooser without abandoning the request. */
@@ -46,7 +51,7 @@ async function start(): Promise<void> {
     try {
         await props.client.startVerification();
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't start verification");
         phase.value = "error";
     }
 }
@@ -55,7 +60,7 @@ async function start(): Promise<void> {
 // and the live transition waiting → incoming → sas → done/error.
 watch(
     verification,
-    (state) => {
+    () => {
         const req = currentRequest();
         if (!req) return;
 
@@ -81,7 +86,7 @@ async function acceptIncoming(): Promise<void> {
     try {
         await props.client.acceptVerification(req.id);
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't accept the verification request");
         phase.value = "error";
     }
 }
@@ -93,7 +98,7 @@ async function confirm(): Promise<void> {
         await props.client.confirmSas(req.id);
         phase.value = "done";
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't confirm the emojis");
         phase.value = "error";
     }
 }
@@ -105,7 +110,7 @@ async function mismatch(): Promise<void> {
         await props.client.mismatchSas(req.id);
         phase.value = "error";
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't cancel the verification");
         phase.value = "error";
     }
 }

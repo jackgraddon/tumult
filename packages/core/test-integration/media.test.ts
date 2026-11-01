@@ -77,7 +77,7 @@ describe("media against real Synapse", () => {
             const res = await fetch(`${BASE}${path}`, {
                 method,
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: body === undefined ? undefined : JSON.stringify(body),
+                body: body === undefined ? null : JSON.stringify(body),
             });
             assert.ok(res.ok, `${method} ${path} -> ${res.status} ${await res.clone().text()}`);
             return (await res.json()) as Record<string, string>;
@@ -143,10 +143,10 @@ describe("media against real Synapse", () => {
 
             const timeline = feed.timeline(room);
             const deadline = Date.now() + 60_000;
-            while (!timeline.get().some((m) => m.content["url"]?.startsWith("mxc://")) && Date.now() < deadline) {
+            while (!timeline.get().some((m) => typeof m.content["url"] === "string" && m.content["url"].startsWith("mxc://")) && Date.now() < deadline) {
                 await new Promise((r) => setTimeout(r, 300));
             }
-            const msg = timeline.get().find((m) => m.content["url"]?.startsWith("mxc://"));
+            const msg = timeline.get().find((m) => typeof m.content["url"] === "string" && m.content["url"].startsWith("mxc://"));
             assert.ok(msg, "media message should appear in the timeline");
             assert.equal(msg?.content["msgtype"], "m.image");
             assert.equal(msg?.content["body"], "test image");

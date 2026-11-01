@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, ref, watch } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -74,7 +75,7 @@ function submit(): void {
         })
         .then((roomId) => emit("created", roomId))
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, "Couldn't create the channel");
         })
         .finally(() => {
             busy.value = false;

@@ -66,6 +66,12 @@ export interface PendingInstall {
     added: Permission[];
     /** The installed version being replaced, or `null` for a fresh install. */
     previousVersion: string | null;
+    /**
+     * The repository (`owner/repo`) the installed copy came from, or `null` for
+     * a fresh install. When it differs from `source`, a DIFFERENT publisher is
+     * taking over this plugin id, and the dialog says so (review finding G-F2).
+     */
+    previousSource: string | null;
 }
 
 /** The result of a completed install, for the dialog to close on. */

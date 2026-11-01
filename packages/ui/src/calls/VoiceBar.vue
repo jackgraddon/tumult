@@ -50,13 +50,20 @@ function leave(): void {
 <template>
     <section v-if="voice" class="tumult-voice" :data-state="voice.state" aria-label="Voice">
         <div class="tumult-voice-info">
-            <span class="tumult-voice-status" role="status">{{ status }}</span>
+            <span class="tumult-voice-status" role="status" :title="status">{{ status }}</span>
             <span class="tumult-voice-room">
                 {{ roomName }} · {{ voice.participants.length }}
                 <span v-if="speaking > 0" class="tumult-voice-speaking" aria-label="Someone is speaking">●</span>
             </span>
         </div>
-        <div class="tumult-voice-controls">
+        <!-- A failed session has nothing to mute or share: offer only the way out,
+             which also gives the status the width to be read. -->
+        <div v-if="voice.state === 'error'" class="tumult-voice-controls">
+            <button type="button" class="tumult-voice-button" aria-label="Dismiss" title="Dismiss" @click="leave">
+                <Icon name="close" />
+            </button>
+        </div>
+        <div v-else class="tumult-voice-controls">
             <button
                 type="button"
                 class="tumult-voice-button"
@@ -126,6 +133,13 @@ function leave(): void {
 }
 .tumult-voice[data-state="error"] .tumult-voice-status {
     color: var(--danger);
+    /* Two lines at most: the full text is the tooltip. A long error used to
+       stack one word per line up the whole room-list track. */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
 }
 .tumult-voice[data-state="connecting"] .tumult-voice-status,
 .tumult-voice[data-state="reconnecting"] .tumult-voice-status {

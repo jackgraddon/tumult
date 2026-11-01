@@ -29,7 +29,8 @@ Companion to `docs/themes.md` (theming, which shares the same
   `integrity`. There is no central gatekeeper: any repository installs.
 - The **lane is derived, never declared** (`deriveLane`): a plugin whose
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
-  loaded into a **Worker** and reaches the shell only through the bridge; a
+  loaded into a **Worker inside an opaque-origin sandbox frame** and reaches
+  the shell only through the bridge; a
   plugin that contributes a live component (renderer, decoration, settings tab,
   workspace pane) runs **in-page at the app's trust level**, and the consent
   screen says so out loud. The in-page lane is an extension seam, **not** a
@@ -54,7 +55,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/InstallConsentDialog.vue` | the consent screen (a `RoomDialog` composition) |
 | `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind three of the APIs |
 | `packages/ui/src/plugins/sandbox/protocol.ts` | the Worker bridge's wire contract (message kinds, the client method/feed name lists, capability snapshot) |
-| `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle in a Worker and answers its RPCs |
+| `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle over a `SandboxTransport` and answers its RPCs |
+| `packages/ui/src/plugins/sandbox/frame.ts` | `createFrameTransport` (host half: hidden frame, port hand-off, buffering, boot deadline) and `startSandboxFrame` (the frame's bootstrap: first port from the parent only, inner Worker, error relay) |
 | `packages/ui/src/plugins/sandbox/worker/runtime.ts` | the Worker-side runtime factory (rebuilds `PluginContext` over RPC; tested in-process) |
 | `packages/ui/src/plugins/sandbox/worker/shim.ts` | `@tumult/ui/sandbox` — binds the runtime to the real Worker globals |
 | `packages/ui/src/plugins/styles.ts` | `injectStylesheet` — the owner-tagged `<style>` injector and its CSP guard |
@@ -71,7 +73,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
 | `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
-| `apps/web/src/plugins/sandbox.worker.ts` | the app's Worker entry for the sandbox lane (one import of `@tumult/ui/sandbox`) |
+| `apps/web/src/plugins/sandbox.worker.ts` | the sandbox's inner Worker entry (one import of `@tumult/ui/sandbox`), inlined into `/sandbox.js` |
+| `apps/web/src/plugins/sandbox.frame.ts` | the sandbox frame's classic bootstrap, served as `/sandbox.js` by `/sandbox.html` (both built by `vite.config.ts`'s `sandboxFrame` plugin) |
 | `apps/web/src/plugins/store.ts` | IndexedDB persistence for installed third-party plugins |
 | `apps/web/src/plugins/controller.ts` | `PluginInstallControls` implementation — prepare → consent → commit → persist, and the boot restore |
 | `packages/ui/test/plugins.test.ts` | the registry's unit contract (lifecycle, permissions, isolation) |
@@ -467,7 +470,10 @@ interface MemberDecoration {
 `match` runs on **every roster rebuild** (presence, power level, renames), so
 keep it cheap. `MemberView` gives `userId`, `displayName`, `avatarUrl`,
 `membership`, `powerLevel`, `isSelf`, `presence` (`"online" \| "unavailable" \|
-"offline" \| "unknown"`; `unavailable` is "Away") and `lastActiveTs`.
+"offline" \| "unknown"`; `unavailable` is "Away"), `verification`
+(`"verified" \| "unverified" \| "unknown"` — cross-signing trust in their
+identity; `unknown` until the crypto layer answers, never a guessed
+`unverified`) and `lastActiveTs`.
 
 **Example — a badge for a permission level:**
 
@@ -621,10 +627,20 @@ injectStylesheet(css: string): Disposable
 The CSS is **not** scoped — the shell has no shadow root, so a plugin's sheet is
 app-wide. It is app-authored CSS at the same trust level as the module that
 injected it; what the guard buys is that it can never become a **third-party
-request**: `@import` and any `url()` other than `data:`, `blob:` or a
-same-document `#fragment` throw at install (rolling the plugin back) instead of
-failing silently against `style-src 'self'`. The same rule lives in
-`@tumult/theme/runtime` and is what the app's own advanced-CSS opt-in uses.
+request**: `@import`, any `url()` other than `data:`, `blob:` or a
+same-document `#fragment`, and the string forms that need no `url()`
+(`image-set("…")`, `-webkit-image-set("…")`, `src("…")`) throw at install
+(rolling the plugin back). The check reads the CSS as the browser's tokenizer
+does — escapes decoded, comments dropped — so `u\72l(…)` is `url(…)` to it too.
+The same rule lives in `@tumult/theme/runtime` and is what the app's own
+advanced-CSS opt-in uses.
+
+**Plugin CSS is switched off on security screens.** Because it is app-wide, a
+stylesheet could otherwise restyle what protects the user — hide the consent
+screen's warning, relabel "They match" on emoji verification. While the install
+consent dialog, the security dialog, emoji verification, recovery or the
+Security settings page is on screen, every plugin stylesheet is disabled
+(`suspendPluginStyles`, `useSecureSurface`), and comes back when it closes.
 
 **Example — style a class your renderer emits**, with tokens rather than
 literals so an installed theme still drives it (see `docs/themes.md`):
@@ -1075,8 +1091,11 @@ when the lane rule and the permission list fall out of step.
 - **No patch/hook type.** The `Patch` type from the original sketch is dropped
   on purpose: plugins register modules; nothing rewrites code strings on a live
   object.
-- **No crypto/security API in the context.** A plugin gets the `ChatClient`
-  surface, not verification, key backup or secret storage.
+- **No crypto/security API for sandboxed plugins.** A sandbox-lane plugin's
+  client is policed (§11): verification, key backup, secret storage and devices
+  are refused. An in-page (trusted-lane) plugin holds the real `ChatClient`,
+  which includes them — that is what "runs as part of the app" means, and the
+  consent screen says so.
 - **No `window`/`document` in the context.** Style through `injectStylesheet`
   (guarded, §5.6); there is no arbitrary DOM handle. (The *in-page* lane can
   reach the DOM by importing it directly — that is exactly why it is the
@@ -1116,7 +1135,7 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 
 | lane | how it loads | what it may declare |
 |---|---|---|
-| `sandbox` | the bundle is loaded and run **inside a Worker**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
+| `sandbox` | the bundle is loaded and run **inside a Worker in an opaque-origin frame**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
 | `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
@@ -1178,15 +1197,48 @@ there is no path where new capabilities arrive without a consent screen.
 A `sandbox`-lane plugin never executes in the page. `loadPlugin` hands the
 verified bundle to `sandboxPlugin()`, which returns a `Plugin` facade — from
 `PluginRegistry`'s point of view an ordinary plugin, same lifecycle and same
-permission gate. Its `install(ctx)` boots a module Worker
-(`apps/web/src/plugins/sandbox.worker.ts`, which is one import of
-`@tumult/ui/sandbox`), posts the bundle text plus the consented manifest, and
-then answers the Worker's requests against the real `ctx` the shell provided.
+permission gate. Its `install(ctx)` opens a transport (`SandboxHost.createTransport`),
+posts the bundle text plus the consented manifest, and then answers the
+Worker's requests against the real `ctx` the shell provided.
+
+The app's transport (`createFrameTransport`, wired in
+`apps/web/src/plugins/installer.ts`) is a hidden
+`<iframe sandbox="allow-scripts" allow="" referrerpolicy="no-referrer">` on
+`/sandbox.html` — a real same-server page with its own `<meta>` CSP
+(`default-src 'none'`; scripts only from `'self'` and `blob:`). With no
+`allow-same-origin` the frame's origin is **opaque** (`"null"`), so the browser
+itself keeps it away from the app's IndexedDB, caches, localStorage and
+`blob:` URLs. The frame's classic bootstrap (`/sandbox.js`) takes the first
+`MessagePort` its parent posts, starts the plugin's Worker from a `blob:` it
+mints itself, and relays between the two. The Worker is what keeps a busy loop
+off the shell: a cross-origin frame can share the app's main thread, a Worker
+does not. Posts made before the frame is up are buffered; a frame that does not
+come up within `FRAME_BOOT_TIMEOUT_MS`, or a Worker that errors, fails the
+plugin. The host posts the port with `targetOrigin: "*"` (an opaque origin has
+no name to target); trust rests on the port, which only this transport holds.
+`@tumult/ui` names no DOM type here — a host may supply any transport with
+`SandboxTransport`'s three members.
 
 The plugin's `ctx` inside the Worker is the *same shape* as the in-page one, with
-five differences the boundary forces:
+seven differences the boundary forces:
 
-- **Feeds become pushes.** `client.rooms`, `client.timeline(roomId)` and the rest
+- **The client is policed, not reflected.** `packages/ui/src/plugins/sandbox/policy.ts`
+  classifies every `ChatClient` member (a new member fails the build until it is
+  classified). A sandboxed plugin may `send`, `sendReply`, `toggleReaction`,
+  `sendTyping`, `loadMore` and open `timeline(roomId)` **only for the room of an
+  invocation the user triggered** — they ran its command or clicked its action
+  there — and only while that invocation runs; a timeline opened that way closes
+  when it ends. `supportsThreads`, `hasMoreRooms` and `connection` are always
+  open. Everything else is refused: account, session, recovery, verification,
+  devices, moderation, settings, profile, presence, room lifecycle, other rooms,
+  member lists, search, media, calls, and every `ctx.selection` / `ctx.actions`
+  call. (Before this, the bridge reflected the whole client — a `["styles"]`
+  plugin could read every room and mint a recovery key.)
+- **Invocation contexts cross as data.** A command's `{ roomId, client, args,
+  raw }` and an action's `setDraft` cannot be structured-cloned, so the host sends
+  `{ kind: "client" }` (the Worker substitutes its own policed client) and
+  `{ kind: "hostfn" }` references that answer only while the invocation runs.
+- **Feeds become pushes.** `client.timeline(roomId)` and the other allowed feeds
   are opened once by key; `.get()` returns the latest snapshot the host pushed,
   and `.subscribe()` fires on each push.
 - **`media.resolve*` mints its own URL.** A `blob:` URL made on the host is
@@ -1227,13 +1279,36 @@ meant*. A plugin that bundles something malicious and hashes it honestly is
 still malicious — the hash stops tampering and drift, not intent. That is what
 the lane badge and the consent copy are for.
 
+Second honest limitation: the boot re-hash catches a *corrupted* record, not a
+*forged* one. The hash sits in the same record, so whatever can write the store
+can write a matching bundle and hash — and a record saying "trusted" then runs
+in-page. So the boundary is who can write it. A **sandboxed** plugin cannot:
+its Worker runs in the opaque-origin sandbox frame, so the app's IndexedDB is
+not its origin's to open — and, as defense in depth, `sandbox/worker/shim.ts`
+still withdraws `indexedDB`, `caches`, nested `Worker`s, `BroadcastChannel` and
+`navigator.storage`/`locks`/`serviceWorker` before the bundle is imported
+(from every prototype too, failing closed if any survives). The browser smoke
+test asserts both layers: the plugin reports `origin === "null"` and none of
+those globals, and the frame itself (`sandbox` exactly `allow-scripts`) cannot
+read localStorage, CacheStorage or the app's databases. **In-page**
+code (a trusted plugin, or an XSS) can write it, and could persist in other
+ways too; that is inherent to running in-page, and what the trusted-lane
+consent warning is about.
+
 ### What the host must allow
 
-CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL) —
-`worker-src 'self' blob:` is already there for the sandbox lane. In this repo the
-policy is one constant in `apps/web/vite.config.ts` applied to **both** the dev
-server and `vite preview`, so the browser smoke test (which runs against
-`preview`) actually exercises it. Hosts that render `TumultShell` without the
+CSP needs `blob:` in `script-src` (the trusted lane imports a blob URL), and
+`frame-src` must allow the sandbox page — `'self'`, since CSP cannot name a
+bare path. The sandbox page's own policy is a `<meta>` in `/sandbox.html`
+(so `vite preview`, which sends no headers, enforces it too), mirrored as a
+header for `/sandbox.html` in `apps/web/vercel.json` with `frame-ancestors
+'self'` added; the global `frame-ancestors 'none'` header excludes that one
+path, or production could not frame it. The frame's `connect-src` mirrors the
+app's. In this repo the
+policy is one constant in `apps/web/vite.config.ts`: the dev server sends it as a
+header, and the build writes it into `index.html` as a `<meta>` — which is what
+production (Vercel) and the browser smoke test's `preview` both serve, so the
+test exercises exactly the deployed policy. Hosts that render `TumultShell` without the
 installer simply have no install UI: the extension API itself is unchanged and
 needs no CSP relaxation.
 

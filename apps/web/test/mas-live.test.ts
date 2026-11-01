@@ -374,7 +374,9 @@ describe("mas live", { skip: !isLive }, () => {
             });
             try {
                 rmSync(statePath, { force: true });
-            } catch {}
+            } catch {
+                // Best-effort cleanup: a leftover state file is harmless.
+            }
         }
 
         // Console noise from the SDK's own logger, resolved to the logged value.

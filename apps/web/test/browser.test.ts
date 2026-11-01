@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -299,7 +299,7 @@ describe("browser smoke test (fake client)", () => {
         // an unreserved layout would have jumped.
         await page.waitForFunction(
             () => {
-                const images = Array.from(document.querySelectorAll("img.tumult-media-message-image"));
+                const images = Array.from(document.querySelectorAll<HTMLImageElement>("img.tumult-media-message-image"));
                 return (
                     images.length >= 2 &&
                     images.every((img) => img.complete && img.naturalWidth > 0)
@@ -310,7 +310,7 @@ describe("browser smoke test (fake client)", () => {
         );
         const measured = await page.evaluate(() => {
             const root = getComputedStyle(document.documentElement);
-            const images = Array.from(document.querySelectorAll("img.tumult-media-message-image")).map(
+            const images = Array.from(document.querySelectorAll<HTMLImageElement>("img.tumult-media-message-image")).map(
                 (img) => ({
                     intrinsicW: img.style.getPropertyValue("--media-intrinsic-w"),
                     ratio: img.style.getPropertyValue("--media-intrinsic-ratio"),
@@ -420,10 +420,151 @@ describe("browser smoke test (fake client)", () => {
             .waitFor({ timeout: 10_000 });
     });
 
+    it("stages attachments, removes one, and sends the rest with alt text and a caption", async () => {
+        const svg = (fill: string) =>
+            Buffer.from(
+                `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="100%" height="100%" fill="${fill}"/></svg>`,
+            );
+        // Not a row COUNT: the timeline is virtualized, so how many rows are
+        // mounted changes on its own (it dropped 21 → 20 on CI with nothing
+        // sent). What must not exist is a message carrying either file.
+        // An uncaptioned image shows its name only as the <img> alt, so look
+        // for either the text or the alt.
+        const sent = async (): Promise<number> => {
+            let n = 0;
+            for (const name of ["wrong.svg", "cat.svg"]) {
+                n += await page.locator(".tumult-row", { hasText: name }).count();
+                n += await page.locator(`.tumult-row img[alt="${name}"]`).count();
+            }
+            return n;
+        };
+        const sentBefore = await sent();
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "wrong.svg", mimeType: "image/svg+xml", buffer: svg("red") },
+            { name: "cat.svg", mimeType: "image/svg+xml", buffer: svg("grey") },
+        ]);
+        const cards = page.locator(".tumult-composer-attachment");
+        await cards.nth(1).waitFor({ timeout: 5_000 });
+        assert.equal(await cards.count(), 2, "both picked files should stage, not send");
+        await page.waitForTimeout(400);
+        assert.equal(await sent(), sentBefore, "picking a file must not send it");
+        assert.equal(await cards.count(), 2, "and both are still waiting in the tray");
+        // The thumbnail is the picked bytes, previewed locally.
+        assert.match((await cards.first().locator("img").getAttribute("src")) ?? "", /^blob:/);
+
+        await page.locator('button[aria-label="Remove wrong.svg"]').click();
+        assert.equal(await cards.count(), 1, "removing a staged file should drop its card");
+        assert.equal(await cards.first().locator(".tumult-composer-attachment-name").textContent(), "cat.svg");
+
+        await page.locator('input[aria-label="Alt text for cat.svg"]').fill("A grey square");
+        const input = page.locator(".tumult-composer-input");
+        await input.fill("my cat, captioned");
+        await input.press("Enter");
+
+        // One media row: the MSC2530 caption under the image, alt text on the <img>.
+        const row = page.locator(".tumult-row", { has: page.locator(".tumult-media-message-caption") }).last();
+        await row.waitFor({ timeout: 10_000 });
+        assert.equal(await row.locator(".tumult-media-message-caption").textContent(), "my cat, captioned");
+        const img = row.locator("img.tumult-media-message-image");
+        await img.waitFor({ timeout: 10_000 });
+        assert.equal(await img.getAttribute("alt"), "A grey square");
+        // The tray measured the image, so the event reserves its box (40x30).
+        assert.equal(await img.getAttribute("data-dims"), "true");
+        assert.equal(await cards.count(), 0, "the tray should clear once its files landed");
+        assert.equal(await input.inputValue(), "", "the caption should leave the composer");
+        assert.equal(
+            await page.locator(".tumult-row", { hasText: "wrong.svg" }).count(),
+            0,
+            "the removed file must never be sent",
+        );
+    });
+
+    it("falls back to the file chip when the browser cannot decode a staged image", async () => {
+        // HEIC decodes only in Safari; these bytes decode nowhere.
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "IMG_0001.HEIC", mimeType: "image/heic", buffer: Buffer.from("not an image") },
+        ]);
+        const card = page.locator(".tumult-composer-attachment");
+        await card.locator(".tumult-composer-attachment-preview svg").first().waitFor({ timeout: 5_000 });
+        assert.equal(await card.locator("img").count(), 0, "a broken <img> should give way to the chip");
+        await page.locator('button[aria-label="Remove IMG_0001.HEIC"]').click();
+        assert.equal(await card.count(), 0);
+    });
+
+    it("refuses a file over the server's upload limit when staged, and sends the rest", async () => {
+        // The fake advertises m.upload.size = 2 MB.
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "huge.zip", mimeType: "application/zip", buffer: Buffer.alloc(3 * 1024 * 1024) },
+            { name: "small.txt", mimeType: "text/plain", buffer: Buffer.from("fits") },
+        ]);
+        const huge = page.locator(".tumult-composer-attachment", { hasText: "huge.zip" });
+        await page.waitForFunction(
+            () => document.querySelector('.tumult-composer-attachment[data-status="too-large"]') !== null,
+            undefined,
+            { timeout: 5_000 },
+        );
+        assert.equal(
+            (await huge.locator(".tumult-composer-attachment-meta").textContent())?.trim(),
+            "Too large — this server accepts up to 2.0 MB",
+        );
+
+        await page.locator(".tumult-composer-input").press("Enter");
+        await page.locator(".tumult-row", { hasText: "small.txt" }).last().waitFor({ timeout: 10_000 });
+        assert.equal(await page.locator(".tumult-row", { hasText: "huge.zip" }).count(), 0);
+        // The refused file stays until the user removes it; Send has nothing left to take.
+        assert.equal(await huge.count(), 1);
+        assert.equal(await page.locator(".tumult-composer-send").isDisabled(), true);
+        await page.locator('button[aria-label="Remove huge.zip"]').click();
+        assert.equal(await page.locator(".tumult-composer-attachment").count(), 0);
+    });
+
+    it("converts a staged HEIC to JPEG, previews it, and sends the JPEG", async () => {
+        // A real 64x48 HEIC (made with macOS `sips`) — Firefox cannot decode it natively.
+        const heic = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/red.heic"));
+        await page.locator(".tumult-composer-file").setInputFiles([
+            { name: "IMG_3947.HEIC", mimeType: "image/heic", buffer: heic },
+        ]);
+        const card = page.locator(".tumult-composer-attachment");
+        const thumb = card.locator("img.tumult-composer-attachment-thumb");
+        await thumb.waitFor({ timeout: 30_000 });
+        assert.equal(await card.locator(".tumult-composer-attachment-name").textContent(), "IMG_3947.jpg");
+        assert.equal(await card.getAttribute("data-status"), "staged");
+        await page.waitForFunction(
+            () => (document.querySelector("img.tumult-composer-attachment-thumb") as HTMLImageElement | null)?.naturalWidth === 64,
+            undefined,
+            { timeout: 10_000 },
+        );
+
+        await page.locator(".tumult-composer-input").press("Enter");
+        const img = page.locator(".tumult-row img.tumult-media-message-image[alt='IMG_3947.jpg']").last();
+        await img.waitFor({ timeout: 10_000 });
+        assert.equal(await img.getAttribute("data-dims"), "true", "the JPEG's measured size should travel on the event");
+        assert.equal(await card.count(), 0);
+    });
+
     it("renders a member decoration from an app-installed plugin", async () => {
         // Alice seeds power level 100, so the admin badge's `match` accepts her.
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });
         await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
+    });
+
+    it("shows a shield in place of the presence dot for a verified member", async () => {
+        // The fake marks Alice verified and Bob known-but-unverified.
+        const alice = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Alice/ }) }).first();
+        const bob = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Bob/ }) }).first();
+        await alice.waitFor({ timeout: 10_000 });
+        const shield = alice.locator(".tumult-member-shield");
+        assert.equal(await shield.count(), 1, "a verified member shows the shield");
+        assert.equal(await alice.locator(".tumult-member-dot").count(), 0, "the shield replaces the dot, it is not added beside it");
+        assert.equal(await shield.getAttribute("data-presence"), "online", "the shield still carries presence");
+        assert.match((await shield.getAttribute("title")) ?? "", /^Verified · Online$/);
+        assert.match(await alice.locator(".tumult-member-name").textContent() ?? "", /, verified$/, "screen readers hear it");
+        assert.equal(await bob.locator(".tumult-member-shield").count(), 0, "unverified keeps the dot");
+        assert.equal(await bob.locator(".tumult-member-dot").count(), 1);
+        // Rows are virtualized on an estimate: the shield must not be what sets
+        // the row's height, so it stays within the avatar beside it.
+        const [shieldBox, avatarBox] = await Promise.all([shield.boundingBox(), alice.locator(".tumult-avatar").first().boundingBox()]);
+        assert.ok(shieldBox && avatarBox && shieldBox.height <= avatarBox.height, `shield ${shieldBox?.height} taller than avatar ${avatarBox?.height}`);
     });
 
     it("renders a member's activity from a profile field in place of the status line", async () => {
@@ -437,6 +578,70 @@ describe("browser smoke test (fake client)", () => {
         );
         const row = page.locator(".tumult-member", { has: activity });
         assert.match(await row.locator(".tumult-member-name").innerText(), /Alice/);
+    });
+
+    it("turns microphone processing off and back on from the Voice settings page", async () => {
+        const openVoice = async (): Promise<void> => {
+            await page.locator(".tumult-userbar-gear").click();
+            await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+            await page.getByRole("tab", { name: "Voice" }).click();
+        };
+        const close = async (): Promise<void> => {
+            await page.keyboard.press("Escape");
+            await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+        };
+        const noise = page.getByTestId("voice-noiseSuppression");
+        const echo = page.getByTestId("voice-echoCancellation");
+        const gain = page.getByTestId("voice-autoGainControl");
+        const reset = page.getByRole("button", { name: "Reset to defaults" });
+
+        await openVoice();
+        // Everything is on by default, and there is nothing to reset.
+        assert.equal(await noise.isChecked(), true);
+        assert.equal(await reset.isDisabled(), true);
+
+        await noise.uncheck();
+        await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>(".tumult-voice-reset")?.disabled);
+        assert.equal(await echo.isChecked(), true, "the other two are untouched");
+
+        // The choice is the client's, not the page's: it survives closing and reopening.
+        await close();
+        await openVoice();
+        assert.equal(await noise.isChecked(), false, "the choice was not kept");
+        assert.equal(await gain.isChecked(), true);
+
+        // All three off is a deliberate setup, and the page says what it implies.
+        await echo.uncheck();
+        await gain.uncheck();
+        await page.getByText("Sending your microphone unprocessed").waitFor({ timeout: 10_000 });
+
+        await reset.click();
+        await page.waitForFunction(() =>
+            [...document.querySelectorAll<HTMLInputElement>("[data-testid^=voice-]")].every((input) => input.checked),
+        );
+        assert.equal(await reset.isDisabled(), true);
+        await close();
+    });
+
+    it("switches plugin stylesheets off while a security screen is open (F3)", async () => {
+        const pluginStyles = page.locator('style[data-tumult-plugin-styles]:not([data-tumult-plugin-styles="shell"])');
+        const states = (): Promise<boolean[]> => pluginStyles.evaluateAll((els) => els.map((el) => (el as HTMLStyleElement).disabled));
+        assert.ok((await pluginStyles.count()) > 0, "the fake app installs plugins that inject CSS");
+        assert.ok((await states()).every((disabled) => !disabled), "plugin CSS is on during normal use");
+
+        await page.locator(".tumult-userbar-gear").click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.getByRole("tab", { name: "Security", exact: true }).click();
+        await page.locator(".tumult-security-rows").waitFor({ timeout: 10_000 });
+        assert.ok((await states()).every((disabled) => disabled), "every plugin stylesheet is off on the Security page");
+
+        await page.getByRole("tab", { name: "My Account", exact: true }).click();
+        // The Security page unmounts on the switch; give that flush a moment.
+        const deadline = Date.now() + 5_000;
+        while ((await states()).some((disabled) => disabled) && Date.now() < deadline) await page.waitForTimeout(50);
+        assert.ok((await states()).every((disabled) => !disabled), "and back on once it is gone");
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
     });
 
     it("renders a plugin settings tab, styled by the plugin's injected stylesheet", async () => {
@@ -454,7 +659,7 @@ describe("browser smoke test (fake client)", () => {
         const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
         assert.deepEqual(
             tabNames.map((name) => name.trim()),
-            ["My Account", "Security", "Appearance", "Themes", "Installed", "Plugin demo"],
+            ["My Account", "Security", "Appearance", "Voice", "Themes", "Installed", "Plugin demo"],
             "the sidebar is not the shell's pages plus the plugin's",
         );
         // A plugin page that names no section lands under the Plugins heading.
@@ -537,6 +742,58 @@ describe("browser smoke test (fake client)", () => {
         const bar = page.locator(".tumult-voice");
         await bar.getByRole("button", { name: "Turn off camera" }).click();
         await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-tile").length === 1);
+
+        await bar.getByRole("button", { name: "Disconnect" }).click();
+        await page.waitForSelector(".tumult-voice-stage", { state: "detached", timeout: 10_000 });
+    });
+
+    it("fits the video stage without scrolling, spotlights on click, and expands over the chat", async () => {
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        await page.getByRole("button", { name: "Choose call type" }).click();
+        await page.getByRole("menuitem", { name: "Video" }).click();
+        const stage = page.locator(".tumult-voice-stage");
+        await stage.waitFor({ timeout: 10_000 });
+
+        // Nothing scrolls: not the stage, not the page, whatever the window.
+        const overflows = (): Promise<boolean> =>
+            stage.evaluate((el) => el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth || document.documentElement.scrollHeight > window.innerHeight);
+        assert.equal(await overflows(), false, "the stage must fit its box");
+
+        // Two cameras, nothing spotlit: one even grid and no strip.
+        assert.equal(await stage.locator(".tumult-voice-strip").count(), 0);
+
+        // Click a tile: it goes up front and the other drops to the strip.
+        const tiles = stage.locator(".tumult-voice-tile");
+        await tiles.filter({ hasText: "alice" }).click();
+        await stage.locator(".tumult-voice-strip .tumult-voice-tile").waitFor({ timeout: 10_000 });
+        assert.equal(await stage.locator(".tumult-voice-main .tumult-voice-tile").count(), 1);
+        assert.equal(await stage.locator(".tumult-voice-main .tumult-voice-tile").getAttribute("aria-pressed"), "true");
+
+        // A shared screen starts in the spotlight beside it; both fit.
+        const bar = page.locator(".tumult-voice");
+        await bar.getByRole("button", { name: "Share screen" }).click();
+        await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-main .tumult-voice-tile").length === 2);
+        assert.equal(await overflows(), false, "several spotlit tiles still fit");
+        // The fake's share carries no audio, and the tile says so instead of leaving it to guess.
+        const screenTile = stage.locator(".tumult-voice-tile[data-source='screen']");
+        assert.match((await screenTile.textContent()) ?? "", /No audio/);
+        assert.doesNotMatch((await stage.locator(".tumult-voice-tile[data-source='camera']").first().textContent()) ?? "", /No audio/);
+
+        // Reverse the screen: it goes back to the strip.
+        await stage.locator(".tumult-voice-main .tumult-voice-tile[data-source='screen']").click();
+        await page.waitForFunction(() => document.querySelectorAll(".tumult-voice-strip .tumult-voice-tile").length === 2);
+
+        // Expand covers the whole timeline pane; Esc gives it back.
+        const pane = page.locator(".tumult-pane-timeline");
+        await stage.getByRole("button", { name: "Expand video" }).click();
+        assert.equal(await stage.getAttribute("data-expanded"), "true");
+        const [paneBox, stageBox] = await Promise.all([pane.boundingBox(), stage.boundingBox()]);
+        assert.ok(paneBox && stageBox);
+        assert.ok(Math.abs(paneBox.height - stageBox.height) < 2 && Math.abs(paneBox.width - stageBox.width) < 2, "expanded stage covers the pane");
+        assert.equal(await overflows(), false, "expanded still fits");
+        await page.keyboard.press("Escape");
+        assert.equal(await stage.getAttribute("data-expanded"), "false");
 
         await bar.getByRole("button", { name: "Disconnect" }).click();
         await page.waitForSelector(".tumult-voice-stage", { state: "detached", timeout: 10_000 });
@@ -774,6 +1031,142 @@ describe("browser smoke test (fake client)", () => {
             assert.match(rowText, /Sandboxed/, "the installed row lost its lane");
             assert.match(rowText, /example\/remote/, "the installed row lost its source");
             assert.match(rowText, /cc\.example\.remote/, "the installed row is not the plugin that was installed");
+        } finally {
+            await isolated.close();
+        }
+    });
+
+    it("gives a sandboxed plugin no route to the app's storage or an unpoliced worker", async () => {
+        // The app's origin holds IndexedDB with the SDK's crypto store (this
+        // device's keys) and the plugin store, where a forged trusted-lane
+        // record would run in-page on the next boot. Two layers keep a sandboxed
+        // plugin off it, and BOTH are asserted: the plugin's Worker lives in an
+        // opaque-origin frame (`self.origin === "null"`, so the browser itself
+        // refuses the app's storage), and inside it the runtime still withdraws
+        // IndexedDB, caches and nested Workers. The probe is the most sandboxed
+        // plugin there is — ["styles"] only — and reports what it reached through
+        // the one channel it has: a custom property in CSS it injects.
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        try {
+            await isolated.addInitScript((session) => {
+                window.localStorage.setItem("tumult.session", JSON.stringify(session));
+            }, SESSION);
+            const bundle = `export const plugin = { manifest: { id: "cc.example.probe", name: "Probe", version: "1.0.0", permissions: ["styles"] }, async install(ctx) {
+  const found = {};
+  const g = globalThis;
+  found.origin = g.origin;
+  found.localStorage = typeof g.localStorage !== "undefined";
+  found.indexedDB = typeof g.indexedDB !== "undefined" && g.indexedDB !== null;
+  try { const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Object.getPrototypeOf(g)), "indexedDB") || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(g), "indexedDB"); found.viaPrototype = !!(d && d.get && d.get.call(g)); } catch (e) { found.viaPrototype = false; }
+  try { const dbs = await g.indexedDB.databases(); found.databases = dbs.map((x) => x.name).filter((n) => /tumult/.test(n || "")); } catch (e) { found.databases = []; }
+  try { await new Promise((ok, no) => { const r = g.indexedDB.open("tumult.plugins"); r.onsuccess = () => { r.result.close(); ok(); }; r.onerror = no; }); found.openedPluginStore = true; } catch (e) { found.openedPluginStore = false; }
+  found.Worker = typeof g.Worker === "function";
+  found.caches = typeof g.caches !== "undefined";
+  found.BroadcastChannel = typeof g.BroadcastChannel === "function";
+  ctx.injectStylesheet(":root { --sandbox-probe: " + JSON.stringify(JSON.stringify(found)) + "; }");
+} };\n`;
+            const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bundle));
+            let binary = "";
+            for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+            const integrity = `sha256-${Buffer.from(binary, "binary").toString("base64")}`;
+            const manifest = { id: "cc.example.probe", name: "Probe", version: "1.0.0", author: "Someone", description: "Probe.", permissions: ["styles"], entry: "plugin.js", integrity };
+            await isolated.route("**/api.github.com/repos/example/probe/releases/latest", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        tag_name: "v1.0.0",
+                        assets: [
+                            { name: "tumult.plugin.json", browser_download_url: "https://github.com/example/probe/releases/download/v1.0.0/tumult.plugin.json" },
+                            { name: "plugin.js", browser_download_url: "https://github.com/example/probe/releases/download/v1.0.0/plugin.js" },
+                        ],
+                    }),
+                }),
+            );
+            await isolated.route("**/api/plugin-asset**name=tumult.plugin.json**", (route) =>
+                route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manifest) }),
+            );
+            await isolated.route("**/api/plugin-asset**name=plugin.js**", (route) =>
+                route.fulfill({ status: 200, contentType: "text/javascript", body: bundle }),
+            );
+
+            const probe = await isolated.newPage();
+            await probe.goto(origin, { waitUntil: "domcontentloaded" });
+            await probe.waitForSelector(".tumult-account", { timeout: 10_000 });
+            await probe.locator(".tumult-userbar-gear").click();
+            await probe.getByRole("tab", { name: "Installed" }).click();
+            await probe.locator("#tumult-plugin-url").fill("https://github.com/example/probe");
+            await probe.getByRole("button", { name: "Check" }).click();
+            await probe.locator(".tumult-consent").waitFor({ timeout: 10_000 });
+            await probe.getByRole("button", { name: "Install" }).click();
+            await probe.locator(".tumult-plugin", { has: probe.locator(".tumult-plugin-lane-sandbox") }).waitFor({ timeout: 10_000 });
+            // The settings overlay is a security-adjacent surface but not one
+            // that suspends styles; close it so nothing interferes with reading.
+            await probe.keyboard.press("Escape");
+
+            let reported = "";
+            const deadline = Date.now() + 10_000;
+            while (!reported && Date.now() < deadline) {
+                reported = await probe.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--sandbox-probe").trim());
+                if (!reported) await probe.waitForTimeout(100);
+            }
+            assert.ok(reported, "the probe plugin never reported");
+            const found = JSON.parse(JSON.parse(reported)) as Record<string, unknown>;
+            assert.deepEqual(
+                found,
+                {
+                    origin: "null",
+                    localStorage: false,
+                    indexedDB: false,
+                    viaPrototype: false,
+                    databases: [],
+                    openedPluginStore: false,
+                    Worker: false,
+                    caches: false,
+                    BroadcastChannel: false,
+                },
+                `a sandboxed plugin reached: ${reported}`,
+            );
+
+            // The frame itself, below the runtime's withdrawal: exactly
+            // `allow-scripts`, an opaque origin, and none of the app's storage
+            // even with every global intact.
+            const frameElement = probe.locator("iframe[data-tumult-plugin-sandbox]");
+            assert.equal(await frameElement.count(), 1, "one sandboxed plugin should mean one sandbox frame");
+            assert.equal(await frameElement.getAttribute("sandbox"), "allow-scripts");
+            assert.equal(await frameElement.getAttribute("allow"), "");
+            assert.equal(await frameElement.getAttribute("referrerpolicy"), "no-referrer");
+            assert.equal(await frameElement.getAttribute("aria-hidden"), "true");
+            assert.ok(await frameElement.evaluate((el) => (el as HTMLIFrameElement).inert && (el as HTMLIFrameElement).hidden), "the frame must be hidden and inert");
+            const frame = await (await frameElement.elementHandle())?.contentFrame();
+            assert.ok(frame, "the sandbox frame has no document");
+            const inside = (await frame.evaluate(`(async () => {
+                const out = { origin: self.origin };
+                try { out.localStorage = typeof localStorage.getItem("tumult.session"); } catch (e) { out.localStorage = "throws"; }
+                try { out.databases = (await indexedDB.databases()).map((d) => d.name); } catch (e) { out.databases = "throws"; }
+                try { await caches.keys(); out.caches = "reachable"; } catch (e) { out.caches = "throws"; }
+                out.csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") ?? null;
+                return out;
+            })()`)) as { origin: string; localStorage: string; databases: unknown; caches: string; csp: string | null };
+            assert.equal(inside.origin, "null", "the sandbox frame is not opaque");
+            assert.equal(inside.localStorage, "throws", "the sandbox frame can reach localStorage");
+            assert.ok(
+                inside.databases === "throws" || (Array.isArray(inside.databases) && !inside.databases.some((name) => /tumult/.test(String(name)))),
+                `the sandbox frame sees the app's databases: ${JSON.stringify(inside.databases)}`,
+            );
+            assert.equal(inside.caches, "throws", "the sandbox frame can reach CacheStorage");
+
+            // The frame's policy travels in its own <meta> (preview sends no
+            // headers), and vercel.json's header for the page must say the
+            // same thing plus the one directive a meta cannot carry.
+            assert.ok(inside.csp, "the sandbox page carries no CSP meta");
+            assert.match(inside.csp, /default-src 'none'/);
+            const vercel = JSON.parse(readFileSync(join(appRoot, "vercel.json"), "utf8")) as {
+                headers: { source: string; headers: { key: string; value: string }[] }[];
+            };
+            const rule = vercel.headers.find((entry) => entry.source === "/sandbox.html");
+            const header = rule?.headers.find((entry) => entry.key === "Content-Security-Policy")?.value;
+            assert.equal(header, `${inside.csp}; frame-ancestors 'self'`, "vercel.json's sandbox CSP drifted from the page's meta");
         } finally {
             await isolated.close();
         }
@@ -1459,6 +1852,30 @@ describe("browser smoke test (fake client)", () => {
         await closeSettings();
     });
 
+    it("reports a refused join as a sentence, never the raw request error", async () => {
+        // The fake refuses `#forbidden:fake` with a MatrixError-shaped error
+        // whose message embeds the URL; the dialog must show describeError's
+        // sentence instead (AGENTS.md: errors go through @tumult/core/errors).
+        await page.getByRole("button", { name: "Add a server" }).click();
+        await page.getByRole("menuitem", { name: "Join a room" }).click();
+        const dialog = page.getByRole("dialog", { name: "Join a room" });
+        await dialog.getByRole("textbox").fill("#forbidden:fake");
+        await dialog.getByRole("button", { name: "Join", exact: true }).click();
+        const alert = dialog.getByRole("alert");
+        await alert.waitFor({ timeout: 5_000 });
+        const text = (await alert.textContent())?.trim() ?? "";
+        assert.equal(text, "Couldn't join #forbidden:fake: you don't have permission to do that here.");
+        assert.doesNotMatch(text, /https?:\/\//);
+        assert.doesNotMatch(text, /\bM_[A-Z_]+/);
+        // The raw error still reaches developers, with the same context. It is
+        // this test's expected error, so take it out of the whole-run check.
+        const logged = consoleErrors.findIndex((line) => line.startsWith("[tumult] Couldn't join #forbidden:fake"));
+        assert.notEqual(logged, -1, "the raw error was not logged");
+        consoleErrors.splice(logged, 1);
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden" });
+    });
+
     it("floats a row's hover actions instead of resizing the row", async () => {
         // The regression this guards: the affordances used to sit in the flow
         // and be `display: none` until hover, so hovering grew the row and
@@ -2129,6 +2546,58 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-menu", { state: "detached", timeout: 5_000 });
     });
 
+    it("enforces the CSP from the built document itself, with no header", async () => {
+        // Production (Vercel) sends no policy header for the page; the build
+        // embeds it as a <meta>. Preview sends no header either, so this proves
+        // the meta alone is enforced — and it must come before every script and
+        // stylesheet, yet after the charset (which must sit in the first 1024 bytes).
+        // A page of its own: the blocked script below is a deliberate console
+        // error, which the main page's no-errors gate must not see.
+        const response = await fetch(`${origin}/?cb=${Date.now()}`);
+        assert.equal(response.headers.get("content-security-policy"), null, "preview must not mask the meta policy");
+        const html = await response.text();
+        assert.match(html, /<head>\s*<meta charset="[^"]*"\s*\/?>\s*<meta http-equiv="Content-Security-Policy"/i);
+        assert.ok(html.indexOf("<meta charset") < 1024, "the CSP meta pushed <meta charset> past the first 1024 bytes");
+
+        const probe = await context.newPage();
+        try {
+            await probe.goto(`${origin}/dms`, { waitUntil: "load" });
+            await probe.waitForSelector(".tumult-shell", { timeout: 20_000 });
+            const ran = await probe.evaluate(() => {
+                const script = document.createElement("script");
+                script.textContent = "window.__inlineRan = true";
+                document.head.append(script);
+                return (window as unknown as { __inlineRan?: boolean }).__inlineRan === true;
+            });
+            assert.equal(ran, false, "an inline script ran: the built document enforces no script-src");
+        } finally {
+            await probe.close();
+        }
+    });
+
+    it("lets an admin open a room's calls to members from room settings", async () => {
+        // Fake rooms carry no call.member level, so state_default (50) applies:
+        // admins-only calls, the shape of a room another client made.
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.locator(".tumult-room-item").first().click();
+        const openSettings = async (): Promise<void> => {
+            await page.getByRole("button", { name: "Room settings" }).click();
+            await page.getByRole("dialog", { name: "Room settings" }).waitFor({ timeout: 10_000 });
+        };
+        const toggle = page.getByRole("checkbox", { name: "Members can join calls" });
+
+        await openSettings();
+        assert.equal(await toggle.isChecked(), false, "a room with no override keeps calls to admins");
+        await toggle.check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await page.getByRole("dialog", { name: "Room settings" }).waitFor({ state: "detached", timeout: 10_000 });
+
+        await openSettings();
+        assert.equal(await toggle.isChecked(), true, "reopening shows the saved setting");
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog", { name: "Room settings" }).waitFor({ state: "detached", timeout: 10_000 });
+    });
+
     it("reports no console errors across the whole run", () => {
         assert.deepEqual(consoleErrors, []);
     });
@@ -2215,6 +2684,7 @@ describe("browser smoke test (fake client)", () => {
         await page.getByLabel("Toggle room list").click();
         await page.waitForTimeout(100);
         const gridNone = await getGrid();
+        assert.ok(gridNone, "grid template must be readable");
         assert.ok(gridNone?.includes("0px"), `both closed: all pane tracks should be 0: ${gridNone}`);
         assert.ok(gridNone?.includes("minmax(0,1fr)") || gridNone?.includes("1fr") || gridNone.split(/\s+/).length === 4, "timeline must remain flexible even when both panes closed");
         const rlNone = await checkRoomlist();
@@ -2227,6 +2697,7 @@ describe("browser smoke test (fake client)", () => {
         await page.getByLabel("Toggle room list").click();
         await page.waitForTimeout(100);
         const gridFinal = await getGrid();
+        assert.ok(gridFinal, "grid template must be readable");
         assert.ok(gridFinal?.includes("minmax(0,1fr)") || gridFinal?.includes("1fr") || gridFinal.split(/\s+/).length === 4, "final state must have flexible center");
     });
 });

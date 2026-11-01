@@ -10,6 +10,12 @@ interface ImportMetaEnv {
     readonly VITE_ELEMENT_CALL_URL?: string;
     /** `"1"` turns on native audio voice. See .env.example. */
     readonly VITE_VOICE?: string;
+    /**
+     * `"1"` in the desktop shell's build (`apps/desktop/scripts/build-web.ts`):
+     * registers a loopback redirect URI the Electron main process intercepts.
+     * Never set it for a web deployment.
+     */
+    readonly VITE_DESKTOP?: string;
 }
 
 interface ImportMeta {

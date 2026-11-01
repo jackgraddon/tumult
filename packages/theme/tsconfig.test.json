@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": "../..",
+    "types": ["node"],
+    // The gallery test reaches ui sources, which import core and theme by
+    // package name: map them to source (as ui's own config does), so this
+    // check does not depend on a prior build.
+    "baseUrl": ".",
+    "paths": {
+      "@tumult/core": ["../core/src/index.ts"],
+      "@tumult/core/selectors": ["../core/src/selectors/spaceTree.ts"],
+      "@tumult/core/media": ["../core/src/media/classify.ts"],
+      "@tumult/core/errors": ["../core/src/errors.ts"],
+      "@tumult/core/*": ["../core/src/*"],
+      "@tumult/theme": ["./src/index.ts"],
+      "@tumult/theme/runtime": ["./src/runtime.ts"],
+      "@tumult/ui": ["../ui/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

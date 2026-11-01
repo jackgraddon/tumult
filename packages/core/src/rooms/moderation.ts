@@ -108,7 +108,7 @@ function byRosterOrder(a: MemberView, b: MemberView): number {
     );
 }
 
-/** A banned member as the members pane needs it — no presence (nobody to poll). */
+/** A banned member as the members pane needs it — no presence (nobody to poll), no trust lookup. */
 function toBannedView(member: RoomMember, selfId: string): MemberView {
     return {
         userId: member.userId,
@@ -118,6 +118,7 @@ function toBannedView(member: RoomMember, selfId: string): MemberView {
         powerLevel: member.powerLevel ?? 0,
         isSelf: member.userId === selfId,
         presence: "unknown",
+        verification: "unknown",
         lastActiveTs: null,
         statusMessage: null,
     };

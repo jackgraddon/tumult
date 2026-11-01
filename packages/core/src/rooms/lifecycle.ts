@@ -11,8 +11,31 @@ import type {
     CreateSpaceParams,
     UserSearchResult,
 } from "../contract.ts";
+import { setMembersCanJoinCalls } from "./calls.ts";
 
 const MEGOLM = "m.megolm.v1.aes-sha2";
+
+/**
+ * Let every member of a room we just created join its calls.
+ *
+ * Joining a MatrixRTC call (compatibility mode, see voice/sfu.ts) is sending an
+ * `org.matrix.msc3401.call.member` STATE event, and the presets leave state
+ * events at `state_default` (50) — so without this only the creator could join
+ * and everyone else was refused with M_FORBIDDEN. Element creates rooms with
+ * it at 0; so do we. How the write is done (and why not on createRoom) is
+ * `setMembersCanJoinCalls`'s business.
+ *
+ * Never throws: the room already exists, and reporting a failed create for it
+ * would be worse than calls being admin-only in it. The failure is logged, and
+ * an admin can still open them from room settings.
+ */
+async function allowCallsForMembers(matrix: MatrixClient, roomId: string): Promise<void> {
+    try {
+        await setMembersCanJoinCalls(matrix, roomId, true);
+    } catch (error) {
+        console.warn(`[tumult] could not open calls to members of ${roomId}; only admins can join them`, error);
+    }
+}
 
 /**
  * Lifecycle verbs (create / join / leave / invite) plus directory search.
@@ -53,6 +76,7 @@ export async function createChannel(
             ? { initial_state: [{ type: "m.room.encryption", content: { algorithm: MEGOLM } }] }
             : {}),
     });
+    await allowCallsForMembers(matrix, roomId);
 
     // Link the channel into its space. `via` must be non-empty: snapshotRooms
     // treats an empty/absent via as a REMOVED link and drops the parent, so a
@@ -74,6 +98,7 @@ export async function createDm(matrix: MatrixClient, params: CreateDmParams): Pr
             ? { initial_state: [{ type: "m.room.encryption", content: { algorithm: MEGOLM } }] }
             : {}),
     });
+    await allowCallsForMembers(matrix, roomId);
     // Record the mapping so other clients file this under DMs too. Merge, not
     // replace: m.direct holds every DM on the account and overwriting it would
     // un-file everyone else's.

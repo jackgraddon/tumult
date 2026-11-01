@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
 import type { DeviceView } from "@tumult/core";
 
@@ -109,7 +110,7 @@ function submit(): void {
             saved.value = true;
         })
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, "Couldn't save your profile");
         })
         .finally(() => {
             busy.value = false;
@@ -141,7 +142,7 @@ async function loadDevices(): Promise<void> {
         devices.value = await props.client.listDevices();
     } catch (cause) {
         devices.value = null;
-        devicesError.value = cause instanceof Error ? cause.message : String(cause);
+        devicesError.value = reportError(cause, "Couldn't load your sessions");
     }
 }
 

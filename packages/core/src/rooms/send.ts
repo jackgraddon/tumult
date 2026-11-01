@@ -1,4 +1,4 @@
-import { MsgType, type MatrixClient } from "matrix-js-sdk";
+import { ConnectionError, EventStatus, MsgType, type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
 
 /**
@@ -75,10 +75,45 @@ export function retryTextMessage(
 ): Promise<void> {
     const room = matrix.getRoom(roomId);
     if (!room) return Promise.reject(new Error(`No such room ${roomId}`));
-    const failed = room.getPendingEvents().find((e) => e.getId() === eventId);
+    const failed = unsentEvents(room).find((e) => e.getId() === eventId);
     if (!failed) return Promise.reject(new Error(`No failed event ${eventId}`));
     // `resendEvent` returns void in SDK v43 — the echo transition (SENDING →
     // SENT/failed) republishes through the feed, not this promise.
     matrix.resendEvent(failed, room);
     return Promise.resolve();
+}
+
+/**
+ * Resend every message that failed because the NETWORK was down, once it is
+ * back. Typing into a dead connection used to leave the message "not sent"
+ * forever — after the outage it still needed the user to notice and press
+ * "try again" (found by the network-outage browser test). Only a
+ * ConnectionError is retried: a message the SERVER refused (a MatrixError —
+ * forbidden, too large, rate-limited past the SDK's own retries) would only
+ * fail again, so it stays "not sent" for the user to decide. Returns how many
+ * were resent.
+ */
+export function resendAfterOutage(matrix: MatrixClient): number {
+    let resent = 0;
+    for (const room of matrix.getRooms()) {
+        for (const event of unsentEvents(room)) {
+            if (!(event.error instanceof ConnectionError)) continue;
+            matrix.resendEvent(event, room);
+            resent += 1;
+        }
+    }
+    return resent;
+}
+
+/**
+ * The messages the SDK gave up sending in `room`. The client runs with the
+ * SDK's default `pendingEventOrdering: "chronological"` (client.ts: echoes stay
+ * inline, so the UI can show "sending"), and in that mode a local echo lives in
+ * the LIVE TIMELINE — `room.getPendingEvents()` exists only in "detached" mode
+ * and THROWS otherwise. Both retry paths used it, so "try again" never worked
+ * and the outage resend threw inside the SDK's sync-state emitter. Thread
+ * replies keep their echoes in their thread's timeline and are not covered.
+ */
+function unsentEvents(room: Room): MatrixEvent[] {
+    return room.getLiveTimeline().getEvents().filter((event) => event.status === EventStatus.NOT_SENT);
 }

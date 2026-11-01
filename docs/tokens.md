@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**292 tokens** — 91 primitives, 110 semantic, 91 component.
+**296 tokens** — 91 primitives, 111 semantic, 94 component.
 
 ## Primitives
 
@@ -195,6 +195,7 @@ everything built on it.
 | `--timeline-gutter-width` | size | `var(--prim-size-md)` | Message gutter. |
 | `--badge-min-size` | size | `var(--prim-size-xs)` | Unread badge. |
 | `--presence-dot-size` | size | `var(--prim-size-2xs)` | Presence dot. |
+| `--verified-badge-size` | size | `var(--prim-size-xs)` | Verified-identity shield (replaces the presence dot). |
 | `--border-width` | border-width | `var(--prim-border-width)` | Default border. |
 | `--border-width-medium` | border-width | `var(--prim-border-width-medium)` | Thin ring (hollow presence dot). |
 | `--border-width-strong` | border-width | `var(--prim-border-width-strong)` | Emphasis border. |
@@ -218,8 +219,8 @@ everything built on it.
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
-| `--layout-voice-tile-min-width` | layout | `14rem` | Narrowest video tile in a call; the stage fits as many per row as this allows. |
-| `--layout-voice-stage-max-height` | layout | `24rem` | Tallest the video stage above the timeline may grow before it scrolls. |
+| `--layout-voice-stage-height` | layout | `22rem` | Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled. |
+| `--layout-voice-strip-height` | layout | `7rem` | Height of the row of small tiles beside a spotlit participant or screen. |
 | `--layout-settings-nav-width` | layout | `14rem` | Settings sidebar width. |
 | `--layout-settings-content-width` | layout | `46rem` | Settings page column max width. |
 | `--layout-settings-content-min-width` | layout | `26rem` | Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen. |
@@ -263,8 +264,11 @@ everything built on it.
 | `--composer-bg` | color | `var(--surface-pane)` | Composer background. |
 | `--composer-input-bg` | color | `var(--surface-inset)` | Composer input background. |
 | `--composer-input-border` | color | `var(--border-default)` | Composer input border. |
+| `--composer-attachment-width` | size | `160px` | Width of one staged attachment card in the composer tray. |
+| `--composer-attachment-thumb-height` | size | `96px` | Height of a staged attachment's thumbnail / file-icon box. |
 | `--members-bg` | color | `var(--surface-pane)` | Members pane. |
 | `--member-dot-size` | size | `var(--presence-dot-size)` | Presence dot. |
+| `--member-shield-size` | size | `var(--verified-badge-size)` | Shield shown in place of a verified member's presence dot. |
 | `--member-badge-radius` | radius | `var(--radius-full)` | Member role badge. |
 | `--member-item-padding-y` | spacing | `var(--space-1)` | Member row vertical padding (density anchor). |
 | `--button-primary-bg` | color | `var(--accent)` | Primary button. |

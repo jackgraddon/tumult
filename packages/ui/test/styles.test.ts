@@ -9,6 +9,45 @@ import { findExternalStylesheetReferences } from "../src/plugins/styles.ts";
  * checked here is the guard, which is what keeps a plugin stylesheet from
  * turning into a third-party request.
  */
+describe("findExternalStylesheetReferences (security review F2)", () => {
+    it("rejects image-set() with bare strings, which need no url()", () => {
+        for (const css of [
+            `.x { background-image: image-set("https://evil.example/a.png" 1x); }`,
+            `.x { background-image: -webkit-image-set('//evil.example/a.png' 1x); }`,
+            `.x { background-image: image-set("data:image/png;base64,AA" 1x, "https://evil.example/b.png" 2x); }`,
+        ]) {
+            assert.equal(findExternalStylesheetReferences(css).length, 1, css);
+        }
+        assert.deepEqual(findExternalStylesheetReferences(`.x { background-image: image-set("data:image/png;base64,AA" 1x); }`), []);
+    });
+
+    it("rejects src() with a remote string", () => {
+        assert.equal(findExternalStylesheetReferences(`.x { background: src("https://evil.example/a.png"); }`).length, 1);
+    });
+
+    it("sees through CSS escapes, as the browser's tokenizer does", () => {
+        for (const css of [
+            String.raw`.x { background: u\72l(https://evil.example/a.png); }`,
+            String.raw`.x { background: \75 rl(https://evil.example/a.png); }`,
+            String.raw`.x { background: u\rl(https://evil.example/a.png); }`,
+            String.raw`@\69mport "https://evil.example/x.css";`,
+            String.raw`.x { background: url("ht\74ps://evil.example/a.png"); }`,
+        ]) {
+            assert.equal(findExternalStylesheetReferences(css).length, 1, css);
+        }
+    });
+
+    it("still accepts escapes that reach nothing", () => {
+        assert.deepEqual(findExternalStylesheetReferences(String.raw`.q::before { content: "\201C"; } .r::after { content: "\2014 "; }`), []);
+    });
+
+    it("is not fooled by a comment between url and its argument list", () => {
+        // Not valid CSS either way, but the guard must not wave it through.
+        assert.ok(findExternalStylesheetReferences(".x { background: url/**/(https://evil.example/a.png); }").length <= 1);
+        assert.equal(findExternalStylesheetReferences(".x { background: url(/**/https://evil.example/a.png); }").length, 1);
+    });
+});
+
 describe("findExternalStylesheetReferences", () => {
     it("accepts a self-contained stylesheet", () => {
         const css = `

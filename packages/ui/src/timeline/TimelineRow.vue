@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import Icon from "../icons/Icon.vue";
 import { computed, ref } from "vue";
 import {
@@ -181,7 +182,7 @@ async function confirmDelete(): Promise<void> {
     } catch (cause: unknown) {
         // The dialog stays open holding the reason: a delete that did not
         // happen must not look like one that did.
-        deleteError.value = cause instanceof Error ? cause.message : String(cause);
+        deleteError.value = reportError(cause, "Couldn't delete the message");
     } finally {
         deleting.value = false;
     }

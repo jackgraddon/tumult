@@ -46,8 +46,9 @@ chat client should be.
 
 - Targets: login, sync, encrypted chat in a plain browser. MAS is the ONLY
   login method.
-- Desktop (Electron, most stable cross-platform) comes later. Ignore
-  desktop-only features for now (tray, updater, deep links, safeStorage).
+- Desktop (Electron, most stable cross-platform): `apps/desktop` packages the
+  web app for Linux and Windows. Desktop-only features stay out of scope
+  (tray, updater, deep links, safeStorage).
   Tauri rejected for now: Linux WebRTC gaps in system webviews.
 - Layout: vertical guild rail (Matrix spaces) + DMs tab + members sidebar.
 - Theming + modularity are v1. Games (custom room events: chess,
@@ -66,7 +67,8 @@ chat client should be.
 - `packages/core`: Matrix client, auth, sync, crypto. No Vue imports.
   `packages/ui`: Vue components, headless behavior + structure, token-driven.
   `packages/theme`: token contract, default theme, theme validator.
-  `apps/web`: shell + routing. `apps/desktop`: later.
+  `apps/web`: shell + routing. `apps/desktop`: Electron shell around the
+  web build (Linux + Windows; see "Desktop (Electron)" below).
 - Core exposes plain snapshots + subscriptions. No SDK types leak to UI. The
   contract LIVES in `packages/core/src/contract.ts` — read it there, this is a
   sketch:
@@ -109,13 +111,20 @@ chat client should be.
   never before: the store only gets its `createUser` hook on attach. Nothing
   calls it for you. Getting it backwards throws only once the store has
   presence events to replay, so a cold start looks fine and the NEXT run
-  breaks — do not trust a single clean first run here.
+  breaks — do not trust a single clean first run here. (VERIFIED v45:
+  `store/indexeddb.ts` `startup()` still throws "must be called after
+  assigning it to the client" from inside the presence replay.)
 - Closing the sync store is MANDATORY on stop: call `store.destroy()`.
   `stopClient()` does not close it, and `deleteDatabase` blocks while any
   connection is open. Both of the SDK's `onblocked` handlers only LOG — they
   never resolve or reject — so a surviving connection makes the next
   `clearStores()` hang forever, i.e. logout never returns. (`stopClient()` does
-  stop the crypto backend, so that side is covered.)
+  stop the crypto backend, so that side is covered.) VERIFIED v45: unchanged —
+  `stopClient()` still never touches the store, and both `clearStores()`'s
+  and `indexeddb-local-backend.ts`'s `onblocked` only log. 45's "crypto
+  database stuck open" fix (#5605) is on the RUST crypto store side (Rust
+  objects freed so `deleteRustSdkStore` is not blocked); it does not relax
+  this sync-store rule.
 - Only ONE MatrixClient per IndexedDB, ever: the SDK says two cause data
   corruption and decryption failures. That means start() must collapse
   concurrent calls AND clean up a half-built client when it throws partway —
@@ -138,7 +147,7 @@ chat client should be.
   authorize URL → redirect → `completeAuthorizationCodeGrant` → create client
   with tokens. Scope encodes device ID: generate once, persist, reuse (crypto
   identity is tied to it). Revoke token on logout.
-- VERIFIED v43: the OIDC module is `src/oauth/`, not `src/oidc/`, and the free
+- VERIFIED v43 and v45: the OIDC module is `src/oauth/`, not `src/oidc/`, and the free
   functions older docs name (`registerOidcClient`,
   `completeAuthorizationCodeGrant`, `OidcTokenRefresher`) DO NOT EXIST. It is
   one `OAuth2` class: static `registerClient`, instance
@@ -154,7 +163,8 @@ chat client should be.
   `application_type: "native"`, so a localhost dev server registers as
   `native` even though it is a browser. https deploys register as `web`.
 - The SDK DISCARDS the IdP's error body and throws a bare "Dynamic
-  registration failed". When registration fails, replay the POST to
+  registration failed" (VERIFIED v45: `OAuth2.registerClient` still throws on
+  status >= 400 without reading the body). When registration fails, replay the POST to
   `registration_endpoint` with curl to see the real reason. Core pre-validates
   client metadata so these failures name the offending field.
 - Cache registered client IDs per homeserver AND per client metadata. A client
@@ -370,6 +380,11 @@ chat client should be.
   be an explicit dependency of `apps/web`. It is a transitive dep of
   matrix-js-sdk, so the optimizer cannot resolve it from the app otherwise
   ("Failed to resolve import ... from node_modules/.vite/deps").
+  Since matrix-js-sdk 45 the SDK pins it EXACTLY (`18.9.0`, not a range), so
+  `apps/web` pins the same exact version: a looser range could resolve a
+  second copy, and two wasm builds in one app is two crypto stacks. Bump both
+  together on every SDK upgrade (`pnpm-lock.yaml` must show ONE
+  `@matrix-org/matrix-sdk-crypto-wasm@` entry).
 - esbuild's postinstall is blocked by default in pnpm 10+. It is approved via
   `allowBuilds:` in `pnpm-workspace.yaml` (NOT the `pnpm` key in
   `package.json`, which pnpm 11 ignores). Without it Vite cannot run.
@@ -406,8 +421,47 @@ chat client should be.
 ## Context for agents
 
 - **Where truth lives:** `packages/core/src/contract.ts` is the UI↔data boundary, `AGENTS.md` is repo ops + verified Matrix traps. Reference both rather than duplicating. Author-facing references: `docs/themes.md` (theme documents + loader), the generated `docs/tokens.md` + `docs/theme.schema.json` (emitted by the theme build, guarded by `packages/theme/test/docs.test.ts`), and `docs/plugins.md` (extension API for authors + hosts, guarded by `packages/ui/test/docs.test.ts`).
+- **Real-client module map.** `packages/core/src/client.ts` (`MatrixChatClient`)
+  keeps the LIFECYCLE inline — start's `starting ??=` collapse, bootstrap's
+  statement + listener-registration order, `this.matrix = client` before the
+  trackers, both teardown paths (`detachSessionTrackers()` shared, each path's
+  own extras explicit), logout/clearStores — plus every contract method as an
+  explicit forward (so `implements ChatClient` stays checked) and the per-start
+  trackers that already live in their own modules (timelines, typing, threads,
+  members, verification…). Features with state of their own are classes built
+  ONCE in the constructor body (their Observables survive stop/start; no field
+  initializers that touch them, no parameter properties): `call/rtc.ts`
+  (`RtcFeature`: call + voice), `rooms/profile-controller.ts`,
+  `rooms/own-presence-controller.ts`, `crypto/controller.ts` (security,
+  recovery, held key, devices), `rooms/room-list.ts` (`RoomListPublisher`:
+  rooms feed, unread, coalescing, warm seed, shell cache, `debugUnread`).
+  `sync/connection.ts` holds `toConnectionState` + `watchNetwork`. Features
+  reach the SDK only through `client-context.ts` (`ClientContext`: type-only,
+  lazy getters read at call time — never cache a client) and register their
+  SDK listeners via `attach`/`start`/`watch(client)` called at the exact
+  bootstrap line the code used to occupy; the room-list listeners stay inline.
+  No test constructs `MatrixChatClient` itself: the per-feature tests
+  (`test/{connection,rtc-feature,profile-controller,own-presence-controller,
+  crypto-controller,room-list}.test.ts`) plus the real-app browser suites are
+  the coverage.
 - **Stack pins:** Vue 3 + Vite (not Nuxt), Reka headless, `@tanstack/vue-virtual`, TypeScript 5.x (vue-tsc compatible), `rewriteRelativeImportExtensions` on for packages / off for `apps/web`, `optimizeDeps.exclude` must list `@matrix-org/matrix-sdk-crypto-wasm` and it is an explicit dependency of `apps/web`.
 - **Invariants to preserve:** one `ChatClient` per renderer, recompute-not-patch, chrome-vs-panes (`inert` + 0-width tracks), per-shell registry via provide/inject (never a module singleton), use whole-statement `import type` in SFCs (not inline `type` specifiers), CSP must allow `'wasm-unsafe-eval'` and `media-src blob:`, hover affordances in the virtualized timeline are out-of-flow (`.tumult-row-actions`, absolutely positioned at the row's top-right) — an in-flow hover control grows the row and shifts every message under the pointer.
+- **Errors are sentences, never the raw error.** Every surface that reports a
+  failure calls `reportError(error, "Couldn't ban Bob")` (or the pure
+  `describeError`) from `@tumult/core/errors` — UI-safe, no SDK import, it
+  reads errors by SHAPE (`errcode`/`httpStatus`/`data`/`name`, walking `cause`)
+  — and shows what it returns: "Couldn't ban Bob: you don't have permission to
+  do that here." Never `error.message`/`String(error)`: a `MatrixError`'s
+  message embeds the request URL, a `ConnectionError` wraps "Failed to fetch".
+  `reportError` logs the raw error with the same context, so nothing is
+  swallowed. An abort returns `""` (show nothing). The app's own plain-`Error`
+  sentences pass through when short and clean; `{ verbatimOwn: true }` keeps
+  long diagnostic ones (login's metadata validation, voice discovery) as-is.
+  Errors a dialog is meant to show (`onRedactMessage`) still propagate — the
+  translation happens AT the surface. `describeVoiceError` keeps its M_FORBIDDEN
+  call-power hint and delegates the rest. Tests build real SDK error classes
+  (`packages/core/test/errors.test.ts`); the fake refuses `#forbidden:fake` so
+  the smoke test watches one failure reach a dialog.
 - **Icons are names, not glyphs.** First-party chrome and the plugin API
   (`WorkspacePane.icon`, `ComposerAction.icon`) draw through `<Icon name>`
   (`packages/ui/src/icons/`), never emoji or text symbols. A bare name is a
@@ -424,7 +478,7 @@ chat client should be.
   they are content, not chrome. The SVG is sized by `width`/`height` attributes
   because the theme gate forbids literal lengths in a stylesheet.
 - **Theme v1 baseline:** registry (structure only) in `packages/theme/src/registry/`, compiler/validator/loader/store in `packages/theme/src/`, the built-in theme's *values* in `packages/theme/themes/default.json` (the inheritance base, completeness enforced by `compileThemes`), scoped on `:root[data-theme="name"]`; accent gallery data in `apps/web/public/themes/`, self-hosted Figtree in `apps/web/public/fonts/`. The node-only build lives in `packages/theme/src/build/` (`cli.ts` = `compileThemes()` → `dist/themes/*.css` **and** `emitDocs()` → `docs/tokens.md` + `docs/theme.schema.json`); `compile.ts` is a side-effect-free library (no import-time self-exec). Changing the registry or a built-in value means re-running `pnpm --filter @tumult/theme build` and committing the regenerated docs — `packages/theme/test/docs.test.ts` fails on drift.
-- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via Docker Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker may be unavailable; some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (34 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
+- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via a containerised Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker OR Podman, chosen by `tests/container.sh`; with neither, run `gh workflow run integration.yml --ref <branch>` (the workflow must already exist on `main` for dispatch to work), or set `TEST_SYNAPSE_URL` to use an existing server with no container. Images are fully qualified (`docker.io/…`: Podman refuses short names without a TTY), mounts carry `:z` (SELinux), and `override.yaml` is MOUNTED, not copied into `data/` (rootless Podman leaves `data/` owned by the container user). Some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (34 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
 
 ## Verified traps from build-out
 
@@ -437,9 +491,10 @@ homeserver. A trap listed here has shipped broken at least once.
   (`{ timeline_limit, required_state }`), not a list — a list-shaped object is
   silently ignored. Each range must be a range ON a list; a separate list per
   range is not window growth.
-- SSS warm-boot is blocked in v43: `sliding-sync.js` keeps `pos` in a local
-  inside `start()` and never calls `setSyncToken`, and `SlidingSyncSdk` only
-  emits `Prepared` after the first network response (`fromCache: false`) — so
+- SSS warm-boot is blocked in v43 and still in v45 (VERIFIED v45:
+  `sliding-sync.ts` keeps `currentPos` as a local inside `start()`, nothing in
+  `sliding-sync*.ts` calls `setSyncToken`, and `SlidingSyncSdk` still emits
+  `Prepared` with `fromCache: false`) — so
   persisting the window restores its SIZE, not offline rooms or a resumed token.
 - The SSS loop emits `ClientEvent.Sync` from
   `invokeLifecycleListeners(SlidingSyncState.Complete)` BEFORE
@@ -488,7 +543,8 @@ homeserver. A trap listed here has shipped broken at least once.
 - SSS never sends `set_presence`, so the server kept reporting us `offline`
   while the app was open (and our member row, hardcoded `online`, disagreed
   with the bar). Now: our own member row mirrors `ownPresence` (ONE source),
-  and `announcePresence()` re-asserts the user's last chosen presence
+  and `OwnPresenceController.announce()` (`rooms/own-presence-controller.ts`)
+  re-asserts the user's last chosen presence
   (`tumult.presence.desired`, default `online`) on start and every 60 s,
   keeping the current `status_msg` (resent so the write cannot drop it).
 - `unavailable` ("Away") is a member `PresenceState`, not folded into
@@ -638,6 +694,22 @@ homeserver. A trap listed here has shipped broken at least once.
   sites (media, room avatar, profile avatar) go through one core wrapper gated on
   `httpStatus === 401` / `M_UNKNOWN_TOKEN`.
 - `--accent-primary` does not exist (only `--accent`).
+- Attachments STAGE in the composer tray (pick/paste/drop) and go out through
+  `sendAttachments`, never on pick. Captions are MSC2530 (spec v1.10): a media
+  event whose `filename` differs from `body` carries `body` as its caption, so
+  `body` can no longer double as alt text — alt text rides under
+  `ALT_TEXT_KEY` (`cc.jackg.tumult.alt_text`) and `mediaText()` splits
+  name/caption/alt on read. Several files cannot share one caption: it goes
+  first as a text event. An upload has NO local echo, so `sendAttachments`
+  returns per-file results and a failed file stays in the tray marked failed
+  (the tray is its only surface). The content builder
+  (`rooms/attachment-content.ts`) is SDK-free so the fake echoes the real shape.
+- The tray refuses files over `m.upload.size` (`uploadLimit()`, read once per
+  client; `null` = unknown, blocks nothing) — what Element does. That is the
+  HOMESERVER's limit only: a reverse proxy can be lower and nothing reveals it.
+  VERIFIED on matrix.jackg.cc: nginx's default `client_max_body_size 1m` sat
+  behind the Cloudflare tunnel, and its 413 carries no CORS headers, so the
+  browser reports a CORS error and the XHR an `AbortError` with no status.
 
 ### Timeline layout (virtualized rows)
 
@@ -682,7 +754,41 @@ homeserver. A trap listed here has shipped broken at least once.
   no `otherDeviceId` exists until the receiver sends ready — wait for Ready
   (120 s, cancellable); receivers never send ready; incoming accepts only while
   Requested.
-- No crypto in Node: verification / 4S paths are manual against matrix.jackg.cc.
+- No crypto in Node, so verification / 4S are tested in a BROWSER:
+  `apps/web/test/e2ee.test.ts` (run by tests/rtc/run.sh, harness in
+  `test/support/real-app.ts`) puts one account on three devices — A sets up
+  recovery, B verifies against A by emoji (both screens must show the same
+  emojis), C restores from the recovery key and must decrypt A's earlier
+  message. It found four bugs in its first runs, each invisible on an account
+  Element had already set up:
+  - The security feed started all-false, which the banner reads as "no
+    backup": every boot showed everyone "Message backup is off" until crypto
+    answered, and clicking it failed. `SecurityStatus.checked` gates it.
+  - `bootstrapSecretStorage` asks `getSecretStorageKey` for the key it JUST
+    created (to store the backup key under it). Our callback only served a key
+    during restore, so setup threw AFTER creating the server backup — a backup
+    nobody had the key to, and no recovery key shown. Hold the new key in
+    `heldSecretKey` (`crypto/controller.ts`) for the bootstrap; the
+    `createClient` callback reads it through
+    `CryptoController.serveSecretStorageKey()` at CALL time — capturing the
+    value would reintroduce both this bug and the restore one above.
+  - Nothing ever created a cross-signing identity (`setupRecovery` only made
+    4S + backup), so there was nothing to verify with. `setupRecovery` now
+    bootstraps cross-signing first — only when the ACCOUNT has none
+    (`userHasCrossSigningKeys(undefined, true)`); an identity this device lacks
+    must be verified, never rotated. First upload needs no UIA (MSC3967).
+  - `BackupRecovery` chose create-vs-enter from a LIVE backupEnabled, so
+    creating the backup flipped the screen to "Enter recovery key" mid-setup
+    and hid the new key. Decided once, when the screen opens.
+  Backing a key up is ASYNC: the Rust backup loop starts after a random delay
+  of up to 10 s and uploads in batches, so a device opened seconds after a
+  message can find 404 in the backup for its session (seen on CI). The test
+  waits for the server's backup to hold the room's key before restoring.
+  MAS cannot block it: Synapse's `SigningKeyUploadServlet` only demands auth
+  when the account ALREADY has cross-signing (MSC3967), MAS or not — and we
+  only bootstrap when it has none (VERIFIED in synapse/rest/client/keys.py).
+  Not built at all: verifying ANOTHER user (the app only verifies its own
+  devices; no member-menu entry), so there is nothing there to test yet.
 
 ### Performance
 
@@ -713,6 +819,31 @@ homeserver. A trap listed here has shipped broken at least once.
 
 ### Test & module tooling
 
+- matrix-js-sdk (≤45, `src/http-api/utils.ts` `timeoutSignal`) never clears
+  a request's local-timeout timer: EVERY request with `localTimeoutMs` left a
+  timer running for the whole timeout — 110 s per /sync, 80 s for others. In
+  Node that kept test processes alive ~110 s after `stopClient()` (twelve
+  integration files overran a 20-minute job); in the browser it is churn.
+  Found by recording long timers with their creating stack (`node --import` a
+  setTimeout wrapper): all of them were `timeoutSignal` ← `SyncApi.doSync`.
+  VERIFIED v45: still unfixed upstream (`timeoutSignal` still never clears,
+  `fetch.ts` `requestOtherUrl` still calls it), so the patch was re-made as
+  `patches/matrix-js-sdk@45.0.0.patch` (same edit to `lib/http-api/fetch.js`;
+  re-make with `pnpm patch matrix-js-sdk@<ver>` → edit → `pnpm patch-commit`).
+  Confirmed both ways on the upgrade: with the patch the guard passes, with
+  `patchedDependencies` removed it fails after hanging ~60 s on the leaked timer.
+  Fixed by that patch (pnpm `patchedDependencies`):
+  clear the timer in `requestOtherUrl`'s `finally`, where `cleanup()` has
+  already detached it — so the abort stays an `AbortError` (native
+  `AbortSignal.timeout` would throw `TimeoutError`, which the SDK turns into a
+  ConnectionError → "reconnecting"). pnpm keys a patch to the EXACT version:
+  an SDK upgrade drops it silently, and `test/sdk-patch.test.ts` fails (and
+  hangs on the leaked timer) until it is re-made. No `--test-force-exit`
+  anywhere: a lingering file is a leak to find, not to hide.
+- An integration test that builds `MembersTracker` standalone must call
+  `setSelfPresence()` itself: own presence is fed by the client from
+  `ownPresence` and is `unknown` until then (two tests asserted `online` and
+  went stale when that became one source).
 - Deep SDK VALUE imports need the `.js` extension for Node strip-mode — tsc and
   Vite forgive extensionless deep imports, only `node --test` catches it (this
   bit `matrix-js-sdk/lib/@types/search`).
@@ -749,6 +880,45 @@ homeserver. A trap listed here has shipped broken at least once.
   (`raw.githubusercontent.com`, a git-tree file) is CORS-open and stays direct.
 - The release API JSON (`/releases/latest`) IS CORS-open and is fetched
   directly — that part of the install flow never needed the proxy.
+- **The sandbox lane is an opaque-origin frame with a Worker inside**
+  (`packages/ui/src/plugins/sandbox/frame.ts`; mounted by
+  `apps/web/src/plugins/installer.ts`): `<iframe sandbox="allow-scripts">` on
+  the real page `/sandbox.html`, its classic bootstrap `/sandbox.js`, both built
+  by `vite.config.ts`'s `sandboxFrame` plugin. `host.ts` only sees a
+  `SandboxTransport` (postMessage/terminate/addEventListener), so the protocol,
+  policy, caps and `fail()` did not change. The old lane was a same-origin
+  module Worker that had to DELETE the app origin's storage globals;
+  `shim.ts`'s `lockDown()` stays as defense in depth. Each of these VERIFIED in
+  Firefox and Chromium (headless Playwright; Safari not tested):
+  - The bootstrap must be a CLASSIC script: an opaque-origin document fetches
+    `type="module"` scripts in CORS mode, and our own server sends no
+    `Access-Control-Allow-Origin` ("from origin 'null' has been blocked by CORS
+    policy"). Hence the IIFE builds, with the inner Worker inlined as a string.
+  - CSP `'self'` in the frame's own meta DOES match `/sandbox.js` even though
+    the document's origin is opaque (dropping `'self'` blocks it), so no hash is
+    needed. A blob Worker minted in the frame, and `import(blobUrl)` of the
+    plugin inside that (classic) Worker, both work.
+  - `blob:` URLs are origin-bound: a Worker on a `blob:` the APP minted fails
+    inside the opaque frame (Chromium `SecurityError`, Firefox a security
+    error event) — the frame must mint its own blobs.
+  - `srcdoc` must NOT be used: a sandboxed `srcdoc` frame inherits the parent's
+    CSP (a parent `worker-src 'none'` blocked the srcdoc frame's Worker even
+    though its own meta allowed it).
+  - The host posts the port with `targetOrigin: "*"` — an opaque origin has no
+    name to target; the bootstrap takes only the FIRST port and only from
+    `event.source === parent`, and trust rests on port identity, never
+    `event.origin`.
+  - The inner Worker is load-bearing: a 1.5 s busy loop in the sandboxed
+    frame's DOCUMENT stalled the parent's timers ~1.5 s (same main thread, on
+    a same-site localhost), while the same loop in a Worker inside the frame
+    left them at ~20–30 ms.
+  - The browser smoke test asserts the plugin sees `origin === "null"`, the
+    frame's `sandbox` is exactly `allow-scripts`, the frame cannot read
+    localStorage/CacheStorage/the app's databases, and that `vercel.json`'s
+    `/sandbox.html` CSP header equals the page's meta + `frame-ancestors
+    'self'`. NOT verified: the Vercel deploy itself (the global
+    `frame-ancestors 'none'` rule excludes `/sandbox.html` by a negative
+    lookahead, `/((?!sandbox\\.html$).*)` — check a deploy frames it).
 
 ### Calls (embedded Element Call, Phase A)
 
@@ -766,9 +936,10 @@ homeserver. A trap listed here has shipped broken at least once.
   matrix-js-sdk `MatrixRTCSession` + `livekit-client` (both Apache-2.0) — chosen
   over Element's `@element-hq/matrixrtc-sdk` (experimental, a git dependency
   that builds Element Call on install, AGPL/commercial: bundling it would put
-  Tumult under AGPL). `VoiceManager` joins the room session with the
-  homeserver's advertised LiveKit transport (`getFocusInUse()` = the oldest
-  member's), gets `{url, jwt}` from lk-jwt-service's LEGACY `/sfu/get`
+  Tumult under AGPL). `VoiceManager` joins the room session on ONE LiveKit
+  transport — the oldest live member's (`focusInUse()` in `voice/manager.ts`),
+  else the homeserver's advertised one — publishes on exactly that one, gets
+  `{url, jwt}` from lk-jwt-service's LEGACY `/sfu/get`
   (`sfu.ts`), and hands frame keys from `EncryptionKeyChanged` to LiveKit's key
   provider. Compatibility mode on purpose: state-event membership (any
   homeserver), identity `<user_id>:<device_id>`. Moving to Matrix-2.0 mode
@@ -783,9 +954,64 @@ homeserver. A trap listed here has shipped broken at least once.
   device's call membership, so `joinVoice` ends a call and `joinCall` ends voice.
   A stale `join` is cancelled by a `generation` counter checked after every
   await; a failed join must `leaveRoomSession()` or it leaves a ghost
-  participant. UNVERIFIED against a real SFU: tests stub the SDK session and the
-  media engine (`test/voice.test.ts`); no audio has ever flowed. Not built: push
-  to talk, video/screen share, output-device choice, ringing/invites (MSC4075).
+  participant. VERIFIED against a real SFU: `apps/web/test/rtc-media.test.ts`
+  runs two Chromiums through the built app into one encrypted video call on the
+  `tests/rtc` stack; each fake mic plays a distinct tone and each fake camera a
+  distinct colour, and each side must hear the other's tone and see the other's
+  colour with frames advancing — so frame E2EE is proven, not just bytes. Unit
+  tests still stub the session and engine (`test/voice.test.ts`). Not built:
+  push to talk, output-device choice, ringing/invites (MSC4075).
+- Joining is sending a `call.member` STATE event, so a room that leaves it at
+  `state_default` (50 under `private_chat`) refuses every plain member with
+  M_FORBIDDEN — only admins can join (found by the media test). Element creates
+  rooms with `org.matrix.msc3401.call.member: 0`; `createDm`/`createChannel`
+  now do too (`allowCallsForMembers` in `rooms/lifecycle.ts`), as a follow-up
+  power-levels write rather than `power_level_content_override` — Synapse
+  applies that override SHALLOWLY, so passing `events` replaces the default
+  map and drops `m.room.power_levels`/`m.room.encryption`/`m.room.server_acl`
+  from 100 to 50 (VERIFIED in synapse/handlers/room.py). Rooms made BEFORE the
+  fix, or by other clients, are opened by an admin with room settings'
+  "Members can join calls" (`RoomSettingsPatch.membersCanJoinCalls`; the
+  read-modify-write is `rooms/calls.ts`, the read rule
+  `membersCanJoinCalls()` in contract.ts). Closing sets max(50,
+  state_default, users_default + 1): closing to state_default alone would
+  leave a room whose state_default is 0 open. The refusal
+  arrives as `MembershipManagerError` WHILE `join()` is still awaiting the
+  focus/token, so `fail()` must bump `generation` like `leave()` does —
+  without it join() carried on (finding the OTHER member's focus), fetched a
+  token and connected an engine nothing referenced: a ghost on the SFU. A
+  connect that outlives the stand-down is disconnected again. The bar shows
+  `describeVoiceError()` (walks `cause` to the MatrixError: a sentence for
+  M_FORBIDDEN, the server's `data.error` otherwise — a MatrixError's `message`
+  embeds the request URL); the raw error goes to the console. The media test
+  covers it end to end. VERIFIED on CI: the membership PUT and the SFU connect
+  run in PARALLEL, so the refusal can land mid-connect; LiveKit then aborts
+  ("user initiated disconnect") but leaves the PC it created unclosed in state
+  `new` (never started ICE — a leaked object, not a participant). So "no ghost"
+  means no PC `connecting`/`connected`, plus Alice's LiveKit count staying 1 —
+  not "zero PCs ever".
+  Video and screen share ARE built on the same session (`setVoiceCamera`,
+  `setVoiceScreenShare`, `attachVoiceVideo`; callIntent `"video"`): a
+  participant's `camera`/`screen` flag is true only once a track is live AND
+  attachable, so a mounted `VoiceTile` always has something to attach. The stage
+  (`calls/VoiceStage.vue`) must never scroll or grow: it has a token height
+  (`--layout-voice-stage-height`) or, expanded, covers the timeline pane, and
+  `calls/stageLayout.ts` (`bestGrid`) picks the grid that makes every tile as
+  large as that box allows. Clicking a tile toggles it in/out of the spotlight; a
+  screen is spotlit by default and several can be at once. Local custom
+  properties like `--cols` must be declared in the stylesheet or the token
+  coverage test reads them as unresolved references.
+  Microphone processing (`VoiceSettings`: echo cancellation, noise suppression,
+  auto gain; `voiceSettings` / `setVoiceSettings`) is a DEVICE preference, kept
+  under `tumult.voice.settings` and deliberately NOT cleared on logout. It is
+  applied before the microphone first opens (join and reconnect both re-read it),
+  and a live change re-opens the mic track with `restartTrack` — except while
+  muted, where it is flagged and re-opened on unmute so a muted user's browser
+  does not light its microphone indicator. It never touches screen-share audio,
+  which is captured with processing off on purpose. A UI value import from the
+  `@tumult/core` ROOT drags matrix-js-sdk into the fake bundle (the smoke test's
+  leak check catches it): shared constants like `DEFAULT_VOICE_SETTINGS` live in
+  `contract.ts` and the UI imports them from `@tumult/core/contract`.
 - **Focus discovery is revision drift inside ONE MSC, not official vs
   unofficial** (MSC4143 is unmerged either way). The current revision defines
   `GET /_matrix/client/unstable/org.matrix.msc4143/rtc/transports` (unstable
@@ -796,23 +1022,62 @@ homeserver. A trap listed here has shipped broken at least once.
   404s `M_UNRECOGNIZED` on BOTH the unstable and `/v1/rtc/transports` routes, and
   publishes its only focus — `https://livekit-jwt.call.matrix.org` — in the
   well-known. So `voice/sfu.ts`'s `discoverFoci()` tries the CS API and then the
-  well-known, and `join()` borrows the room's focus
-  (`getActiveRoomSession()?.getFocusInUse()`) when this homeserver names none: a
+  well-known (v45's `_unstable_getRTCTransports()` checks `/versions` for
+  `org.matrix.msc4143` first and throws M_UNRECOGNIZED WITHOUT a request when it
+  is absent — same catch, same fallback), and `join()` borrows the room's focus
+  (`focusInUse(getActiveRoomSession()?.memberships)`) when this homeserver names none: a
   member authenticates to the FOCUS's JWT service with their own OpenID token, so
   JOINING a call needs no local transports — only starting one does. Without that
   fallback every matrix.org account was unable to join a call at all (matrix.org
   cannot host, and by extension cannot join). Note the client is deliberately
   hybrid: NEW discovery + OLD state-event membership (matrix.org also has MSC4354
   sticky events off), so a half-match here is a chosen mismatch.
-- `isLivekitTransportConfig` from `matrix-js-sdk/lib/matrixrtc` is NOT null-safe
-  (`object.type`), and `getFocusInUse()` returns `undefined` until a membership
-  names a focus — wrap it (`voice/sfu.ts`'s `isLivekitFocus`), or the join dies on
-  "Cannot read properties of undefined (reading 'type')" instead of its real
-  cause.
+- **matrix-js-sdk 44/45 rewrote the RTC session API** (VERIFIED v45 in
+  `src/matrixrtc/`). What broke and where it went:
+  - `joinRoomSession(fociPreferred, multiSfuFocus, config)` →
+    `join(ownMembershipIdentity, publishedTransports, config)`;
+    `leaveRoomSession()` → `leave()`.
+  - `getFocusInUse()` is GONE with "oldest membership" focus selection: the SDK
+    now writes legacy memberships with `focus_active: { focus_selection:
+    "multi_sfu" }` + `foci_preferred: publishedTransports` and expects a client
+    to subscribe to EVERY member's own transport. We connect to one SFU, so we
+    keep the old rule ourselves (`focusInUse()`: the oldest live membership's
+    first usable LiveKit transport; `memberships` is oldest-first), choose the
+    focus BEFORE joining and publish only on it. If an older membership lands
+    after we chose (two calls started at once), we connect to ITS SFU and then
+    `leave()` + `join()` again with that transport — the session cannot change
+    published transports in place, and a stale `foci_preferred` would make us
+    invisible to a multi-SFU client. Guaranteed: Tumult clients converge on one
+    SFU. NOT built: subscribing to other SFUs — a v45 Element Call member who
+    joins after us publishes on their own homeserver's SFU, which we never
+    connect to, so they are invisible and inaudible to us (and we to them).
+  - `isLivekitTransportConfig` / `LivekitTransportConfig` are gone; the
+    replacement `isUnstableLivekitTransport` (null-safe now) also admits the
+    Matrix-2.0 `url`-only variant, which `/sfu/get` cannot use — `isLivekitFocus`
+    additionally requires `livekit_service_url`.
+  - The `memberId` in `ownMembershipIdentity` MUST be `<user_id>:<device_id>`:
+    that is the `membershipID` the SDK writes into a legacy membership, and 45
+    ("Match RTC key messages to member IDs") files an incoming media key only
+    under a membership whose user, device AND member id all match the key
+    message's `member_id` (falling back to `<sender>:<device>`). Any other value
+    and peers never attach our key — every frame we send is undecryptable,
+    with no error. The `backendIdentity` handed to `EncryptionKeyChanged` for a
+    `livekit_service_url` transport is still `<user_id>:<device_id>`, the
+    identity `/sfu/get` assigns (`RTCEncryptionManager.getOwnBackendIdentities`,
+    `CallMembership.parseFromEvent`).
+  - LiveKit request bodies (`LivekitGetTokenRequest`,
+    `LivekitDelegateDelayedLeaveRequest`) name the member by `member_id`, no
+    longer a `member` object; matrix-widget-api 1.20 matches (and types the
+    delegate's `url`). The driver forwards both bodies VERBATIM, so an
+    embedded app on either shape reaches the homeserver intact.
 - Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
   the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
-  (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production on Vercel
-  sets no CSP header at all (`vercel.json` has none) — a standing gap.
+  (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production gets that
+  policy as a `<meta>` the BUILD writes into `index.html` (right after
+  `<meta charset>`), because `vercel.json` is static and cannot see the env.
+  Dev sends it as a header; `preview.headers` is set to `{}` on purpose, since it
+  DEFAULTS to `server.headers` and would mask a broken meta in the smoke test.
+  What a meta policy cannot carry (`frame-ancestors`) is a `vercel.json` header.
 - The call app must be a DIFFERENT origin from Tumult: the iframe sandbox needs
   `allow-same-origin`, which would defeat the sandbox on our own origin.
 - `CallPanel` stays mounted for the whole call; "not viewing the call's room" is
@@ -829,14 +1094,159 @@ homeserver. A trap listed here has shipped broken at least once.
   lk-jwt-service from `tests/rtc/` (`tests/rtc/run.sh`; it skips unless
   `TEST_RTC=1`, because `tests/synapse` is pinned to v1.114.0 and has none of
   the MSCs). Writing the unit tests caught a real bug: `delegateDelayedLeave`
-  needs the SFU WebSocket `url` the call app sends (the widget-api type omits
-  it), not the JWT service url from the transports.
-- UNVERIFIED against a live call: the `tests/rtc` stack was written without a
-  Docker daemon and has never been run, and nothing tests the iframe handshake or
-  media (a two-browser Playwright test would). The homeserver needs
-  LiveKit + lk-jwt-service and Synapse `msc4143_enabled` first.
+  needs the SFU WebSocket `url` the call app sends (matrix-widget-api ≤1.19's
+  type omitted it; 1.20 types it), not the JWT service url from the transports.
+- The `tests/rtc` stack runs (VERIFIED on CI, `integration.yml`): Synapse
+  v1.163 + LiveKit v1.13 + lk-jwt-service 0.9 on HOST networking, loopback only.
+  What it took, each of which failed silently before: lk-jwt-service verifies
+  OpenID over the FEDERATION API with TLS, so Synapse needs a TLS listener on
+  8448 (self-signed, generated by run.sh) and the skip flag must be exactly
+  `YES_I_KNOW_WHAT_I_AM_DOING` (any other value keeps verification on);
+  `federation_domain_whitelist: []` switches federation OFF, so it must be absent;
+  LiveKit needs `node_ip: 127.0.0.1` + `enable_loopback_candidate`; and the CSP
+  needs `ws:` in `connect-src` for a plain-ws SFU. Still untested:
+  `TEST_RTC_TOKEN` (the MSC4195 proxy route needs lk-jwt-service registered as
+  an application service).
+- The embedded Element Call is VERIFIED end to end
+  (`apps/web/test/element-call.test.ts`: v0.26.1's embedded tarball, pinned by
+  hash, served on its own origin; two Chromiums must see and hear each other
+  INSIDE the frame). It had never worked; four bugs, each invisible until the
+  one before it was fixed:
+  - `waitForIframeLoad` must be `false` (as Element Web sets it): the app
+    announces itself with ContentLoaded, and `true` waits on an iframe `load`
+    that has usually fired before `attach()` listens ("Improper sequence").
+  - The app's router sends the path `/` to its standalone "Start new call"
+    page, widget mode or not. Element Web serves it from a subdirectory; a
+    ROOT deploy must be addressed as `/index.html` (`callUrlTemplate`).
+  - `getRtcTransports` answers under `rtc_transports`, not `transports` — an
+    `as never` hid it and the tests cast to the same wrong shape; the app
+    showed MISSING_MATRIX_RTC_TRANSPORT.
+  - matrix-widget-api 1.19 syncs room STATE separately (`update_state`): the
+    host must call `feedStateUpdate` on every `RoomStateEvent.Events`. The app
+    reads call membership from it; fed only through `feedEvent`, neither side
+    learned the other joined, sent no key, and every track was `MissingKey`.
+  `io.element.join` is the user's INTENT (sent before the app's own fatal
+  errors, which it shows only inside the frame), so the panel says "In call",
+  never "Connected". Hang-up and close differ, as in Element Web: on a fatal
+  error the app may hang up but deliberately does not close, so hang-up only
+  sets `ended` and the frame (with the app's error screen) stays until close
+  or the user's Leave. The release's `.sha256` asset is a
+  per-FILE manifest, not a tarball checksum. `set_always_on_screen` and
+  `io.element.device_mute` are acknowledged with `{}` (the frame is always
+  mounted; we draw no mute controls).
+
+### Desktop (Electron)
+
+`apps/desktop` (README there) is a shell around `apps/web`'s production
+build. Electron 45.1.0 and electron-builder 26.18.0 are pinned exactly: 45.2.1
+was less than a day old, so pnpm's `minimumReleaseAge` refused it. Rather than
+add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
+`electron-winstaller` is set to `false` (Squirrel is unused; we ship NSIS).
+
+- **Served from `app://tumult/`, never `file://`.** The scheme is privileged
+  (standard, secure, supportFetchAPI, corsEnabled, stream, codeCache) before
+  `ready`.
+  - `protocol.handle` routes by `apps/web/vercel.json`, which is IMPORTED, not
+    restated: files, then `/api/plugin-asset`, then the SPA rewrite (which
+    excludes `/sandbox.*`). Any other `/api/*` path is a 404.
+  - Headers are matched on the request path, so `/sandbox.html` gets its own
+    CSP, as on Vercel.
+  - The app's CSP stays the build's `<meta>`. `'self'` = `app://tumult`.
+  - VERIFIED (smoke test):
+    - Secure context, so WebCrypto works.
+    - String eval and inline script are both refused (probed from a `blob:`
+      script; Playwright's `evaluate` is DevTools code that CSP does not
+      govern, so `new Function` "worked" there).
+    - The real crypto `.wasm` compiles via `compileStreaming` (MIME
+      `application/wasm` + `'wasm-unsafe-eval'`).
+    - No CSP violations or console errors on login or the shell.
+    - Plugin sandbox frame: `src="/sandbox.html"`, `self.origin === "null"`,
+      no localStorage.
+- **Desktop web build = `VITE_DESKTOP=1`**, the ONLY behavioural difference.
+  `chat.real.ts` then registers `DESKTOP_REDIRECT_URI`
+  (`http://127.0.0.1/auth/callback`, in `apps/web/src/desktop.ts`, which the
+  main process bundles too) as `native`.
+  - VERIFIED against matrix.jackg.cc / mas.jackg.cc: dynamic registration
+    with that loopback URI + `native` answered 201, and the authorization
+    request reached MAS's sign-in page in the auth window.
+  - NOT verified on a real IdP: the code exchange after a real sign-in (no
+    credentials were entered). The interception itself is verified against
+    a loopback fake IdP answering 303 with the code in the fragment.
+- **Login runs in a child window.** In the app window, `will-navigate` to an
+  authorization request (`response_type=code` + our `redirect_uri`) is
+  cancelled and the request opened in a child window.
+  - In the child, `will-redirect`/`will-navigate` to the loopback URI is
+    cancelled BEFORE any request is made. The fragment survives (Electron's
+    `will-redirect` URL carries it). The main window then loads
+    `app://tumult/auth/callback#…`, so `completeLogin()` is unchanged.
+  - A `webRequest.onBeforeRequest` backstop cancels the loopback callback URL
+    if anything else requests it. It is filtered by exact origin + path
+    (other ports pass, so a homeserver on 127.0.0.1 still works).
+  - Closing the child window reloads `/login` (LoginView would otherwise sit
+    on its busy state).
+- **Plugin assets.** `apps/web/api/plugin-asset.ts` was split into pure
+  exports (`validateAssetQuery`, `upstreamUrl`, `fetchReleaseAsset`) with the
+  Vercel handler unchanged in behaviour (its 5 tests still pass). The desktop
+  answers `app://tumult/api/plugin-asset` with them via `net.fetch`.
+  VERIFIED: a full sandboxed-plugin install through it (the smoke test stubs
+  `net.fetch` in the main process via `app.evaluate`; no hook in the app).
+- **Permissions.** Only granted when the TOP-level document is `app://tumult`
+  (so IdP pages get nothing):
+  - The app gets `media`, `display-capture`, `notifications` and
+    `clipboard-sanitized-write`. The last is a deliberate addition: the Copy
+    buttons use `navigator.clipboard.writeText`.
+  - The configured Element Call origin gets `media` and `display-capture`.
+  - VERIFIED: geolocation is denied (query + `getCurrentPosition` code 1),
+    notifications are granted, and the IdP page's notifications are denied.
+  - A `fetch` to a loopback http server from `app://` succeeds, so no
+    Local-Network-Access prompt blocks a homeserver on this machine.
+- **Navigation.** The app window never leaves `app://tumult`.
+  - `window.open` always returns null. http(s) goes to `shell.openExternal`,
+    and other schemes (`file:`, custom) are dropped. VERIFIED.
+  - Chromium logs "Not allowed to load local resource" for a
+    `window.open("file:…")` by itself, before the handler runs.
+- **Single-instance lock.** One profile = one IndexedDB = one MatrixClient.
+  Unpackaged runs use `<appData>/Tumult (dev)`, never the installed profile.
+- **Packaging** (electron-builder):
+  - The package is `dist/` + `web/` + `package.json`, with no node_modules.
+    The version is injected from the root package.json.
+  - Fuses: no run-as-node, no NODE_OPTIONS/--inspect, cookie encryption, asar
+    integrity, only-load-from-asar.
+  - VERIFIED on macOS (the dev host): AppImage and deb build. A packaged,
+    fused app (an unsigned mac `dir` build, ad-hoc re-signed) serves
+    `app://tumult/login` from the asar. Without the re-sign, Apple Silicon
+    SIGKILLs it, because the fuses invalidate the signature; that only
+    matters on mac.
+  - rpm needs `rpmbuild` (fails on macOS without it; CI installs `rpm`).
+  - `linux.category` is written VERBATIM as `Categories=<value>;` AFTER
+    `desktop.entry` is merged, so the full list lives in `category`
+    (`"Network;Chat;InstantMessaging"`). VERIFIED by unpacking the deb:
+    `entry.Categories` shipped as `Network;`, then `Utility;`.
+  - `desktopName` + `syncDesktopName` give `StartupWMClass=tumult`.
+- **NOT verified:**
+  - Windows at all (NSIS build, run).
+  - Running on Linux (Wayland/X11), including the AppImage-under-AppArmor
+    caveat in the README.
+  - The display-media handler (macOS screen-recording TCC blocks a headless
+    test).
+  - Element Call inside the desktop (its widget postMessage origin is
+    `app://tumult`).
+  - `desktop.yml` on a runner.
 
 ### Known harmless
 
 - `org.matrix.msc4143/rtc/transports` 404s against this homeserver until MatrixRTC
-  is enabled on it — discovery the SDK probes optimistically.
+  is enabled on it — discovery the SDK probes optimistically (its own
+  `cachedRtcTransports` poller, started by `startClient()`). From v45 the SDK
+  only sends that request when `/versions` advertises `org.matrix.msc4143`
+  (VERIFIED v45 in `client.ts` `_unstable_getRTCTransports`), so a homeserver
+  that does not advertise it should stop showing the 404 at all — not yet
+  observed against this homeserver.
+- On `tests/rtc`, the embedded call's leave DELEGATION fails twice per client:
+  `…/io.element.msc4195/rtc/livekit/delegate_delayed_leave` 404s on Synapse
+  (that route belongs to lk-jwt-service; nothing forwards it), and the app's
+  direct `POST <jwt>/delegate_delayed_leave` 400s (lk-jwt-service's
+  `DelegateDelayedLeaveRequest` fails `validate()`; which field is UNCONFIRMED —
+  its logs are not captured on CI). Delegation is optional: the app falls back
+  to refreshing its own delayed leave (`update_delayed_event` 200), and the
+  call works. Forwarding the MSC4195 route to lk-jwt-service would test it.

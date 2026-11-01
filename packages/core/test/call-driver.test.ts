@@ -233,30 +233,29 @@ describe("CallWidgetDriver", () => {
 
         it("passes the homeserver's RTC transports straight through", async () => {
             const result = await new CallWidgetDriver(stub().client, ROOM).getRtcTransports();
-            assert.deepEqual(result, { transports: [{ type: "livekit", livekit_service_url: "https://jwt.example.com" }] });
+            assert.deepEqual(result, { rtc_transports: [{ type: "livekit", livekit_service_url: "https://jwt.example.com" }] });
         });
 
-        it("forwards a LiveKit token request field-for-field and returns only the jwt", async () => {
+        it("forwards a LiveKit token request verbatim (v45 member_id shape) and returns only the jwt", async () => {
+            const { client, calls } = stub();
+            const request = { server_name: "localhost", url: "wss://sfu.example.com", room_id: ROOM, slot_id: "m.call#ROOM", member_id: "m1" };
+            const out = await new CallWidgetDriver(client, ROOM).getRtcLivekitToken(request);
+            assert.deepEqual(out, { jwt: "the.jwt" });
+            assert.deepEqual(calls[0], ["getLivekitToken", request]);
+        });
+
+        it("does not drop the pre-45 `member` object an older call app may still send", async () => {
             const { client, calls } = stub();
             const member = { id: "m1", claimed_user_id: "@me:localhost", claimed_device_id: "DEV" };
-            const out = await new CallWidgetDriver(client, ROOM).getRtcLivekitToken({
-                server_name: "localhost",
-                url: "wss://sfu.example.com",
-                room_id: ROOM,
-                slot_id: "m.call#ROOM",
-                member,
-            } as never);
-            assert.deepEqual(out, { jwt: "the.jwt" });
-            assert.deepEqual(calls[0], [
-                "getLivekitToken",
-                { url: "wss://sfu.example.com", room_id: ROOM, slot_id: "m.call#ROOM", member, server_name: "localhost" },
-            ]);
+            const request = { server_name: "localhost", url: "wss://sfu.example.com", room_id: ROOM, slot_id: "m.call#ROOM", member };
+            await new CallWidgetDriver(client, ROOM).getRtcLivekitToken(request as never);
+            assert.deepEqual(calls[0], ["getLivekitToken", request]);
         });
 
         it("delegates a delayed leave with exactly the request the call app made, SFU url included", async () => {
             const { client, calls } = stub();
-            const request = { url: "wss://sfu.example.com", room_id: ROOM, slot_id: "s", member: { id: "m1" }, delay_id: "d9" };
-            const out = await new CallWidgetDriver(client, ROOM).delegateRtcLivekitDelayedLeave(request as never);
+            const request = { url: "wss://sfu.example.com", room_id: ROOM, slot_id: "s", member_id: "m1", delay_id: "d9" };
+            const out = await new CallWidgetDriver(client, ROOM).delegateRtcLivekitDelayedLeave(request);
             assert.deepEqual(out, {});
             // Not the JWT service url from the RTC transports: the server rejects
             // a url that is not one of its SFUs.

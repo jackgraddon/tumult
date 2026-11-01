@@ -1,0 +1,6 @@
+# Built main process, desktop web builds, packages, smoke-test output
+dist/
+web/
+web-fake/
+release/
+smoke-results/

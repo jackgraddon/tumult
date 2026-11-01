@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createClient, type MatrixClient } from "matrix-js-sdk";
+import { createClient, PendingEventOrdering } from "matrix-js-sdk";
+import type { MatrixClient } from "matrix-js-sdk";
 
 import { TimelineFeed } from "../src/timeline/feed.ts";
 import { sendTextMessage } from "../src/rooms/send.ts";
@@ -28,7 +29,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -185,39 +186,38 @@ describe("timeline against real Synapse", () => {
         // the app client relies on.)
         const bobClient: MatrixClient = createClient({
             baseUrl: BASE,
-            pendingEventOrdering: "chronological",
         });
         await bobClient.loginWithPassword(bob.userId, "testtesttest");
         const feed = new TimelineFeed(bobClient);
-        await bobClient.startClient({ initialSyncLimit: 5 });
+        await bobClient.startClient({ initialSyncLimit: 5, pendingEventOrdering: PendingEventOrdering.Chronological });
         try {
             const timeline = feed.timeline(room);
             await waitFor("room to enter the store", () => bobClient.getRoom(room) != null);
 
             // Hold the send PUT mid-flight so the local echo is observable
             // deterministically instead of racing the localhost round trip.
-            let releaseSend: (() => void) | null = null;
+            const gateCtl: { release: (() => void) | null } = { release: null };
             const gate = new Promise<void>((resolve) => {
-                releaseSend = resolve;
+                gateCtl.release = resolve;
             });
             const realFetch = globalThis.fetch;
-            globalThis.fetch = ((input: unknown, init?: unknown) => {
-                if (String(input).includes("/send/") && releaseSend) return gate.then(() => realFetch(input as never, init as never));
-                return realFetch(input as never, init as never);
-            }) as typeof fetch;
+            globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+                if (String(input).includes("/send/") && gateCtl.release) return gate.then(() => realFetch(input, init));
+                return realFetch(input, init);
+            };
             try {
                 const pending = sendTextMessage(bobClient, room, "gated hello");
                 await waitFor("local echo to read sending", () =>
                     timeline.get().some((m) => m.body === "gated hello" && m.status === "sending"),
                 );
-                releaseSend?.();
-                releaseSend = null;
+                gateCtl.release?.();
+                gateCtl.release = null;
                 await pending;
                 await waitFor("echo to settle as sent", () =>
                     timeline.get().some((m) => m.body === "gated hello" && m.status === "sent"),
                 );
             } finally {
-                releaseSend?.();
+                gateCtl.release?.();
                 globalThis.fetch = realFetch;
             }
         } finally {
@@ -245,11 +245,10 @@ describe("timeline against real Synapse", () => {
 
         const bobClient: MatrixClient = createClient({
             baseUrl: BASE,
-            pendingEventOrdering: "chronological",
         });
         await bobClient.loginWithPassword(bob.userId, "testtesttest");
         const feed = new TimelineFeed(bobClient);
-        await bobClient.startClient({ initialSyncLimit: 10 });
+        await bobClient.startClient({ initialSyncLimit: 10, pendingEventOrdering: PendingEventOrdering.Chronological });
         try {
             const timeline = feed.timeline(room);
             await waitFor("bob to see the message", () => timeline.get().length >= 1);
@@ -441,11 +440,10 @@ describe("timeline against real Synapse", () => {
 
         const bobClient: MatrixClient = createClient({
             baseUrl: BASE,
-            pendingEventOrdering: "chronological",
         });
         await bobClient.loginWithPassword(bob.userId, "testtesttest");
         const feed = new TimelineFeed(bobClient);
-        await bobClient.startClient({ initialSyncLimit: 10 });
+        await bobClient.startClient({ initialSyncLimit: 10, pendingEventOrdering: PendingEventOrdering.Chronological });
         try {
             const timeline = feed.timeline(room);
             await waitFor("bob to see the message", () =>

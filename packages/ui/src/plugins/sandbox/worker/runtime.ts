@@ -33,6 +33,7 @@ import type { ComposerAction } from "../../../timeline/composer-actions.ts";
 import type { Command } from "../../../timeline/commands.ts";
 import type { Plugin, PluginContext, PluginManifest } from "../../types.ts";
 import {
+    INVOKE_FN,
     wireError,
     type HostMessage,
     type RpcContribution,
@@ -93,6 +94,20 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
         });
     }
 
+    /**
+     * A fire-and-forget call (navigation, shell actions). The host's policy can
+     * refuse it, and with nothing awaiting the promise that would surface as an
+     * unhandled rejection — so the refusal is logged, where an author sees it.
+     */
+    function fire(method: string, args: unknown[]): void {
+        rpc(method, args).catch(refused(method));
+    }
+
+    /** Log a refused call for the plugin's author, rather than crash on it. */
+    function refused(method: string): (error: unknown) => void {
+        return (error) => console.warn(`[tumult sandbox] ${method}:`, error instanceof Error ? error.message : error);
+    }
+
     /** The shared local state for one feed key (created on first use). */
     function entryFor(key: string): LocalFeed {
         const existing = feedEntries.get(key);
@@ -133,7 +148,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             get(): T {
                 const entry = entryFor(key);
                 if (entry.id !== null && feedValues.has(entry.id)) return feedValues.get(entry.id) as T;
-                void openFeed(key, method, args);
+                openFeed(key, method, args).catch(refused(method));
                 return fallback;
             },
             subscribe(listener: (value: T) => void): Subscription {
@@ -142,7 +157,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
                 entry.listeners.add(wrapped);
                 // `openFeed` replays the current snapshot to every listener once
                 // the id is known, so a subscriber is not served twice here.
-                void openFeed(key, method, args);
+                openFeed(key, method, args).catch(refused(method));
                 return {
                     unsubscribe() {
                         entry.listeners.delete(wrapped);
@@ -181,6 +196,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             connection: feed<ConnectionState>("connection", "connection", [], "starting"),
             rooms: feed<RoomSummary[]>("rooms", "rooms", [], []),
             security: feed<SecurityStatus>("security", "security", [], {
+                checked: false,
                 crossSigningReady: false,
                 backupEnabled: false,
                 backupTrusted: false,
@@ -201,6 +217,8 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             send: call("send"),
             retry: call("retry"),
             sendMediaMessage: call("sendMediaMessage"),
+            sendAttachments: call("sendAttachments"),
+            uploadLimit: call("uploadLimit"),
             toggleReaction: call("toggleReaction"),
             edit: call("edit"),
             sendTyping: call("sendTyping"),
@@ -226,7 +244,7 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             search: call("search"),
             jumpTo: call("jumpTo"),
             setRoomSelection: (roomId: string | null) => {
-                void rpc("setRoomSelection", [roomId]);
+                fire("setRoomSelection", [roomId]);
             },
             loadMoreRooms: call("loadMoreRooms"),
             // Synchronous by contract, so served from the pushed capability snapshot.
@@ -297,14 +315,14 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
         if (!pluginManifest) throw new Error("the sandbox has no manifest");
         return {
             manifest: pluginManifest,
-            client: buildClient(),
+            client: workerClient(),
             selection: {
                 // A live host object with a hook (`useSelection`) the Worker cannot
                 // run; the same three members are exposed over RPC so a command can
                 // still navigate.
                 current: { view: "dms" },
                 select(next) {
-                    void rpc("selection:select", [next]);
+                    fire("selection:select", [next]);
                 },
                 hrefFor(next) {
                     // A pure string builder the shell owns; mirroring it here keeps
@@ -314,31 +332,31 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             },
             actions: {
                 requestLeave(target) {
-                    void rpc("actions:requestLeave", [target]);
+                    fire("actions:requestLeave", [target]);
                 },
                 requestModeration(action) {
-                    void rpc("actions:requestModeration", [action]);
+                    fire("actions:requestModeration", [action]);
                 },
                 requestMarkRead(roomId) {
-                    void rpc("actions:requestMarkRead", [roomId]);
+                    fire("actions:requestMarkRead", [roomId]);
                 },
                 requestPinRoom(roomId, pinned) {
-                    void rpc("actions:requestPinRoom", [roomId, pinned]);
+                    fire("actions:requestPinRoom", [roomId, pinned]);
                 },
                 requestMuteRoom(roomId, muted) {
-                    void rpc("actions:requestMuteRoom", [roomId, muted]);
+                    fire("actions:requestMuteRoom", [roomId, muted]);
                 },
                 requestMarkSpaceRead(spaceId) {
-                    void rpc("actions:requestMarkSpaceRead", [spaceId]);
+                    fire("actions:requestMarkSpaceRead", [spaceId]);
                 },
                 requestSpaceSettings(spaceId) {
-                    void rpc("actions:requestSpaceSettings", [spaceId]);
+                    fire("actions:requestSpaceSettings", [spaceId]);
                 },
                 requestSpaceInvite(spaceId) {
-                    void rpc("actions:requestSpaceInvite", [spaceId]);
+                    fire("actions:requestSpaceInvite", [spaceId]);
                 },
                 requestSpaceCreateChannel(spaceId) {
-                    void rpc("actions:requestSpaceCreateChannel", [spaceId]);
+                    fire("actions:requestSpaceCreateChannel", [spaceId]);
                 },
             },
             media: {
@@ -382,14 +400,44 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
         };
     }
 
+    /** One client facade per Worker, so install-time and invocation-time `client` are the same object. */
+    let sharedClient: ChatClient | null = null;
+    function workerClient(): ChatClient {
+        sharedClient ??= buildClient();
+        return sharedClient;
+    }
+
+    /**
+     * Rebuild what the host sent for an invocation. The host cannot send live
+     * objects, so it marks them (see `toWire` in host.ts): `{ kind: "client" }`
+     * is the shell's ChatClient — here, this Worker's own bridged client, so
+     * every call it makes goes through the host's policy — and
+     * `{ kind: "hostfn" }` is a host function such as a composer action's
+     * `setDraft`, callable back only while this invocation is running.
+     */
+    function fromWire(value: unknown): unknown {
+        if (Array.isArray(value)) return value.map(fromWire);
+        if (typeof value !== "object" || value === null) return value;
+        const marked = value as { kind?: unknown; invoke?: unknown; fn?: unknown };
+        if (marked.kind === "client") return workerClient();
+        if (marked.kind === "hostfn" && typeof marked.invoke === "number" && typeof marked.fn === "number") {
+            const { invoke, fn } = marked;
+            return (...args: unknown[]) => rpc(INVOKE_FN, [invoke, fn, ...args]);
+        }
+        const out: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(value)) out[key] = fromWire(entry);
+        return out;
+    }
+
     /** Hand an `invoke` request to the plugin's function, replying with its result. */
     function handleInvoke(callId: number, args: unknown[]): void {
-        const [callbackId, ...rest] = args;
+        const [callbackId, ...wire] = args;
         const fn = typeof callbackId === "number" ? callbackTable.get(callbackId) : undefined;
         if (!fn) {
             scope.postMessage({ kind: "invoke-result", id: callId, ok: false, error: "unknown callback" });
             return;
         }
+        const rest = wire.map(fromWire);
         void Promise.resolve()
             .then(() => fn(...rest))
             .then(

@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type MatrixClient } from "matrix-js-sdk";
 
+import { createDm } from "../src/rooms/lifecycle.ts";
+import { updateRoomSettings } from "../src/rooms/settings.ts";
 import { selectSpaceTree } from "../src/selectors/spaceTree.ts";
 import { snapshotRooms } from "../src/rooms/snapshot.ts";
 
@@ -24,7 +26,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -159,5 +161,82 @@ describe("rooms against real Synapse", () => {
         } finally {
             await bobClient.stopClient();
         }
+    });
+
+    it("lets the other person in a DM join its calls", { timeout: 60000 }, async () => {
+        // Joining a call is sending a call.member STATE event. The private_chat
+        // preset keeps state events at 50 and the invitee at 0, so a room that
+        // does not lower it refuses every member but the creator: the bug the
+        // two-browser media test found. createDm must open it, and lower
+        // nothing else.
+        const suffix = Date.now().toString(36);
+        const alice = await register(`calla-${suffix}`, "testtesttest");
+        const bob = await register(`callb-${suffix}`, "testtesttest");
+        const CALL_MEMBER = "org.matrix.msc3401.call.member";
+        const stateKey = encodeURIComponent(`_${bob.userId}_TEST`);
+
+        // Control: the same preset without our helper refuses Bob, so the pass
+        // below is the server's rule and not a permissive test server.
+        const plain = (await api("POST", "/_matrix/client/v3/createRoom", alice.token, {
+            preset: "private_chat",
+            invite: [bob.userId],
+        }))["room_id"] as string;
+        await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(plain)}`, bob.token, {});
+        await assert.rejects(
+            api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(plain)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {}),
+            /403/,
+            "a plain private_chat room must refuse a member's call membership",
+        );
+
+        const aliceClient = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
+        const roomId = await createDm(aliceClient, { userId: bob.userId });
+        await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.token, {});
+        await api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {});
+
+        const levels = await api("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels/`, alice.token);
+        const events = levels["events"] as Record<string, number>;
+        assert.equal(events[CALL_MEMBER], 0);
+        // The server's defaults survive: only the one entry was lowered.
+        assert.equal(events["m.room.power_levels"], 100);
+        assert.equal(events["m.room.encryption"], 100);
+        assert.equal(levels["state_default"], 50, "other state stays admin-only");
+    });
+
+    it("lets an admin open and close an existing room's calls from room settings", { timeout: 60000 }, async () => {
+        // A room another client made (or Tumult before createDm opened calls):
+        // calls are admins-only, and room settings is the way to change that.
+        const suffix = Date.now().toString(36);
+        const alice = await register(`setta-${suffix}`, "testtesttest");
+        const bob = await register(`settb-${suffix}`, "testtesttest");
+        const CALL_MEMBER = "org.matrix.msc3401.call.member";
+        const stateKey = encodeURIComponent(`_${bob.userId}_TEST`);
+        const roomId = (await api("POST", "/_matrix/client/v3/createRoom", alice.token, {
+            preset: "private_chat",
+            invite: [bob.userId],
+        }))["room_id"] as string;
+        await api("POST", `/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, bob.token, {});
+        // Different content each time: Synapse answers an IDENTICAL state write
+        // with the existing event (200) before any permission check, so a
+        // repeat of an earlier allowed write would pass even once closed.
+        let attempt = 0;
+        const bobJoinsCall = (): Promise<Record<string, unknown>> =>
+            api("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${CALL_MEMBER}/${stateKey}`, bob.token, {
+                attempt: ++attempt,
+            });
+
+        await assert.rejects(bobJoinsCall(), /403/, "admins-only to begin with");
+        const aliceClient = createClient({ baseUrl: BASE, userId: alice.userId, accessToken: alice.token });
+
+        await updateRoomSettings(aliceClient, roomId, { membersCanJoinCalls: true });
+        await bobJoinsCall();
+
+        await updateRoomSettings(aliceClient, roomId, { membersCanJoinCalls: false });
+        await assert.rejects(bobJoinsCall(), /403/, "closed again");
+        const levels = await api("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels/`, alice.token);
+        assert.equal((levels["events"] as Record<string, number>)["m.room.power_levels"], 100, "nothing else was lowered");
+
+        // And a member cannot open them for themselves.
+        const bobClient = createClient({ baseUrl: BASE, userId: bob.userId, accessToken: bob.token });
+        await assert.rejects(updateRoomSettings(bobClient, roomId, { membersCanJoinCalls: true }), /403|permission/i);
     });
 });

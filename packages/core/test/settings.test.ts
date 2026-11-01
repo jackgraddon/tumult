@@ -5,6 +5,7 @@ import { EventType, type MatrixClient } from "matrix-js-sdk";
 import { readSettingsFields, updateRoomSettings } from "../src/rooms/settings.ts";
 import { createFakeChatClient } from "../src/fake/index.ts";
 import { sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
+import type { RoomSummary } from "../src/contract.ts";
 
 interface SettingsCalls {
     names: string[];
@@ -134,11 +135,7 @@ describe("updateRoomSettings", () => {
 
     it("applies earlier fields when a later send fails", async () => {
         const matrix = stubMatrix();
-        matrix.sendStateEvent = async (
-            _roomId: string,
-            _type: string,
-            _content: Record<string, unknown>,
-        ) => {
+        matrix.sendStateEvent = async () => {
             throw new Error("no permission");
         };
         await assert.rejects(
@@ -174,13 +171,14 @@ describe("snapshot settings fields", () => {
                 }),
             ],
         } as unknown as MatrixClient);
+        assert.ok(room);
         assert.equal(room.joinRule, "public");
         assert.equal(room.historyVisibility, "world_readable");
         assert.equal(room.canonicalAlias, "#general:example.com");
     });
 
     it("republishes when settings change (sameRoomSummaries compares them)", () => {
-        const base = {
+        const base: RoomSummary = {
             id: "!r:x",
             name: "general",
             topic: null,
@@ -193,6 +191,9 @@ describe("snapshot settings fields", () => {
             joinRule: "invite",
             historyVisibility: "shared",
             canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
+            muted: false,
         };
         assert.equal(
             sameRoomSummaries([base], [{ ...base, joinRule: "public" }]),
@@ -214,7 +215,7 @@ describe("snapshot settings fields", () => {
 
 describe("fake parity", () => {
     it("mutates the summary feed in place, leaving other rooms untouched", async () => {
-        const fake = createFakeChatClient(1337);
+        const fake = createFakeChatClient({ seed: 1337 });
         const before = fake.rooms.get().find((r) => r.id === "!a-general:fake");
         assert.equal(before?.joinRule, "public");
         assert.equal(before?.canonicalAlias, "#general:fake");

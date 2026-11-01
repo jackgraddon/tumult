@@ -2,7 +2,7 @@
  * Tests the host↔Worker bridge end to end, in-process.
  *
  * Both halves are factories with their coupling injected — `sandboxPlugin()` takes
- * a `SandboxHost` (whose `createWorker()` returns a `SandboxWorker`), and
+ * a `SandboxHost` (whose `createTransport()` returns a `SandboxTransport`), and
  * `createSandboxRuntime()` takes a `SandboxScope`. So the real protocol can be
  * exercised by wiring a fake Worker straight to a fake scope, with no browser and
  * no `self`: every message one side posts is delivered to the other.
@@ -17,9 +17,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import type { ChatClient } from "@tumult/core/contract";
+import type { ChatClient, RoomSummary } from "@tumult/core/contract";
 
-import { sandboxPlugin, type SandboxWorker } from "../src/plugins/sandbox/host.ts";
+import { SANDBOX_LIMITS, sandboxPlugin, type SandboxTransport } from "../src/plugins/sandbox/host.ts";
 import { createSandboxRuntime, type SandboxScope } from "../src/plugins/sandbox/worker/runtime.ts";
 import type { HostMessage, WorkerMessage } from "../src/plugins/sandbox/protocol.ts";
 import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types.ts";
@@ -33,7 +33,7 @@ import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types
  * microtask after an action is enough to observe its effect.
  */
 function makeWorker(scopeOverrides: Partial<SandboxScope> = {}): {
-    worker: SandboxWorker;
+    worker: SandboxTransport;
     scope: SandboxScope;
     closed: () => boolean;
 } {
@@ -48,8 +48,11 @@ function makeWorker(scopeOverrides: Partial<SandboxScope> = {}): {
 
     const scope: SandboxScope = {
         postMessage: (message: WorkerMessage) => {
-            // Worker → host: hand it to the host's `message` listener.
-            for (const listener of messageListeners) listener({ data: message });
+            // Worker → host: hand it to the host's `message` listener. Cloned
+            // as a real Worker clones: a function or live object in a message
+            // must throw here (DataCloneError) exactly as it does in a browser.
+            const data = structuredClone(message);
+            for (const listener of messageListeners) listener({ data });
         },
         addEventListener: (type, listener) => {
             if (type === "message") runtimeListeners.push(listener);
@@ -63,10 +66,13 @@ function makeWorker(scopeOverrides: Partial<SandboxScope> = {}): {
         ...scopeOverrides,
     };
 
-    const worker: SandboxWorker = {
+    const worker: SandboxTransport = {
         postMessage: (message: HostMessage) => {
-            // Host → worker: drive the runtime's registered handler(s).
-            for (const listener of runtimeListeners) listener({ data: message });
+            // Host → worker: drive the runtime's registered handler(s), cloned
+            // as a real Worker clones (this is what hid a DataCloneError: every
+            // sandboxed command used to post the live ChatClient).
+            const data = structuredClone(message);
+            for (const listener of runtimeListeners) listener({ data });
         },
         terminate: () => {
             closed = true;
@@ -107,6 +113,8 @@ function makeClient(overrides: Partial<ChatClient> = {}): {
         send: record("send"),
         retry: record("retry"),
         sendMediaMessage: record("sendMediaMessage", "mxc://sent"),
+        sendAttachments: record("sendAttachments", []),
+        uploadLimit: record("uploadLimit", null),
         toggleReaction: record("toggleReaction"),
         edit: record("edit"),
         sendTyping: record("sendTyping"),
@@ -159,6 +167,7 @@ function makeContext(
         onCommand?: (command: unknown) => void;
         onStyles?: (css: string) => void;
         onSelect?: (next: unknown) => void;
+        onAction?: (action: unknown) => void;
     } = {},
 ): PluginContext {
     return {
@@ -186,13 +195,18 @@ function makeContext(
             resolveEncrypted: async () => "blob:host/3",
         },
         addRenderer: () => () => undefined,
-        addComposerAction: () => () => undefined,
+        addComposerAction: (action) => {
+            hooks.onAction?.(action);
+            return () => undefined;
+        },
         addCommand: (command) => {
             hooks.onCommand?.(command);
             return () => undefined;
         },
         addMemberDecoration: () => () => undefined,
         addSettingsTab: () => () => undefined,
+        addActivityRenderer: () => () => undefined,
+        addPane: () => () => undefined,
         injectStylesheet: (css) => {
             hooks.onStyles?.(css);
             return () => undefined;
@@ -209,7 +223,10 @@ const MANIFEST: PluginManifest = {
     permissions: ["commands", "styles", "composer-actions"],
 };
 
-/** A bundle that registers a command whose `run` calls `ctx.client.send`. */
+/**
+ * A bundle that registers a command shaped exactly like the template's: `run`
+ * gets the real `CommandContext` and sends through the context's `client`.
+ */
 function makeBundle(): { bundle: string; plugin: Plugin } {
     const plugin: Plugin = {
         manifest: MANIFEST,
@@ -217,12 +234,8 @@ function makeBundle(): { bundle: string; plugin: Plugin } {
             ctx.addCommand({
                 name: "shrug",
                 description: "Send a shrug",
-                run: async (args: string[], commandCtx) => {
-                    await ctx.client.send(
-                        commandCtx.roomId,
-                        `${args.join(" ")} ¯\\_(ツ)_/¯`,
-                    );
-                    return undefined;
+                run: async ({ args, roomId, client }) => {
+                    await client.send(roomId, `${args} ¯\\_(ツ)_/¯`);
                 },
             });
             ctx.injectStylesheet(".sandbox { color: red; }");
@@ -238,12 +251,14 @@ async function bridge(
     hooks: {
         onCommand?: (command: unknown) => void;
         onStyles?: (css: string) => void;
+        onAction?: (action: unknown) => void;
         onFailed?: (id: string, error: Error) => void;
         clientOverrides?: Partial<ChatClient>;
     } = {},
 ): Promise<{
     calls: { method: string; args: unknown[] }[];
     closed: () => boolean;
+    client: ChatClient;
 }> {
     const { client, calls } = makeClient(hooks.clientOverrides);
     const fake = makeWorker({ importModule: () => Promise.resolve({ default: plugin }) });
@@ -251,7 +266,7 @@ async function bridge(
     const facade = sandboxPlugin(
         { manifest: MANIFEST, bundle: "// bundle text" },
         {
-            createWorker: () => fake.worker,
+            createTransport: () => fake.worker,
             ...(hooks.onFailed ? { onFailed: hooks.onFailed } : {}),
         },
     );
@@ -260,13 +275,14 @@ async function bridge(
         makeContext(MANIFEST, client, {
             ...(hooks.onCommand ? { onCommand: hooks.onCommand } : {}),
             ...(hooks.onStyles ? { onStyles: hooks.onStyles } : {}),
+            ...(hooks.onAction ? { onAction: hooks.onAction } : {}),
         }),
     );
 
     // The runtime's `install` is driven by the `init` message the facade just
     // posted; it resolves over a microtask chain (import → install → ready).
     await settle();
-    return { calls, closed: fake.closed };
+    return { calls, closed: fake.closed, client };
 }
 
 /** Let every queued microtask run (the bridge is promise-chained, not timed). */
@@ -291,22 +307,25 @@ describe("sandbox bridge", () => {
         assert.deepEqual(styles, [".sandbox { color: red; }"]);
     });
 
-    it("invokes the plugin's own run() back in the Worker (not on the host)", async () => {
+    it("runs the plugin's command in the Worker with the context the composer really passes", async () => {
         const commands: { run: (...args: unknown[]) => Promise<unknown> }[] = [];
-        const { calls } = await bridge(makeBundle().plugin, {
+        const { calls, client } = await bridge(makeBundle().plugin, {
             onCommand: (command) => commands.push(command as never),
         });
 
         const command = commands[0];
         assert.ok(command, "a command was registered");
-        await command.run(["hi"], { roomId: "!room:example.org" });
+        // MessageComposer.vue: command.run({ roomId, client, args, raw }). The
+        // live client cannot be cloned; this used to throw DataCloneError, so
+        // every sandboxed command (the template's included) failed when run.
+        await command.run({ roomId: "!room:example.org", client, args: "hi", raw: "/shrug hi" });
 
         const send = calls.find((call) => call.method === "send");
         assert.ok(send, "the plugin's run() called client.send through the bridge");
         assert.deepEqual(send.args, ["!room:example.org", "hi ¯\\_(ツ)_/¯"]);
     });
 
-    it("answers ctx.selection.select through the shell's selection context", async () => {
+    it("refuses ctx.selection.select: navigation is not a sandbox capability", async () => {
         const selections: unknown[] = [];
         const { client } = makeClient();
         const fake = makeWorker({
@@ -323,14 +342,14 @@ describe("sandbox bridge", () => {
         });
         const facade = sandboxPlugin(
             { manifest: MANIFEST, bundle: "// x" },
-            { createWorker: () => fake.worker },
+            { createTransport: () => fake.worker },
         );
         facade.install(
             makeContext(MANIFEST, client, { onSelect: (next) => selections.push(next) }),
         );
         await settle();
 
-        assert.deepEqual(selections, [{ view: "guild", guildId: "!g:example.org" }]);
+        assert.deepEqual(selections, [], "a sandboxed plugin cannot navigate the user (policy.ts CONTEXT_RULES)");
     });
 
     it("propagates a host refusal back into the plugin as a named error", async () => {
@@ -360,22 +379,21 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, partial.client));
         await settle();
 
         assert.match(seen ?? "", /resolveMedia/, "the host named the refused method");
     });
 
-    it("mints a Worker-local blob URL for media instead of reusing the host's", async () => {
+    it("refuses media resolution: a sandboxed plugin cannot fetch the user's media", async () => {
         const created: Blob[] = [];
-        const { client } = makeClient({
-            resolveMedia: async () => new ArrayBuffer(4),
+        let refusal = "";
+        const { client, calls } = makeClient({
+            resolveMedia: async () => "blob:media/1",
         });
         const fake = makeWorker({
             createObjectUrl: (blob) => {
-                // The bundle import also mints a URL; only the media blob is of
-                // interest, so filter by the type the resolver asks for.
                 if (blob.type !== "text/javascript") created.push(blob);
                 return "blob:worker/1";
             },
@@ -384,18 +402,21 @@ describe("sandbox bridge", () => {
                     default: {
                         manifest: MANIFEST,
                         install: (ctx: PluginContext) => {
-                            void ctx.media.resolve("mxc://example.org/x", 64);
+                            ctx.media.resolve("mxc://example.org/x", 64).catch((error: Error) => {
+                                refusal = error.message;
+                            });
                             return () => undefined;
                         },
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
-        assert.equal(created.length, 1, "the Worker minted its own URL from the bytes");
-        assert.ok(created[0] instanceof Blob);
+        assert.match(refusal, /not available to sandboxed plugins/);
+        assert.equal(created.length, 0, "no bytes crossed, so nothing was minted");
+        assert.ok(!calls.some((call) => call.method.startsWith("resolve")), "the host never called the client");
     });
 
     it("serves the synchronous capabilities from the host's snapshot", async () => {
@@ -416,7 +437,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
@@ -440,7 +461,7 @@ describe("sandbox bridge", () => {
         const facade = sandboxPlugin(
             { manifest: MANIFEST, bundle: "// x" },
             {
-                createWorker: () => fake.worker,
+                createTransport: () => fake.worker,
                 onFailed: (id, error) => failures.push({ id, error }),
             },
         );
@@ -467,7 +488,7 @@ describe("sandbox bridge", () => {
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
@@ -478,51 +499,203 @@ describe("sandbox bridge", () => {
         assert.ok(fake.closed(), "the worker was terminated");
     });
 
-    it("pushes feed values to the Worker and serves them from .get()", async () => {
+    it("refuses the all-rooms feed: a sandboxed plugin cannot list the user's rooms", async () => {
         const observed: unknown[] = [];
-        const rooms = [room("!a:example.org")];
-        const { client } = makeClient({ rooms: subscribable(rooms) });
+        const { client } = makeClient({ rooms: subscribable([room("!a:example.org")]) });
         const fake = makeWorker({
             importModule: () =>
                 Promise.resolve({
                     default: {
                         manifest: MANIFEST,
                         install: (ctx: PluginContext) => {
-                            const subscription = ctx.client.rooms.subscribe((value) => {
-                                observed.push(value);
-                            });
-                            void subscription;
+                            ctx.client.rooms.subscribe((value) => observed.push(value));
                             return () => undefined;
                         },
                     } satisfies Plugin,
                 }),
         });
-        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createWorker: () => fake.worker });
+        const facade = sandboxPlugin({ manifest: MANIFEST, bundle: "// x" }, { createTransport: () => fake.worker });
         facade.install(makeContext(MANIFEST, client));
         await settle();
 
-        assert.equal(observed.length, 1, "the current snapshot was pushed on subscribe");
-        assert.equal((observed[0] as { id: string }[])[0]?.id, "!a:example.org");
+        assert.deepEqual(observed, [], "no room list crossed the bridge");
+    });
+
+    it("lets an action read its own room's timeline and react, then closes the feed", async () => {
+        // The showcase composer action, end to end: the policy's invoked-room
+        // rule must allow exactly this.
+        const ROOM = "!here:example.org";
+        const timeline = liveFeed([{ id: "$last", body: "hi" }]);
+        const actions: { run: (...args: unknown[]) => Promise<unknown> }[] = [];
+        const { calls, client } = await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    ctx.addComposerAction({
+                        id: "test.react",
+                        label: "React",
+                        run: async ({ roomId, client: c }) => {
+                            const messages = await new Promise<{ id: string }[]>((resolve) => {
+                                const sub = c.timeline(roomId).subscribe((value) => {
+                                    if (value.length > 0) {
+                                        sub.unsubscribe();
+                                        resolve(value as { id: string }[]);
+                                    }
+                                });
+                            });
+                            await c.toggleReaction(roomId, messages[messages.length - 1]!.id, "👍");
+                        },
+                    });
+                    return () => undefined;
+                },
+            },
+            { onAction: (action) => actions.push(action as never), clientOverrides: { timeline: () => timeline.feed } as never },
+        );
+
+        await actions[0]!.run({ roomId: ROOM, draft: "", client, setDraft: () => undefined });
+        assert.deepEqual(calls.find((c) => c.method === "toggleReaction")?.args, [ROOM, "$last", "👍"]);
+        await settle();
+        assert.equal(timeline.listeners(), 0, "the room's timeline feed closed when the action finished");
+    });
+
+    it("refuses everything outside the invoked room, and every privileged call even inside it", async () => {
+        const ROOM = "!here:example.org";
+        const refusals: string[] = [];
+        const actions: { run: (...args: unknown[]) => Promise<unknown> }[] = [];
+        const note = (p: Promise<unknown>): Promise<void> => p.then(() => void refusals.push("ALLOWED"), (e: Error) => void refusals.push(e.message));
+        const { calls, client } = await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    // Not invoked by anyone yet: nothing room-scoped is open.
+                    void note(ctx.client.send(ROOM, "from install"));
+                    ctx.addComposerAction({
+                        id: "test.greedy",
+                        label: "Greedy",
+                        run: async ({ client: c }) => {
+                            await note(c.send("!elsewhere:example.org", "other room"));
+                            await note(c.logout());
+                            await note(c.setupRecovery());
+                            await note(c.confirmSas("req"));
+                            await note(c.kick(ROOM, "@victim:example.org"));
+                        },
+                    });
+                    return () => undefined;
+                },
+            },
+            { onAction: (action) => actions.push(action as never) },
+        );
+        await actions[0]!.run({ roomId: ROOM, draft: "", client, setDraft: () => undefined });
+        await settle();
+
+        assert.equal(refusals.length, 6);
+        assert.ok(!refusals.includes("ALLOWED"), `something got through: ${JSON.stringify(refusals)}`);
+        assert.deepEqual(calls, [], "the real client was never called");
+    });
+
+    it("lets an action call setDraft while it runs, and refuses it afterwards", async () => {
+        const drafts: string[] = [];
+        let kept: ((text: string) => void) | null = null;
+        const actions: { run: (...args: unknown[]) => Promise<unknown> }[] = [];
+        const { client } = await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    ctx.addComposerAction({
+                        id: "test.draft",
+                        label: "Draft",
+                        run: async ({ setDraft }) => {
+                            await setDraft("rewritten");
+                            kept = setDraft;
+                        },
+                    });
+                    return () => undefined;
+                },
+            },
+            { onAction: (action) => actions.push(action as never) },
+        );
+        await actions[0]!.run({ roomId: "!r:example.org", draft: "x", client, setDraft: (t: string) => drafts.push(t) });
+        assert.deepEqual(drafts, ["rewritten"]);
+
+        await assert.rejects(Promise.resolve((kept as unknown as (t: string) => Promise<unknown>)("later")), /no longer available/);
+        assert.deepEqual(drafts, ["rewritten"], "a finished invocation's setDraft does nothing");
+    });
+
+    it("fails a plugin that floods contributions, rather than letting it stall the app (F4)", async () => {
+        const failures: string[] = [];
+        await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    for (let i = 0; i <= SANDBOX_LIMITS.contributions; i++) {
+                        ctx.addCommand({ name: `flood${i}`, run: () => undefined });
+                    }
+                    return () => undefined;
+                },
+            },
+            { onFailed: (_id, error) => failures.push(error.message) },
+        );
+        assert.equal(failures.length, 1);
+        assert.match(failures[0]!, /more than 64 contributions/);
+    });
+
+    it("fails a plugin that floods the bridge with calls (F4)", async () => {
+        const failures: string[] = [];
+        await bridge(
+            {
+                manifest: MANIFEST,
+                install(ctx) {
+                    for (let i = 0; i <= SANDBOX_LIMITS.callsInFlight; i++) ctx.client.send("!r:example.org", "x").catch(() => undefined);
+                    return () => undefined;
+                },
+            },
+            { onFailed: (_id, error) => failures.push(error.message) },
+        );
+        assert.equal(failures.length, 1);
+        assert.match(failures[0]!, /more than 64 concurrent calls/);
     });
 });
 
+/** A feed whose listener count is observable, to prove a subscription was closed. */
+function liveFeed<T>(value: T): { feed: { get(): T; subscribe(l: (v: T) => void): { unsubscribe(): void } }; listeners(): number } {
+    const listeners = new Set<(v: T) => void>();
+    return {
+        feed: {
+            get: () => value,
+            subscribe(listener) {
+                listeners.add(listener);
+                listener(value);
+                return { unsubscribe: () => void listeners.delete(listener) };
+            },
+        },
+        listeners: () => listeners.size,
+    };
+}
+
 /** A minimal `RoomSummary` for feed tests. */
-function room(id: string): unknown {
+function room(id: string): RoomSummary {
     return {
         id,
         name: id,
         topic: null,
+        avatarUrl: null,
         isSpace: false,
         parentSpaceIds: [],
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
+        joinRule: "invite",
+        historyVisibility: "shared",
+        canonicalAlias: null,
+        favourite: false,
+        favouriteOrder: null,
+        muted: false,
     };
 }
 
 /** A minimal subscribable whose value is fixed at construction. */
-function subscribable<T>(value: T): ChatClient["rooms"] {
-    const listeners = new Set<(next: T) => void>();
+function subscribable(value: RoomSummary[]): ChatClient["rooms"] {
+    const listeners = new Set<(next: RoomSummary[]) => void>();
     return {
         get: () => value,
         subscribe(listener) {

@@ -199,6 +199,12 @@ export interface RoomSettingsPatch {
 	historyVisibility?: HistoryVisibility;
 	/** Full `#alias:server` form; `null` (or empty after trim) removes it. */
 	canonicalAlias?: string | null;
+	/**
+	 * Whether members (not only admins) may join the room's calls — the power
+	 * level of {@link CALL_MEMBER_EVENT_TYPE}. A room power-levels write, so it
+	 * needs `canSetPowerLevel`. Read it back with {@link membersCanJoinCalls}.
+	 */
+	membersCanJoinCalls?: boolean;
 }
 export interface RoomSummary {
 	id: string;
@@ -268,8 +274,15 @@ export interface SessionView {
  * running; `backupTrusted` means this device holds the backup decryption key.
  * A fresh device typically reads `{ enabled: true, trusted: false }` — the
  * recovery-key prompt state.
+ *
+ * `checked` is false until this device's crypto has actually answered (it
+ * starts after the first sync), and every other field is then a placeholder.
+ * Act on nothing before it: read as "no backup", the placeholder used to show
+ * every user "Message backup is off — set up recovery" on every boot, and the
+ * button failed because encryption was not running yet.
  */
 export interface SecurityStatus {
+	checked: boolean;
 	crossSigningReady: boolean;
 	backupEnabled: boolean;
 	backupTrusted: boolean;
@@ -295,7 +308,7 @@ interface VerificationRequestView {
 interface VerificationState {
 	requests: VerificationRequestView[];
 }
-type CallState = "connecting" | "joined" | "error";
+type CallState = "connecting" | "joined" | "ended" | "error";
 interface CallView {
 	roomId: string;
 	url: string;
@@ -316,6 +329,20 @@ interface VoiceParticipant {
 	camera: boolean;
 	/** Whether a screen-share track is live and can be attached to a `<video>`. */
 	screen: boolean;
+	/**
+	 * Whether their screen share carries audio. Browser support for capturing it
+	 * is partial (none on Safari; on Chromium, a tab with "share audio" ticked),
+	 * so a silent share is normal and must be shown, not guessed at.
+	 */
+	screenAudio: boolean;
+}
+interface VoiceSettings {
+	/** Remove the sound of the other side coming out of our speakers. Wanted without headphones. */
+	echoCancellation: boolean;
+	/** Suppress steady background noise. Colours the voice, so off for a clean microphone. */
+	noiseSuppression: boolean;
+	/** Even out loudness automatically. Off to keep your own dynamics. */
+	autoGainControl: boolean;
 }
 type VoiceVideoSource = "camera" | "screen";
 interface VoiceView {
@@ -391,6 +418,7 @@ export interface OwnPresenceView {
 	presence: OwnPresenceState;
 	statusMessage: string | null;
 }
+type MemberVerification = "verified" | "unverified" | "unknown";
 /** One member of a room, as the members pane needs it. */
 export interface MemberView {
 	userId: string;
@@ -404,6 +432,8 @@ export interface MemberView {
 	powerLevel: number;
 	isSelf: boolean;
 	presence: PresenceState;
+	/** Whether we have cryptographically verified this user's identity. */
+	verification: MemberVerification;
 	/**
 	 * Approximate last-activity time (ms since epoch) derived from live
 	 * presence, `null` when presence is unknown. A moment ago for `online`.
@@ -487,6 +517,28 @@ export interface EncryptedAttachment {
 	/** Version string (currently `"v2"`). */
 	v: string;
 }
+interface OutgoingAttachment {
+	file: File | Blob;
+	/** Filename on the event; defaults to `File.name`, else `"file"`. */
+	name?: string;
+	/** Description for screen readers; images only in the UI. */
+	altText?: string;
+	/** Intrinsic pixel size (images/video), so receivers reserve the box. */
+	width?: number;
+	height?: number;
+}
+interface SendAttachmentsOptions {
+	/** Message text sent with the files; blank means none. */
+	caption?: string;
+	/** Reply target; the relation goes on the first event sent. */
+	replyToEventId?: string;
+}
+type AttachmentSendResult = {
+	ok: true;
+} | {
+	ok: false;
+	error: unknown;
+};
 export interface ChatClient {
 	/**
 	 * Begin MAS login.
@@ -581,6 +633,23 @@ export interface ChatClient {
 	 */
 	sendMediaMessage(roomId: string, file: File | Blob, body?: string): Promise<void>;
 	/**
+	 * Upload and send staged attachments in order, with an optional caption.
+	 *
+	 * One file carries the caption on its own event (MSC2530: `filename` +
+	 * a differing `body`); several files get the caption as a text message
+	 * sent first. Alt text rides under {@link ALT_TEXT_KEY}. Never rejects for
+	 * a single file: each result says whether that file landed, because a
+	 * failed upload has no local echo to show the failure.
+	 */
+	sendAttachments(roomId: string, attachments: readonly OutgoingAttachment[], options?: SendAttachmentsOptions): Promise<AttachmentSendResult[]>;
+	/**
+	 * The homeserver's maximum upload size in bytes (`m.upload.size`), or
+	 * `null` when it advertises none or the read failed. Read once per
+	 * session. A proxy in front of the homeserver may enforce a LOWER limit
+	 * the client cannot see, so a file under this can still be refused.
+	 */
+	uploadLimit(): Promise<number | null>;
+	/**
 	 * Toggle our `emoji` reaction on a message: sends `m.reaction` when we
 	 * haven't reacted, redacts our reaction when we have. The feed maps the
 	 * result; the returned promise only signals the request finished.
@@ -661,6 +730,10 @@ export interface ChatClient {
 	 * detaches (safe to call twice). A no-op detach when there is no such track.
 	 */
 	attachVoiceVideo(userId: string, deviceId: string, source: VoiceVideoSource, element: HTMLVideoElement): () => void;
+	/** How our microphone is processed. Persisted on this device, and available before a call starts. */
+	voiceSettings: Subscribable<VoiceSettings>;
+	/** Change microphone processing (any subset). Persists, and re-opens the microphone if a call is live. */
+	setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void>;
 	/** Silence or restore remote audio locally. A no-op when not in a session. */
 	setVoiceDeafened(deafened: boolean): void;
 	/** Local playback volume for one participant, 0 (silent) to 1. Not sent to anyone. */

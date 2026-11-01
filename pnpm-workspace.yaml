@@ -10,4 +10,25 @@ packages:
 # without this the dev server and build can't run.
 allowBuilds:
   esbuild: true
+  # Electron's postinstall downloads the platform's Electron binary
+  # (apps/desktop); without it `electron .` has nothing to run.
+  electron: true
   vue-demi: true
+  # electron-builder's Squirrel.Windows backend; we package NSIS only, so its
+  # postinstall (a vendored binary copy) is not needed.
+  electron-winstaller: false
+
+# Security floor for transitive dependencies. source-map-js <1.2.2 has an
+# event-loop DoS (GHSA-68fv-2mgg-jv7q); it arrives through Vue's SFC compiler,
+# which has not bumped it yet. Drop the entry once nothing resolves below it.
+overrides:
+  source-map-js: ">=1.2.2"
+  # minimatch <11.0.1: ReDoS via globparts amplification (GHSA-g3hv-75wg-m249),
+  # no 10.x fix. The 10.x line (ESLint, on our own config's patterns) takes 11,
+  # whose API it uses unchanged. Scoped to 10.x on purpose: standard-version's
+  # dotgitignore needs 3.x's `minimatch.makeRe`, which 11 removed — an unscoped
+  # override broke `pnpm release` ("minimatch.makeRe is not a function").
+  minimatch@10: ">=11.0.1"
+
+patchedDependencies:
+  matrix-js-sdk@45.0.0: patches/matrix-js-sdk@45.0.0.patch

@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { reportError } from "@tumult/core/errors";
+import { ref, watch } from "vue";
 import { useSubscribable } from "../subscribable.ts";
 import type { ChatClient } from "@tumult/core";
+import { useSecureSurface } from "../plugins/useSecureSurface.ts";
 
 const props = defineProps<{
     client: ChatClient;
     active: boolean;
 }>();
+
+// A security surface: no plugin CSS while it is on screen (F3).
+useSecureSurface(() => props.active);
 
 const emit = defineEmits<{
     /** Return to the landing chooser. */
@@ -18,8 +23,12 @@ const emit = defineEmits<{
 // The "enter backup" path sub-branches on whether a backup exists yet:
 // a fresh account has none, so it can only *create* one; an existing account
 // has one, so it can only *enter* it.
+//
+// Decided ONCE, when the screen opens — not live. Setting up creates the
+// backup, and a live check flipped this screen to "Enter recovery key"
+// mid-setup, hiding the only copy of the key it had just made.
 const security = useSubscribable(props.client.security);
-const creating = computed(() => !security.value.backupEnabled);
+const creating = ref(!security.value.backupEnabled);
 
 // --- Enter-recovery-key sub-flow (restore). ---
 const pasted = ref("");
@@ -47,6 +56,7 @@ watch(
             setupStage.value = "working";
             return;
         }
+        creating.value = !security.value.backupEnabled;
         if (creating.value) void runSetup();
     },
     { immediate: true },
@@ -61,7 +71,7 @@ async function restore(): Promise<void> {
         restoreVerified.value = await props.client.restoreBackup(key);
         restored.value = true;
     } catch (cause) {
-        restoreError.value = cause instanceof Error ? cause.message : String(cause);
+        restoreError.value = reportError(cause, "Couldn't restore your messages");
     } finally {
         restoring.value = false;
     }
@@ -79,7 +89,7 @@ async function runSetup(): Promise<void> {
             setupStage.value = "ready";
         }
     } catch (cause) {
-        restoreError.value = cause instanceof Error ? cause.message : String(cause);
+        restoreError.value = reportError(cause, "Couldn't set up recovery");
         setupStage.value = "error";
     }
 }

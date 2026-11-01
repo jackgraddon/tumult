@@ -1,0 +1,38 @@
+{
+  "name": "@tumult/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "productName": "Tumult",
+  "description": "Tumult, a Matrix chat client (desktop app)",
+  "author": "Jack Graddon",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/jackgraddon/tumult",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "build:web": "node scripts/build-web.ts",
+    "build:web:fake": "node scripts/build-web.ts --fake",
+    "predev": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
+    "dev": "node scripts/build-web.ts && node scripts/build.ts && electron .",
+    "start": "electron .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
+    "pretest:smoke": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts --fake && node scripts/build.ts",
+    "test:smoke": "node --test --import tsx smoke/desktop.smoke.ts",
+    "icons": "electron scripts/render-icons.cjs",
+    "prepackage": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts && node scripts/build.ts",
+    "package": "electron-builder --config electron-builder.config.cjs",
+    "dist:linux": "pnpm run prepackage && electron-builder --config electron-builder.config.cjs --linux AppImage deb rpm --x64 --publish never",
+    "dist:win": "pnpm run prepackage && electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "playwright": "^1.64.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7"
+  }
+}

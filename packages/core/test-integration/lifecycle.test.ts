@@ -32,7 +32,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -78,16 +78,6 @@ async function waitFor(
 
 function clientFor(user: AuthedUser): MatrixClient {
     return createClient({ baseUrl: BASE, userId: user.userId, accessToken: user.token });
-}
-
-/** A synced client with `roomId` visible in its snapshot. */
-async function syncedWith(user: AuthedUser, roomId: string): Promise<MatrixClient> {
-    const client = clientFor(user);
-    await client.startClient({ initialSyncLimit: 10 });
-    await waitFor(`${user.userId} to see ${roomId}`, () =>
-        snapshotRooms(client).some((r) => r.id === roomId),
-    );
-    return client;
 }
 
 function stop(client: MatrixClient): void {
@@ -169,7 +159,7 @@ describe("room lifecycle against real Synapse", () => {
             );
         } finally {
             stop(aliceClient);
-            bobClient && stop(bobClient);
+            if (bobClient) stop(bobClient);
         }
     });
 
@@ -213,7 +203,7 @@ describe("room lifecycle against real Synapse", () => {
             );
         } finally {
             stop(aliceClient);
-            bobClient && stop(bobClient);
+            if (bobClient) stop(bobClient);
         }
     });
 

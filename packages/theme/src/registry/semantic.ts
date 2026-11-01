@@ -108,6 +108,7 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "timeline-gutter-width", tier: "semantic", kind: "size", value: v("prim-size-md"), description: "Message gutter." },
     { name: "badge-min-size", tier: "semantic", kind: "size", value: v("prim-size-xs"), description: "Unread badge." },
     { name: "presence-dot-size", tier: "semantic", kind: "size", value: v("prim-size-2xs"), description: "Presence dot." },
+    { name: "verified-badge-size", tier: "semantic", kind: "size", value: v("prim-size-xs"), description: "Verified-identity shield (replaces the presence dot)." },
 
     // Borders
     { name: "border-width", tier: "semantic", kind: "border-width", value: v("prim-border-width"), description: "Default border." },
@@ -141,8 +142,8 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-slideover-width", tier: "semantic", kind: "layout", value: v("prim-layout-slideover"), description: "Search / thread panel width." },
     { name: "layout-menu-min-width", tier: "semantic", kind: "layout", value: v("prim-layout-menu-min"), description: "Menu minimum width." },
     { name: "layout-dialog-width", tier: "semantic", kind: "layout", description: "Dialog width before viewport clamp." },
-    { name: "layout-voice-tile-min-width", tier: "semantic", kind: "layout", description: "Narrowest video tile in a call; the stage fits as many per row as this allows." },
-    { name: "layout-voice-stage-max-height", tier: "semantic", kind: "layout", description: "Tallest the video stage above the timeline may grow before it scrolls." },
+    { name: "layout-voice-stage-height", tier: "semantic", kind: "layout", description: "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled." },
+    { name: "layout-voice-strip-height", tier: "semantic", kind: "layout", description: "Height of the row of small tiles beside a spotlit participant or screen." },
     { name: "layout-settings-nav-width", tier: "semantic", kind: "layout", description: "Settings sidebar width." },
     { name: "layout-settings-content-width", tier: "semantic", kind: "layout", description: "Settings page column max width." },
     { name: "layout-settings-content-min-width", tier: "semantic", kind: "layout", description: "Narrowest settings page beside the sidebar; below it the sidebar becomes its own screen." },

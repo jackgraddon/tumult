@@ -16,6 +16,7 @@
     "paths": {
       "@tumult/ui": ["../../packages/ui/src/index.ts"],
       "@tumult/ui/sandbox": ["../../packages/ui/src/plugins/sandbox/worker/shim.ts"],
+      "@tumult/ui/sandbox/frame": ["../../packages/ui/src/plugins/sandbox/frame.ts"],
       // Typecheck against the real client; which one a *build* links is
       // vite.config.ts's business, and both implementations are typechecked
       // because both live under src/.

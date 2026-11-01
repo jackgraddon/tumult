@@ -1,0 +1,32 @@
+diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
+index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..73b03398dd7e77bba449a47874d8482ad15e7056 100644
+--- a/lib/http-api/fetch.js
++++ b/lib/http-api/fetch.js
+@@ -213,8 +213,16 @@ export class FetchHttpApi {
+     const timeout = opts.localTimeoutMs ?? this.opts.localTimeoutMs;
+     const keepAlive = opts.keepAlive ?? false;
+     const signals = [this.abortController.signal];
++    // Tumult patch: the request's local timeout, cleared when the request
++    // settles (see the `finally` below). Upstream's timeoutSignal() never
++    // clears its timer, so every request left one running for the full timeout
++    // (110 s per /sync), which kept Node processes alive after stopClient().
++    // Same abort as before (AbortError), so error handling is unchanged.
++    let timeoutTimer;
+     if (timeout !== undefined) {
+-      signals.push(timeoutSignal(timeout));
++      const timeoutController = new AbortController();
++      timeoutTimer = setTimeout(() => timeoutController.abort(), timeout);
++      signals.push(timeoutController.signal);
+     }
+     if (opts.abortSignal) {
+       signals.push(opts.abortSignal);
+@@ -270,6 +278,9 @@ export class FetchHttpApi {
+       throw new ConnectionError("fetch failed", e);
+     } finally {
+       cleanup();
++      // Tumult patch: `cleanup()` has just detached the timeout from this
++      // request, so the timer can no longer abort anything — only leak.
++      clearTimeout(timeoutTimer);
+     }
+     if (!res.ok) {
+       throw parseErrorResponse(res, await res.text());

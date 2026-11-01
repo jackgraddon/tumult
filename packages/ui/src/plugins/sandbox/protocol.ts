@@ -49,6 +49,8 @@ export const CLIENT_METHODS = [
     "send",
     "retry",
     "sendMediaMessage",
+    "sendAttachments",
+    "uploadLimit",
     "toggleReaction",
     "edit",
     "sendTyping",
@@ -148,6 +150,15 @@ export const CONTEXT_METHODS = [
 ] as const;
 
 export type ContextMethod = (typeof CONTEXT_METHODS)[number];
+
+/**
+ * Worker→host call that runs a function the host passed INTO an invocation
+ * (a composer action's `setDraft`). Args: `[invokeId, fnId, ...args]`. Live
+ * objects cannot cross `postMessage`, so the host sends `{ kind: "hostfn",
+ * invoke, fn }` in their place and `{ kind: "client" }` for the ChatClient;
+ * the Worker revives both. A hostfn answers only while its invocation runs.
+ */
+export const INVOKE_FN = "invoke:fn";
 
 /**
  * A method call from the Worker to the host. `args` is whatever the plugin

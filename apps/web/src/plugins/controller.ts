@@ -14,6 +14,7 @@
  * `confirm()` refuse with a message instead of throwing into a void.
  */
 
+import { reportError } from "@tumult/core/errors";
 import { shallowRef, type Ref } from "vue";
 import {
     hashBundle,
@@ -28,7 +29,6 @@ import {
     type PendingInstall,
     type PluginInstallControls,
     type Plugin,
-    type PluginManifest,
     type SandboxHost,
 } from "@tumult/ui";
 
@@ -54,7 +54,10 @@ export interface PluginHost {
 }
 
 function fail(error: unknown): InstallOutcome {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    // An InstallError is the installer's own sentence; anything else (a fetch
+    // that never answered, IndexedDB) is translated and logged.
+    if (error instanceof InstallError) return { ok: false, error: error.message };
+    return { ok: false, error: reportError(error, "Couldn't install the plugin") || "The install was cancelled." };
 }
 
 export class AppPluginInstallController implements PluginInstallControls {
@@ -93,6 +96,11 @@ export class AppPluginInstallController implements PluginInstallControls {
         this.thirdPartyIds.value = next;
     }
 
+    /** Registered, and not by us from the store: a plugin compiled into the app. */
+    private isBuiltIn(id: string): boolean {
+        return Boolean(this.registry?.has(id)) && !this.thirdPartyIds.value.has(id) && !this.loaded.has(id);
+    }
+
     /** Attach the shell's registry once it exists (see the class comment). */
     public attach(registry: PluginHost): void {
         this.registry = registry;
@@ -115,7 +123,7 @@ export class AppPluginInstallController implements PluginInstallControls {
     private hostFor(id: string, lane: "sandbox" | "trusted"): SandboxHost {
         if (lane !== "sandbox") return sandboxHost;
         return {
-            createWorker: sandboxHost.createWorker,
+            createTransport: sandboxHost.createTransport,
             onFailed: (failedId, error) => {
                 console.error(`[tumult] sandboxed plugin "${failedId}" failed`, error);
                 this.registry?.uninstall(failedId);
@@ -173,6 +181,14 @@ export class AppPluginInstallController implements PluginInstallControls {
         this.busy.value = true;
         try {
             const prepared = await prepareInstall(source);
+            // A third-party plugin must not take over a BUILT-IN plugin's id
+            // (review finding F7): the registry would swap the app's own plugin
+            // for it, silently, under a name the user already trusts.
+            if (this.isBuiltIn(prepared.manifest.id)) {
+                throw new InstallError(
+                    `"${prepared.manifest.id}" is the id of a plugin built into Tumult, so a third-party plugin cannot use it.`,
+                );
+            }
             const previous = (await listInstalls()).find((record) => record.id === prepared.manifest.id) ?? null;
             const summary = previous
                 ? {
@@ -194,6 +210,7 @@ export class AppPluginInstallController implements PluginInstallControls {
                 changed: summary !== null && needsConsent(prepared.manifest, summary),
                 added: summary ? addedPermissions(prepared.manifest, summary) : [],
                 previousVersion: previous?.manifest.version ?? null,
+                previousSource: previous?.source ?? null,
             };
             return { ok: true, error: null };
         } catch (error) {
@@ -317,11 +334,28 @@ export class AppPluginInstallController implements PluginInstallControls {
     }
 
     /**
-     * Re-hash the stored bundle and register it. The re-hash is the point: the
-     * store is editable by anything with page access, so "what runs" is checked
-     * against "what was consented to" every boot.
+     * Re-hash the stored bundle and register it.
+     *
+     * What the re-hash does and does NOT buy (security review G-F1): it catches
+     * a corrupted or half-written record — bytes that no longer match their own
+     * recorded hash fail closed. It is NOT proof of consent: the hash lives in
+     * the same record, so anything that can write the store can write a
+     * matching pair. Who can write it is therefore the real boundary:
+     *  - a SANDBOXED plugin cannot — its Worker runs inside an opaque-origin
+     *    frame (sandbox/frame.ts), so the app's IndexedDB is not its origin's,
+     *    and IndexedDB is withdrawn there too (sandbox/worker/shim.ts); both
+     *    are proven by the smoke test;
+     *  - in-page code (a trusted plugin, or an XSS) can, and could persist by
+     *    other means too (a service worker, say). That is inherent to running
+     *    in-page, which is exactly what the trusted-lane consent warns about.
      */
     private async load(record: InstallRecord): Promise<void> {
+        // Built-ins are registered before restore() (AppView), so a stored
+        // record claiming one's id is refused here and disabled, not loaded
+        // over it (F7) — whether the install flow or a store write made it.
+        if (this.isBuiltIn(record.id)) {
+            throw new InstallError(`"${record.id}" is the id of a plugin built into Tumult; the stored third-party copy was not loaded.`);
+        }
         const actual = await hashBundle(new TextEncoder().encode(record.bundle));
         if (actual !== record.integrity) {
             throw new InstallError(

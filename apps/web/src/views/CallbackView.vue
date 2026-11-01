@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
@@ -16,7 +17,7 @@ onMounted(async () => {
         window.history.replaceState(null, "", window.location.pathname);
         await router.replace({ name: "dms" });
     } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause);
+        error.value = reportError(cause, "Couldn't finish signing in", { verbatimOwn: true });
     }
 });
 </script>

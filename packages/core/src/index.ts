@@ -1,4 +1,7 @@
 export type {
+    AttachmentSendResult,
+    OutgoingAttachment,
+    SendAttachmentsOptions,
     CallState,
     CallView,
     ChatClient,
@@ -39,6 +42,7 @@ export type {
     VerificationRequestView,
     VerificationState,
     VoiceParticipant,
+    VoiceSettings,
     VoiceVideoSource,
     VoiceState,
     VoiceView,
@@ -48,7 +52,8 @@ export { Observable } from "./observable.ts";
 export { selectSpaceTree } from "./selectors/spaceTree.ts";
 export { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "./rooms/snapshot.ts";
 export { sendTextMessage } from "./rooms/send.ts";
-export { sendMediaMessage } from "./rooms/media.ts";
+export { sendAttachments, sendMediaMessage } from "./rooms/media.ts";
+export { attachmentContent } from "./rooms/attachment-content.ts";
 export { toggleReaction } from "./rooms/reactions.ts";
 export { fallbackName, readProfile, writeProfile } from "./rooms/profile.ts";
 export { readOwnPresence } from "./rooms/own-presence.ts";
@@ -75,4 +80,8 @@ export { hasStoredSession } from "./auth/session.ts";
 // UI-safe (no matrix-js-sdk): reach it via `@tumult/core/media` so importing it
 // does not drag the SDK back into the UI chunks.
 export { isTerminalMediaError } from "./media/classify.ts";
+// UI-safe too: `@tumult/core/errors`.
+export { describeError, reportError, isAbort, type DescribeErrorOptions } from "./errors.ts";
 export { normalizeHomeserverUrl, type AuthNavigator, type ClientMetadata } from "./auth/oauth.ts";
+
+export { ALT_TEXT_KEY, CALL_MEMBER_EVENT_TYPE, DEFAULT_VOICE_SETTINGS, membersCanJoinCalls } from "./contract.ts";

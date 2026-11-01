@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import Icon from "../icons/Icon.vue";
 import { onMounted, ref, shallowRef } from "vue";
 import type { ChatClient, SearchPage } from "@tumult/core";
@@ -48,9 +49,9 @@ async function run(reset: boolean): Promise<void> {
                   };
         searched.value = term;
     } catch (cause) {
-        // The SDK's rejection strings are raw HTTP; say what the user can do.
-        console.error("[tumult] search failed", cause);
-        error.value = "Search failed — this homeserver may not support history search.";
+        // The SDK's rejection strings are raw HTTP; the translator says what
+        // happened (M_UNRECOGNIZED: no history search on this homeserver).
+        error.value = reportError(cause, "Couldn't search this room") || null;
         page.value = null;
     } finally {
         loading.value = false;
@@ -78,8 +79,7 @@ async function jump(hitId: string): Promise<void> {
         emit("jumped", hitId);
         emit("close");
     } catch (cause) {
-        console.error("[tumult] jump failed", cause);
-        jumpError.value = "Couldn't load that message.";
+        jumpError.value = reportError(cause, "Couldn't load that message") || null;
     } finally {
         jumping.value = null;
     }

@@ -1,6 +1,6 @@
 import { ClientWidgetApi, Widget } from "matrix-widget-api";
 import type { IRoomEvent } from "matrix-widget-api";
-import { ClientEvent, MatrixEventEvent } from "matrix-js-sdk";
+import { ClientEvent, MatrixEventEvent, RoomStateEvent } from "matrix-js-sdk";
 import type { MatrixClient, MatrixEvent } from "matrix-js-sdk";
 import type { CallState, CallView } from "../contract.ts";
 import { Observable } from "../observable.ts";
@@ -14,6 +14,8 @@ import { CallWidgetDriver } from "./driver.ts";
 const ACTION_JOINED = "io.element.join";
 const ACTION_HANGUP = "im.vector.hangup";
 const ACTION_CLOSE = "io.element.close";
+const ACTION_ALWAYS_ON_SCREEN = "set_always_on_screen";
+const ACTION_DEVICE_MUTE = "io.element.device_mute";
 
 /** How long the widget has to finish its handshake before we call it dead. */
 const HANDSHAKE_TIMEOUT_MS = 30_000;
@@ -28,7 +30,15 @@ const HANGUP_TIMEOUT_MS = 2_000;
  * Parameters are documented in element-call `docs/url_params.md`.
  */
 export function callUrlTemplate(base: string, params: { origin: string; intent: string }): string {
-    const root = base.replace(/\/+$/, "");
+    // The app's router sends the path `/` to its standalone home page ("Start
+    // new call") and every other path to the call, widget or not. Element Web
+    // never notices: it serves the package from a subdirectory. A call app
+    // deployed at an origin's root must be addressed by its `index.html`,
+    // which still resolves the package's relative chunks (VERIFIED in the
+    // Element Call browser test: at `/` the handshake completed and the frame
+    // still showed the home page).
+    const trimmed = base.replace(/\/+$/, "");
+    const root = new URL(`${trimmed}/`).pathname === "/" ? `${trimmed}/index.html` : `${trimmed}/`;
     const query = [
         "widgetId=$matrix_widget_id",
         `parentUrl=${encodeURIComponent(params.origin)}`,
@@ -44,7 +54,7 @@ export function callUrlTemplate(base: string, params: { origin: string; intent: 
         "header=none",
         "confineToRoom=true",
     ].join("&");
-    return `${root}/#?${query}`;
+    return `${root}#?${query}`;
 }
 
 /** Element Call's intent for a call: voice-only and DM variants are distinct. */
@@ -101,7 +111,12 @@ export class CallManager {
                 origin: globalThis.location.origin,
                 intent: callIntent(video, isDm),
             }),
-            waitForIframeLoad: true,
+            // The call app announces itself with ContentLoaded (as Element Web
+            // expects: it sets this false too). With `true` the host instead
+            // starts the handshake on the iframe's `load` event, which has
+            // usually fired before attach() can listen, so the capabilities
+            // exchange never began and the app logged "Improper sequence".
+            waitForIframeLoad: false,
         });
         const url = widget.getCompleteUrl({
             widgetRoomId: roomId,
@@ -131,18 +146,35 @@ export class CallManager {
             // An undecrypted event has no usable type or content yet; it is fed
             // from `Decrypted` below once it has.
             if (event.getType() === "m.room.encrypted") return;
-            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent, roomId).catch(logFeedError);
+            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
         };
         const onDecrypted = (event: MatrixEvent): void => {
             if (event.getRoomId() !== roomId || event.isDecryptionFailure()) return;
-            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent, roomId).catch(logFeedError);
+            void api.feedEvent(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
+        };
+        // The widget API (1.19) syncs room state separately from the timeline:
+        // the app reads call MEMBERSHIP from these update_state pushes, so a
+        // membership that only reached it through feedEvent was invisible.
+        // Without this, neither side learned the other had joined, so neither
+        // sent the other its media key and every track failed with MissingKey.
+        const onState = (event: MatrixEvent): void => {
+            if (event.getRoomId() !== roomId) return;
+            void api.feedStateUpdate(event.getEffectiveEvent() as unknown as IRoomEvent).catch(logFeedError);
         };
         const onToDevice = (event: MatrixEvent): void => {
+            // Call keys travel this way; a "MissingKey" in the call app is
+            // either a key that never arrived or one fed without `encrypted`.
+            if (event.getType().startsWith("io.element.call.")) {
+                console.debug(`[tumult] call: feeding ${event.getType()} from ${event.getSender()} (encrypted: ${event.isEncrypted()})`);
+            }
             void api.feedToDevice(event.getEffectiveEvent() as unknown as ToDeviceMessage, event.isEncrypted()).catch(logFeedError);
         };
         this.client.on(ClientEvent.Event, onEvent);
         this.client.on(MatrixEventEvent.Decrypted, onDecrypted);
         this.client.on(ClientEvent.ToDeviceEvent, onToDevice);
+        this.client.on(RoomStateEvent.Events, onState);
+        // The room the app may act in; also lets the API push initial state.
+        api.setViewedRoomId(roomId);
 
         const timer = setTimeout(() => this.setState("error"), HANDSHAKE_TIMEOUT_MS);
         api.once("ready", () => clearTimeout(timer));
@@ -151,20 +183,38 @@ export class CallManager {
             api.transport.reply(ev.detail, {});
             this.setState("joined");
         });
-        const finished = (ev: CustomEvent): void => {
+        // Hang-up and close are different, as in Element Web: on a fatal call
+        // error the app may leave the session but deliberately does NOT close
+        // ("stay open until the user reads it"), so tearing the frame down on
+        // hang-up would hide its error screen. A normal leave sends hang-up and
+        // then close, so the frame still goes away at once in that case.
+        api.on(`action:${ACTION_HANGUP}`, (ev: CustomEvent) => {
             ev.preventDefault();
             api.transport.reply(ev.detail, {});
-            // The app left (or asked to close): the call is over, so drop it.
+            this.setState("ended");
+        });
+        api.on(`action:${ACTION_CLOSE}`, (ev: CustomEvent) => {
+            ev.preventDefault();
+            api.transport.reply(ev.detail, {});
             void this.leave();
+        });
+        // Requests we have nothing to do for, acknowledged so the app does not
+        // log a rejection: the frame stays mounted for the whole call already
+        // (always-on-screen), and we draw no mute controls of our own (the app
+        // reports `{ audio_enabled, video_enabled }` for a host that does).
+        const acknowledge = (ev: CustomEvent): void => {
+            ev.preventDefault();
+            api.transport.reply(ev.detail, {});
         };
-        api.on(`action:${ACTION_HANGUP}`, finished);
-        api.on(`action:${ACTION_CLOSE}`, finished);
+        api.on(`action:${ACTION_ALWAYS_ON_SCREEN}`, acknowledge);
+        api.on(`action:${ACTION_DEVICE_MUTE}`, acknowledge);
 
         const detach = (): void => {
             clearTimeout(timer);
             this.client.off(ClientEvent.Event, onEvent);
             this.client.off(MatrixEventEvent.Decrypted, onDecrypted);
             this.client.off(ClientEvent.ToDeviceEvent, onToDevice);
+            this.client.off(RoomStateEvent.Events, onState);
             api.removeAllListeners();
             api.stop();
         };

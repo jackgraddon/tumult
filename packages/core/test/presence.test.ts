@@ -1,16 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { type MatrixClient } from "matrix-js-sdk";
 
 import { PresencePoller } from "../src/rooms/presence.ts";
 import { type PresenceInput } from "../src/rooms/members.ts";
 
-import type { RoomMember } from "matrix-js-sdk";
+import type { MatrixClient, Room, RoomMember } from "matrix-js-sdk";
 
-interface StubRoom {
-    members: RoomMember[];
-    getMembers: () => RoomMember[];
-}
 
 function room(roomId: string, members: RoomMember[]): Room {
     return {
@@ -20,11 +15,13 @@ function room(roomId: string, members: RoomMember[]): Room {
     } as unknown as Room;
 }
 
-function matrixWith(rooms: Room[]): MatrixClient & {
+type PresenceStub = MatrixClient & {
     presenceHits: string[];
     getRooms: () => Room[];
     getPresence: (userId: string) => Promise<{ presence: string }>;
-} {
+};
+
+function matrixWith(rooms: Room[]): PresenceStub {
     const presenceHits = [] as string[];
     return {
         presenceHits,
@@ -33,7 +30,7 @@ function matrixWith(rooms: Room[]): MatrixClient & {
             presenceHits.push(userId);
             return { presence: "online" };
         },
-    } as unknown as MatrixClient;
+    } as unknown as PresenceStub;
 }
 
 describe("PresencePoller", () => {

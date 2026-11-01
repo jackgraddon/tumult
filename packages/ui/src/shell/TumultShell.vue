@@ -56,6 +56,7 @@ import PowerLevelDialog from "../members/PowerLevelDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import PluginsTab from "../settings/PluginsTab.vue";
 import AppearanceTab from "../settings/AppearanceTab.vue";
+import VoiceTab from "../settings/VoiceTab.vue";
 import ThemesTab from "../settings/ThemesTab.vue";
 import AccountPage from "../settings/AccountPage.vue";
 import SecurityPage from "../settings/SecurityPage.vue";
@@ -318,6 +319,17 @@ if (tryUseTheme()) {
     });
 }
 
+// Microphone processing only means something where native voice is on.
+if (props.client.supportsVoice()) {
+    plugins.addSettingsTab({
+        id: "cc.jackg.tumult.voice",
+        title: "Voice",
+        component: VoiceTab,
+        section: "app",
+        priority: 5,
+    });
+}
+
 provide(MediaKey, media.resolve);
 provide(EncryptedMediaKey, media.resolveEncrypted);
 provide(MediaDownloadKey, media.resolveDownload);
@@ -329,7 +341,6 @@ const connection = useSubscribable(props.client.connection);
 const session = useSubscribable(props.client.session);
 const security = useSubscribable(props.client.security);
 const verification = useSubscribable(props.client.verification);
-const typing = useSubscribable(props.client.typing);
 
 // The "enter backup" path (create a key on a fresh account, otherwise enter one)
 // lives inside the chooser, so banner triggers and the menu all converge on the

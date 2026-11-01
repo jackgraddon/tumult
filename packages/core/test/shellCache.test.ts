@@ -127,6 +127,7 @@ describe("shellCache", () => {
             userId: ACCOUNT.userId,
             homeserverUrl: ACCOUNT.homeserverUrl,
             lastRoomId: 123,
+            // @ts-expect-error deliberately wrong-typed fields: the reader must fall back
             rooms: [summary({ joinRule: 5, parentSpaceIds: ["!s:matrix.org", 7], favouriteOrder: "x" })],
         });
         const snap = readShellSnapshot(store, ACCOUNT);

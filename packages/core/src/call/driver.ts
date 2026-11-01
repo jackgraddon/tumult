@@ -146,6 +146,12 @@ export class CallWidgetDriver extends WidgetDriver {
             out.batch.push(...encryptedBatch.batch);
             out.eventType = encryptedBatch.eventType;
         }
+        // encryptToDeviceMessages SKIPS a device it has no keys for, without
+        // an error; a call key that never leaves shows up only as the other
+        // side's "MissingKey". Say so.
+        if (out.batch.length < batch.length) {
+            console.warn(`[tumult] call: encrypted ${out.batch.length} of ${batch.length} ${eventType} to-device messages; the rest went to devices with no known keys`);
+        }
         await this.client.queueToDevice(out);
     }
 
@@ -187,28 +193,36 @@ export class CallWidgetDriver extends WidgetDriver {
     }
 
     public override async getRtcTransports(): Promise<Awaited<ReturnType<WidgetDriver["getRtcTransports"]>>> {
-        return { transports: await this.client._unstable_getRTCTransports() } as never;
+        // The widget API's key is `rtc_transports` (MSC4143's unstable
+        // response key). This once returned `{ transports }` behind an
+        // `as never`, so Element Call read `undefined`, concluded the server
+        // could not host calls and showed MISSING_MATRIX_RTC_TRANSPORT.
+        return { rtc_transports: await this.client._unstable_getRTCTransports() };
     }
 
     public override async getRtcLivekitToken(data: Parameters<WidgetDriver["getRtcLivekitToken"]>[0]) {
-        const { jwt } = await this.client._unstable_getLivekitToken({
-            url: data.url,
-            room_id: data.room_id,
-            slot_id: data.slot_id,
-            member: data.member,
-            server_name: data.server_name,
-        });
+        // Forwarded VERBATIM, like the delayed-leave delegation below. The body
+        // is the homeserver's schema, not ours, and it has already moved once:
+        // matrix-js-sdk 45 / matrix-widget-api 1.20 name the member by
+        // `member_id` where 44 sent a `member` object. Picking fields here
+        // would silently drop whichever shape the embedded app speaks; passing
+        // it through lets the homeserver judge it.
+        const { jwt } = await this.client._unstable_getLivekitToken(data);
         return { jwt };
     }
 
     public override async delegateRtcLivekitDelayedLeave(data: Parameters<WidgetDriver["delegateRtcLivekitDelayedLeave"]>[0]) {
-        // The widget-api type for this request omits `url`, but the call app
-        // forwards the SDK's whole request body, and the server needs the SFU
-        // WebSocket URL the member is connected to (it rejects anything that is
-        // not one of its own SFUs). Passing the data through is the only way to
-        // honour it — deriving it here from the RTC transports would send the
+        // Passed through verbatim. The server needs the SFU WebSocket `url` the
+        // member is connected to (it rejects anything that is not one of its
+        // own SFUs) — matrix-widget-api 1.20 types it, 1.19 omitted it.
+        // Deriving it here from the RTC transports would send the
         // JWT service URL, which is a different thing.
-        await this.client._unstable_delegateDelayedLeave(data as never);
+        //
+        // A 404 / M_UNRECOGNIZED here means the homeserver does not forward
+        // MSC4195's route to lk-jwt-service (tests/rtc does not). Delegation is
+        // optional: the error goes back to the app, which then keeps its
+        // delayed leave alive itself (update_delayed_event).
+        await this.client._unstable_delegateDelayedLeave(data);
         return {};
     }
 }

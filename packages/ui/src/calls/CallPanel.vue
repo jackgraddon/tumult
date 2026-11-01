@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import type { ChatClient } from "@tumult/core";
+import type { CallState, ChatClient } from "@tumult/core";
 
 import { useSubscribable } from "../subscribable.ts";
 
@@ -23,6 +23,15 @@ const call = useSubscribable(props.client.call);
 const rooms = useSubscribable(props.client.rooms);
 
 const roomName = computed(() => rooms.value.find((room) => room.id === call.value?.roomId)?.name ?? "Call");
+// What the host can honestly know. "joined" is the call app reporting the user
+// joined — not that media flows (its own errors show only inside the frame),
+// so it is "In call", never "Connected".
+const STATE_LABEL: Record<CallState, string> = {
+    connecting: "Connecting…",
+    joined: "In call",
+    ended: "Call ended",
+    error: "Could not connect",
+};
 const focused = computed(() => call.value !== null && call.value.roomId === props.activeRoomId);
 
 const frame = ref<HTMLIFrameElement | null>(null);
@@ -65,7 +74,7 @@ function leave(): void {
                 <Icon :name="call.video ? 'video' : 'phone'" />
                 <span class="tumult-call-name">{{ roomName }}</span>
                 <span class="tumult-call-state" role="status">
-                    {{ call.state === "joined" ? "Connected" : call.state === "error" ? "Could not connect" : "Connecting…" }}
+                    {{ STATE_LABEL[call.state] }}
                 </span>
             </button>
             <button type="button" class="tumult-call-leave" aria-label="Leave call" title="Leave call" @click="leave">

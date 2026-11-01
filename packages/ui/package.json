@@ -5,14 +5,16 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sandbox": "./src/plugins/sandbox/worker/shim.ts"
+    "./sandbox": "./src/plugins/sandbox/worker/shim.ts",
+    "./sandbox/frame": "./src/plugins/sandbox/frame.ts"
   },
   "files": [
     "src"
   ],
   "scripts": {
-    "typecheck": "vue-tsc -p tsconfig.json && pnpm test:template",
+    "typecheck": "vue-tsc -p tsconfig.json && vue-tsc -p tsconfig.test.json && pnpm test:template",
     "test": "node --test \"test/**/*.test.ts\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "test:template": "vue-tsc -p ../../templates/plugin/tsconfig.json --noEmit && tsc -p ../../templates/plugin/tsconfig.workspace.json --noEmit",
     "emit:schema": "node --import tsx scripts/emit-plugin-schema.ts",
     "emit:icons": "node --import tsx scripts/emit-icons.ts",
@@ -23,6 +25,7 @@
     "@tanstack/vue-virtual": "^3.13.39",
     "@tumult/core": "workspace:*",
     "@tumult/theme": "workspace:*",
+    "heic-to": "1.6.6",
     "reka-ui": "^2.10.5",
     "vue": "^3.5.43"
   },

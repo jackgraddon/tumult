@@ -9,13 +9,18 @@
     "prebuild": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "build": "vue-tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -p tsconfig.json",
+    "typecheck": "vue-tsc -p tsconfig.json && vue-tsc -p tsconfig.test.json",
+    "test": "node --test test/plugin-asset.test.ts",
     "pretest:browser": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build",
     "test:browser": "node --test --import tsx test/browser.test.ts",
-    "test:live": "MAS_LIVE=1 node --test --import tsx test/mas-live.test.ts"
+    "test:live": "MAS_LIVE=1 node --test --import tsx test/mas-live.test.ts",
+    "test:rtc-media": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/rtc-media.test.ts",
+    "test:e2ee": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/e2ee.test.ts",
+    "test:network": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/network.test.ts",
+    "test:element-call": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node --test --import tsx test/element-call.test.ts"
   },
   "dependencies": {
-    "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",
+    "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
     "@tumult/core": "workspace:*",
     "@tumult/theme": "workspace:*",
     "@tumult/ui": "workspace:*",
@@ -27,7 +32,7 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "playwright": "^1.64.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.7",
+    "vite": "^7.3.7",
     "vue-tsc": "^3.1.1"
   }
 }

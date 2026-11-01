@@ -18,7 +18,6 @@ const theme = JSON.parse(readFileSync(join(here, "..", "themes", "default.json")
     modes?: Record<string, Record<string, string>>;
     densities?: Record<string, Record<string, string>>;
 };
-const defaults = theme.tokens;
 
 /** The `:root { … }` block alone: the mode/density blocks repeat token names. */
 function rootBlock(css: string): string {
@@ -32,7 +31,7 @@ function tokenNamesInBaseCss(css: string): Set<string> {
     const re = /^\s*--([\w-]+):/gm;
     let m: RegExpExecArray | null;
     while ((m = re.exec(css)) !== null) {
-        names.add(m[1]);
+        names.add(m[1]!);
     }
     return names;
 }
@@ -61,7 +60,7 @@ describe("emitBaseCss", () => {
         const listed: string[] = [];
         let m: RegExpExecArray | null;
         while ((m = re.exec(css)) !== null) {
-            listed.push(m[1]);
+            listed.push(m[1]!);
         }
         const sorted = [...ALL_TOKENS].map((t) => t.name).sort((a, b) => a.localeCompare(b));
         assert.deepEqual(listed, sorted);
@@ -106,7 +105,7 @@ describe("emitThemeCss/serializeTheme", () => {
     });
 
     it("serializeTheme refuses to emit CSS for an invalid theme", () => {
-        const bad = validateTheme({ version: 1, name: "t", tokens: { "space-4": "blue" } as any } as any);
+        const bad = validateTheme({ version: 1, name: "t", tokens: { "space-4": "blue" } });
         assert.ok(!bad.valid);
         assert.throws(() => {
             serializeTheme({
@@ -125,7 +124,7 @@ describe("emitThemeCss/serializeTheme", () => {
             modes: { light: { "space-4": "12px" } },
             densities: { cozy: { "space-4": "16px" } },
         };
-        const res = validateTheme(doc as any);
+        const res = validateTheme(doc);
         assert.ok(res.valid);
         const css = serializeTheme({
             name: "default",
@@ -141,7 +140,13 @@ describe("emitThemeCss/serializeTheme", () => {
 
 describe("buildThemeSchema", () => {
     it("accepts the shipped default.json and has correct structure", () => {
-        const schema = buildThemeSchema() as any;
+        // The shape asserted below; every field is checked, not trusted.
+        interface SchemaShape {
+            type?: unknown;
+            required?: unknown;
+            properties?: Record<string, { additionalProperties?: unknown; properties?: Record<string, unknown> } | undefined>;
+        }
+        const schema: SchemaShape = buildThemeSchema();
         assert.equal(schema.type, "object");
         assert.deepEqual(schema.required, ["version", "name", "tokens"]);
         const props = schema.properties || {};

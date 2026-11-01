@@ -8,6 +8,7 @@ import {
     useMediaDownloadResolver,
     useMediaResolver,
 } from "../../media.ts";
+import { mediaText } from "./mediaText.ts";
 
 const props = defineProps<{ message: MessageView }>();
 
@@ -40,7 +41,7 @@ const encryptedFile = computed(() => {
     if (!file || typeof file !== "object") return null;
     return file as unknown as EncryptedAttachment;
 });
-const body = computed(() => props.message.body);
+const text = computed(() => mediaText(props.message.content, props.message.body));
 
 /**
  * Intrinsic pixel size from the event's `info` block. Matrix media events
@@ -134,7 +135,7 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
                 v-if="(src || dims) && status !== 'failed'"
                 class="tumult-media-message-image"
                 :src="src ?? undefined"
-                :alt="body"
+                :alt="text.alt"
                 :data-dims="dims ? 'true' : undefined"
                 :style="reservation"
                 loading="lazy"
@@ -145,7 +146,7 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
                     Retry
                 </button>
             </div>
-            <p v-else class="tumult-media-message-pending">{{ body }}</p>
+            <p v-else class="tumult-media-message-pending">{{ text.name }}</p>
         </template>
 
         <template v-else>
@@ -165,9 +166,9 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
                 controls
                 preload="metadata"
             ></audio>
-            <p class="tumult-media-message-body">{{ body }}</p>
+            <p class="tumult-media-message-body">{{ text.name }}</p>
             <div class="tumult-media-message-actions">
-                <a v-if="src" class="tumult-media-message-link" :href="src" :download="body"
+                <a v-if="src" class="tumult-media-message-link" :href="src" :download="text.name"
                     >Download</a
                 >
                 <template v-else-if="status === 'failed'">
@@ -183,6 +184,8 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
                 </template>
             </div>
         </template>
+        <!-- MSC2530 caption: the message text sent with the file. -->
+        <p v-if="text.caption" class="tumult-media-message-caption">{{ text.caption }}</p>
     </div>
 </template>
 
@@ -245,7 +248,8 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
     max-width: var(--media-audio-max-width);
 }
 .tumult-media-message-pending,
-.tumult-media-message-body {
+.tumult-media-message-body,
+.tumult-media-message-caption {
     margin: 0;
     overflow-wrap: anywhere;
     white-space: pre-wrap;

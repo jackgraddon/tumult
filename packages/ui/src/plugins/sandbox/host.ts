@@ -33,6 +33,7 @@ import {
     CLIENT_FEEDS,
     CLIENT_METHODS,
     CONTEXT_METHODS,
+    INVOKE_FN,
     SANDBOX_PROTOCOL_VERSION,
     wireError,
     type ContextMethod,
@@ -40,19 +41,31 @@ import {
     type SandboxCapabilities,
     type WorkerMessage,
 } from "./protocol.ts";
+import { checkCall, invocationRoom } from "./policy.ts";
 
-/** A `Worker`-shaped handle, so `@tumult/ui` never names the DOM type itself. */
-export interface SandboxWorker {
+/**
+ * A `Worker`-shaped channel to wherever the plugin runs, so `@tumult/ui` never
+ * names a DOM type itself. The app's transport is a hidden opaque-origin frame
+ * with a Worker inside (`frame.ts`'s `createFrameTransport`); this module only
+ * needs these three members, so the message switch, the caps and `fail()` do
+ * not care what is behind them. An `error` event — a Worker crash relayed out
+ * of the frame, or a frame that never booted — fails the plugin.
+ */
+export interface SandboxTransport {
     postMessage(message: HostMessage): void;
     terminate(): void;
     addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
     addEventListener(type: "error", listener: (event: { message?: string }) => void): void;
 }
 
-/** What the app must supply to open a Worker — the only DOM coupling. */
+/** What the app must supply to open a transport — the only DOM coupling. */
 export interface SandboxHost {
-    /** Start a module Worker that imports `sandbox/shim.ts` and runs the bundle. */
-    createWorker(): SandboxWorker;
+    /**
+     * Open a fresh transport whose far end runs `sandbox/worker/shim.ts`. Posts
+     * made before it is up must be buffered, not dropped: `init` is posted
+     * synchronously right after this returns.
+     */
+    createTransport(): SandboxTransport;
     /**
      * Called when the plugin dies after a successful `install()` (Worker crash, a
      * throwing `install()`, a bundle that would not import). The caller uninstalls
@@ -60,6 +73,20 @@ export interface SandboxHost {
      */
     onFailed?(id: string, error: Error): void;
 }
+
+/**
+ * Hard ceilings on what one sandboxed plugin may hold on the host. Generous
+ * against any real plugin (the shipped ones make 1–2 contributions and open
+ * one feed at a time) and small against a flood: crossing one fails the plugin.
+ */
+export const SANDBOX_LIMITS = {
+    /** addCommand / addComposerAction / injectStylesheet, over the plugin's life. */
+    contributions: 64,
+    /** Feeds open at once (only invoked-room timelines are allowed at all). */
+    feeds: 16,
+    /** Bridge calls awaiting an answer at once. */
+    callsInFlight: 64,
+} as const;
 
 /** A verified bundle ready to run in a Worker. */
 export interface SandboxEntry {
@@ -78,7 +105,7 @@ export interface SandboxEntry {
 export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     const id = entry.manifest.id;
 
-    let worker: SandboxWorker | null = null;
+    let worker: SandboxTransport | null = null;
     let ctx: PluginContext | null = null;
     let dead = false;
 
@@ -92,6 +119,39 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     // independent spaces and can never collide.
     let nextInvokeId = 1;
     let nextFeedId = 1;
+
+    // What the plugin may touch right now (see policy.ts): the rooms of the
+    // invocations the user triggered that are still running, counted because
+    // two can overlap in one room, and the feeds opened for each so they close
+    // when the room's last invocation settles.
+    const activeRooms = new Map<string, number>();
+    const roomFeeds = new Map<string, Set<number>>();
+    /** Host functions passed into each running invocation (INVOKE_FN). */
+    const invokeFns = new Map<number, ((...a: unknown[]) => unknown)[]>();
+
+    function enterRoom(roomId: string): void {
+        activeRooms.set(roomId, (activeRooms.get(roomId) ?? 0) + 1);
+    }
+
+    function leaveRoom(roomId: string): void {
+        const left = (activeRooms.get(roomId) ?? 1) - 1;
+        if (left > 0) {
+            activeRooms.set(roomId, left);
+            return;
+        }
+        activeRooms.delete(roomId);
+        for (const feedId of roomFeeds.get(roomId) ?? []) closeFeed(feedId);
+        roomFeeds.delete(roomId);
+    }
+
+    function closeFeed(feedId: number): void {
+        try {
+            feedSubscriptions.get(feedId)?.unsubscribe();
+        } catch (error) {
+            console.error(`[tumult] sandbox "${id}" feed unsubscribe failed`, error);
+        }
+        feedSubscriptions.delete(feedId);
+    }
 
     /** Read the two synchronous members off the real client (never guess). */
     function readCapabilities(): SandboxCapabilities {
@@ -162,6 +222,18 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
         const shell = ctx;
         if (!shell) throw new Error("the sandbox plugin is not installed yet");
 
+        // A function the host itself passed into a running invocation.
+        if (method === INVOKE_FN) {
+            const [invokeId, fnId, ...rest] = args;
+            const fn = typeof invokeId === "number" && typeof fnId === "number" ? invokeFns.get(invokeId)?.[fnId] : undefined;
+            if (!fn) throw new Error("that callback is no longer available (its invocation has finished)");
+            return await fn(...rest);
+        }
+
+        // The policy, before anything is dispatched (security finding F1).
+        const refusal = checkCall(method, args, new Set(activeRooms.keys()));
+        if (refusal) throw new Error(refusal);
+
         // `ctx.selection` / `ctx.actions` are the shell's live objects, not part
         // of `ChatClient`, so they are answered here rather than through the
         // client reflection below.
@@ -177,7 +249,14 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             const accessor = client[method];
             if (typeof accessor !== "function") throw new Error(`client.${method} is not available`);
             const source = (accessor as (...a: unknown[]) => Subscribable<unknown>).apply(shell.client, args);
-            return subscribeFeed(source);
+            const feedId = subscribeFeed(source);
+            // Allowed only for an invoked room (checkCall), so it lives only as
+            // long as that room's invocations do.
+            const roomId = args[0] as string;
+            const feeds = roomFeeds.get(roomId) ?? new Set<number>();
+            feeds.add(feedId);
+            roomFeeds.set(roomId, feeds);
+            return feedId;
         }
 
         // Plain subscribable properties (`rooms`, `connection`, …) are "called"
@@ -202,12 +281,45 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
     /** Ask the Worker to run a callback the plugin registered (`run`, `match`). */
     function invoke(callbackId: number, args: unknown[]): Promise<unknown> {
         const invokeId = nextInvokeId++;
-        return new Promise<unknown>((resolve, reject) => {
+        // The user ran this command / clicked this action in a room: that room
+        // is open to the plugin until the invocation settles (policy.ts).
+        const roomId = invocationRoom(args);
+        if (roomId) enterRoom(roomId);
+        const fns: ((...a: unknown[]) => unknown)[] = [];
+        invokeFns.set(invokeId, fns);
+        const result = new Promise<unknown>((resolve, reject) => {
             pendingInvokes.set(invokeId, { resolve, reject });
             // The callback id leads the args envelope; the shim resolves it
             // against its own table, so one wire id serves both sides.
-            worker?.postMessage({ kind: "invoke", id: invokeId, args: [callbackId, ...args] });
-        });
+            worker?.postMessage({ kind: "invoke", id: invokeId, args: [callbackId, ...args.map((arg) => toWire(arg, invokeId, fns))] });
+        }).finally(() => invokeFns.delete(invokeId));
+        return roomId ? result.finally(() => leaveRoom(roomId)) : result;
+    }
+
+    /**
+     * An invocation's arguments as plain data. The composer hands a command
+     * `{ roomId, client, args, raw }` and an action `{ …, setDraft }`: the live
+     * client and functions cannot be structured-cloned (DataCloneError — every
+     * sandboxed command failed when run), so the client becomes a
+     * `{ kind: "client" }` marker the Worker swaps for its own bridged client,
+     * and each function a `{ kind: "hostfn" }` reference held only for this
+     * invocation (see INVOKE_FN).
+     */
+    function toWire(value: unknown, invokeId: number, fns: ((...a: unknown[]) => unknown)[]): unknown {
+        if (value === ctx?.client) return { kind: "client" };
+        if (typeof value === "function") {
+            fns.push(value as (...a: unknown[]) => unknown);
+            return { kind: "hostfn", invoke: invokeId, fn: fns.length - 1 };
+        }
+        if (Array.isArray(value)) return value.map((entry) => toWire(entry, invokeId, fns));
+        if (typeof value !== "object" || value === null) return value;
+        // Only plain data objects are walked; anything else (a class instance,
+        // a feed) has no business crossing and is dropped rather than cloned.
+        const proto = Object.getPrototypeOf(value);
+        if (proto !== Object.prototype && proto !== null) return undefined;
+        const out: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(value)) out[key] = toWire(entry, invokeId, fns);
+        return out;
     }
 
     /**
@@ -268,6 +380,9 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
             }
         }
         feedSubscriptions.clear();
+        activeRooms.clear();
+        roomFeeds.clear();
+        invokeFns.clear();
         worker?.terminate();
         worker = null;
         ctx = null;
@@ -278,8 +393,10 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
         install(shellContext): void {
             ctx = shellContext;
             dead = false;
-            const active = host.createWorker();
+            const active = host.createTransport();
             worker = active;
+            let callsInFlight = 0;
+            let contributions = 0;
 
             const fail = (error: Error): void => {
                 if (dead) return;
@@ -296,22 +413,47 @@ export function sandboxPlugin(entry: SandboxEntry, host: SandboxHost): Plugin {
                 const message = event.data as WorkerMessage;
                 if (!message || typeof message !== "object") return;
                 switch (message.kind) {
-                    case "call":
-                        void handleCall(message.method, message.args).then(
-                            (value) => {
-                                active.postMessage({ kind: "result", id: message.id, ok: true, value });
-                            },
-                            (error: unknown) => {
-                                active.postMessage({
-                                    kind: "result",
-                                    id: message.id,
-                                    ok: false,
-                                    error: error instanceof Error ? error.message : String(error),
-                                });
-                            },
-                        );
+                    case "call": {
+                        // Caps, not queues (security review F4): the plugin's
+                        // code shares the Worker realm with the runtime, so it
+                        // can post raw protocol messages and skip any restraint
+                        // there. A Worker past a cap is hostile or broken, and
+                        // is failed — uninstalled and disabled — before it can
+                        // stall the app (and again on every boot).
+                        if (callsInFlight >= SANDBOX_LIMITS.callsInFlight) {
+                            fail(new Error(`made more than ${SANDBOX_LIMITS.callsInFlight} concurrent calls`));
+                            break;
+                        }
+                        if (feedSubscriptions.size >= SANDBOX_LIMITS.feeds) {
+                            fail(new Error(`opened more than ${SANDBOX_LIMITS.feeds} feeds`));
+                            break;
+                        }
+                        callsInFlight += 1;
+                        void handleCall(message.method, message.args)
+                            .then(
+                                (value) => {
+                                    active.postMessage({ kind: "result", id: message.id, ok: true, value });
+                                },
+                                (error: unknown) => {
+                                    active.postMessage({
+                                        kind: "result",
+                                        id: message.id,
+                                        ok: false,
+                                        error: error instanceof Error ? error.message : String(error),
+                                    });
+                                },
+                            )
+                            .finally(() => {
+                                callsInFlight -= 1;
+                            });
                         break;
+                    }
                     case "contribution":
+                        contributions += 1;
+                        if (contributions > SANDBOX_LIMITS.contributions) {
+                            fail(new Error(`made more than ${SANDBOX_LIMITS.contributions} contributions`));
+                            break;
+                        }
                         try {
                             applyContribution(message);
                         } catch (error) {

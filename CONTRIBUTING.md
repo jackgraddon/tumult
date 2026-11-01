@@ -104,10 +104,35 @@ Once your work is merged into `main` and the CI passes:
 3.  **Browser Smoke Test:** `pnpm --filter @tumult/web test:browser` — a `--mode fake` build with **no homeserver and no network** (see the test docstring), so it is safe in plain CI.
 4.  **Build:** `pnpm -r build` compiles every package **including the real client** (so it needs a `VITE_CLIENT_URI`; CI passes a placeholder); this is the gate `release.yml` trusts.
 
-**Local-only, not in CI:** the Docker/Synapse integration suite (`pnpm test:integration`
-→ `tests/synapse/run.sh`) and the live-homeserver test
-(`pnpm --filter @tumult/web test:live`) need Docker / a real server, so they are
-kept out of the default pipeline to keep `main` green without a Docker-in-Docker runner.
+**Integration suites, separate from the gate:** the Synapse suite
+(`pnpm test:integration` → `tests/synapse/run.sh`) and the MatrixRTC stack
+(`pnpm test:rtc` → `tests/rtc/run.sh`) run against a real homeserver, so they live
+in `.github/workflows/integration.yml` and never block `main`. That workflow runs
+both nightly and on PRs touching `packages/core`, `tests/` or the call UI. The RTC
+run ends with a two-browser media test (`apps/web/test/rtc-media.test.ts`): two
+Chromiums join one encrypted video call through the built app and must hear each
+other's tone and see each other's colour. Then an encryption test
+(`apps/web/test/e2ee.test.ts`) puts one account on three devices: set up
+recovery, verify a second device by emoji, and restore history on a third from
+the recovery key. Its stack uses host networking (Linux; Docker Desktop needs
+host networking enabled); `RTC_MEDIA=0` skips both browser tests.
+
+Locally they need **Docker or Podman** (`tests/container.sh` picks whichever
+works; force one with `CONTAINER_RUNTIME=podman`). With neither, run them on
+GitHub's runners instead:
+
+```bash
+gh workflow run integration.yml --ref "$(git branch --show-current)"
+gh run watch
+```
+
+…or point the suite at a Synapse you already run, with no container at all:
+`TEST_SYNAPSE_URL=http://host:8008 pnpm test:integration`. Under rootless Podman
+the generated `tests/*/data/` belongs to the container's user; reset it with
+`podman unshare rm -rf tests/synapse/data`.
+
+The live-homeserver test (`pnpm --filter @tumult/web test:live`) needs a logged-in
+real server, so it stays manual.
 
 If `main` is green, the release step (tagging + Vercel deploy) is safe to run.
 

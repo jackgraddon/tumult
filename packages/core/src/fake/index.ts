@@ -1,4 +1,8 @@
 import type {
+    AttachmentSendResult,
+    OutgoingAttachment,
+    SendAttachmentsOptions,
+    VoiceSettings,
     VoiceVideoSource,
     VoiceView,
     CallView,
@@ -29,12 +33,17 @@ import type {
     UserSearchResult,
     VerificationState,
 } from "../contract.ts";
+import { CALL_MEMBER_EVENT_TYPE } from "../contract.ts";
 import { Observable } from "../observable.ts";
+import { attachmentContent } from "../rooms/attachment-content.ts";
 import { fallbackName } from "../rooms/profile.ts";
 import { assertProfileFieldKey } from "../rooms/profile-fields.ts";
 
 /** In-memory cap: dropping the head must not break scroll anchoring. */
 export const FAKE_TIMELINE_CAP = 500;
+
+/** The fake homeserver's `m.upload.size`: small, so the smoke test can exceed it cheaply. */
+export const FAKE_UPLOAD_LIMIT = 2 * 1024 * 1024;
 
 function mulberry32(seed: number): () => number {
     let a = seed >>> 0;
@@ -330,6 +339,7 @@ function member(
     presence: MemberView["presence"],
     lastActiveTs: number | null,
     statusMessage: string | null = null,
+    verification: MemberView["verification"] = "unknown",
 ): MemberView {
     return {
         userId,
@@ -339,7 +349,7 @@ function member(
         powerLevel,
         isSelf: false,
         presence,
-        lastActiveTs,
+        verification, lastActiveTs,
         statusMessage,
     };
 }
@@ -373,8 +383,9 @@ function buildRoster(roomId: string, self: MemberView): MemberView[] {
     }
     return sortMembers([
         self,
-        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000, "Building Tumult"),
-        member("@bob:example.com", "Bob", 50, "join", "unavailable", now - 3 * 3_600_000, "In a meeting"),
+        // Alice is verified (the shield in the members pane), Bob known but not.
+        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000, "Building Tumult", "verified"),
+        member("@bob:example.com", "Bob", 50, "join", "unavailable", now - 3 * 3_600_000, "In a meeting", "unverified"),
         member("@carol:example.com", "Carol", 0, "join", "unknown", null),
         member("@erin:example.com", "Erin", 0, "invite", "unknown", null),
         // General demos the Banned section: Mallory is banned, so she is absent
@@ -414,6 +425,8 @@ class FakeChatClient implements ChatClient {
     private readonly memberFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly powerLevelFeeds = new Map<string, Observable<RoomPowerLevelsView | null>>();
+    /** A room's `call.member` level once room settings has set it (else state_default). */
+    private readonly callMemberLevels = new Map<string, number>();
     private readonly rosters = new Map<string, MemberView[]>();
     private readonly rand: () => number;
     /** Our own presence; the roster's self row mirrors `ownPresence`, like core. */
@@ -433,6 +446,7 @@ class FakeChatClient implements ChatClient {
         this.rooms = new Observable<RoomSummary[]>(buildRooms());
         // Fake device is fully healthy: the security banner stays hidden.
         this.security = new Observable<SecurityStatus>({
+            checked: true,
             crossSigningReady: true,
             backupEnabled: true,
             backupTrusted: true,
@@ -514,6 +528,8 @@ class FakeChatClient implements ChatClient {
 
     public async stop(): Promise<void> {
         (this.connection as Observable<ConnectionState>).set("stopped");
+        for (const url of this.sentMedia.values()) URL.revokeObjectURL(url);
+        this.sentMedia.clear();
     }
 
     public timeline(roomId: string): Subscribable<MessageView[]> {
@@ -644,6 +660,7 @@ class FakeChatClient implements ChatClient {
     }
 
     public async joinRoom(idOrAlias: string): Promise<string> {
+        if (idOrAlias === FORBIDDEN_ROOM_ALIAS) throw forbiddenJoin(idOrAlias);
         const existing = (this.rooms as Observable<RoomSummary[]>)
             .get()
             .find((r) => r.id === idOrAlias);
@@ -702,6 +719,11 @@ class FakeChatClient implements ChatClient {
                 return next;
             }),
         );
+        if (patch.membersCanJoinCalls !== undefined) {
+            // Same levels the real write picks: the default user level, or 50.
+            this.callMemberLevels.set(roomId, patch.membersCanJoinCalls ? 0 : 50);
+            this.publishRoom(roomId);
+        }
     }
 
     public async invite(roomId: string, userId: string): Promise<void> {
@@ -729,7 +751,6 @@ class FakeChatClient implements ChatClient {
     public async toggleReaction(roomId: string, targetEventId: string, emoji: string): Promise<void> {
         const obs = this.timelines.get(roomId);
         if (!obs) return;
-        const own = "@demo:example.com";
         const existing = obs
             .get()
             .find((m) => m.id === targetEventId)
@@ -813,14 +834,59 @@ class FakeChatClient implements ChatClient {
         // No-op in fake.
     }
 
+    /** Sent attachments keep their real bytes so the timeline shows what was picked. */
+    private readonly sentMedia = new Map<string, string>();
+    private sentMediaSeq = 0;
+
+    public async uploadLimit(): Promise<number | null> {
+        return FAKE_UPLOAD_LIMIT;
+    }
+
+    public async sendAttachments(
+        roomId: string,
+        attachments: readonly OutgoingAttachment[],
+        options: SendAttachmentsOptions = {},
+    ): Promise<AttachmentSendResult[]> {
+        const obs = this.timelines.get(roomId);
+        if (!obs) return attachments.map(() => ({ ok: false, error: new Error("Unknown room") }));
+        const caption = options.caption?.trim() ?? "";
+        let replyTo = options.replyToEventId;
+        // Same placement rule as the real client (rooms/media.ts).
+        if (caption && attachments.length > 1) {
+            await this.send(roomId, caption, replyTo);
+            replyTo = undefined;
+        }
+        const results: AttachmentSendResult[] = [];
+        for (const attachment of attachments) {
+            const url = `mxc://fake/sent/${++this.sentMediaSeq}`;
+            this.sentMedia.set(url, URL.createObjectURL(attachment.file));
+            const content = attachmentContent(attachment, url, attachments.length === 1 ? caption : "");
+            if (replyTo) content["m.relates_to"] = { "m.in_reply_to": { event_id: replyTo } };
+            const echo: MessageView = msg(
+                `${roomId}:local-${Date.now()}-${this.sentMediaSeq}`,
+                "@demo:example.com",
+                String(content["body"]),
+                Date.now(),
+                { status: "sending", type: "m.room.message", content },
+            );
+            obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+            setTimeout(() => {
+                obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
+            }, 300);
+            results.push({ ok: true });
+            replyTo = undefined;
+        }
+        return results;
+    }
+
     public async resolveMedia(uri: string, _size: number): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return fixtureMedia(uri) ?? uri;
+        return this.sentMedia.get(uri) ?? fixtureMedia(uri) ?? uri;
     }
 
     public async resolveMediaDownload(uri: string): Promise<string> {
         // Fixtures carry loadable URLs (or none); nothing to authenticate.
-        return fixtureMedia(uri) ?? uri;
+        return this.sentMedia.get(uri) ?? fixtureMedia(uri) ?? uri;
     }
 
     public async resolveEncryptedMedia(file: EncryptedAttachment): Promise<string> {
@@ -865,7 +931,7 @@ class FakeChatClient implements ChatClient {
         this.callState.set(null);
         const prior = this.voiceState.get();
         const camera = options.video === true;
-        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false, camera, screen: false };
+        const self = { userId: SELF_ID, deviceId: "FAKE", speaking: false, muted: prior?.muted ?? false, camera, screen: false, screenAudio: false };
         this.voiceState.set({
             roomId,
             state: "connected",
@@ -875,8 +941,15 @@ class FakeChatClient implements ChatClient {
             camera,
             screen: false,
             // Alice always has her camera on, so a tile is demoable without a device.
-            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false, camera: true, screen: false }],
+            participants: [self, { userId: "@alice:example.com", deviceId: "FAKE", speaking: true, muted: false, camera: true, screen: false, screenAudio: false }],
         });
+    }
+
+    private readonly voiceSettingsState = new Observable<VoiceSettings>({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    public readonly voiceSettings: Subscribable<VoiceSettings> = this.voiceSettingsState;
+
+    public async setVoiceSettings(settings: Partial<VoiceSettings>): Promise<void> {
+        this.voiceSettingsState.set({ ...this.voiceSettingsState.get(), ...settings });
     }
 
     public async setVoiceCamera(enabled: boolean): Promise<void> {
@@ -1138,6 +1211,8 @@ class FakeChatClient implements ChatClient {
             powerLevel: 100,
             isSelf: true,
             presence: this.ownPresenceValue,
+            // The fake has no crypto, so our own identity's trust is unknown.
+            verification: "unknown",
             lastActiveTs: Date.now(),
             statusMessage: this.ownStatusMessage,
         };
@@ -1172,7 +1247,9 @@ class FakeChatClient implements ChatClient {
             kick: 50,
             redact: 50,
             invite: 0,
-            events: {},
+            // No entry means state_default (50): admins-only calls, until room
+            // settings opens them — the shape of a room made by another client.
+            events: this.callMemberLevels.has(roomId) ? { [CALL_MEMBER_EVENT_TYPE]: this.callMemberLevels.get(roomId)! } : {},
             myPowerLevel,
             canKick: myPowerLevel >= 50,
             canBan: myPowerLevel >= 50,
@@ -1322,4 +1399,23 @@ class FakeChatClient implements ChatClient {
 
 export function createFakeChatClient(options: FakeOptions = {}): ChatClient {
     return new FakeChatClient(options.seed ?? 1337);
+}
+
+/**
+ * A room the fake refuses to join, so the browser smoke test can watch a
+ * failed request reach the user. The error has a MatrixError's SHAPE — its
+ * `message` embeds the request URL, as the SDK's does — without importing the
+ * SDK into the fake build.
+ */
+export const FORBIDDEN_ROOM_ALIAS = "#forbidden:fake";
+
+function forbiddenJoin(idOrAlias: string): Error {
+    const url = `https://fake.invalid/_matrix/client/v3/join/${encodeURIComponent(idOrAlias)}`;
+    const data = { errcode: "M_FORBIDDEN", error: "You are not invited to this room." };
+    return Object.assign(new Error(`MatrixError: [403] ${data.error} (${url})`), {
+        name: data.errcode,
+        errcode: data.errcode,
+        httpStatus: 403,
+        data,
+    });
 }

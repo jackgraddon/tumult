@@ -24,6 +24,10 @@
       "types": "./dist/media/classify.d.ts",
       "import": "./dist/media/classify.js"
     },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
     "./session": {
       "types": "./dist/auth/session.d.ts",
       "import": "./dist/auth/session.js"
@@ -37,14 +41,15 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b --watch",
-    "typecheck": "tsc -b --noEmit false",
+    "typecheck": "tsc -b --noEmit false && tsc -p tsconfig.test.json",
     "test": "node --test \"test/**/*.test.ts\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "test:integration": "node --test \"test-integration/**/*.test.ts\""
   },
   "dependencies": {
     "livekit-client": "^2.23.0",
-    "matrix-js-sdk": "^43.0.0",
-    "matrix-widget-api": "^1.19.0"
+    "matrix-js-sdk": "^45.0.0",
+    "matrix-widget-api": "^1.20.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

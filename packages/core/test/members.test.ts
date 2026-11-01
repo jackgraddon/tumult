@@ -10,6 +10,9 @@ import {
     type RoomMember,
 } from "matrix-js-sdk";
 
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
+import { UserVerificationStatus } from "matrix-js-sdk/lib/crypto-api/index.js";
+
 import { MembersTracker } from "../src/rooms/members.ts";
 
 const selfId = "@me:localhost";
@@ -87,13 +90,14 @@ interface StubUser {
     lastActiveAgo: number;
 }
 
-function stubMatrix(rooms: Room[]): MatrixClient & { users: Map<string, StubUser> } {
+function stubMatrix(rooms: Room[], crypto?: { getUserVerificationStatus(userId: string): Promise<UserVerificationStatus> }): MatrixClient & { users: Map<string, StubUser> } {
     const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
     const users = new Map<string, StubUser>();
     const matrix = {
         getUserId: () => selfId,
         getRoom: (roomId: string) => rooms.find((r) => r.roomId === roomId),
         getUser: (userId: string) => users.get(userId),
+        getCrypto: () => crypto,
         users,
         on: (event: string, fn: (...args: unknown[]) => void) => {
             const set = listeners.get(event) ?? new Set();
@@ -417,5 +421,60 @@ describe("MembersTracker", () => {
             { userId: "@carol:localhost", presence: "offline", statusMessage: null, lastActiveTs: null },
         ]);
         assert.notEqual(feed.get(), before, "a new live user still rebuilds");
+    });
+});
+
+describe("MembersTracker identity trust", () => {
+    // (crossSigningVerified, crossSigningVerifiedBefore, known, needsUserApproval),
+    // built exactly as rust-crypto's getUserVerificationStatus does: (false,
+    // false, false) for "no identity", (…, true, …) for a known one.
+    const verified = new UserVerificationStatus(true, true, true);
+    const unverified = new UserVerificationStatus(false, false, true);
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+    const trustOf = (tracker: MembersTracker, userId: string): string | undefined =>
+        tracker.members("!a").get().find((m) => m.userId === userId)?.verification;
+
+    it("starts unknown and fills in what the crypto layer says, one lookup per user", async () => {
+        const asked: string[] = [];
+        const statuses: Record<string, UserVerificationStatus> = { "@alice:localhost": verified, "@bob:localhost": unverified };
+        const crypto = {
+            getUserVerificationStatus: async (userId: string) => {
+                asked.push(userId);
+                return statuses[userId] ?? new UserVerificationStatus(false, false, false);
+            },
+        };
+        const tracker = new MembersTracker(stubMatrix([room("!a", [member("@alice:localhost"), member("@bob:localhost")])], crypto));
+        assert.equal(trustOf(tracker, "@alice:localhost"), "unknown", "never a guess before the answer");
+        await settle();
+        assert.equal(trustOf(tracker, "@alice:localhost"), "verified");
+        tracker.members("!a"); // a rebuild must not ask again
+        await settle();
+        assert.deepEqual(asked.sort(), ["@alice:localhost", "@bob:localhost"]);
+    });
+
+    it("keeps a user with no known identity unknown, not unverified", async () => {
+        assert.equal(new UserVerificationStatus(false, false, false).known, false, "precondition: the SDK's 'no identity' shape");
+        const crypto = { getUserVerificationStatus: async () => new UserVerificationStatus(false, false, false) };
+        const tracker = new MembersTracker(stubMatrix([room("!a", [member("@carol:localhost")])], crypto));
+        tracker.members("!a");
+        await settle();
+        assert.equal(trustOf(tracker, "@carol:localhost"), "unknown");
+    });
+
+    it("republishes when the crypto layer reports a trust change", async () => {
+        const crypto = { getUserVerificationStatus: async () => unverified };
+        const matrix = stubMatrix([room("!a", [member("@bob:localhost")])], crypto);
+        const tracker = new MembersTracker(matrix);
+        tracker.members("!a");
+        await settle();
+        assert.equal(trustOf(tracker, "@bob:localhost"), "unverified");
+        matrix.emit(CryptoEvent.UserTrustStatusChanged, "@bob:localhost", verified);
+        assert.equal(trustOf(tracker, "@bob:localhost"), "verified");
+    });
+
+    it("asks nothing and says unknown without crypto", async () => {
+        const tracker = new MembersTracker(stubMatrix([room("!a", [member("@alice:localhost")])]));
+        await settle();
+        assert.equal(trustOf(tracker, "@alice:localhost"), "unknown");
     });
 });

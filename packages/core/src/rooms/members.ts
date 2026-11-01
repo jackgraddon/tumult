@@ -5,12 +5,14 @@ import {
     type MatrixEvent,
     type Room,
     type RoomMember,
-    type User,
     type SyncState,
     type SyncStateData,
 } from "matrix-js-sdk";
 
-import type { MemberView, PresenceState, Subscribable } from "../contract.ts";
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api/CryptoEvent.js";
+import type { UserVerificationStatus } from "matrix-js-sdk/lib/crypto-api/index.js";
+
+import type { MemberVerification, MemberView, PresenceState, Subscribable } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { snapshotBanned } from "./moderation.ts";
 import { fallbackName } from "./profile.ts";
@@ -75,6 +77,7 @@ function snapshotMembers(
     syncStatus: ReadonlyMap<string, string | null>,
     polled: ReadonlyMap<string, PresenceInput>,
     selfPresence: PresenceFacts,
+    verificationOf: (userId: string) => MemberVerification,
 ): MemberView[] {
     const selfId = matrix.getUserId();
     const out: MemberView[] = [];
@@ -89,6 +92,7 @@ function snapshotMembers(
             membership: member.membership as MemberView["membership"],
             powerLevel: member.powerLevel ?? 0,
             isSelf,
+            verification: verificationOf(member.userId),
             ...(isSelf
                 ? {
                       presence: selfPresence.presence,
@@ -106,6 +110,11 @@ function snapshotMembers(
             a.userId.localeCompare(b.userId, "en"),
     );
     return out;
+}
+
+function toVerification(status: UserVerificationStatus): MemberVerification {
+    if (!status.known) return "unknown";
+    return status.isCrossSigningVerified() ? "verified" : "unverified";
 }
 
 /**
@@ -202,6 +211,17 @@ export class MembersTracker {
      * until the server answers.
      */
     private selfPresence: PresenceFacts = { presence: "unknown", lastActiveTs: null, statusMessage: null };
+    /**
+     * Identity trust per user, filled on demand: only users who appear in a
+     * roster someone asked for are looked up (one WASM call each), and
+     * `UserTrustStatusChanged` keeps the cache current — it fires when the
+     * crypto layer downloads an identity or a signature lands, so `unknown`
+     * upgrades without polling.
+     */
+    private readonly trust = new Map<string, MemberVerification>();
+    private readonly trustPending = new Set<string>();
+    private trustQueued = false;
+    private readonly onTrustChanged: (userId: string, status: UserVerificationStatus) => void;
     private readonly onMemberChange: (event: MatrixEvent, member: RoomMember) => void;
     private readonly onClientEvent: (event: MatrixEvent) => void;
     private readonly onSync: (state: SyncState, prev: SyncState | null, data?: SyncStateData) => void;
@@ -236,6 +256,8 @@ export class MembersTracker {
             }
             this.rebuildAll();
         };
+        this.onTrustChanged = (userId, status) => this.setTrust(userId, toVerification(status));
+        this.matrix.on(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
         this.matrix.on(RoomMemberEvent.Membership, this.onMemberChange);
         this.matrix.on(RoomMemberEvent.Name, this.onMemberChange);
         this.matrix.on(RoomMemberEvent.PowerLevel, this.onMemberChange);
@@ -287,33 +309,29 @@ export class MembersTracker {
         this.matrix.removeListener(RoomMemberEvent.PowerLevel, this.onMemberChange);
         this.matrix.removeListener(ClientEvent.Event, this.onClientEvent);
         this.matrix.removeListener(ClientEvent.Sync, this.onSync);
+        this.matrix.removeListener(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
         this.feeds.clear();
+        this.trust.clear();
+        this.trustPending.clear();
         this.bannedFeeds.clear();
         this.livePresence.clear();
         this.pendingPresence.clear();
-        this.syncStatus.clear();
-        this.polled.clear();
     }
 
-    /**
-     * Publish our own presence + status into every roster (no-op when
-     * unchanged). The client feeds this from its `ownPresence` snapshot, so our
-     * row, our profile card and the user bar read ONE value.
-     */
-    public setSelfPresence(presence: PresenceState, statusMessage: string | null = null): void {
-        if (presence === this.selfPresence.presence && statusMessage === this.selfPresence.statusMessage) return;
-        this.selfPresence = { presence, lastActiveTs: null, statusMessage };
+    /** Publish our own presence into every roster (no-op when unchanged). */
+    public setSelfPresence(presence: PresenceState): void {
+        if (presence === this.selfPresence) return;
+        this.selfPresence = presence;
         this.rebuildAll();
     }
 
     /**
      * Sliding sync carries no presence in its sync envelope, so inject it here
-     * from the REST poll. Each entry is the WHOLE answer — presence, status text
-     * and last-active — because `getPresence()` is a bare REST GET that never
-     * updates the SDK's `User` (whose `presence` defaults to `"offline"` and is
-     * only written by classic sync's presence handling). Reading the poll's body
-     * is what makes a roster under sliding sync honest instead of uniformly
-     * offline.
+     * from the REST poll: mark the user live (so `presenceOf` no longer says
+     * `unknown`) and rebuild the rosters. The poller already fetched each
+     * `User`'s live status via `client.getUser()`, so no separate presence
+     * event is set — the trigger is each poll (not every sync), the sink is
+     * the REST response.
      */
     public applyPollPresence(presence: Array<PresenceInput>): boolean {
         if (!presence.length) return false;
@@ -346,6 +364,52 @@ export class MembersTracker {
         }
         const banned = this.bannedFeeds.get(roomId);
         if (banned) banned.set(room ? snapshotBanned(room, this.matrix) : []);
+    }
+
+    /** Cached trust, or `unknown` with a lookup queued (batched per tick). */
+    private readonly verificationOf = (userId: string): MemberVerification => {
+        const cached = this.trust.get(userId);
+        if (cached !== undefined) return cached;
+        if (this.matrix.getCrypto()) {
+            this.trustPending.add(userId);
+            if (!this.trustQueued) {
+                this.trustQueued = true;
+                queueMicrotask(() => void this.lookUpTrust());
+            }
+        }
+        return "unknown";
+    };
+
+    private async lookUpTrust(): Promise<void> {
+        this.trustQueued = false;
+        const crypto = this.matrix.getCrypto();
+        const users = [...this.trustPending];
+        this.trustPending.clear();
+        if (!crypto) return;
+        let changed = false;
+        await Promise.all(
+            users.map(async (userId) => {
+                // Mark first so a rebuild meanwhile does not queue it again.
+                if (!this.trust.has(userId)) this.trust.set(userId, "unknown");
+                try {
+                    const next = toVerification(await crypto.getUserVerificationStatus(userId));
+                    if (this.trust.get(userId) !== next) {
+                        this.trust.set(userId, next);
+                        changed = true;
+                    }
+                } catch (error) {
+                    // Stays `unknown`; a later UserTrustStatusChanged can still fix it.
+                    console.warn(`[tumult] members: could not read trust for ${userId}`, error);
+                }
+            }),
+        );
+        if (changed) this.rebuildAll();
+    }
+
+    private setTrust(userId: string, next: MemberVerification): void {
+        if (this.trust.get(userId) === next) return;
+        this.trust.set(userId, next);
+        this.rebuildAll();
     }
 
     private tracks(roomId: string): boolean {

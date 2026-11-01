@@ -16,6 +16,7 @@ import { buildMemberMenu, type MemberMenuAction } from "./memberMenu.ts";
 import { useMemberDecorations } from "./decorations.ts";
 import { useActivity } from "./activity.ts";
 import Avatar from "../primitives/Avatar.vue";
+import Icon from "../icons/Icon.vue";
 
 const props = defineProps<{
     member: MemberView;
@@ -55,6 +56,14 @@ function presenceTitle(): string {
     return "Presence not yet known";
 }
 
+// A verified identity swaps the dot for a shield in the same presence colour,
+// so one glyph still carries presence and trust; both reach a pointer user
+// through the tooltip and a screen reader through the visually hidden label.
+const verified = computed(() => props.member.verification === "verified");
+function statusTitle(): string {
+    return verified.value ? `Verified · ${presenceTitle()}` : presenceTitle();
+}
+
 // Which moderation actions apply is `memberMenu.ts`'s call (the same rule the
 // server applies: strictly below us, never ourselves). The row only renders the
 // list it returns and routes an id back to a request.
@@ -88,14 +97,24 @@ function run(action: MemberMenuAction): void {
         <ContextMenuTrigger as-child>
             <div class="tumult-member">
                 <span
+                    v-if="verified"
+                    class="tumult-member-shield"
+                    :data-presence="member.presence"
+                    :title="statusTitle()"
+                    aria-hidden="true"
+                >
+                    <Icon name="shield-check" />
+                </span>
+                <span
+                    v-else
                     class="tumult-member-dot"
                     :data-presence="member.presence"
-                    :title="presenceTitle()"
+                    :title="statusTitle()"
                     aria-hidden="true"
                 />
                 <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
                 <span class="tumult-member-text">
-                    <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}</span>
+                    <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}<span v-if="verified" class="tumult-member-sr">, verified</span></span>
                     <component
                         :is="activity.renderer.component"
                         v-if="activity"
@@ -171,6 +190,30 @@ function run(action: MemberMenuAction): void {
 }
 .tumult-member-dot[data-presence="unknown"] {
     border: var(--border-width-medium) solid var(--text-muted);
+}
+/* Same slot as the dot, sized by its own token; colour follows presence. */
+.tumult-member-shield {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--member-shield-size);
+    height: var(--member-shield-size);
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: var(--member-shield-size);
+}
+.tumult-member-shield[data-presence="online"] {
+    color: var(--success);
+}
+.tumult-member-shield[data-presence="unavailable"] {
+    color: var(--warning);
+}
+/* Read by a screen reader, drawn nowhere (no literal lengths: the token gate). */
+.tumult-member-sr {
+    position: absolute;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 .tumult-member-text {
     display: flex;

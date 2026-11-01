@@ -21,13 +21,19 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "themes"],
+  "files": [
+    "dist",
+    "themes"
+  ],
   "scripts": {
     "build": "tsc -b && node ./dist/build/cli.js",
-    "typecheck": "tsc -b",
-    "test": "node --test \"test/**/*.test.ts\""
+    "typecheck": "tsc -b && vue-tsc -p tsconfig.test.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\""
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vue": "^3.5.43",
+    "vue-tsc": "^3.1.1"
   }
 }

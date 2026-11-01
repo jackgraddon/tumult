@@ -1,46 +1,58 @@
 #!/bin/sh
 # Spin up a throwaway Synapse, run the core integration suite, tear it down.
-# KEEP=1 leaves the container running for debugging.
+# KEEP=1 leaves the container running for debugging. Docker or Podman, see
+# tests/container.sh; with neither, it points at the CI workflow instead.
+#
+# TEST_SYNAPSE_URL set by the caller means "use that server": no container is
+# started or stopped, and nothing here needs a container runtime.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export TEST_SYNAPSE_URL="${TEST_SYNAPSE_URL:-http://localhost:8008}"
+ROOT="$(cd "$HERE/../.." && pwd)"
+LOG_PREFIX="[synapse]"
+COMPOSE_FILE="$HERE/docker-compose.yml"
+# shellcheck source=../container.sh
+. "$HERE/../container.sh"
 
-if [ ! -f "$HERE/data/homeserver.yaml" ]; then
-    echo "[synapse] generating server config..."
-    mkdir -p "$HERE/data"
-    docker run --rm \
-        -v "$HERE/data:/data" \
-        -e SYNAPSE_SERVER_NAME=localhost \
-        -e SYNAPSE_REPORT_STATS=no \
-        matrixdotorg/synapse:v1.114.0 generate
+run_suite() {
+    echo "$LOG_PREFIX running integration tests..."
+    # Globbed, not a directory: `node --test <dir>` broke on Node 25.
+    # No --test-force-exit: the ~110 s linger after stopClient() was the SDK's
+    # uncleared request-timeout timer, fixed by patches/matrix-js-sdk@*.patch
+    # (guarded by test/sdk-patch.test.ts). A file that lingers again is a leak.
+    cd "$ROOT/packages/core"
+    node --test ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} "test-integration/**/*.test.ts"
+}
+
+if [ -n "${TEST_SYNAPSE_URL:-}" ]; then
+    echo "$LOG_PREFIX using the server at $TEST_SYNAPSE_URL (no container)"
+    wait_for_synapse
+    run_suite
+    exit 0
 fi
 
-echo "[synapse] starting..."
-cp "$HERE/override.yaml" "$HERE/data/override.yaml"
+export TEST_SYNAPSE_URL=http://localhost:8008
+pick_runtime
+
+if [ ! -f "$HERE/data/homeserver.yaml" ]; then
+    echo "$LOG_PREFIX generating server config..."
+    mkdir -p "$HERE/data"
+    # `:z` relabels for SELinux (Fedora); a no-op elsewhere. The registry is
+    # spelled out because Podman refuses short image names without a TTY.
+    ctr run --rm \
+        -v "$HERE/data:/data:z" \
+        -e SYNAPSE_SERVER_NAME=localhost \
+        -e SYNAPSE_REPORT_STATS=no \
+        docker.io/matrixdotorg/synapse:v1.114.0 generate
+fi
+
+echo "$LOG_PREFIX starting..."
 # Fresh container every run: picks up override.yaml changes and clears
 # in-memory ratelimiter state from previous runs.
-docker compose -f "$HERE/docker-compose.yml" down > /dev/null 2>&1 || true
-docker compose -f "$HERE/docker-compose.yml" up -d
+compose down > /dev/null 2>&1 || true
+trap stack_cleanup EXIT
+trap 'exit 130' INT TERM
+compose up -d
 
-cleanup() {
-    if [ "${KEEP:-0}" != "1" ]; then
-        echo "[synapse] stopping..."
-        docker compose -f "$HERE/docker-compose.yml" down
-    else
-        echo "[synapse] KEEP=1 — leaving container up"
-    fi
-}
-trap cleanup EXIT INT TERM
-
-echo "[synapse] waiting for healthy server..."
-for _ in $(seq 1 60); do
-    if curl -sf "$TEST_SYNAPSE_URL/_matrix/client/versions" > /dev/null 2>&1; then
-        break
-    fi
-    sleep 2
-done
-curl -sf "$TEST_SYNAPSE_URL/_matrix/client/versions" > /dev/null
-
-echo "[synapse] running integration tests..."
-node --test ${TEST_FILTER:+--test-name-pattern="$TEST_FILTER"} packages/core/test-integration/
+wait_for_synapse
+run_suite

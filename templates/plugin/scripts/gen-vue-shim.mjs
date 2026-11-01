@@ -29,7 +29,7 @@
  * without this script.
  */
 import { rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 
 import ts from "typescript";

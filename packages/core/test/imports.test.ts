@@ -54,7 +54,7 @@ describe("type-only imports", () => {
             const src = readFileSync(file, "utf8");
             for (const match of src.matchAll(BRACES_IMPORT)) {
                 const keyword = match[2];
-                const specifiers = match[3]
+                const specifiers = (match[3] ?? "")
                     .split(",")
                     .map((s) => s.trim())
                     .filter((s) => s.length > 0);

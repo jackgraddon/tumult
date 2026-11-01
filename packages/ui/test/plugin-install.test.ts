@@ -32,6 +32,7 @@ import {
 } from "../src/plugins/verify.ts";
 import { describePermission, LANE_SUMMARY, PERMISSION_SUMMARY } from "../src/plugins/consent.ts";
 import { PLUGIN_PERMISSIONS } from "../src/plugins/types.ts";
+import type { PluginManifest } from "../src/plugins/types.ts";
 import { SANDBOXABLE_PERMISSIONS } from "../src/plugins/lane.ts";
 
 describe("parsePluginSource", () => {
@@ -215,10 +216,10 @@ describe("needsConsent / permissions", () => {
         id: "cc.example.shrug",
         name: "Shrug",
         version: "1.0.0",
-        permissions: ["commands", "styles"] as const,
+        permissions: ["commands", "styles"],
         entry: "plugin.js",
         integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    };
+    } satisfies PluginManifest;
 
     it("asks when there is no prior record", () => {
         assert.equal(needsConsent(manifest, null), true);

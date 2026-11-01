@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { findUnsafeValue, isValidValue } from "../src/validate/values.ts";
 import { validateTheme } from "../src/validate/index.ts";
 import { TOKEN_CONTRACT_VERSION } from "../src/version.ts";
+import type { TokenKind } from "../src/types.ts";
 
 /**
  * The colour grammar: themes author in oklch, so the validator accepts the CSS
@@ -12,7 +13,7 @@ import { TOKEN_CONTRACT_VERSION } from "../src/version.ts";
  */
 describe("colour grammar", () => {
     it("accepts oklch/oklab/lch/lab functional forms", () => {
-        const ok: Array<[string, string]> = [
+        const ok: Array<[TokenKind, string]> = [
             ["color", "oklch(0% 0 0)"],
             ["color", "oklch(70.4% 0.191 165.23)"],
             ["color", "oklch(100% 0 0 / 0.08)"],

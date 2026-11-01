@@ -182,7 +182,7 @@ describe("TimelineFeed decrypted scoping", () => {
     it("rebuilds only the event's room, not every feed", async () => {
         const a = stubRoom("!a:x", [mappable()]);
         const b = stubRoom("!b:x", [mappable()]);
-        const { matrix } = stubMatrix([a, b]);
+        const { matrix, emitter } = stubMatrix([a, b]);
         const feed = new TimelineFeed(matrix);
         const detach = onDecryptedRebuild(matrix, feed);
         try {
@@ -190,7 +190,7 @@ describe("TimelineFeed decrypted scoping", () => {
             feed.timeline("!b:x");
             const aBefore = a.reads.count;
             const bBefore = b.reads.count;
-            matrix.emit(MatrixEventEvent.Decrypted, { getRoomId: () => "!a:x" });
+            emitter.emit(MatrixEventEvent.Decrypted, { getRoomId: () => "!a:x" });
             await flush();
             assert.equal(a.reads.count, aBefore + 1, "the event's room rebuilt");
             assert.equal(b.reads.count, bBefore, "unrelated room untouched");

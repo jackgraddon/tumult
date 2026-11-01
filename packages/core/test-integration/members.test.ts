@@ -25,7 +25,7 @@ async function api(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? null : JSON.stringify(body),
     });
     if (!res.ok) {
         throw new Error(`${method} ${path} -> ${res.status}: ${await res.text()}`);
@@ -136,7 +136,12 @@ describe("members and profiles against real Synapse", () => {
             assert.equal(byId.get(bob.userId)?.powerLevel, 0);
             // Ordering guarantee: admins first, then members.
             assert.equal(after[0]?.userId, alice.userId);
-            assert.equal(after[0]?.presence, "online", "we are the one looking at the roster");
+            // Our own dot is ONE source: the client feeds the tracker its
+            // ownPresence snapshot, and until then the row says `unknown`
+            // rather than a stale `online`. Standalone, the test is the client.
+            assert.equal(after[0]?.presence, "unknown", "own presence is unknown until the client reports it");
+            tracker.setSelfPresence("online");
+            assert.equal(feed.get()[0]?.presence, "online", "our row mirrors the reported presence");
             // Unnamed members render their localpart, never the raw mxid.
             assert.equal(byId.get(bob.userId)?.displayName, `mbob-${suffix}`);
 
@@ -175,6 +180,9 @@ describe("members and profiles against real Synapse", () => {
             await waitFor("alice's roster to include bob", () =>
                 feed.get().some((m) => m.userId === bob.userId),
             );
+            // Own presence comes from the client's ownPresence, not the roster
+            // (see the test above); play the client's part before asserting it.
+            tracker.setSelfPresence("online");
             assert.equal(feed.get().find((m) => m.isSelf)?.presence, "online", "self is online");
 
             // Bob comes online with his own client: his server-side presence

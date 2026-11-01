@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.1](https://github.com/jackgraddon/tumult/compare/v0.4.0...v0.4.1) (2026-10-31)
+
+
+### Features
+
+* **composer:** convert staged HEIC photos to JPEG before sending ([8b2b2be](https://github.com/jackgraddon/tumult/commit/8b2b2be13d1fab9352935d9d3cc70564e7941b48))
+* **composer:** refuse staged files over the homeserver's upload limit ([7d6c2f0](https://github.com/jackgraddon/tumult/commit/7d6c2f07c73eb992df2996d18661f3e3711d73b7))
+* **composer:** stage attachments in a tray with alt text and MSC2530 captions ([1f3b610](https://github.com/jackgraddon/tumult/commit/1f3b610539b4ccc47bd7b9b33dd5a0e4e5c93ef2))
+
+
+### Bug Fixes
+
+* **composer:** a failed attachment says why, through the shared translator ([1fe540c](https://github.com/jackgraddon/tumult/commit/1fe540cf788118f1eca4c2cc2ea78d47dc6dacb6))
+* **composer:** show the file chip when a staged preview cannot decode (HEIC) ([aba25d8](https://github.com/jackgraddon/tumult/commit/aba25d83610703496bbbec4a9255b88bda79eb09))
+* **errors:** translate every failed request into a readable sentence ([071beaa](https://github.com/jackgraddon/tumult/commit/071beaa75303ebcb9faf549c28624541e4e5f60d))
+
+## [0.4.0](https://github.com/jackgraddon/tumult/compare/v0.3.4...v0.4.0) (2026-10-31)
+
+
+### Features
+
+* **members:** a shield in place of the presence dot for verified users ([04b53fa](https://github.com/jackgraddon/tumult/commit/04b53fad0693915daea70845cebd52653a6f3570))
+* **plugins:** run the sandbox lane in an opaque-origin frame ([7b97899](https://github.com/jackgraddon/tumult/commit/7b978998a5add7729c23bde4a58598126a3c24e6))
+
+
+### Bug Fixes
+
+* **call:** address a root-deployed call app by index.html ([ef47076](https://github.com/jackgraddon/tumult/commit/ef470769e9e9cba8e47aba2e10632b7f5863ee6f))
+* **call:** answer the call app's transport query under rtc_transports ([a31c115](https://github.com/jackgraddon/tumult/commit/a31c115e2714d6efe5c8ac501cdc85236e120662))
+* **call:** let the embedded call app finish its handshake ([2c6cf48](https://github.com/jackgraddon/tumult/commit/2c6cf48b16f303be86583feb947df62eb5c70f6b))
+* **call:** push room-state updates to the call app ([813135d](https://github.com/jackgraddon/tumult/commit/813135d48e41aaa8c7076cc75a8c28e2d5c9c2a3))
+* **call:** say "In call", keep the call app's error screen, ack its requests ([de3931a](https://github.com/jackgraddon/tumult/commit/de3931a8c9d7a0ff063bc03a5721201101418397))
+* **connection:** notice an outage at once and reconnect as soon as it ends ([ee74bc2](https://github.com/jackgraddon/tumult/commit/ee74bc2fb695d50be46dc19a2d873741b0a53765))
+* **plugins:** cap what one sandboxed plugin can hold open (F4) ([70d91e3](https://github.com/jackgraddon/tumult/commit/70d91e3fc096786b457e3cc6c640f3dc2defe7f2))
+* **plugins:** close the CSS guard's escape and image-set gaps; no plugin CSS on security screens ([2381e3d](https://github.com/jackgraddon/tumult/commit/2381e3d2ec956fee60c268686a5b85c55bd5d6bd))
+* **plugins:** never serve the app into the sandbox frame; say why frame-src 'self' is safe ([17ed72c](https://github.com/jackgraddon/tumult/commit/17ed72c9907e8ef8fe5e2de95aedbe42ba904e54))
+* **plugins:** no shadowing built-ins, name a publisher change, say when a reload is needed ([9fae317](https://github.com/jackgraddon/tumult/commit/9fae317f8729e768245c493aa464a161d85e4be5))
+* **plugins:** police the sandbox bridge; make sandboxed commands work at all ([3f3c992](https://github.com/jackgraddon/tumult/commit/3f3c99246c372945108ee150ed6196ccd2612b7d))
+* **plugins:** withdraw the app origin's storage from the sandbox Worker ([c89e1e0](https://github.com/jackgraddon/tumult/commit/c89e1e07ad7117e98144c7020f78f0bb56ae2db9))
+* **send:** "try again" never worked; find failed echoes where they live ([1ae70f4](https://github.com/jackgraddon/tumult/commit/1ae70f4eb8152951879738746a553e9140149556))
+* **send:** deliver messages typed during an outage once the network is back ([1f76331](https://github.com/jackgraddon/tumult/commit/1f763313d570f23786aff55928852c7a17236c15))
+
+### [0.3.4](https://github.com/jackgraddon/tumult/compare/v0.3.3...v0.3.4) (2026-10-31)
+
+
+### Features
+
+* **rooms:** admins can open an existing room's calls to members ([24bb720](https://github.com/jackgraddon/tumult/commit/24bb720007a262640fe509969d14c891baacf8b8))
+
+
+### Bug Fixes
+
+* **deps:** clear every pnpm audit advisory, dev dependencies included ([02ec229](https://github.com/jackgraddon/tumult/commit/02ec2293d9e217b23b774f1544aa07ccdc42f158))
+* **deps:** scope the minimatch override to 10.x so pnpm release works ([a049f58](https://github.com/jackgraddon/tumult/commit/a049f586326d498feba73cf6aa982a26c2f907e8))
+* **rooms:** let every member join calls in rooms Tumult creates ([1882f4c](https://github.com/jackgraddon/tumult/commit/1882f4c23cb66b29801cde9546432a376b7ace73))
+* **sdk:** clear matrix-js-sdk's request-timeout timer; drop --test-force-exit ([f6ce5a6](https://github.com/jackgraddon/tumult/commit/f6ce5a65a1eabc57c01bfafec0f7ef2d3517bab2))
+* **security:** no "backup is off" banner before encryption has answered ([fba6dbe](https://github.com/jackgraddon/tumult/commit/fba6dbefe8e02f88d814f90391353edf94a4d01d))
+* **security:** production CSP, workspace lint, capped plugin-asset proxy ([d63674e](https://github.com/jackgraddon/tumult/commit/d63674e7283f664406c17846ef327478ec3f5d1e))
+* **security:** recovery setup creates an identity and shows its key ([c16b185](https://github.com/jackgraddon/tumult/commit/c16b185380bffe1f306875e2668b538b973bec0e))
+* **voice:** no ghost on the SFU after a refused join; say why in a sentence ([7346fa4](https://github.com/jackgraddon/tumult/commit/7346fa420600058ca770e20f58622a5c6ab8d7c6))
+
+### [0.3.3](https://github.com/jackgraddon/tumult/compare/v0.3.2...v0.3.3) (2026-10-30)
+
+
+### Features
+
+* **voice:** fitted video stage, screen-share audio, mic processing settings ([e1ff575](https://github.com/jackgraddon/tumult/commit/e1ff5754a8d0b734140e6c6d4e69813150d53028))
+
 ### [0.3.2](https://github.com/jackgraddon/tumult/compare/v0.3.0...v0.3.2) (2026-10-29)
 
 

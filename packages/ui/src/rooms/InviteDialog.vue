@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportError } from "@tumult/core/errors";
 import { ref, watch } from "vue";
 import type { ChatClient } from "@tumult/core";
 
@@ -55,7 +56,7 @@ function submit(): void {
             invited.value = picked;
         })
         .catch((cause: unknown) => {
-            error.value = cause instanceof Error ? cause.message : String(cause);
+            error.value = reportError(cause, `Couldn't invite ${picked}`);
         })
         .finally(() => {
             busy.value = false;

@@ -1,0 +1,9 @@
+{
+  // The browser/RTC suites under test/ run through tsx, which strips types
+  // without checking them. This config checks them (pnpm typecheck).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"]
+  },
+  "include": ["test/**/*.ts"]
+}
