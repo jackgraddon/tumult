@@ -16,18 +16,7 @@ name: Desktop builds
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
-    # Any branch that touches the desktop app (or this workflow) gets
-    # packages too — also how a branch runs this before it is on main, since
-    # workflow_dispatch only works once the file exists on the default branch.
-    # (Path filters are ignored for tag pushes, so every v* tag still builds.)
-    branches:
-      - '**'
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/desktop.yml'
+  release: '*' # Trigger on a new release being published
 
 permissions:
   contents: read
