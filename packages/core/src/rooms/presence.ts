@@ -1,6 +1,6 @@
 import type { MatrixClient, RoomMember } from "matrix-js-sdk";
 
-import type { PresenceInput } from "./members.ts";
+import { toPresence, type PresenceInput } from "./members.ts";
 
 const TICK_MS = 30_000;
 /** Non-priority users are refreshed every Nth tick (priority polls every tick). */
@@ -9,13 +9,43 @@ const SLOW_EVERY = 5;
 const FLUSH_MS = 1_000;
 
 /**
+ * Read the whole answer of one `GET /presence/:user/status`.
+ *
+ * The poller is the only honest presence source under sliding sync, so it has
+ * to forward the body rather than just "this user answered": `status_msg` and
+ * `last_active_ago` are as load-bearing as `presence` (the members roster shows
+ * the status text and the card shows the activity time). `getPresence()` never
+ * touches the SDK's `User`, so nothing else can recover them.
+ *
+ * A value we do not understand stays `unknown`/`null` — a body we cannot read
+ * must never be reported as `offline`.
+ */
+function toPresenceInput(userId: string, body: unknown): PresenceInput {
+    const raw = (body ?? {}) as { presence?: unknown; status_msg?: unknown; last_active_ago?: unknown };
+    return {
+        userId,
+        presence: toPresence(typeof raw.presence === "string" ? raw.presence : undefined),
+        // `status_msg` is absent (or null) when unset — that absence is the
+        // answer, i.e. a cleared status.
+        statusMessage: typeof raw.status_msg === "string" && raw.status_msg !== "" ? raw.status_msg : null,
+        // Relative to the response, so subtracting it from now lands on the
+        // activity time the server meant.
+        lastActiveTs:
+            typeof raw.last_active_ago === "number" && Number.isFinite(raw.last_active_ago)
+                ? Date.now() - raw.last_active_ago
+                : null,
+    };
+}
+
+/**
  * A rest poller for presence under Simplified Sliding Sync.
  *
  * SSS carries no presence extension, so `m.presence` never reaches the sync
- * loop; the poller is the only source of status and hands each id straight
- * to {@link MembersTracker.applyPollPresence}, which marks the user live and
- * rebuilds the rosters (the live status itself comes from the `User` the SDK
- * already holds once the request is outstanding).
+ * loop; the poller is the only source of status. Each response's BODY is
+ * handed to {@link MembersTracker.applyPollPresence}, which stores it and
+ * rebuilds the rosters — the SDK's `User` is never consulted, because
+ * `getPresence()` does not write it (`User.presence` defaults to `"offline"`
+ * and only classic sync's presence handling ever assigns it).
  *
  * One `GET /presence/:user/status` per joined/invited member each tick,
  * deduplicated so overlapping ticks (a slow fetch running into the next) do not
@@ -44,7 +74,7 @@ export class PresencePoller {
     private readonly getPriorityUserIds: (() => string[]) | undefined;
     private readonly pollers = new Map<string, Promise<void>>();
     /** Users fetched since the last commit, held while a wave is in flight. */
-    private readonly pending = new Set<string>();
+    private readonly pending = new Map<string, PresenceInput>();
     private flushTimer: ReturnType<typeof setTimeout> | undefined;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private stopped = false;
@@ -125,8 +155,8 @@ export class PresencePoller {
 
     private async request(userId: string): Promise<void> {
         try {
-            await this.matrix.getPresence(userId);
-            this.pending.add(userId);
+            const body: unknown = await this.matrix.getPresence(userId);
+            this.pending.set(userId, toPresenceInput(userId, body));
             this.armFlush();
         } catch {
             // A failing request is skipped — retried on the next tick.
@@ -150,9 +180,9 @@ export class PresencePoller {
             this.flushTimer = undefined;
         }
         if (!this.pending.size) return;
-        const ids = [...this.pending];
+        const entries = [...this.pending.values()];
         this.pending.clear();
-        this.feed(ids.map((userId) => ({ userId })));
+        this.feed(entries);
     }
 
     private schedule(): void {

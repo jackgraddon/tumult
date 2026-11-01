@@ -110,11 +110,11 @@ function stubMatrix(rooms: Room[]): MatrixClient & { users: Map<string, StubUser
     return matrix as unknown as MatrixClient & { users: Map<string, StubUser> };
 }
 
-function presenceEvent(userId: string): MatrixEvent {
+function presenceEvent(userId: string, statusMsg?: string): MatrixEvent {
     return {
         getType: () => "m.presence",
         getSender: () => userId,
-        getContent: () => ({ user_id: userId }),
+        getContent: () => (statusMsg === undefined ? { user_id: userId } : { user_id: userId, status_msg: statusMsg }),
     } as unknown as MatrixEvent;
 }
 
@@ -167,10 +167,11 @@ describe("MembersTracker", () => {
         const before = tracker.members("!a").get().find((m) => m.userId === "@alice:localhost");
         assert.equal(before?.presence, "unknown", "a presence object alone proves nothing");
         assert.equal(before?.lastActiveTs, null);
+        assert.equal(before?.statusMessage, null);
 
         // A presence event queues the user; it is not live until a sync
         // response boundary says it came from a live batch.
-        matrix.emit(ClientEvent.Event, presenceEvent("@alice:localhost"));
+        matrix.emit(ClientEvent.Event, presenceEvent("@alice:localhost", "Building Tumult"));
         assert.equal(
             tracker.members("!a").get().find((m) => m.userId === "@alice:localhost")?.presence,
             "unknown",
@@ -180,29 +181,71 @@ describe("MembersTracker", () => {
         matrix.emit(ClientEvent.Sync, SyncState.Syncing, SyncState.Syncing);
         const after = tracker.members("!a").get().find((m) => m.userId === "@alice:localhost");
         assert.equal(after?.presence, "online");
+        assert.equal(after?.statusMessage, "Building Tumult", "status text comes from the event content");
         assert.ok(
             after?.lastActiveTs !== null && Math.abs(after.lastActiveTs - (Date.now() - 1000)) < 5000,
             `lastActiveTs tracks last_active_ago, got ${after?.lastActiveTs}`,
+        );
+
+        // Clearing the status is a LIVE event with `status_msg` absent — the
+        // SDK's `User.presenceStatusMsg` could never express that (it only
+        // assigns truthy values), which is why the tracker reads content.
+        matrix.emit(ClientEvent.Event, presenceEvent("@alice:localhost"));
+        matrix.emit(ClientEvent.Sync, SyncState.Syncing, SyncState.Syncing);
+        assert.equal(
+            tracker.members("!a").get().find((m) => m.userId === "@alice:localhost")?.statusMessage,
+            null,
+            "an absent status_msg clears the status",
         );
 
         // Our own row is NOT read from the SDK's User: it mirrors the client's
         // ownPresence snapshot, so it agrees with the user bar.
         const self = () => tracker.members("!a").get().find((m) => m.isSelf);
         assert.equal(self()?.presence, "unknown", "no own snapshot yet");
-        tracker.setSelfPresence("unavailable");
+        assert.equal(self()?.statusMessage, null);
+        tracker.setSelfPresence("unavailable", "In a meeting");
         assert.equal(self()?.presence, "unavailable");
+        assert.equal(self()?.statusMessage, "In a meeting");
         tracker.setSelfPresence("online");
         assert.equal(self()?.presence, "online");
+        assert.equal(self()?.statusMessage, null, "dropping the status clears it");
     });
 
     it("keeps a member's away (unavailable) distinct from offline", () => {
         const roomA = room("!a", [member("@alice:localhost", { rawDisplayName: "Alice" })]);
         const matrix = stubMatrix([roomA]);
-        matrix.users.set("@alice:localhost", { presence: "unavailable", lastActiveAgo: 1000 });
         const tracker = new MembersTracker(matrix);
         tracker.members("!a");
-        tracker.applyPollPresence([{ userId: "@alice:localhost" }]);
-        assert.equal(tracker.members("!a").get()[0]?.presence, "unavailable");
+        // The poll response is the WHOLE answer: presence + status + activity.
+        // `getPresence()` never touches the SDK's User, so nothing else could
+        // supply them under sliding sync.
+        tracker.applyPollPresence([
+            {
+                userId: "@alice:localhost",
+                presence: "unavailable",
+                statusMessage: "In a meeting",
+                lastActiveTs: Date.now() - 1000,
+            },
+        ]);
+        const row = tracker.members("!a").get()[0];
+        assert.equal(row?.presence, "unavailable");
+        assert.equal(row?.statusMessage, "In a meeting");
+        assert.ok(row?.lastActiveTs !== null, "the poll's last_active_ago surfaces too");
+    });
+
+    it("prefers the poll answer over a stale SDK User under sliding sync", () => {
+        const roomA = room("!a", [member("@alice:localhost", { rawDisplayName: "Alice" })]);
+        const matrix = stubMatrix([roomA]);
+        // What SSS leaves behind: `User.presence` never assigned, so it reads
+        // `offline` forever even while the server says online.
+        matrix.users.set("@alice:localhost", { presence: "offline", lastActiveAgo: 10 * 3_600_000 });
+        const tracker = new MembersTracker(matrix);
+        tracker.members("!a");
+        tracker.applyPollPresence([
+            { userId: "@alice:localhost", presence: "online", statusMessage: null, lastActiveTs: Date.now() - 500 },
+        ]);
+        const row = tracker.members("!a").get()[0];
+        assert.equal(row?.presence, "online", "the poll body wins, not the untouched SDK default");
     });
 
     it("drops presence queued from the cached first sync", () => {
@@ -341,25 +384,38 @@ describe("MembersTracker", () => {
         assert.equal(feed.get(), before, "detached listeners rebuild nothing");
     });
 
-    it("applyPollPresence marks a user live and rebuilds — the SSS poll path", () => {
+    it("applyPollPresence publishes the poll's own answer — the SSS poll path", () => {
         const alice = member("@alice:localhost", { powerLevel: 0, rawDisplayName: "Alice" });
         const roomA = room("!a", [member(selfId, { powerLevel: 100 }), alice]);
         const matrix = stubMatrix([roomA]);
-        matrix.users.set("@alice:localhost", { presence: "online", lastActiveAgo: 1000 });
         const tracker = new MembersTracker(matrix);
         const feed = tracker.members("!a");
         assert.equal(feed.get().find((m) => m.userId === "@alice:localhost")?.presence, "unknown");
 
-        // The REST poll only hands back the id; the tracker marks it live and
-        // the already-populated User (getPresence() populated it) is read.
-        assert.equal(tracker.applyPollPresence([{ userId: "@alice:localhost" }]), true);
+        // The poll carries presence + status + activity; the SDK's User plays
+        // no part (`getPresence()` never writes it, so under SSS it is a
+        // `"offline"` default that must never leak into a roster).
+        assert.equal(
+            tracker.applyPollPresence([
+                {
+                    userId: "@alice:localhost",
+                    presence: "online",
+                    statusMessage: "Building Tumult",
+                    lastActiveTs: Date.now() - 1000,
+                },
+            ]),
+            true,
+        );
         const after = feed.get().find((m) => m.userId === "@alice:localhost");
         assert.equal(after?.presence, "online");
+        assert.equal(after?.statusMessage, "Building Tumult");
         assert.ok(after?.lastActiveTs !== null, "live activity time surfaces");
 
         assert.equal(tracker.applyPollPresence([]), false, "empty payload rebuilds nothing");
         const before = feed.get();
-        tracker.applyPollPresence([{ userId: "@carol:localhost" }]);
+        tracker.applyPollPresence([
+            { userId: "@carol:localhost", presence: "offline", statusMessage: null, lastActiveTs: null },
+        ]);
         assert.notEqual(feed.get(), before, "a new live user still rebuilds");
     });
 });

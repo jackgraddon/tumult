@@ -126,6 +126,51 @@ describe("PresencePoller", () => {
         assert.equal(committed, 3, "every polled user still reaches the sink")
     })
 
+    it("forwards the status text and last-active from the poll body", async () => {
+        const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
+        const m = {
+            getRooms: () => [room("!a", [alice])],
+            // `getPresence()` never touches the SDK's User model, so the body
+            // is the only place these facts exist.
+            getPresence: async () => ({
+                presence: "unavailable",
+                status_msg: "In a meeting",
+                last_active_ago: 60_000,
+            }),
+        } as unknown as MatrixClient;
+        const feed: Array<PresenceInput> = [];
+        const poller = new PresencePoller(m, (p) => { feed.push(...p) });
+        poller.tick()
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(feed.length, 1);
+        const entry = feed[0];
+        assert.equal(entry?.presence, "unavailable");
+        assert.equal(entry?.statusMessage, "In a meeting", "status text survives the response");
+        assert.ok(
+            entry?.lastActiveTs !== null &&
+                entry !== undefined &&
+                Math.abs(entry.lastActiveTs - (Date.now() - 60_000)) < 5000,
+            `last_active_ago becomes an absolute time, got ${entry?.lastActiveTs}`,
+        );
+    })
+
+    it("reads a body it does not understand as unknown, never offline", async () => {
+        const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
+        const m = {
+            getRooms: () => [room("!a", [alice])],
+            // An empty body (a homeserver that omits `presence`) and a cleared
+            // status both land here; neither may become "offline".
+            getPresence: async () => ({}),
+        } as unknown as MatrixClient;
+        const feed: Array<PresenceInput> = [];
+        const poller = new PresencePoller(m, (p) => { feed.push(...p) });
+        poller.tick()
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(feed[0]?.presence, "unknown");
+        assert.equal(feed[0]?.statusMessage, null);
+        assert.equal(feed[0]?.lastActiveTs, null);
+    })
+
     it("polls priority users every tick and others on the slow cadence", async () => {
         const alice = { userId: "@alice:localhost", membership: "join" } as unknown as RoomMember
         const bob = { userId: "@bob:localhost", membership: "join" } as unknown as RoomMember

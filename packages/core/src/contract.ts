@@ -14,7 +14,7 @@
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export const CONTRACT_VERSION = "1.5.0";
+export const CONTRACT_VERSION = "1.6.0";
 
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
@@ -447,6 +447,17 @@ export interface MemberView {
      * presence, `null` when presence is unknown. A moment ago for `online`.
      */
     lastActiveTs: number | null;
+    /**
+     * The member's presence status text (`m.presence`'s `status_msg`), or
+     * `null` when they have not set one. Same field {@link OwnPresenceView}
+     * carries for us, so a member's card and our own bar agree.
+     *
+     * Never read `User.presenceStatusMsg` for this: the SDK only assigns it
+     * when `status_msg` is truthy, so it cannot represent a cleared status.
+     * The honest source is the presence read (`PresencePoller`'s response under
+     * sliding sync, the `m.presence` event under classic sync).
+     */
+    statusMessage: string | null;
 }
 
 /** Our own profile, as the account menu and edit dialog need it. */

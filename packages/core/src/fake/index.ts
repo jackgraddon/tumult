@@ -329,15 +329,27 @@ function member(
     membership: MemberView["membership"],
     presence: MemberView["presence"],
     lastActiveTs: number | null,
+    statusMessage: string | null = null,
 ): MemberView {
-    return { userId, displayName, avatarUrl: null, membership, powerLevel, isSelf: false, presence, lastActiveTs };
+    return {
+        userId,
+        displayName,
+        avatarUrl: null,
+        membership,
+        powerLevel,
+        isSelf: false,
+        presence,
+        lastActiveTs,
+        statusMessage,
+    };
 }
 
 /**
  * Roster fixture per room. Rich rooms exercise every section the UI groups
  * by (admin / moderator / member / invite) and every presence state
- * (online / offline / unknown); DM rooms are just the two participants. The
- * self row tracks the profile so a rename shows up in the roster too.
+ * (online / unavailable / offline / unknown); DM rooms are just the two
+ * participants. The self row tracks the profile so a rename shows up in the
+ * roster too.
  */
 function buildRoster(roomId: string, self: MemberView): MemberView[] {
     const now = Date.now();
@@ -355,13 +367,14 @@ function buildRoster(roomId: string, self: MemberView): MemberView[] {
                 "join",
                 i % 2 === 0 ? "online" : "offline",
                 i % 2 === 0 ? now - 45_000 : now - 5 * 3_600_000,
+                i % 2 === 0 ? "Saying hi" : "Sleeping",
             ),
         ]);
     }
     return sortMembers([
         self,
-        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000),
-        member("@bob:example.com", "Bob", 50, "join", "offline", now - 3 * 3_600_000),
+        member("@alice:example.com", "Alice", 100, "join", "online", now - 30_000, "Building Tumult"),
+        member("@bob:example.com", "Bob", 50, "join", "unavailable", now - 3 * 3_600_000, "In a meeting"),
         member("@carol:example.com", "Carol", 0, "join", "unknown", null),
         member("@erin:example.com", "Erin", 0, "invite", "unknown", null),
         // General demos the Banned section: Mallory is banned, so she is absent
@@ -405,6 +418,8 @@ class FakeChatClient implements ChatClient {
     private readonly rand: () => number;
     /** Our own presence; the roster's self row mirrors `ownPresence`, like core. */
     private ownPresenceValue: PresenceState = "online";
+    /** Our own status text, mirrored into `ownPresence` and the self roster row. */
+    private ownStatusMessage: string | null = "Building Tumult";
 
     public constructor(seed: number) {
         this.rand = mulberry32(seed);
@@ -492,7 +507,7 @@ class FakeChatClient implements ChatClient {
         if (this.ownPresence.get() === null) {
             (this.ownPresence as Observable<OwnPresenceView | null>).set({
                 presence: this.ownPresenceValue as OwnPresenceState,
-                statusMessage: null,
+                statusMessage: this.ownStatusMessage,
             });
         }
     }
@@ -1064,16 +1079,19 @@ class FakeChatClient implements ChatClient {
     public async setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void> {
         // The fake publishes the status too, so the user bar has something to
         // render; the roster keeps the read-side enum (no "unavailable").
-        (this.ownPresence as Observable<OwnPresenceView | null>).set({
-            presence,
-            statusMessage: statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null,
-        });
+        const status = statusMessage !== undefined && statusMessage.trim() !== "" ? statusMessage : null;
+        (this.ownPresence as Observable<OwnPresenceView | null>).set({ presence, statusMessage: status });
         this.ownPresenceValue = presence;
+        this.ownStatusMessage = status;
         for (const [roomId, roster] of this.rosters) {
             if (!roster.some((m) => m.isSelf)) continue;
             this.rosters.set(
                 roomId,
-                sortMembers(roster.map((m) => (m.isSelf ? { ...m, presence: this.ownPresenceValue } : m))),
+                sortMembers(
+                    roster.map((m) =>
+                        m.isSelf ? { ...m, presence: this.ownPresenceValue, statusMessage: this.ownStatusMessage } : m,
+                    ),
+                ),
             );
             this.publishRoom(roomId);
         }
@@ -1121,6 +1139,7 @@ class FakeChatClient implements ChatClient {
             isSelf: true,
             presence: this.ownPresenceValue,
             lastActiveTs: Date.now(),
+            statusMessage: this.ownStatusMessage,
         };
     }
 

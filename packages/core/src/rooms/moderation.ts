@@ -119,6 +119,7 @@ function toBannedView(member: RoomMember, selfId: string): MemberView {
         isSelf: member.userId === selfId,
         presence: "unknown",
         lastActiveTs: null,
+        statusMessage: null,
     };
 }
 

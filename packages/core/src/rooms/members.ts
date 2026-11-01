@@ -15,10 +15,31 @@ import { Observable } from "../observable.ts";
 import { snapshotBanned } from "./moderation.ts";
 import { fallbackName } from "./profile.ts";
 
-/** A single presence entry fetched from the REST poller. */
+/**
+ * One presence snapshot fetched from the REST poller.
+ *
+ * The whole body matters, not just "this user answered": under sliding sync
+ * this is the ONLY honest source of a member's live state, because
+ * `client.getPresence()` is a plain REST GET that never touches the SDK's
+ * `User` model (`User.presence` defaults to `"offline"` and is only ever
+ * assigned by `sync.js`'s presence handling, which SSS does not have).
+ */
 export interface PresenceInput {
     /** A `user:server` id. */
     userId: string;
+    /** The server's live value, mapped (unknown values stay `unknown`). */
+    presence: PresenceState;
+    /** `m.presence`'s `status_msg`, `null` when they have not set one. */
+    statusMessage: string | null;
+    /** When they were last active (ms since epoch), `null` when unknown. */
+    lastActiveTs: number | null;
+}
+
+/** The presence half of a {@link MemberView} — what any one source can answer. */
+interface PresenceFacts {
+    presence: PresenceState;
+    lastActiveTs: number | null;
+    statusMessage: string | null;
 }
 
 /**
@@ -33,7 +54,7 @@ function isRostered(membership: string | undefined): boolean {
  * Map a live presence value. Unknown/unexpected values stay `unknown` —
  * never guess `offline` from a value we don't understand.
  */
-function toPresence(value: string | undefined): PresenceState {
+export function toPresence(value: string | undefined): PresenceState {
     if (value === "online") return "online";
     if (value === "unavailable") return "unavailable";
     if (value === "offline") return "offline";
@@ -51,7 +72,9 @@ function snapshotMembers(
     room: Room,
     matrix: MatrixClient,
     livePresence: ReadonlySet<string>,
-    selfPresence: PresenceState,
+    syncStatus: ReadonlyMap<string, string | null>,
+    polled: ReadonlyMap<string, PresenceInput>,
+    selfPresence: PresenceFacts,
 ): MemberView[] {
     const selfId = matrix.getUserId();
     const out: MemberView[] = [];
@@ -67,8 +90,13 @@ function snapshotMembers(
             powerLevel: member.powerLevel ?? 0,
             isSelf,
             ...(isSelf
-                ? { presence: selfPresence, lastActiveTs: selfPresence === "unknown" ? null : Date.now() }
-                : presenceOf(matrix, member.userId, livePresence)),
+                ? {
+                      presence: selfPresence.presence,
+                      // Our own dot is "now" whenever presence is known at all.
+                      lastActiveTs: selfPresence.presence === "unknown" ? null : Date.now(),
+                      statusMessage: selfPresence.statusMessage,
+                  }
+                : presenceOf(matrix, member.userId, livePresence, syncStatus, polled)),
         });
     }
     out.sort(
@@ -83,8 +111,18 @@ function snapshotMembers(
 /**
  * Read one user's presence — the honesty rule of this tracker.
  *
- * `client.getUser()` can hand back an object the SDK rebuilt from IndexedDB
- * at boot (store.startup() replays cached presence events) or from the cached
+ * Two sources, in order:
+ *
+ * 1. **The REST poll** (`polled`). Server truth, and the only source under
+ *    sliding sync — SSS carries no presence extension, so `m.presence` never
+ *    reaches the sync loop and the SDK's `User.presence` stays at its
+ *    `"offline"` default forever. The poller therefore hands over the whole
+ *    body (`presence`, `status_msg`, `last_active_ago`), not just "answered".
+ * 2. **A live `m.presence` event** (classic sync), which is where `livePresence`
+ *    and `syncStatus` come from.
+ *
+ * `client.getUser()` can hand back an object the SDK rebuilt from IndexedDB at
+ * boot (store.startup() replays cached presence events) or from the cached
  * first sync — hours old and possibly still saying `online` for someone who
  * went away while we were closed. So a user only counts as known once a LIVE
  * `/sync` response carried their `m.presence`: presence events queue into
@@ -96,19 +134,31 @@ function presenceOf(
     matrix: MatrixClient,
     userId: string,
     livePresence: ReadonlySet<string>,
-): { presence: PresenceState; lastActiveTs: number | null } {
-    if (!livePresence.has(userId)) return { presence: "unknown", lastActiveTs: null };
+    syncStatus: ReadonlyMap<string, string | null>,
+    polled: ReadonlyMap<string, PresenceInput>,
+): PresenceFacts {
+    // The poll wins: under sliding sync nothing else can answer, and under
+    // classic sync it is the same server truth. (The poller does not run at
+    // all under classic sync, so this map is empty there.)
+    const poll = polled.get(userId);
+    if (poll) {
+        return { presence: poll.presence, lastActiveTs: poll.lastActiveTs, statusMessage: poll.statusMessage };
+    }
+    if (!livePresence.has(userId)) return { presence: "unknown", lastActiveTs: null, statusMessage: null };
     const user = matrix.getUser(userId);
-    if (!user) return { presence: "unknown", lastActiveTs: null };
+    if (!user) return { presence: "unknown", lastActiveTs: null, statusMessage: null };
     const presence = toPresence(user.presence);
-    if (presence === "unknown") return { presence, lastActiveTs: null };
+    if (presence === "unknown") return { presence, lastActiveTs: null, statusMessage: null };
     // `lastActiveAgo` is relative to when the event was processed, so
     // subtracting it from now lands on the activity time the server meant.
     const lastActiveTs =
         typeof user.lastActiveAgo === "number" && Number.isFinite(user.lastActiveAgo)
             ? Date.now() - user.lastActiveAgo
             : null;
-    return { presence, lastActiveTs };
+    // The status text comes from the EVENT's content, never from
+    // `user.presenceStatusMsg` — the SDK only assigns that when `status_msg` is
+    // truthy, so a cleared status would keep showing forever.
+    return { presence, lastActiveTs, statusMessage: syncStatus.get(userId) ?? null };
 }
 
 /**
@@ -133,12 +183,25 @@ export class MembersTracker {
     private readonly feeds = new Map<string, Observable<MemberView[]>>();
     private readonly bannedFeeds = new Map<string, Observable<MemberView[]>>();
     private readonly livePresence = new Set<string>();
-    private readonly pendingPresence = new Set<string>();
+    private readonly pendingPresence = new Map<string, string | null>();
     /**
-     * Our own dot. Set by the client from its `ownPresence` snapshot, so our
-     * row and the user bar read ONE value; `unknown` until the server answers.
+     * Status text of the `m.presence` events committed from a live sync —
+     * the classic-sync half of `statusMessage`. Read from the event CONTENT
+     * (`status_msg`), never from `User.presenceStatusMsg`, which the SDK only
+     * writes when the value is truthy and therefore cannot clear.
      */
-    private selfPresence: PresenceState = "unknown";
+    private readonly syncStatus = new Map<string, string | null>();
+    /**
+     * The last REST poll answer per user — the sliding-sync half (see
+     * {@link presenceOf}). Empty under classic sync, where the poller never runs.
+     */
+    private readonly polled = new Map<string, PresenceInput>();
+    /**
+     * Our own dot + status. Set by the client from its `ownPresence` snapshot,
+     * so our row, our profile card and the user bar read ONE value; `unknown`
+     * until the server answers.
+     */
+    private selfPresence: PresenceFacts = { presence: "unknown", lastActiveTs: null, statusMessage: null };
     private readonly onMemberChange: (event: MatrixEvent, member: RoomMember) => void;
     private readonly onClientEvent: (event: MatrixEvent) => void;
     private readonly onSync: (state: SyncState, prev: SyncState | null, data?: SyncStateData) => void;
@@ -152,7 +215,11 @@ export class MembersTracker {
         this.onClientEvent = (event) => {
             if (event.getType() !== "m.presence") return;
             const userId = event.getSender() ?? (event.getContent().user_id as string | undefined);
-            if (userId) this.pendingPresence.add(userId);
+            if (!userId) return;
+            // Carry the status text from the CONTENT. `status_msg` is absent
+            // when unset — that absence is the answer (a cleared status).
+            const raw = event.getContent().status_msg;
+            this.pendingPresence.set(userId, typeof raw === "string" && raw !== "" ? raw : null);
         };
         this.onSync = (_state, _prev, data) => {
             if (data?.fromCache) {
@@ -161,7 +228,10 @@ export class MembersTracker {
                 // brings any real changes.
                 this.pendingPresence.clear();
             } else {
-                for (const userId of this.pendingPresence) this.livePresence.add(userId);
+                for (const [userId, status] of this.pendingPresence) {
+                    this.livePresence.add(userId);
+                    this.syncStatus.set(userId, status);
+                }
                 this.pendingPresence.clear();
             }
             this.rebuildAll();
@@ -221,28 +291,36 @@ export class MembersTracker {
         this.bannedFeeds.clear();
         this.livePresence.clear();
         this.pendingPresence.clear();
+        this.syncStatus.clear();
+        this.polled.clear();
+    }
+
+    /**
+     * Publish our own presence + status into every roster (no-op when
+     * unchanged). The client feeds this from its `ownPresence` snapshot, so our
+     * row, our profile card and the user bar read ONE value.
+     */
+    public setSelfPresence(presence: PresenceState, statusMessage: string | null = null): void {
+        if (presence === this.selfPresence.presence && statusMessage === this.selfPresence.statusMessage) return;
+        this.selfPresence = { presence, lastActiveTs: null, statusMessage };
+        this.rebuildAll();
     }
 
     /**
      * Sliding sync carries no presence in its sync envelope, so inject it here
-     * from the REST poll: mark the user live (so `presenceOf` no longer says
-     * `unknown`) and rebuild the rosters. The poller already fetched each
-     * `User`'s live status via `client.getUser()`, so no separate presence
-     * event is set — the trigger is each poll (not every sync), the sink is
-     * the REST response.
+     * from the REST poll. Each entry is the WHOLE answer — presence, status text
+     * and last-active — because `getPresence()` is a bare REST GET that never
+     * updates the SDK's `User` (whose `presence` defaults to `"offline"` and is
+     * only written by classic sync's presence handling). Reading the poll's body
+     * is what makes a roster under sliding sync honest instead of uniformly
+     * offline.
      */
-    /** Publish our own presence into every roster (no-op when unchanged). */
-    public setSelfPresence(presence: PresenceState): void {
-        if (presence === this.selfPresence) return;
-        this.selfPresence = presence;
-        this.rebuildAll();
-    }
-
     public applyPollPresence(presence: Array<PresenceInput>): boolean {
         if (!presence.length) return false;
-        for (const { userId } of presence) {
-            if (!userId) continue;
-            this.livePresence.add(userId);
+        for (const entry of presence) {
+            if (!entry.userId) continue;
+            this.polled.set(entry.userId, entry);
+            this.livePresence.add(entry.userId);
         }
         this.rebuildAll();
         return true;
@@ -252,7 +330,20 @@ export class MembersTracker {
         const room = this.matrix.getRoom(roomId);
         const feed = this.feeds.get(roomId);
         // Room gone (left/kicked): an empty roster is the truth, not a stale list.
-        if (feed) feed.set(room ? snapshotMembers(room, this.matrix, this.livePresence, this.selfPresence) : []);
+        if (feed) {
+            feed.set(
+                room
+                    ? snapshotMembers(
+                          room,
+                          this.matrix,
+                          this.livePresence,
+                          this.syncStatus,
+                          this.polled,
+                          this.selfPresence,
+                      )
+                    : [],
+            );
+        }
         const banned = this.bannedFeeds.get(roomId);
         if (banned) banned.set(room ? snapshotBanned(room, this.matrix) : []);
     }
