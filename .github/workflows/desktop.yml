@@ -16,7 +16,9 @@ name: Desktop builds
 
 on:
   workflow_dispatch:
-  release: '*' # Trigger on a new release being published
+  # Build on a published release, not on the tag push itself.
+  release:
+    types: [published]
 
 permissions:
   contents: read
