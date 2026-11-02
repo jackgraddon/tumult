@@ -18,6 +18,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -50,6 +52,9 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     let page: Page;
     let idp: Server;
     let idpOrigin = "";
+    // The loopback port the app's native-activity RPC server binds (the bridge a
+    // co-located native app could reach); the test drives it to relay a SET.
+    let nativePort = 0;
     const idpHits: string[] = [];
     const userData = mkdtempSync(join(tmpdir(), "tumult-desktop-smoke-"));
     const consoleErrors: string[] = [];
@@ -78,6 +83,16 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await new Promise<void>((resolve) => idp.listen(0, "127.0.0.1", resolve));
         idpOrigin = `http://localhost:${(idp.address() as AddressInfo).port}`;
 
+        // A loopback port a co-located native app could reach: the test drives
+        // the app's native-activity RPC server through it. A throwaway server
+        // picks a free ephemeral port; the app's server binds the same number.
+        const prober = createServer();
+        await new Promise<void>((resolve) => prober.listen(0, "127.0.0.1", resolve));
+        nativePort = (prober.address() as AddressInfo).port;
+        await new Promise<void>((resolve, reject) =>
+            prober.close((error) => (error ? reject(error) : resolve())),
+        );
+
         app = await electron.launch({
             executablePath: electronPath,
             args: [appRoot],
@@ -85,6 +100,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
                 ...process.env,
                 TUMULT_WEB_ROOT: join(appRoot, "web-fake"),
                 TUMULT_USER_DATA_DIR: userData,
+                TUMULT_NATIVE_ACTIVITY_PORT: String(nativePort),
             },
         });
 
@@ -137,6 +153,30 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
 
     async function opened(): Promise<string[]> {
         return app.evaluate(() => [...(globalThis as unknown as { __opened: string[] }).__opened]);
+    }
+
+    /** The main window's preload bridge — the one native feed a plugin gets. */
+    async function nativeSnapshot(): Promise<unknown> {
+        return page.evaluate(() =>
+            (window as unknown as { tumultNative?: { snapshot(): unknown } }).tumultNative?.snapshot() ?? null,
+        );
+    }
+
+    /** Open a loopback client to the app's RPC, retrying until the server is up. */
+    async function connectNative(): Promise<Socket> {
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            try {
+                return await new Promise((resolve, reject) => {
+                    const socket = connect(nativePort, "127.0.0.1");
+                    socket.once("error", reject);
+                    socket.once("connect", () => resolve(socket));
+                });
+            } catch {
+                if (Date.now() >= deadline) throw new Error("the native activity RPC server never accepted a connection");
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
     }
 
     it("loads app://tumult/ and renders the login page on a fresh profile", async () => {
@@ -232,6 +272,59 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await watchCsp(page);
         await page.waitForTimeout(800);
         assert.ok((await page.locator(".tumult-rail").count()) > 0, "the rail did not render");
+    });
+
+    it("relays a native SET and CLEAR through the main window's window.tumultNative", async () => {
+        // The main window's preload is the one bridge the shell breaks its
+        // bridge-less stance for: a context-isolated contextBridge (NOT a page
+        // script, so the app CSP is untouched) surfaces the native feed as
+        // window.tumultNative, the value a plugin gets from ctx.nativeActivity().
+        // It is empty until a native app pushes.
+        const bridge = await page.evaluate(() => {
+            const target = window as unknown as {
+                tumultNative?: {
+                    snapshot(): unknown;
+                    onActivity(callback: (activity: unknown) => void): () => void;
+                };
+            };
+            return {
+                has: "tumultNative" in target,
+                snapshot: typeof target.tumultNative?.snapshot,
+                onActivity: typeof target.tumultNative?.onActivity,
+            };
+        });
+        assert.ok(bridge.has, "the main window must expose window.tumultNative");
+        assert.equal(bridge.snapshot, "function", "the bridge must expose snapshot()");
+        assert.equal(bridge.onActivity, "function", "the bridge must expose onActivity()");
+
+        // A web tab with no native signal: the bridge starts null.
+        assert.equal(await nativeSnapshot(), null);
+
+        // Open the loopback RPC like a co-located native app would, then drive a
+        // SET followed by a CLEAR through it. main relays each to every window
+        // over NATIVE_ACTIVITY_IPC; the preload turns it into a feed change the
+        // page reads back through snapshot(). (The auth child window loads no
+        // preload, so it never sees one.)
+        const socket = await connectNative();
+        const set = { type: "playing", name: "VLC", details: "Test" };
+        await socket.write(JSON.stringify({ op: "set", value: set }) + "\n");
+        const setJson = JSON.stringify(set);
+        let snapshot = await nativeSnapshot();
+        const deadline = Date.now() + 10_000;
+        while (JSON.stringify(snapshot) !== setJson && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+            snapshot = await nativeSnapshot();
+        }
+        assert.deepEqual(snapshot, set, "a native SET must reach the bridge's snapshot");
+
+        await socket.write(JSON.stringify({ op: "clear" }) + "\n");
+        snapshot = "not cleared yet";
+        while (JSON.stringify(snapshot) !== "null" && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+            snapshot = await nativeSnapshot();
+        }
+        assert.equal(snapshot, null, "a native CLEAR must clear the bridge");
+        socket.destroy();
     });
 
     it("installs a sandboxed plugin through app://…/api/plugin-asset, and its frame is opaque", async () => {

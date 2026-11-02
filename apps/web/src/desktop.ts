@@ -32,3 +32,13 @@ export const DESKTOP_CALLBACK_PATH = "/auth/callback";
  * gives the desktop a registration of its own.
  */
 export const DESKTOP_REDIRECT_URI = "http://127.0.0.1/auth/callback";
+
+/**
+ * The IPC channel the main process uses to relay a native `SET_ACTIVITY` /
+ * `CLEAR` down to a window's preload, which surfaces it as `window.tumultNative`
+ * (the one declared native bridge). Both the main process (`main.ts`) and the
+ * preload (`preload.ts`) read it here, so the two sides cannot disagree on the
+ * channel name — the same reason this file holds `DESKTOP_REDIRECT_URI`: they
+ * are the only two places that cross the main/preload boundary.
+ */
+export const NATIVE_ACTIVITY_IPC = "tumult-native-activity";

@@ -2,13 +2,17 @@
  * Tumult desktop — the Electron main process.
  *
  * A shell, not a second app: it serves `apps/web`'s production build from the
- * privileged scheme `app://tumult/` (never `file://`), and owns only what a
- * browser would otherwise own — navigation, permissions, the screen picker and
- * the MAS login redirect. There is no preload: the page gets no Node and no
- * bridge, so it is the same untrusted-by-default web app as in a browser.
+ * privileged scheme `app://tumult/` (never `file://`), and owns what a browser
+ * would otherwise own — navigation, permissions, the screen picker and the MAS
+ * login redirect.
  *
- * Pure decisions live in `protocol.ts`, `auth.ts` and `policy.ts` (unit tested);
- * this file wires them to Electron.
+ * It also runs the one native bridge the shell breaks its bridge-less stance for:
+ * a loopback RPC a native app (`src/native-activity.ts`) connects to, relayed to
+ * each window's `contextBridge` preload (`src/preload.ts`) as `window.tumultNative`.
+ * The page itself gets no Node and no arbitrary bridge — only that one declared
+ * value through `contextBridge` — so the app is still the web app by default. The
+ * pure policy lives in `protocol.ts`, `auth.ts`, `policy.ts` and `native-activity.ts`
+ * (all unit tested); this file wires them to Electron.
  */
 import { stat, readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
@@ -19,6 +23,7 @@ import type { Session, WebContents } from "electron";
 import { callbackTarget, DESKTOP_REDIRECT_URI, isAuthorizationRequest } from "./auth.ts";
 import { pluginAssetResponse } from "./plugin-asset.ts";
 import { askingOrigin, callOriginFrom, externalUrl, isAppUrl, loginPending, originOf, permissionAllowed } from "./policy.ts";
+import { NATIVE_ACTIVITY_IPC, resolveNativeActivityPort, startNativeActivityServer, type NativeActivity, type NativeActivityServer } from "./native-activity.ts";
 import { APP_ORIGIN, APP_SCHEME, contentTypeFor, requestPath, route } from "./protocol.ts";
 
 /** Defined by `scripts/build.ts` from the same env the web build reads. */
@@ -216,6 +221,31 @@ const WEB_PREFERENCES = {
     devTools: DEV,
 } as const;
 
+/**
+ * The one native bridge the shell breaks its bridge-less stance for. The main
+ * window's preload surfaces the native activity feed as `window.tumultNative`
+ * (`NativeActivityFeed`, via `plugins/native-activity.ts`); it lives in `dist/`
+ * next to `main.cjs`, and the auth window gets none of it.
+ */
+const PRELOAD = join(__dirname, "preload.cjs");
+
+// The loopback RPC a native app on this machine connects to. It starts in
+// `whenReady` and closes on `will-quit`; `currentNative` is the last value the
+// feed held, seeded into every window when it loads so a late subscriber sees it.
+let nativeServer: NativeActivityServer | null = null;
+let currentNative: NativeActivity | null = null;
+
+/** A native SET/CLEAR: remember it and push it to every window's bridge. */
+function broadcastNative(activity: NativeActivity | null): void {
+    currentNative = activity;
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send(NATIVE_ACTIVITY_IPC, activity);
+}
+
+/** Seed a freshly loaded window with the last native activity, if any. */
+function seedNative(window: BrowserWindow): void {
+    window.webContents.on("did-finish-load", () => window.webContents.send(NATIVE_ACTIVITY_IPC, currentNative));
+}
+
 let mainWindow: BrowserWindow | null = null;
 let authWindow: BrowserWindow | null = null;
 
@@ -284,7 +314,7 @@ function createMainWindow(): BrowserWindow {
         // white flash before the first paint; the page's theme takes over.
         backgroundColor: "#16181c",
         icon: join(__dirname, "icon.png"),
-        webPreferences: { ...WEB_PREFERENCES },
+        webPreferences: { ...WEB_PREFERENCES, preload: PRELOAD },
     });
 
     // The app window stays on app://tumult. A login navigation goes to the
@@ -311,6 +341,7 @@ function createMainWindow(): BrowserWindow {
     window.on("closed", () => {
         if (mainWindow === window) mainWindow = null;
     });
+    seedNative(window);
     void window.loadURL(`${APP_ORIGIN}/`);
     return window;
 }
@@ -337,6 +368,15 @@ app.whenReady().then(() => {
     harden(session.defaultSession);
     mainWindow = createMainWindow();
 
+    // The loopback RPC a native app on this machine pushes activity through: the
+    // feed's producer. The smoke test binds `0` for a safe ephemeral port; a
+    // taken port degrades the bridge to empty, exactly the web's shape.
+    void startNativeActivityServer({ port: resolveNativeActivityPort(process.env), onActivity: broadcastNative })
+        .then((server) => {
+            nativeServer = server;
+        })
+        .catch((error: unknown) => console.error("[tumult] native activity server failed to start", error));
+
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) mainWindow = createMainWindow();
     });
@@ -347,4 +387,10 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
+});
+
+// Release the loopback RPC's port when the app quits so a native app — or the
+// next launch — finds it free; closing on will-quit avoids a TIME_WAIT window.
+app.on("will-quit", () => {
+    void nativeServer?.close();
 });
