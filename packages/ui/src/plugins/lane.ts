@@ -24,10 +24,15 @@ import type { Permission } from "./types.ts";
 export type PluginLane = "sandbox" | "trusted";
 
 /**
- * The permissions the sandbox lane can serve. Everything else hands the host
- * a live component and therefore requires the trusted lane. Keep this list
- * in step with the extension APIs: an API that takes or returns plain data is
- * sandboxable; one that takes a `Component` is not.
+ * The permissions the sandbox lane can serve. Everything else requires the
+ * trusted lane: an API that hands the host a live Vue `Component` cannot be
+ * marshalled across a postMessage boundary, and `native-activity` cannot be
+ * reached from a worker at all — its bridge (`window.tumultNative`) is the
+ * preload's, an in-page-only surface. So this list lists the data-in/capability-
+ * out ones and nothing else; it is derived, never a manifest claim, and
+ * `native-activity` in particular is the one permission that is neither
+ * component-bearing nor workerable, and so joins the component permissions in
+ * forcing the trusted lane.
  */
 export const SANDBOXABLE_PERMISSIONS: readonly Permission[] = [
     "commands",

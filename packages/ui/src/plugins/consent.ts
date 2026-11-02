@@ -30,6 +30,10 @@ export const PERMISSION_SUMMARY = {
     "settings-tabs": "Add a tab to the settings window with its own controls.",
     "workspace-panes":
         "Add its own screen to the app — a new tile in the guild rail with a window of its own.",
+    "native-activity":
+        "Read what native apps on this desktop are doing and mirror it as your " +
+        "rich-presence (desktop only; a web tab cannot see the operating system, so " +
+        "this does nothing in a browser).",
     styles:
         "Change how the app looks by injecting CSS stylesheets (switched off on security screens, " +
         "like this one, so they cannot disguise what you are agreeing to).",

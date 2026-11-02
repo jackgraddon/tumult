@@ -58,7 +58,8 @@
                     "commands",
                     "settings-tabs",
                     "styles",
-                    "workspace-panes"
+                    "workspace-panes",
+                    "native-activity"
                 ]
             },
             "uniqueItems": true,

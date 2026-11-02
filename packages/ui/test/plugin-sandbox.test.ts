@@ -22,6 +22,7 @@ import type { ChatClient, RoomSummary } from "@tumult/core/contract";
 import { SANDBOX_LIMITS, sandboxPlugin, type SandboxTransport } from "../src/plugins/sandbox/host.ts";
 import { createSandboxRuntime, type SandboxScope } from "../src/plugins/sandbox/worker/runtime.ts";
 import type { HostMessage, WorkerMessage } from "../src/plugins/sandbox/protocol.ts";
+import { emptyNativeActivityFeed } from "../src/plugins/native-activity.ts";
 import type { Plugin, PluginContext, PluginManifest } from "../src/plugins/types.ts";
 
 // ── The fake Worker: two ends of one wire, delivered synchronously ──────────
@@ -211,6 +212,7 @@ function makeContext(
             hooks.onStyles?.(css);
             return () => undefined;
         },
+        nativeActivity: () => emptyNativeActivityFeed(),
     };
 }
 

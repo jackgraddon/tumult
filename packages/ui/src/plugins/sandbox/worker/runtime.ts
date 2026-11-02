@@ -397,6 +397,13 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
                 contribute("injectStylesheet", { css });
                 return () => undefined;
             },
+            // A Worker cannot reach the preload's `window.tumultNative` bridge, so
+            // a native feed is unreachable in the sandbox lane: the lane rule
+            // already forbids the `native-activity` permission here, so refuse
+            // honestly rather than hand back a feed that would never fill.
+            nativeActivity() {
+                throw new Error("native activity requires the trusted lane");
+            },
         };
     }
 

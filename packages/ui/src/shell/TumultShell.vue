@@ -15,6 +15,7 @@ import { DraftsKey, createDraftStore } from "../timeline/drafts.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { ActivityRenderersKey, ActivityRenderersRegistry } from "../members/activity.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
+import { createNativeActivityFeed, type NativeActivityFeedController } from "../plugins/native-activity.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
 import { installVueBridge } from "../plugins/vueBridge.ts";
 import { SettingsTabsKey, SettingsTabsRegistry } from "../settings/tabs.ts";
@@ -234,6 +235,10 @@ const media = {
     resolveDownload: (uri: string) => props.client.resolveMediaDownload(uri),
     resolveEncrypted: (file: EncryptedAttachment) => props.client.resolveEncryptedMedia(file),
 };
+// The native activity feed. On desktop the preload exposes `window.tumultNative`
+// (the one declared bridge) and the feed is live; on the web it is undefined,
+// so the feed is empty and a native-presence plugin degrades to the status line.
+const nativeFeed: NativeActivityFeedController = createNativeActivityFeed(window.tumultNative);
 const plugins = new PluginRegistry({
     client: props.client,
     timeline: registry,
@@ -246,6 +251,7 @@ const plugins = new PluginRegistry({
     selection: selectionContext,
     actions: actionsCtx,
     media,
+    nativeActivity: nativeFeed.feed,
     injectStylesheet,
 });
 provide(RegistryKey, registry);
@@ -651,6 +657,10 @@ onBeforeUnmount(() => {
     // Plugins are per-shell: unmount takes every installed one down with it
     // (renderers unregistered, teardowns run) so a re-mount starts clean.
     plugins.uninstallAll();
+    // Tear the native feed's bridge subscription down too: the preload's bridge
+    // outlives this shell, so a re-mount (logout → login) must not stack feeds
+    // onto the same bridge.
+    nativeFeed.dispose();
     // Persist any half-typed draft still pending its debounce so a room switch or
     // logout doesn't lose it, and clear the timer so nothing writes past teardown.
     drafts.flush();

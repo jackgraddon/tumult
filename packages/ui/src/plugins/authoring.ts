@@ -101,6 +101,10 @@ export type {
     ResolvedActivity,
 } from "../members/activity.ts";
 export type {
+    NativeActivity,
+    NativeActivityFeed,
+} from "./types.ts";
+export type {
     MemberDecoration,
     MemberDecorationProps,
     MemberDecorationsRegistry,

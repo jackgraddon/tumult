@@ -12,6 +12,12 @@ import { ActivityRenderersRegistry } from "../src/members/activity.ts";
 import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 import { WorkspacePanesRegistry } from "../src/panes/registry.ts";
 import { PluginRegistry } from "../src/plugins/registry.ts";
+import {
+    createNativeActivityFeed,
+    emptyNativeActivityFeed,
+    type NativeActivityBridge,
+} from "../src/plugins/native-activity.ts";
+import type { NativeActivity, NativeActivityFeed } from "../src/plugins/types.ts";
 import { PLUGIN_API_VERSION, compareVersions } from "../src/plugins/compat.ts";
 import { CONTRACT_VERSION } from "@tumult/core/contract";
 import type { ActionsContext } from "../src/actions.ts";
@@ -50,6 +56,7 @@ function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
             resolveDownload: async () => "",
             resolveEncrypted: async () => "",
         },
+        nativeActivity: emptyNativeActivityFeed(),
         /** Shell-side stand-ins for the real DOM injector (see styles.ts). */
         stylesheets,
         removedStylesheets,
@@ -378,6 +385,7 @@ describe("PluginRegistry extension points", () => {
             ["settings-tabs", (ctx) => ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp })],
             ["styles", (ctx) => ctx.injectStylesheet(".tumult-demo { color: red; }")],
             ["workspace-panes", (ctx) => ctx.addPane({ id: "p1", label: "One", content: PluginComp })],
+            ["native-activity", (ctx) => ctx.nativeActivity()],
         ];
 
         for (const [permission, use] of cases) {
@@ -479,5 +487,197 @@ describe("PluginRegistry isolation", () => {
         // Uninstall runs the tracked wrapper again — must stay harmless.
         assert.equal(plugins.uninstall("test.plugin"), true);
         assert.equal(plugins.has("test.plugin"), false);
+    });
+});
+
+// A bridge whose current value and emissions the test drives directly, plus a
+// counter so a test can assert the feed's bridge subscription was torn down.
+function makeBridge(initial: NativeActivity | null) {
+    let current = initial;
+    const handlers = new Set<(activity: NativeActivity | null) => void>();
+    let unsubscribes = 0;
+    const bridge: NativeActivityBridge = {
+        snapshot: () => current,
+        onActivity(callback) {
+            handlers.add(callback);
+            return () => {
+                handlers.delete(callback);
+                unsubscribes++;
+            };
+        },
+    };
+    return {
+        bridge,
+        emit(activity: NativeActivity | null) {
+            current = activity;
+            for (const handler of handlers) handler(activity);
+        },
+        get unsubscribeCount() {
+            return unsubscribes;
+        },
+    };
+}
+
+describe("native activity feed (empty)", () => {
+    it("current() is null and a subscriber is settled to null", () => {
+        const feed = emptyNativeActivityFeed();
+        assert.equal(feed.current(), null);
+        const seen: (NativeActivity | null)[] = [];
+        const dispose = feed.subscribe((activity) => seen.push(activity));
+        assert.deepEqual(seen, [null]);
+        dispose();
+        dispose(); // idempotent — the empty feed's disposer is a no-op
+        assert.deepEqual(seen, [null], "nothing further is delivered once settled");
+    });
+
+    it("createNativeActivityFeed with no bridge is the empty feed", () => {
+        const feed = createNativeActivityFeed(undefined).feed;
+        assert.equal(feed.current(), null);
+        const seen: (NativeActivity | null)[] = [];
+        feed.subscribe((activity) => seen.push(activity));
+        assert.deepEqual(seen, [null]);
+    });
+});
+
+describe("native activity feed (live, via a bridge)", () => {
+    it("reads the snapshot and tracks emissions", () => {
+        const control = makeBridge({ type: "playing", name: "VLC", details: "a.m4v" });
+        const controller = createNativeActivityFeed(control.bridge);
+        const feed = controller.feed;
+        assert.deepEqual(feed.current(), { type: "playing", name: "VLC", details: "a.m4v" });
+
+        const seen: (NativeActivity | null)[] = [];
+        feed.subscribe((activity) => seen.push(activity));
+        assert.deepEqual(seen, [{ type: "playing", name: "VLC", details: "a.m4v" }]);
+
+        control.emit({ type: "listening", name: "Spotify", state: "Now playing" });
+        assert.deepEqual(feed.current(), { type: "listening", name: "Spotify", state: "Now playing" });
+        assert.deepEqual(seen[1]!, { type: "listening", name: "Spotify", state: "Now playing" });
+    });
+
+    it("a late subscriber is delivered the current value", () => {
+        const control = makeBridge(null);
+        const controller = createNativeActivityFeed(control.bridge);
+        control.emit({ type: "watching", name: "YouTube" });
+        const seen: (NativeActivity | null)[] = [];
+        controller.feed.subscribe((activity) => seen.push(activity));
+        assert.deepEqual(seen, [{ type: "watching", name: "YouTube" }]);
+    });
+
+    it("a clear (null) is delivered like any other value", () => {
+        const control = makeBridge({ type: "playing", name: "VLC" });
+        const controller = createNativeActivityFeed(control.bridge);
+        const seen: (NativeActivity | null)[] = [];
+        controller.feed.subscribe((activity) => seen.push(activity));
+        // subscribe delivers the live value ({playing}) first, then the clear.
+        assert.deepEqual(seen, [{ type: "playing", name: "VLC" }]);
+        control.emit(null);
+        assert.deepEqual(seen, [{ type: "playing", name: "VLC" }, null]);
+        assert.equal(controller.feed.current(), null);
+    });
+
+    it("a subscription disposes cleanly and stops delivery", () => {
+        const control = makeBridge(null);
+        const controller = createNativeActivityFeed(control.bridge);
+        const seen: (NativeActivity | null)[] = [];
+        const dispose = controller.feed.subscribe((activity) => seen.push(activity));
+        seen.length = 0;
+        dispose();
+        control.emit({ type: "custom", name: "X" });
+        assert.deepEqual(seen, [], "no delivery after unsubscribe");
+        assert.equal(control.unsubscribeCount, 0, "an individual subscriber does not tear the bridge down");
+    });
+
+    it("feed.dispose tears the bridge subscription down, once", () => {
+        const control = makeBridge(null);
+        const controller = createNativeActivityFeed(control.bridge);
+        controller.feed.subscribe(() => {});
+        controller.dispose();
+        control.emit({ type: "custom", name: "after" });
+        // No subscribers left and the bridge's unsubscribe ran exactly once.
+        assert.equal(control.unsubscribeCount, 1);
+        controller.dispose();
+        assert.equal(control.unsubscribeCount, 1, "dispose is idempotent");
+    });
+});
+
+describe("nativeActivity is gated by the native-activity permission", () => {
+    it("throws and rolls back when the permission is undeclared", () => {
+        const deps = makeDeps();
+        const plugins = new PluginRegistry(deps);
+        const plugin: Plugin = {
+            manifest: manifest({ permissions: [] }),
+            install(ctx) {
+                ctx.nativeActivity(); // must throw: permission undeclared
+            },
+        };
+        assert.throws(() => plugins.install(plugin), /native-activity/);
+        assert.equal(plugins.has("test.plugin"), false, "the install rolled back");
+    });
+
+    it("hands every plugin that declared it the SAME shared feed", () => {
+        const control = makeBridge(null);
+        const deps = makeDeps();
+        deps.nativeActivity = createNativeActivityFeed(control.bridge).feed;
+        const plugins = new PluginRegistry(deps);
+
+        let feedA: NativeActivityFeed | null = null;
+        let seen: (NativeActivity | null)[] = [];
+        plugins.install({
+            manifest: manifest({ id: "a", permissions: ["native-activity"] }),
+            install(ctx) {
+                feedA = ctx.nativeActivity();
+            },
+        });
+        plugins.install({
+            manifest: manifest({ id: "b", permissions: ["native-activity"] }),
+            install(ctx) {
+                ctx.nativeActivity().subscribe((activity) => seen.push(activity));
+            },
+        });
+        assert.equal(feedA!.current(), null, "both start on the null snapshot");
+        const expected = { type: "listening" as const, name: "Spotify", details: "Two Thousand and Seven" };
+        control.emit(expected);
+        assert.deepEqual(feedA!.current(), expected, "the shared feed tracks the bridge");
+        assert.deepEqual(seen[seen.length - 1]!, expected, "a declared plugin's subscription delivers");
+    });
+
+    it("uninstall tears a plugin's own subscription down while the feed persists", () => {
+        const control = makeBridge(null);
+        const controller = createNativeActivityFeed(control.bridge);
+        const deps = makeDeps();
+        deps.nativeActivity = controller.feed;
+        const plugins = new PluginRegistry(deps);
+
+        // The plugin owns its subscription through the disposable the feed hands
+        // back, and returns that disposer from install() so the registry runs it
+        // on uninstall.
+        const received: (NativeActivity | null)[] = [];
+        const plugin: Plugin = {
+            manifest: manifest({ id: "native", permissions: ["native-activity"] }),
+            install(ctx) {
+                // Subscribe and hand the disposer back to the registry as the
+                // teardown, so uninstall unsubscribes exactly this subscription.
+                return ctx.nativeActivity().subscribe((activity) => received.push(activity));
+            },
+        };
+        plugins.install(plugin);
+        // subscribe delivers the current (null) immediately, then the first emit.
+        control.emit({ type: "custom", name: "first" });
+        assert.deepEqual(received, [null, { type: "custom", name: "first" }]);
+
+        // Uninstall runs the teardown, dropping the plugin's subscription…
+        assert.equal(plugins.uninstall("native"), true);
+        control.emit({ type: "custom", name: "after uninstall" });
+        assert.deepEqual(received, [null, { type: "custom", name: "first" }], "no delivery after uninstall");
+
+        // …but the feed is shell-owned, so a fresh subscriber still delivers.
+        const later: (NativeActivity | null)[] = [];
+        controller.feed.subscribe((activity) => later.push(activity));
+        control.emit({ type: "custom", name: "still alive" });
+        assert.deepEqual(later, [
+            { type: "custom", name: "after uninstall" },
+            { type: "custom", name: "still alive" },
+        ]);
     });
 });

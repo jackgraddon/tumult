@@ -18,9 +18,16 @@ export type {
     PluginDeps,
     PluginManifest,
     PluginMedia,
+    NativeActivity,
+    NativeActivityFeed,
 } from "./plugins/types.ts";
 export { deriveLane, SANDBOXABLE_PERMISSIONS } from "./plugins/lane.ts";
 export type { PluginLane } from "./plugins/lane.ts";
+export { createNativeActivityFeed, emptyNativeActivityFeed } from "./plugins/native-activity.ts";
+export type {
+    NativeActivityBridge,
+    NativeActivityFeedController,
+} from "./plugins/native-activity.ts";
 export { sandboxPlugin } from "./plugins/sandbox/host.ts";
 export type { SandboxEntry, SandboxHost, SandboxTransport } from "./plugins/sandbox/host.ts";
 export { createFrameTransport, FRAME_BOOT_TIMEOUT_MS, FRAME_MESSAGE } from "./plugins/sandbox/frame.ts";

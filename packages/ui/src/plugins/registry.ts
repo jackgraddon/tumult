@@ -158,6 +158,9 @@ export class PluginRegistry {
             // The manifest id is the stylesheet's owner, so a failed install
             // and a later uninstall both remove exactly this plugin's styles.
             injectStylesheet: (css) => this.deps.injectStylesheet(css, id),
+            // The shell's native feed (live on desktop, empty on web). The gate
+            // lives in the API layer; here we only supply the feed.
+            nativeActivity: () => this.deps.nativeActivity,
             track,
         });
         const ctx: PluginContext = {
@@ -174,6 +177,7 @@ export class PluginRegistry {
             addSettingsTab: api.addSettingsTab,
             addPane: api.addPane,
             injectStylesheet: api.injectStylesheet,
+            nativeActivity: api.nativeActivity,
         };
 
         let teardown: Disposable | null = null;

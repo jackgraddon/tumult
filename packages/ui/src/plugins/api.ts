@@ -7,7 +7,7 @@
  * registry tracks — so uninstall cleans up even if the plugin drops it.
  */
 
-import type { Disposable, Permission, PluginApi } from "./types.ts";
+import type { Disposable, NativeActivityFeed, Permission, PluginApi } from "./types.ts";
 import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
@@ -29,6 +29,8 @@ export interface PluginApiTarget {
     addPane(pane: WorkspacePane): Disposable;
     /** Injects under this plugin's id as the owner (the registry binds it). */
     injectStylesheet(css: string): Disposable;
+    /** The shell's native activity feed — live on desktop, empty on the web. */
+    nativeActivity: () => NativeActivityFeed;
     /** Record a disposable so uninstall runs it whether or not the plugin kept it. */
     track(dispose: Disposable): Disposable;
 }
@@ -66,6 +68,12 @@ export function createPluginApi(target: PluginApiTarget): PluginApi {
         injectStylesheet(css) {
             target.require("styles");
             return target.track(target.injectStylesheet(css));
+        },
+        nativeActivity() {
+            target.require("native-activity");
+            // The feed is shell-owned and outlives any one plugin, so it is not
+            // tracked: a plugin tears its own subscription down via subscribe().
+            return target.nativeActivity();
         },
     };
 }

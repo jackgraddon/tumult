@@ -12,9 +12,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 - A plugin is a plain **TypeScript module** the app registers at runtime:
   a `manifest` plus `install(ctx)`. The registry never fetches, parses or
   evaluates anything — it receives a `Plugin` object (§1–§9).
-- It extends the shell through **seven** APIs — timeline renderers, composer
-  actions, slash commands, member decorations, settings tabs, stylesheets and
-  workspace panes. Each one is gated by a **permission** the manifest declares.
+- It extends the shell through **nine** APIs — timeline renderers, composer
+  actions, slash commands, member decorations, activity renderers, settings tabs,
+  stylesheets, workspace panes and a native activity feed. Each one is gated by
+  a **permission** the manifest declares.
 - Everything a plugin registers is a **disposable**. Uninstall reverses all of
   it, and an install that throws is rolled back atomically — a half-installed
   plugin leaves no residue.
@@ -179,7 +180,7 @@ without a reload.
 
 ## 4. Permissions
 
-`Permission` is a closed union of eight strings; each API demands exactly one:
+`Permission` is a closed union of nine strings; each API demands exactly one:
 
 | permission | API it unlocks |
 |---|---|
@@ -191,6 +192,7 @@ without a reload.
 | `settings-tabs` | `addSettingsTab` |
 | `styles` | `injectStylesheet` |
 | `workspace-panes` | `addPane` |
+| `native-activity` | `nativeActivity` |
 
 Calling an API whose permission is not in `manifest.permissions` throws
 immediately — and because the throw happens during `install`, the whole install
@@ -209,9 +211,9 @@ module. For a third-party plugin it is also the input to the lane rule (§11) �
 which is why an undeclared permission is a hard failure, and an *unknown*
 permission refuses the install outright rather than being ignored.
 
-## 5. The eight APIs
+## 5. The nine APIs
 
-`PluginContext` extends `PluginApi`, so the eight methods below are simply
+`PluginContext` extends `PluginApi`, so the nine methods below are simply
 `ctx.addRenderer(…)`, `ctx.addCommand(…)` and so on. All live in
 `packages/ui/src/plugins/api.ts` (permission gate + tracking) over the
 per-shell registries in §1.
@@ -806,9 +808,55 @@ ctx.addActivityRenderer({
 });
 ```
 
+### 5.9 `nativeActivity()` — `native-activity`
+
+Reads the **native activity feed**: what a desktop application is doing, pushed
+into Tumult. It is the seam behind Discord-style "rich presence" for native
+apps (a media player, a code editor, a Steam game). A browser tab cannot observe
+the operating system, so **on the web the feed is always empty** — a consumer
+must degrade to the plain status line. On desktop the shell bridges the native
+`window.tumultNative` surface (a **narrow, declared exception** to the
+bridge-less shell) into a live feed; CSP is untouched because the bridge is a
+`contextBridge` preload, not a `script-src`-governed script.
+
+```ts
+nativeActivity(): NativeActivityFeed
+
+interface NativeActivity {
+    readonly type: "playing" | "listening" | "watching" | "custom";
+    readonly name: string;
+    readonly details?: string;
+    readonly state?: string;
+    readonly startedAt?: number;  // epoch ms, when the caller knows it
+    readonly emoji?: string;
+}
+
+interface NativeActivityFeed {
+    current: () => NativeActivity | null;          // the latest, or null
+    subscribe: (cb: (a: NativeActivity | null) => void) => Disposable; // delivers `current` now, then on change
+}
+```
+
+The feed is **shell-owned and shared** across every plugin that declares
+`native-activity`: the method hands back the *same* object, and a plugin that
+subscribes is responsible for returning that subscription's disposer from its
+`install()` so uninstall tears it down — the registry does not track it, because
+the feed outlives any single install. A `null` value is a *clear*, delivered
+like any other value. No `source`/`assets` discriminator on the activity:
+producers coordinate client-side (last write wins), the same way a manual
+`/activity` and a native one would.
+
+```ts
+const feed = ctx.nativeActivity();
+return feed.subscribe((activity) => {
+    if (!activity) return clearActivity();
+    renderActivity(activity);
+});
+```
+
 ## 6. The context
 
-Beyond the eight APIs, `PluginContext` is the whole read/write surface a plugin
+Beyond the nine APIs, `PluginContext` is the whole read/write surface a plugin
 gets. There is deliberately **no `window`, no `document`, no router and no
 storage** — data flows through the same `ChatClient` contract the UI itself
 uses.
@@ -1136,10 +1184,17 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 | lane | how it loads | what it may declare |
 |---|---|---|
 | `sandbox` | the bundle is loaded and run **inside a Worker in an opaque-origin frame**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
-| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) |
+| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including the component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) and `native-activity` |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
 permissions, and the consent screen prints the resulting lane in plain words.
+
+`native-activity` is the one permission that is **not** a component permission yet
+still forces the trusted lane: it does not hand the host a live `Component`, but
+it reaches a surface a sandboxed Worker cannot — the preload's
+`window.tumultNative` bridge (§5.9), an in-page-only handle. So it joins the
+component permissions in `deriveLane`'s "anything but the three logic-only ones"
+rule, without being one of them.
 
 ### The install flow
 

@@ -38,9 +38,13 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All eight are enforced: `timeline-renderers`, `composer-actions`, `commands`,
- * `member-decorations`, `activity-renderers`, `settings-tabs`, `styles` and
- * `workspace-panes`.
+ * All nine are enforced: the eight in-page ones (the component permissions
+ * `timeline-renderers`, `member-decorations`, `activity-renderers`,
+ * `settings-tabs`, `workspace-panes` plus the data-in/capability-out
+ * `composer-actions`, `commands`, `styles`) and `native-activity` — the one
+ * non-component permission that still forces the trusted lane, because the
+ * native feed lives on the preload's bridge and a sandboxed worker cannot
+ * reach it (see `native-activity.ts`).
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -56,6 +60,7 @@ export const PLUGIN_PERMISSIONS = [
     "settings-tabs",
     "styles",
     "workspace-panes",
+    "native-activity",
 ] as const;
 
 export type Permission = (typeof PLUGIN_PERMISSIONS)[number];
@@ -117,6 +122,55 @@ export interface PluginMedia {
 }
 
 /**
+ * One native/RPC activity: what a desktop app pushes into Tumult. It mirrors a
+ * rich-presence activity document on the wire (no `source`/`assets`
+ * discriminator — producers coordinate client-side, the same way a manual
+ * `/activity` and a native one do), so the host stays producer-agnostic and a
+ * desktop-only capability can degrade to "nothing to show" on the web. Field
+ * caps are enforced by the producer before it reaches here.
+ */
+export interface NativeActivity {
+    /** What the app is doing — the rich-presence vocabulary. */
+    readonly type: "playing" | "listening" | "watching" | "custom";
+    /** The headline, e.g. "Visual Studio Code", "VLC", "Spotify". */
+    readonly name: string;
+    /** A second line of context, e.g. a file or track name. */
+    readonly details?: string;
+    /** A third line, e.g. a progress or current state. */
+    readonly state?: string;
+    /** Epoch milliseconds the activity started, when the caller knows it. */
+    readonly startedAt?: number;
+    /** A short emoji to show by the headline. */
+    readonly emoji?: string;
+}
+
+/**
+ * The native activity feed — the in-app view of what native apps (and, later,
+ * a passive detection source) are doing. A browser tab cannot observe the
+ * operating system, so on the web this is always empty: a consumer degrades to
+ * the plain status line. On desktop the shell bridges a native
+ * `window.tumultNative` (the one declared exception to the bridge-less shell)
+ * into a live feed; see `native-activity.ts`.
+ *
+ * The feed is shell-owned and shared across plugins: a plugin that consumes it
+ * subscribes through this method (which demands `native-activity`), and the
+ * returned disposable is run on uninstall — but it is NOT registry-tracked,
+ * because the feed outlives any single install.
+ */
+export interface NativeActivityFeed {
+    /** The current native activity, or null when nothing is active. */
+    readonly current: () => NativeActivity | null;
+    /**
+     * Subscribe to changes. `callback` fires on every change — a new activity,
+     * an update, or a clear (null) — and is delivered the current value at
+     * subscription time, so a consumer that starts after an activity is already
+     * set still sees it. Returns a disposable run on unsubscription or on feed
+     * teardown.
+     */
+    readonly subscribe: (callback: (activity: NativeActivity | null) => void) => Disposable;
+}
+
+/**
  * The registration surface every plugin gets — permission-checked and
  * disposable. New extension points append methods; existing plugins keep
  * working because it only grows.
@@ -158,6 +212,14 @@ export interface PluginApi {
      * throw instead of landing.
      */
     injectStylesheet(css: string): Disposable;
+    /**
+     * The native activity feed — what a desktop app is doing, pushed through
+     * the preload's bridge (`window.tumultNative`). Demands `native-activity`;
+     * on the web the feed is always empty. The returned feed is shell-owned,
+     * so its subscribers are not tracked by the registry; a plugin tears its
+     * own subscription down through the disposable `subscribe` returns.
+     */
+    nativeActivity(): NativeActivityFeed;
 }
 
 /**
@@ -207,6 +269,13 @@ export interface PluginDeps {
     selection: SelectionContext;
     actions: ActionsContext;
     media: PluginMedia;
+    /**
+     * The shell's native activity feed. On the web this is the empty feed
+     * (`native-activity.ts`); on desktop the shell builds a live one from the
+     * preload's `window.tumultNative` bridge. The registry hands it to a plugin
+     * through `ctx.nativeActivity()`; it is not a registry the registry owns.
+     */
+    nativeActivity: NativeActivityFeed;
     /**
      * Shell-provided stylesheet injection (see `plugins/styles.ts`). The
      * registry passes the plugin's manifest id as the owner.
