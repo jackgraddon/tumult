@@ -21,6 +21,7 @@
     "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"test/**/*.test.ts\"",
     "pretest:smoke": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts --fake && node scripts/build.ts",
     "test:smoke": "node --test --import tsx smoke/desktop.smoke.ts",
+    "demo:activity": "node demo/native-activity.ts",
     "icons": "electron scripts/render-icons.cjs",
     "prepackage": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts && node scripts/build.ts",
     "package": "electron-builder --config electron-builder.config.cjs",

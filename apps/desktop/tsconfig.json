@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     // Type-checking only: esbuild bundles the main process (scripts/build.ts),
-    // Node runs the scripts and tests straight from .ts.
+    // Node runs the scripts, tests and the demo (demo/native-activity.ts) straight
+    // from .ts.
     "composite": false,
     "declaration": false,
     "declarationMap": false,
@@ -11,5 +12,5 @@
     "rewriteRelativeImportExtensions": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "smoke/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "smoke/**/*.ts", "scripts/**/*.ts", "demo/**/*.ts"]
 }
