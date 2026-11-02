@@ -50,6 +50,9 @@ export class NativeActivityClient {
     private stopped = false;
     private attempt = 0;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    /** The backoff a retry loop is currently sleeping through; {@link stop} wakes it so a stopped producer does not pin the event loop. */
+    private retryTimer: ReturnType<typeof setTimeout> | null = null;
+    private retryResolve: (() => void) | null = null;
     /** A connection we are waiting to establish; destroyed by {@link stop} so it cannot outlive the client. */
     private pendingSocket: Socket | null = null;
     private readonly host: string;
@@ -120,6 +123,19 @@ export class NativeActivityClient {
     stop(): Promise<void> {
         if (this.stopped) return Promise.resolve();
         this.stopped = true;
+        // Wake every ref'd timer the client owns so a stopped producer never pins
+        // the event loop: a retry loop may be sleeping through a backoff (the ref a
+        // live producer holds), a connection may be mid-establish, and a dropped
+        // connection may be awaiting a scheduled reconnect. `stopped` was just set,
+        // so none of these can re-arm: `close` bails on it and stop awaits no new gap.
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+            this.retryTimer = null;
+        }
+        // A pending `delay` must be *resolved*, not just cleared: a retry loop
+        // suspended on it is what a stopped `start()` has to unwind.
+        this.retryResolve?.();
+        this.retryResolve = null;
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
@@ -173,9 +189,11 @@ export class NativeActivityClient {
         return new Promise<Socket>((resolve, reject) => {
             const socket = connect(this.port, this.host);
             this.pendingSocket = socket;
-            // The reconnect delay is unref'd so a test that stops it cannot keep
-            // the process alive; a LIVE connection is not, because staying up is
-            // the point of a producer that watches an app.
+            // Unref the connect timeout: `stop` may never resolve a still-connecting
+            // socket (a `close` is what unblocks it), so the timeout must not keep
+            // the loop alive on its own — otherwise a detached, retrying client that
+            // a producer never stops would pin the process. `stop` destroys the
+            // pending socket itself, so the timeout is a backstop, not a keep-alive.
             socket.setTimeout(0);
             socket.once("connect", () => {
                 this.pendingSocket = null;
@@ -237,10 +255,23 @@ export class NativeActivityClient {
         return Math.min(delay, this.backoffMaxMs);
     }
 
+    /**
+     * Sleep through a backoff gap. The timer is ref'd on purpose: a retrying
+     * client is a live producer that should keep its host process alive for as
+     * long as it runs (the whole point of a watcher), so it is the ref the
+     * event loop turns on — an unref'd one would let a host exit mid-retry and
+     * `node --test` would cancel the still-pending `start()`. {@link stop} wakes
+     * a pending gap immediately rather than waiting it out, so a stopped producer
+     * resolves instead of pinning.
+     */
     private delay(ms: number): Promise<void> {
         return new Promise((resolve) => {
-            const timer = setTimeout(resolve, ms);
-            timer.unref?.();
+            this.retryTimer = setTimeout(() => {
+                this.retryTimer = null;
+                this.retryResolve = null;
+                resolve();
+            }, ms);
+            this.retryResolve = resolve;
         });
     }
 }
