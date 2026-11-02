@@ -1,8 +1,14 @@
 name: Desktop builds
 
 # Builds the Electron desktop app (apps/desktop) for Linux (AppImage, deb, rpm)
-# and Windows (NSIS x64) and uploads the packages as workflow ARTIFACTS. It
-# publishes nothing: no GitHub release, no update feed.
+# and Windows (NSIS x64). On a v* tag the packages are attached as RAW release
+# assets to the release `pnpm release` cut for that tag (scripts/release.ts), so
+# they download uncompressed rather than as a zipped workflow artifact on the
+# Linux/Windows jobs. A branch push or a manual run has no tag, so there it falls
+# back to a zipped artifact (that is the only thing there to be). No update feed
+# is published: a draft the desktop CI never flips live — a maintainer does, once
+# the packages are attached — and auto-update is a deliberate non-goal (see the
+# README's deferred list).
 #
 # Build-time env: the desktop bundles a REAL-client web build, which needs
 # VITE_CLIENT_URI (apps/web/vite.config.ts fails the build without it). It is
@@ -29,8 +35,11 @@ on:
       - 'apps/desktop/**'
       - '.github/workflows/desktop.yml'
 
+# `contents: write` so a tag run can create/attach the GitHub release's assets
+# (branch and manual runs only read the checked-out repo, so no other write is
+# exercised here).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -114,9 +123,37 @@ jobs:
       # process, then run electron-builder with --publish never.
       run: pnpm --filter @tumult/desktop ${{ matrix.dist }}
 
-    - name: Upload packages
+    - name: Upload packages as artifacts
+      # A branch push or a manual run has no release, so this is what the packages
+      # become. A zipped bundle is fine here: it downloads one file.
+      if: github.ref_type != 'tag'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
         path: ${{ matrix.files }}
         if-no-files-found: error
+
+    - name: Attach packages to the release
+      # A v* tag is the one case that matters: a user downloads the package, so it
+      # must be a raw, uncompressed release asset, not a zipped artifact. `pnpm
+      # release` already cut a DRAFT for the tag (with the CHANGELOG notes), which
+      # the desktop CI never publishes — a maintainer flips it live once the
+      # packages are attached.
+      #
+      # `gh release upload` creates the release for the tag if it does not exist
+      # (a tag cut some other way), which would otherwise be PUBLISHED — so we
+      # create a DRAFT first when missing. The two matrix arms (Linux + Windows)
+      # can race to that create, so it is best-effort: the upload below is the
+      # real gate and fails the run if the release is truly unreachable.
+      if: github.ref_type == 'tag'
+      run: |
+        set -euo pipefail
+        tag=${{ github.ref_name }}
+        if ! gh release view "$tag" --json tagName >/dev/null 2>&1; then
+          echo "::notice::release $tag not found; creating a draft for the packages"
+          gh release create "$tag" --draft || true
+        fi
+        # matrix.files is a multi-line glob list; left unquoted, bash expands each
+        # into the files present and hands them to `gh release upload`, which
+        # uploads the raw bytes. `--clobber` makes a re-run idempotent.
+        gh release upload --clobber "$tag" ${{ matrix.files }}

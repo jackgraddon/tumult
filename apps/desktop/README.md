@@ -137,10 +137,18 @@ These are ignored by a packaged app:
 
 ## CI
 
-`.github/workflows/desktop.yml` runs on `workflow_dispatch` and on `v*` tags.
-It runs a matrix of `ubuntu-latest` (all three Linux targets, smoke test under
-xvfb) and `windows-latest` (NSIS), and uploads the packages as artifacts. It
-publishes nothing.
+`github/workflows/desktop.yml` runs on `workflow_dispatch`, `v*` tags and any
+branch that touches `apps/desktop/**`. It runs a matrix of `ubuntu-latest`
+(all three Linux targets, smoke test under xvfb) and `windows-latest` (NSIS).
+
+The built packages go two ways, on the run's type:
+- A **branch push or a manual run** (no release) uploads them as **zipped
+  workflow artifacts** — the one downloadable thing there can be.
+- A **`v*` tag** attaches them as **raw release assets** to the draft GitHub
+  release that `pnpm release` (scripts/release.ts) cut for that tag, so a user
+  downloads the `.AppImage`/`.deb`/`.rpm`/`.exe` uncompressed rather than a zip.
+  The CI never publishes the draft: a maintainer flips it live once the
+  packages are attached (auto-update is a deliberate non-goal, above).
 
 It needs the **repository variable** `VITE_CLIENT_URI`, which is a public URL,
 not a secret:
