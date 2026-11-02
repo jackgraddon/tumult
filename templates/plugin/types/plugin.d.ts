@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.5.0";
+export declare const CONTRACT_VERSION = "1.6.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -439,6 +439,18 @@ export interface MemberView {
 	 * presence, `null` when presence is unknown. A moment ago for `online`.
 	 */
 	lastActiveTs: number | null;
+	/**
+	 * The member's presence status text (`m.presence`'s `status_msg`), or
+	 * `null` when they have not set one — the same field {@link
+	 * OwnPresenceView} carries for us, so a member's profile card and our own
+	 * bar mean the same thing by it.
+	 *
+	 * Never read `User.presenceStatusMsg` for this: the SDK only assigns it
+	 * when `status_msg` is truthy, so a status someone cleared would show
+	 * forever. The honest sources are the presence REST read (the whole body,
+	 * under sliding sync) and the `m.presence` event's content (classic sync).
+	 */
+	statusMessage: string | null;
 }
 /** Our own profile, as the account menu and edit dialog need it. */
 export interface ProfileView {
@@ -1187,6 +1199,55 @@ export declare class MemberDecorationsRegistry {
 }
 export declare const MemberDecorationsKey: InjectionKey<MemberDecorationsRegistry>;
 export declare function useMemberDecorations(): MemberDecorationsRegistry;
+/** Props every profile section receives. */
+export interface ProfileSectionProps {
+	/** The member whose card is open. */
+	member: MemberView;
+	/** The room the card was opened from — carried for room-scoped data. */
+	roomId: string;
+	/**
+	 * The shell's client. Handed over rather than re-read from a registry so a
+	 * section reads the same contract the card does and can subscribe to its
+	 * own feeds (a favourite game, a biography) without a second seam.
+	 */
+	client: ChatClient;
+}
+/**
+ * One block inside a member's profile card — the popover a click on a member
+ * row opens. The shell draws the card's header (avatar, name, id, presence);
+ * a section draws whatever it owns *below* that, and the row keeps its context
+ * menu for every action (a card is a read-only profile surface).
+ *
+ * `match` is the only filter, and it runs whenever the card is open — keep it
+ * cheap: it may run for a person the user is merely hovering past.
+ */
+export interface ProfileSection {
+	/** Stable, namespaced id — the registry keys by it. */
+	id: string;
+	component: Component;
+	/** Higher sorts higher in the card. Default 0. */
+	priority?: number;
+	/** Draw this section only for members it accepts. Default: every member. */
+	match?(member: MemberView): boolean;
+}
+/**
+ * Per-shell profile-section registry (provide/inject — never a module
+ * singleton).
+ */
+export declare class ProfileSectionsRegistry {
+	private readonly list;
+	add(section: ProfileSection): Disposable$1;
+	remove(id: string): boolean;
+	/** Every section, highest priority first (reactive). */
+	all(): ProfileSection[];
+	/**
+	 * The sections that apply to `member`, highest priority first. A throwing
+	 * `match` counts as a refusal — one bad plugin must not blank the card.
+	 */
+	resolve(member: MemberView): ProfileSection[];
+}
+export declare const ProfileSectionsKey: InjectionKey<ProfileSectionsRegistry>;
+export declare function useProfileSections(): ProfileSectionsRegistry;
 /**
  * Where an activity is drawn. `row` is a member-list subtitle and MUST stay
  * one line (the members pane is virtualized and estimates row height); `self`
@@ -1420,13 +1481,13 @@ type Disposable$1 = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All nine are enforced: the eight in-page ones (the component permissions
- * `timeline-renderers`, `member-decorations`, `activity-renderers`,
- * `settings-tabs`, `workspace-panes` plus the data-in/capability-out
- * `composer-actions`, `commands`, `styles`) and `native-activity` — the one
- * non-component permission that still forces the trusted lane, because the
- * native feed lives on the preload's bridge and a sandboxed worker cannot
- * reach it (see `native-activity.ts`).
+ * All ten are enforced: the nine in-page ones (the component permissions
+ * `timeline-renderers`, `member-decorations`, `profile-sections`,
+ * `activity-renderers`, `settings-tabs`, `workspace-panes` plus the
+ * data-in/capability-out `composer-actions`, `commands`, `styles`) and
+ * `native-activity` — the one non-component permission that still forces the
+ * trusted lane, because the native feed lives on the preload's bridge and a
+ * sandboxed worker cannot reach it (see `native-activity.ts`).
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -1437,6 +1498,7 @@ export declare const PLUGIN_PERMISSIONS: readonly [
 	"timeline-renderers",
 	"composer-actions",
 	"member-decorations",
+	"profile-sections",
 	"activity-renderers",
 	"commands",
 	"settings-tabs",
@@ -1568,6 +1630,14 @@ export interface PluginApi {
 	/** Add a badge/decoration to member rows that `match` accepts. */
 	addMemberDecoration(decoration: MemberDecoration): Disposable$1;
 	/**
+	 * Add a block to a member's profile card — the popover a click on a member
+	 * row opens. The shell draws the card's header (avatar, name, id, presence
+	 * and status); a section draws its own content underneath, in priority
+	 * order. Actions are deliberately not part of the card: the row's context
+	 * menu owns them.
+	 */
+	addProfileSection(section: ProfileSection): Disposable$1;
+	/**
 	 * Render a user's activity from one extended-profile field, in place of
 	 * their status line (member rows and the user bar). The highest-priority
 	 * renderer whose `match` accepts the field's value wins.
@@ -1635,7 +1705,7 @@ interface Plugin$1 {
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export declare const PLUGIN_API_VERSION = "1.3.0";
+export declare const PLUGIN_API_VERSION = "1.4.0";
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its
  * leading integer (`"2-beta"` → 2, missing segments → 0); non-numeric text

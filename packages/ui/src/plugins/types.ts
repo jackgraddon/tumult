@@ -24,6 +24,7 @@ import type { RendererEntry, TimelineRegistry } from "../timeline/registry.ts";
 import type { ComposerActionsRegistry, ComposerAction } from "../timeline/composer-actions.ts";
 import type { CommandsRegistry, Command } from "../timeline/commands.ts";
 import type { MemberDecorationsRegistry, MemberDecoration } from "../members/decorations.ts";
+import type { ProfileSectionsRegistry, ProfileSection } from "../members/profileSections.ts";
 import type { ActivityRenderersRegistry, ActivityRenderer } from "../members/activity.ts";
 import type { SettingsTabsRegistry, SettingsTab } from "../settings/tabs.ts";
 import type { WorkspacePanesRegistry, WorkspacePane } from "../panes/registry.ts";
@@ -38,13 +39,13 @@ export type Disposable = () => void;
  * `PluginContext` names the permission it requires; the registry refuses the
  * call (and rolls back the install) when the manifest did not declare it.
  *
- * All nine are enforced: the eight in-page ones (the component permissions
- * `timeline-renderers`, `member-decorations`, `activity-renderers`,
- * `settings-tabs`, `workspace-panes` plus the data-in/capability-out
- * `composer-actions`, `commands`, `styles`) and `native-activity` — the one
- * non-component permission that still forces the trusted lane, because the
- * native feed lives on the preload's bridge and a sandboxed worker cannot
- * reach it (see `native-activity.ts`).
+ * All ten are enforced: the nine in-page ones (the component permissions
+ * `timeline-renderers`, `member-decorations`, `profile-sections`,
+ * `activity-renderers`, `settings-tabs`, `workspace-panes` plus the
+ * data-in/capability-out `composer-actions`, `commands`, `styles`) and
+ * `native-activity` — the one non-component permission that still forces the
+ * trusted lane, because the native feed lives on the preload's bridge and a
+ * sandboxed worker cannot reach it (see `native-activity.ts`).
  *
  * This array is the single runtime source: the `Permission` union is derived
  * from it, the release schema's enum is built from it, and the installer
@@ -55,6 +56,7 @@ export const PLUGIN_PERMISSIONS = [
     "timeline-renderers",
     "composer-actions",
     "member-decorations",
+    "profile-sections",
     "activity-renderers",
     "commands",
     "settings-tabs",
@@ -192,6 +194,14 @@ export interface PluginApi {
     /** Add a badge/decoration to member rows that `match` accepts. */
     addMemberDecoration(decoration: MemberDecoration): Disposable;
     /**
+     * Add a block to a member's profile card — the popover a click on a member
+     * row opens. The shell draws the card's header (avatar, name, id, presence
+     * and status); a section draws its own content underneath, in priority
+     * order. Actions are deliberately not part of the card: the row's context
+     * menu owns them.
+     */
+    addProfileSection(section: ProfileSection): Disposable;
+    /**
      * Render a user's activity from one extended-profile field, in place of
      * their status line (member rows and the user bar). The highest-priority
      * renderer whose `match` accepts the field's value wins.
@@ -263,6 +273,7 @@ export interface PluginDeps {
     composerActions: ComposerActionsRegistry;
     commands: CommandsRegistry;
     memberDecorations: MemberDecorationsRegistry;
+    profileSections: ProfileSectionsRegistry;
     activityRenderers: ActivityRenderersRegistry;
     settingsTabs: SettingsTabsRegistry;
     panes: WorkspacePanesRegistry;

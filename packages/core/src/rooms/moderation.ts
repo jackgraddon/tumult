@@ -120,6 +120,8 @@ function toBannedView(member: RoomMember, selfId: string): MemberView {
         presence: "unknown",
         verification: "unknown",
         lastActiveTs: null,
+        // Nobody to poll: a banned user has no presence read to report.
+        statusMessage: null,
     };
 }
 

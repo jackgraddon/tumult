@@ -8,9 +8,10 @@
  * opaque-origin sandbox frame (`sandbox/frame.ts`) and
  * reaches the shell exclusively through the RPC bridge — no DOM, no window,
  * no session storage. A plugin that contributes a live Vue component (a
- * timeline renderer, a member decoration, a settings tab) cannot be
- * marshalled across a postMessage boundary, so it runs in-page, at the app's
- * own trust level, and the installer says exactly that before installing.
+ * timeline renderer, a member decoration, a profile section, a settings tab)
+ * cannot be marshalled across a postMessage boundary, so it runs in-page, at
+ * the app's own trust level, and the installer says exactly that before
+ * installing.
  *
  * The double enforcement: this rule decides WHERE the module loads, and
  * `api.ts`'s permission gate decides WHAT the bridge answers — a sandboxed

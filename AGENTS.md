@@ -187,6 +187,21 @@ chat client should be.
 - DMs tab: all orphaned rooms (not in any space). Matrix marks DMs in
   `m.direct` account data — client rule is "show all orphans as DMs/groups".
 - Members sidebar right: lazy member loading, virtualize list for large rooms.
+  A click on a member row (a `.tumult-member-main` button *inside* the
+  context-menu trigger — two `as-child` triggers on one element fight, so the
+  row's context menu stays on the outer div) opens a **read-only profile card**
+  (`members/ProfileCard.vue`, portalled to body via a Reka popover, styled in an
+  unscoped block like the reaction popover): avatar, display name, the
+  `@user:server` id, and a presence line. It carries NO action buttons — Message,
+  mention, moderation and the copy pair already live in the row's context menu, so
+  a second set in a second surface would be two implementations of one permission
+  rule. A plugin may add blocks below the identity through the `profile-sections`
+  registry (`members/profileSections.ts`: per-shell, highest-priority-first, a
+  throwing `match` counts as a refusal); a section receives the `member`, `roomId`
+  and the shell's `client` so it can subscribe to its own feeds while the card is
+  open. The row's one-line subtitle falls back to `member.statusMessage` when no
+  activity renderer claims it (`members/presenceLabel.ts` owns the presence
+  wording, shared by the row and the card).
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite. The registry gates
@@ -478,7 +493,7 @@ chat client should be.
   they are content, not chrome. The SVG is sized by `width`/`height` attributes
   because the theme gate forbids literal lengths in a stylesheet.
 - **Theme v1 baseline:** registry (structure only) in `packages/theme/src/registry/`, compiler/validator/loader/store in `packages/theme/src/`, the built-in theme's *values* in `packages/theme/themes/default.json` (the inheritance base, completeness enforced by `compileThemes`), scoped on `:root[data-theme="name"]`; accent gallery data in `apps/web/public/themes/`, self-hosted Figtree in `apps/web/public/fonts/`. The node-only build lives in `packages/theme/src/build/` (`cli.ts` = `compileThemes()` → `dist/themes/*.css` **and** `emitDocs()` → `docs/tokens.md` + `docs/theme.schema.json`); `compile.ts` is a side-effect-free library (no import-time self-exec). Changing the registry or a built-in value means re-running `pnpm --filter @tumult/theme build` and committing the regenerated docs — `packages/theme/test/docs.test.ts` fails on drift.
-- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via a containerised Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker OR Podman, chosen by `tests/container.sh`; with neither, run `gh workflow run integration.yml --ref <branch>` (the workflow must already exist on `main` for dispatch to work), or set `TEST_SYNAPSE_URL` to use an existing server with no container. Images are fully qualified (`docker.io/…`: Podman refuses short names without a TTY), mounts carry `:z` (SELinux), and `override.yaml` is MOUNTED, not copied into `data/` (rootless Podman leaves `data/` owned by the container user). Some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (34 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
+- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via a containerised Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker OR Podman, chosen by `tests/container.sh`; with neither, run `gh workflow run integration.yml --ref <branch>` (the workflow must already exist on `main` for dispatch to work), or set `TEST_SYNAPSE_URL` to use an existing server with no container. Images are fully qualified (`docker.io/…`: Podman refuses short names without a TTY), mounts carry `:z` (SELinux), and `override.yaml` is MOUNTED, not copied into `data/` (rootless Podman leaves `data/` owned by the container user). Some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (63 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
 
 ## Verified traps from build-out
 
@@ -549,6 +564,20 @@ homeserver. A trap listed here has shipped broken at least once.
   keeping the current `status_msg` (resent so the write cannot drop it).
 - `unavailable` ("Away") is a member `PresenceState`, not folded into
   `offline`, so a row and the bar agree on it.
+- **Other members' presence and status come from a REST poll, not the SDK
+  model.** `User.presence` defaults to `"offline"` and is only assigned by
+  classic sync's `m.presence` events; under SSS that never arrives, so every
+  non-self member would read grey "Offline" forever. `MembersTracker` therefore
+  runs a `PresencePoller` (sliding branch only) that asks the homeserver for
+  the listed members' presence and stores the whole body —
+  `{ presence, statusMessage, lastActiveTs }` — in `polled`, which wins in
+  `presenceOf` over the SDK model. The tracker is the one place that decides a
+  member's presence, so the row and the new profile card stay in agreement. Status
+  text rides in `MemberView.statusMessage` (contract 1.6.0), read from the
+  event/poll CONTENT, never `user.presenceStatusMsg` (it keeps a cleared status
+  forever). `lastActiveTs` is real (the poll returns `last_active_ago`, turned
+  into an absolute time) so the row's "Last seen …" and `presenceLabel`
+  (shared by the row and the card) never disagree about how long ago.
 - `setOwnPresence` writes user-level state (last writer wins across clients),
   remembers the choice for the heartbeat, publishes the written value
   immediately, then re-reads; a failed re-read keeps the previous snapshot

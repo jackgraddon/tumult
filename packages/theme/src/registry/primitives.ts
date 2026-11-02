@@ -127,4 +127,5 @@ export const PRIMITIVE_TOKENS: TokenDef[] = [
     { name: "prim-layout-members", tier: "primitive", kind: "layout", description: "Members width." },
     { name: "prim-layout-slideover", tier: "primitive", kind: "layout", description: "Search / thread slide-over width." },
     { name: "prim-layout-menu-min", tier: "primitive", kind: "layout", description: "Dropdown menu minimum width." },
+    { name: "prim-layout-profile-card", tier: "primitive", kind: "layout", description: "Member profile card width." },
 ];

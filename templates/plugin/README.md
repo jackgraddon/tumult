@@ -91,7 +91,7 @@ neither does a reviewer:
 | permission | lane |
 |---|---|
 | `commands`, `composer-actions`, `styles` | **sandbox** — your code runs inside a Worker and reaches Tumult only through the message bridge. No DOM, no `window`. |
-| `timeline-renderers`, `member-decorations`, `settings-tabs`, `workspace-panes` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
+| `timeline-renderers`, `member-decorations`, `profile-sections`, `settings-tabs`, `workspace-panes` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
 
 Stay in the sandbox if you can. A plugin that only sends messages, reacts,
 transforms text or ships stylesheets can do a lot without ever needing the DOM.
@@ -99,7 +99,8 @@ transforms text or ships stylesheets can do a lot without ever needing the DOM.
 ### Vue components
 
 A component permission (`timeline-renderers`, `member-decorations`,
-`settings-tabs`, `workspace-panes`) means you contribute a Vue component, which
+`profile-sections`, `settings-tabs`, `workspace-panes`) means you contribute a
+Vue component, which
 puts you in the trusted lane. Import `vue` normally for its types, and build
 through `vite.config.ts` with `@vitejs/plugin-vue` — Vite compiles your SFCs and
 aliases `vue` to `src/shims/vue.ts`. That shim forwards to the host's Vue

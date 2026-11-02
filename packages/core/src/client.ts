@@ -480,9 +480,10 @@ export class MatrixChatClient implements ChatClient {
             this.publishTyping();
             this._threads = new ThreadTracker(client);
             this._members = new MembersTracker(client);
-            this._members.setSelfPresence(this.ownPresenceCtl.feed.get()?.presence ?? "unknown");
+            const own = this.ownPresenceCtl.feed.get();
+            this._members.setSelfPresence(own?.presence ?? "unknown", own?.statusMessage ?? null);
             this.selfPresenceSubscription = this.ownPresenceCtl.feed.subscribe((own) =>
-                this._members?.setSelfPresence(own?.presence ?? "unknown"),
+                this._members?.setSelfPresence(own?.presence ?? "unknown", own?.statusMessage ?? null),
             );
             this._powerLevels = new PowerLevelsTracker(client);
             // `slidingSync` is a START option that selects the sync loop: the

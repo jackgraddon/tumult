@@ -2,6 +2,7 @@ import type { Plugin } from "@tumult/ui";
 
 import AdminBadge from "./AdminBadge.vue";
 import ActivityShowcase from "./ActivityShowcase.vue";
+import ProfileShowcaseSection from "./ProfileShowcaseSection.vue";
 import SettingsShowcaseTab from "./SettingsShowcaseTab.vue";
 import PaneShowcase from "./PaneShowcase.vue";
 import PaneShowcaseNav from "./PaneShowcaseNav.vue";
@@ -104,6 +105,33 @@ export const activityShowcase: Plugin = {
             key: "cc.jackg.tumult.activity-showcase",
             component: ActivityShowcase,
             match: (value) => typeof (value as { name?: unknown } | null)?.name === "string",
+        });
+    },
+};
+
+/**
+ * `profile-sections` — one extended-profile field drawn as an extra block on a
+ * member's profile card (the popover a click on a member row opens).
+ *
+ * FAKE BUILDS ONLY: the fake seeds the field on Alice. A real homeserver is
+ * asked once per card opened — not once per listed member — because the card
+ * mounts its sections only while it is open.
+ */
+export const profileShowcase: Plugin = {
+    manifest: {
+        id: "cc.jackg.tumult.profile-showcase",
+        name: "Profile showcase",
+        version: "1.0.0",
+        author: "Tumult",
+        description: "Adds a favourite-game block to the member profile card.",
+        permissions: ["profile-sections"],
+    },
+    install(ctx) {
+        ctx.addProfileSection({
+            id: "cc.jackg.tumult.profile-showcase",
+            component: ProfileShowcaseSection,
+            // An invited or banned member has no profile data to read here.
+            match: (member) => member.membership === "join",
         });
     },
 };

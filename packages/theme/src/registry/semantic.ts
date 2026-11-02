@@ -141,6 +141,7 @@ export const SEMANTIC_TOKENS: TokenDef[] = [
     { name: "layout-timeline-min-width", tier: "semantic", kind: "layout", description: "Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout)." },
     { name: "layout-slideover-width", tier: "semantic", kind: "layout", value: v("prim-layout-slideover"), description: "Search / thread panel width." },
     { name: "layout-menu-min-width", tier: "semantic", kind: "layout", value: v("prim-layout-menu-min"), description: "Menu minimum width." },
+    { name: "layout-profile-card-width", tier: "semantic", kind: "layout", value: v("prim-layout-profile-card"), description: "Member profile card width (the popover a member row opens)." },
     { name: "layout-dialog-width", tier: "semantic", kind: "layout", description: "Dialog width before viewport clamp." },
     { name: "layout-voice-stage-height", tier: "semantic", kind: "layout", description: "Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled." },
     { name: "layout-voice-strip-height", tier: "semantic", kind: "layout", description: "Height of the row of small tiles beside a spotlit participant or screen." },

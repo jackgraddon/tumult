@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { MemberView, RoomPowerLevelsView } from "@tumult/core";
+import type { ChatClient, MemberView, RoomPowerLevelsView } from "@tumult/core";
 import {
     ContextMenuContent,
     ContextMenuItem,
@@ -8,6 +8,10 @@ import {
     ContextMenuRoot,
     ContextMenuSeparator,
     ContextMenuTrigger,
+    PopoverContent,
+    PopoverPortal,
+    PopoverRoot,
+    PopoverTrigger,
 } from "reka-ui";
 
 import { useActions, type MemberModerationKind } from "../actions.ts";
@@ -15,7 +19,9 @@ import { copyOrLog } from "../clipboard.ts";
 import { buildMemberMenu, type MemberMenuAction } from "./memberMenu.ts";
 import { useMemberDecorations } from "./decorations.ts";
 import { useActivity } from "./activity.ts";
+import { presenceLabel } from "./presenceLabel.ts";
 import Avatar from "../primitives/Avatar.vue";
+import ProfileCard from "./ProfileCard.vue";
 import Icon from "../icons/Icon.vue";
 
 const props = defineProps<{
@@ -24,6 +30,8 @@ const props = defineProps<{
     roomId: string;
     /** Power levels for the room, or null while unknown (then no actions show). */
     power: RoomPowerLevelsView | null;
+    /** The shell's client, handed to the profile card's plugin sections. */
+    client: ChatClient;
 }>();
 
 const actions = useActions();
@@ -35,25 +43,11 @@ const memberDecorations = computed(() => decorations.resolve(props.member));
 /** A plugin-rendered activity subtitle, or null (then the row stays one line). */
 const activity = useActivity(() => props.member.userId);
 
-function ago(ts: number): string {
-    const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    if (seconds < 60) return "just now";
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.round(hours / 24)}d ago`;
-}
-
 // The dot is decorative (aria-hidden); presence still needs to reach a
 // pointer user, so the truth lives in the tooltip. "unknown" is honest —
 // presence only becomes real once the server has sent it this session.
 function presenceTitle(): string {
-    const m = props.member;
-    if (m.presence === "online") return "Online";
-    if (m.presence === "unavailable") return "Away";
-    if (m.presence === "offline") return m.lastActiveTs ? `Last seen ${ago(m.lastActiveTs)}` : "Offline";
-    return "Presence not yet known";
+    return presenceLabel(props.member);
 }
 
 // A verified identity swaps the dot for a shield in the same presence colour,
@@ -96,34 +90,56 @@ function run(action: MemberMenuAction): void {
         <!-- Copying an id needs no permission, so every row has a menu. -->
         <ContextMenuTrigger as-child>
             <div class="tumult-member">
-                <span
-                    v-if="verified"
-                    class="tumult-member-shield"
-                    :data-presence="member.presence"
-                    :title="statusTitle()"
-                    aria-hidden="true"
-                >
-                    <Icon name="shield-check" />
-                </span>
-                <span
-                    v-else
-                    class="tumult-member-dot"
-                    :data-presence="member.presence"
-                    :title="statusTitle()"
-                    aria-hidden="true"
-                />
-                <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
-                <span class="tumult-member-text">
-                    <span class="tumult-member-name" :title="member.userId">{{ member.displayName }}<span v-if="verified" class="tumult-member-sr">, verified</span></span>
-                    <component
-                        :is="activity.renderer.component"
-                        v-if="activity"
-                        class="tumult-member-activity"
-                        :user-id="member.userId"
-                        :value="activity.value"
-                        variant="row"
-                    />
-                </span>
+                <PopoverRoot>
+                    <PopoverTrigger as-child>
+                        <button class="tumult-member-main" type="button">
+                            <span
+                                v-if="verified"
+                                class="tumult-member-shield"
+                                :data-presence="member.presence"
+                                :title="statusTitle()"
+                                aria-hidden="true"
+                            >
+                                <Icon name="shield-check" />
+                            </span>
+                            <span
+                                v-else
+                                class="tumult-member-dot"
+                                :data-presence="member.presence"
+                                :title="statusTitle()"
+                                aria-hidden="true"
+                            />
+                            <Avatar :label="member.displayName" :src="member.avatarUrl" size="sm" />
+                            <span class="tumult-member-text">
+                                <span class="tumult-member-name" :title="member.userId"
+                                    >{{ member.displayName
+                                    }}<span v-if="verified" class="tumult-member-sr">, verified</span></span
+                                >
+                                <component
+                                    :is="activity.renderer.component"
+                                    v-if="activity"
+                                    class="tumult-member-activity"
+                                    :user-id="member.userId"
+                                    :value="activity.value"
+                                    variant="row"
+                                />
+                                <span v-else-if="member.statusMessage" class="tumult-member-activity">{{
+                                    member.statusMessage
+                                }}</span>
+                            </span>
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverPortal>
+                        <PopoverContent
+                            class="tumult-profile-popover"
+                            side="left"
+                            :side-offset="8"
+                            :avoid-collisions="true"
+                        >
+                            <ProfileCard :member="member" :room-id="roomId" :client="client" />
+                        </PopoverContent>
+                    </PopoverPortal>
+                </PopoverRoot>
                 <span v-if="member.membership === 'invite'" class="tumult-member-badge">Invited</span>
                 <span v-else-if="member.membership === 'ban'" class="tumult-member-badge">Banned</span>
                 <component
@@ -171,6 +187,31 @@ function run(action: MemberMenuAction): void {
 }
 .tumult-member:hover {
     background: var(--roomlist-item-bg-hover);
+}
+/*
+ * The row's clickable content is a BUTTON (it opens the profile card), and the
+ * row itself stays the context-menu trigger — two `as-child` triggers on one
+ * element would fight over their merged attributes. Reset the button to look
+ * like the text it wraps.
+ */
+.tumult-member-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+    gap: var(--space-2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.tumult-member-main:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: calc(var(--focus-ring-offset) * -1);
+    border-radius: var(--control-radius);
 }
 .tumult-member-dot {
     width: var(--member-dot-size);
@@ -244,5 +285,17 @@ function run(action: MemberMenuAction): void {
     font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: var(--tracking-wide);
+}
+</style>
+
+<style>
+/*
+ * Portalled to `body`, so a scoped rule cannot reach this wrapper (the same
+ * reason the reaction popover lives in an unscoped block). The card itself is
+ * scoped inside ProfileCard.vue; this only removes the focus ring the popover
+ * root would otherwise draw around its own content box.
+ */
+.tumult-profile-popover:focus {
+    outline: none;
 }
 </style>

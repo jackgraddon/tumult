@@ -76,6 +76,13 @@ export { CommandsKey, CommandsRegistry, useCommands } from "./timeline/commands.
 export type { Command, CommandContext, ResolvedCommand } from "./timeline/commands.ts";
 export { MemberDecorationsKey, MemberDecorationsRegistry, useMemberDecorations } from "./members/decorations.ts";
 export type { MemberDecoration, MemberDecorationProps } from "./members/decorations.ts";
+export {
+    ProfileSectionsKey,
+    ProfileSectionsRegistry,
+    useProfileSections,
+} from "./members/profileSections.ts";
+export type { ProfileSection, ProfileSectionProps } from "./members/profileSections.ts";
+export { presenceLabel } from "./members/presenceLabel.ts";
 export { ActivityRenderersKey, ActivityRenderersRegistry, useActivity, useActivityRenderers } from "./members/activity.ts";
 export type { ActivityProps, ActivityRenderer, ActivityVariant, ResolvedActivity } from "./members/activity.ts";
 export { SettingsTabsKey, SettingsTabsRegistry, useSettingsTabs } from "./settings/tabs.ts";
@@ -119,6 +126,7 @@ export { default as UnknownEvent } from "./timeline/renderers/UnknownEvent.vue";
 export { default as DecryptionPlaceholder } from "./timeline/renderers/DecryptionPlaceholder.vue";
 export { default as MembersPane } from "./members/MembersPane.vue";
 export { default as MemberListItem } from "./members/MemberListItem.vue";
+export { default as ProfileCard } from "./members/ProfileCard.vue";
 export { default as SecurityBanner } from "./security/SecurityBanner.vue";
 export { default as SecurityModal } from "./security/SecurityModal.vue";
 export { default as Avatar } from "./primitives/Avatar.vue";

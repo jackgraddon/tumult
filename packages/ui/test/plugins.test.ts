@@ -8,6 +8,7 @@ import { TimelineRegistry } from "../src/timeline/registry.ts";
 import { ComposerActionsRegistry } from "../src/timeline/composer-actions.ts";
 import { CommandsRegistry } from "../src/timeline/commands.ts";
 import { MemberDecorationsRegistry } from "../src/members/decorations.ts";
+import { ProfileSectionsRegistry } from "../src/members/profileSections.ts";
 import { ActivityRenderersRegistry } from "../src/members/activity.ts";
 import { SettingsTabsRegistry } from "../src/settings/tabs.ts";
 import { WorkspacePanesRegistry } from "../src/panes/registry.ts";
@@ -45,6 +46,7 @@ function makeDeps(timeline: TimelineRegistry = new TimelineRegistry()) {
         composerActions: new ComposerActionsRegistry(),
         commands: new CommandsRegistry(),
         memberDecorations: new MemberDecorationsRegistry(),
+        profileSections: new ProfileSectionsRegistry(),
         activityRenderers: new ActivityRenderersRegistry({} as ChatClient),
         settingsTabs: new SettingsTabsRegistry(),
         panes: new WorkspacePanesRegistry(),
@@ -381,6 +383,7 @@ describe("PluginRegistry extension points", () => {
             ["composer-actions", (ctx) => ctx.addComposerAction({ id: "a1", label: "One", run() {} })],
             ["commands", (ctx) => ctx.addCommand({ name: "shrug", run() {} })],
             ["member-decorations", (ctx) => ctx.addMemberDecoration({ id: "d1", component: PluginComp })],
+            ["profile-sections", (ctx) => ctx.addProfileSection({ id: "ps1", component: PluginComp })],
             ["activity-renderers", (ctx) => ctx.addActivityRenderer({ id: "r1", key: "app.k", component: PluginComp })],
             ["settings-tabs", (ctx) => ctx.addSettingsTab({ id: "s1", title: "One", component: PluginComp })],
             ["styles", (ctx) => ctx.injectStylesheet(".tumult-demo { color: red; }")],
@@ -397,6 +400,7 @@ describe("PluginRegistry extension points", () => {
             assert.equal(deps.composerActions.all().length, 0, permission);
             assert.equal(deps.commands.all().length, 0, permission);
             assert.equal(deps.memberDecorations.resolve({} as never).length, 0, permission);
+            assert.equal(deps.profileSections.resolve({} as never).length, 0, permission);
             assert.equal(deps.settingsTabs.all().length, 0, permission);
             assert.equal(deps.panes.all().length, 0, permission);
             assert.equal(deps.stylesheets.length, 0, permission);
@@ -409,6 +413,7 @@ describe("PluginRegistry extension points", () => {
         const actionDispose = plugins.addComposerAction({ id: "a1", label: "One", run() {} });
         const commandDispose = plugins.addCommand({ name: "shrug", run() {} });
         const badgeDispose = plugins.addMemberDecoration({ id: "d1", component: PluginComp });
+        const sectionDispose = plugins.addProfileSection({ id: "ps1", component: PluginComp });
         const tabDispose = plugins.addSettingsTab({ id: "s1", title: "One", component: PluginComp });
         const stylesDispose = plugins.injectStylesheet(".tumult-demo { color: red; }");
         const paneDispose = plugins.addPane({ id: "p1", label: "One", content: PluginComp });
@@ -416,6 +421,7 @@ describe("PluginRegistry extension points", () => {
         assert.equal(deps.composerActions.all().length, 1);
         assert.equal(deps.commands.all().length, 1);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 1);
+        assert.equal(deps.profileSections.resolve({} as never).length, 1);
         assert.equal(deps.settingsTabs.all().length, 1);
         assert.equal(deps.panes.all().length, 1);
         // Shell-level styles have no plugin manifest to borrow an id from.
@@ -426,12 +432,14 @@ describe("PluginRegistry extension points", () => {
         actionDispose();
         commandDispose();
         badgeDispose();
+        sectionDispose();
         tabDispose();
         stylesDispose();
         paneDispose();
         assert.equal(deps.composerActions.all().length, 0);
         assert.equal(deps.commands.all().length, 0);
         assert.equal(deps.memberDecorations.resolve({} as never).length, 0);
+        assert.equal(deps.profileSections.resolve({} as never).length, 0);
         assert.equal(deps.settingsTabs.all().length, 0);
         assert.equal(deps.panes.all().length, 0);
         assert.deepEqual(deps.removedStylesheets, ["shell"]);

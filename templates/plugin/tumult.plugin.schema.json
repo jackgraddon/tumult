@@ -54,6 +54,7 @@
                     "timeline-renderers",
                     "composer-actions",
                     "member-decorations",
+                    "profile-sections",
                     "activity-renderers",
                     "commands",
                     "settings-tabs",

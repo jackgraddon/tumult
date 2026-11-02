@@ -569,15 +569,51 @@ describe("browser smoke test (fake client)", () => {
 
     it("renders a member's activity from a profile field in place of the status line", async () => {
         // The fake seeds Alice's showcase field; the fake-only showcase plugin
-        // registers the renderer. Nothing else should carry a subtitle.
-        const activity = page.locator(".tumult-member-activity");
-        await activity.first().waitFor({ timeout: 10_000 });
+        // registers the renderer, drawing "Playing Chess" in her row's subtitle.
+        const alice = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Alice/ }) }).first();
+        const aliceActivity = alice.locator(".tumult-member-activity");
+        await aliceActivity.waitFor({ timeout: 10_000 });
         assert.deepEqual(
-            (await activity.allTextContents()).map((text) => text.trim()),
+            (await aliceActivity.allTextContents()).map((text) => text.trim()),
             ["Playing Chess"],
         );
-        const row = page.locator(".tumult-member", { has: activity });
-        assert.match(await row.locator(".tumult-member-name").innerText(), /Alice/);
+    });
+
+    it("clicks a member row to open a read-only profile card, closed by Escape", async () => {
+        // The fake seeds Alice's `cc.jackg.tumult.profile-showcase` field; the
+        // fake-only `profileShowcase` plugin draws it as a block on her card.
+        const alice = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Alice/ }) }).first();
+        const trigger = alice.locator(".tumult-member-main");
+        await trigger.waitFor({ timeout: 10_000 });
+        await trigger.click();
+
+        const card = page.locator(".tumult-profile-card").first();
+        await card.waitFor({ state: "visible", timeout: 10_000 });
+
+        // The header is shell-owned: name, the @user:server id, a presence line.
+        assert.match(await card.locator(".tumult-profile-card-name").textContent() ?? "", /Alice/);
+        assert.equal(await card.locator(".tumult-profile-card-id").textContent(), "@alice:example.com");
+        assert.match(await card.locator(".tumult-profile-card-status").textContent() ?? "", /Online/);
+        // The card is read-only: it carries no Message/Copy buttons of its own
+        // (those live in the row's context menu).
+        assert.equal(await card.getByRole("button").count(), 0, "the card is read-only: no action buttons");
+        // A plugin may add a block below the identity.
+        assert.match(await card.locator(".tumult-profile-showcase").innerText(), /Favourite game: Chess/);
+
+        // Escape closes it (Reka's dismissable layer); the card unmounts with it.
+        await page.keyboard.press("Escape");
+        await card.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
+    it("falls back to a member's status message when no activity renderer applies", async () => {
+        // Bob has no profile field, so his row shows his status message instead
+        // of an activity line; Carol (no status, no field) shows nothing at all.
+        const bob = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Bob/ }) }).first();
+        const carol = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Carol/ }) }).first();
+        const bobActivity = bob.locator(".tumult-member-activity");
+        await bobActivity.waitFor({ timeout: 10_000 });
+        assert.equal((await bobActivity.textContent())?.trim(), "In a meeting", "the status message is the fallback subtitle");
+        assert.equal(await carol.locator(".tumult-member-activity").count(), 0, "no status and no field: no subtitle");
     });
 
     it("turns microphone processing off and back on from the Voice settings page", async () => {

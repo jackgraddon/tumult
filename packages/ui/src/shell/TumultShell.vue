@@ -13,6 +13,7 @@ import { ComposerActionsKey, ComposerActionsRegistry } from "../timeline/compose
 import { CommandsKey, CommandsRegistry } from "../timeline/commands.ts";
 import { DraftsKey, createDraftStore } from "../timeline/drafts.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
+import { ProfileSectionsKey, ProfileSectionsRegistry } from "../members/profileSections.ts";
 import { ActivityRenderersKey, ActivityRenderersRegistry } from "../members/activity.ts";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { createNativeActivityFeed, type NativeActivityFeedController } from "../plugins/native-activity.ts";
@@ -227,6 +228,7 @@ const commands = new CommandsRegistry();
 // debounce and a final `flush()` on unmount (below).
 const drafts = createDraftStore();
 const memberDecorations = new MemberDecorationsRegistry();
+const profileSections = new ProfileSectionsRegistry();
 const activityRenderers = new ActivityRenderersRegistry(props.client);
 const settingsTabs = new SettingsTabsRegistry();
 const panes = new WorkspacePanesRegistry();
@@ -245,6 +247,7 @@ const plugins = new PluginRegistry({
     composerActions,
     commands,
     memberDecorations,
+    profileSections,
     activityRenderers,
     settingsTabs,
     panes,
@@ -260,6 +263,7 @@ provide(ComposerActionsKey, composerActions);
 provide(CommandsKey, commands);
 provide(DraftsKey, drafts);
 provide(MemberDecorationsKey, memberDecorations);
+provide(ProfileSectionsKey, profileSections);
 provide(ActivityRenderersKey, activityRenderers);
 provide(SettingsTabsKey, settingsTabs);
 provide(WorkspacePanesKey, panes);

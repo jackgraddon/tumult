@@ -75,7 +75,7 @@ export type {
     PluginMedia,
 } from "./types.ts";
 
-// ── The six extension points and their payloads ─────────────────────────────
+// ── The extension points and their payloads ─────────────────────────────────
 export { RegistryKey, useTimelineRegistry } from "../timeline/registry.ts";
 export type { RendererEntry, TimelineRendererProps, TimelineRegistry } from "../timeline/registry.ts";
 export { ComposerActionsKey, useComposerActions } from "../timeline/composer-actions.ts";
@@ -92,6 +92,12 @@ export type {
     ResolvedCommand,
 } from "../timeline/commands.ts";
 export { MemberDecorationsKey, useMemberDecorations } from "../members/decorations.ts";
+export { ProfileSectionsKey, useProfileSections } from "../members/profileSections.ts";
+export type {
+    ProfileSection,
+    ProfileSectionProps,
+    ProfileSectionsRegistry,
+} from "../members/profileSections.ts";
 export { ActivityRenderersKey, useActivity, useActivityRenderers } from "../members/activity.ts";
 export type {
     ActivityProps,

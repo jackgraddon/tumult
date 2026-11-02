@@ -384,6 +384,9 @@ export function createSandboxRuntime(scope: SandboxScope): SandboxRuntime {
             addMemberDecoration() {
                 throw new Error("member decorations require the trusted lane");
             },
+            addProfileSection() {
+                throw new Error("profile sections require the trusted lane");
+            },
             addActivityRenderer() {
                 throw new Error("activity renderers require the trusted lane");
             },

@@ -205,6 +205,7 @@ function makeContext(
             return () => undefined;
         },
         addMemberDecoration: () => () => undefined,
+        addProfileSection: () => () => undefined,
         addSettingsTab: () => () => undefined,
         addActivityRenderer: () => () => undefined,
         addPane: () => () => undefined,

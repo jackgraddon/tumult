@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**296 tokens** — 91 primitives, 111 semantic, 94 component.
+**299 tokens** — 92 primitives, 112 semantic, 95 component.
 
 ## Primitives
 
@@ -108,6 +108,7 @@ everything built on it.
 | `--prim-layout-members` | layout | `240px` | Members width. |
 | `--prim-layout-slideover` | layout | `360px` | Search / thread slide-over width. |
 | `--prim-layout-menu-min` | layout | `200px` | Dropdown menu minimum width. |
+| `--prim-layout-profile-card` | layout | `280px` | Member profile card width. |
 
 ## Semantic
 
@@ -218,6 +219,7 @@ everything built on it.
 | `--layout-timeline-min-width` | layout | `24rem` | Narrowest timeline beside the rail and room list; below it the shell shows one pane at a time (phone layout). |
 | `--layout-slideover-width` | layout | `var(--prim-layout-slideover)` | Search / thread panel width. |
 | `--layout-menu-min-width` | layout | `var(--prim-layout-menu-min)` | Menu minimum width. |
+| `--layout-profile-card-width` | layout | `var(--prim-layout-profile-card)` | Member profile card width (the popover a member row opens). |
 | `--layout-dialog-width` | layout | `28rem` | Dialog width before viewport clamp. |
 | `--layout-voice-stage-height` | layout | `22rem` | Height of the video stage above the timeline. Tiles are fitted inside it, never scrolled. |
 | `--layout-voice-strip-height` | layout | `7rem` | Height of the row of small tiles beside a spotlit participant or screen. |
@@ -271,6 +273,7 @@ everything built on it.
 | `--member-shield-size` | size | `var(--verified-badge-size)` | Shield shown in place of a verified member's presence dot. |
 | `--member-badge-radius` | radius | `var(--radius-full)` | Member role badge. |
 | `--member-item-padding-y` | spacing | `var(--space-1)` | Member row vertical padding (density anchor). |
+| `--profile-card-width` | layout | `var(--layout-profile-card-width)` | Member profile card width. |
 | `--button-primary-bg` | color | `var(--accent)` | Primary button. |
 | `--button-primary-bg-hover` | color | `var(--accent-hover)` | Primary button hover. |
 | `--button-primary-text` | color | `var(--accent-contrast)` | Primary button text. |

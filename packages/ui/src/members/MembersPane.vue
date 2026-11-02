@@ -177,6 +177,7 @@ function measure(el: unknown): void {
                                 :member="((rows[v.index] as Row).member as MemberView)"
                                 :room-id="roomId ?? ''"
                                 :power="power"
+                                :client="client"
                             />
                         </template>
                     </div>

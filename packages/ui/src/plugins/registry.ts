@@ -4,6 +4,7 @@ import type { RendererEntry } from "../timeline/registry.ts";
 import type { ComposerAction } from "../timeline/composer-actions.ts";
 import type { Command } from "../timeline/commands.ts";
 import type { MemberDecoration } from "../members/decorations.ts";
+import type { ProfileSection } from "../members/profileSections.ts";
 import type { ActivityRenderer } from "../members/activity.ts";
 import type { SettingsTab } from "../settings/tabs.ts";
 import type { WorkspacePane } from "../panes/registry.ts";
@@ -91,6 +92,11 @@ export class PluginRegistry {
         return this.deps.memberDecorations.add(decoration);
     }
 
+    /** Shell-level profile section (no permission — see {@link addRenderer}). */
+    public addProfileSection(section: ProfileSection): Disposable {
+        return this.deps.profileSections.add(section);
+    }
+
     /** Shell-level activity renderer (no permission — see {@link addRenderer}). */
     public addActivityRenderer(renderer: ActivityRenderer): Disposable {
         return this.deps.activityRenderers.add(renderer);
@@ -152,6 +158,7 @@ export class PluginRegistry {
             addComposerAction: (action) => this.addComposerAction(action),
             addCommand: (command) => this.addCommand(command),
             addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
+            addProfileSection: (section) => this.addProfileSection(section),
             addActivityRenderer: (renderer) => this.addActivityRenderer(renderer),
             addSettingsTab: (tab) => this.addSettingsTab(tab),
             addPane: (pane) => this.addPane(pane),
@@ -173,6 +180,7 @@ export class PluginRegistry {
             addComposerAction: api.addComposerAction,
             addCommand: api.addCommand,
             addMemberDecoration: api.addMemberDecoration,
+            addProfileSection: api.addProfileSection,
             addActivityRenderer: api.addActivityRenderer,
             addSettingsTab: api.addSettingsTab,
             addPane: api.addPane,

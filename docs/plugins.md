@@ -12,10 +12,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 - A plugin is a plain **TypeScript module** the app registers at runtime:
   a `manifest` plus `install(ctx)`. The registry never fetches, parses or
   evaluates anything — it receives a `Plugin` object (§1–§9).
-- It extends the shell through **nine** APIs — timeline renderers, composer
-  actions, slash commands, member decorations, activity renderers, settings tabs,
-  stylesheets, workspace panes and a native activity feed. Each one is gated by
-  a **permission** the manifest declares.
+- It extends the shell through **ten** APIs — timeline renderers, composer
+  actions, slash commands, member decorations, profile sections, activity
+  renderers, settings tabs, stylesheets, workspace panes and a native activity
+  feed. Each one is gated by a **permission** the manifest declares.
 - Everything a plugin registers is a **disposable**. Uninstall reverses all of
   it, and an install that throws is rolled back atomically — a half-installed
   plugin leaves no residue.
@@ -32,10 +32,10 @@ Companion to `docs/themes.md` (theming, which shares the same
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
   loaded into a **Worker inside an opaque-origin sandbox frame** and reaches
   the shell only through the bridge; a
-  plugin that contributes a live component (renderer, decoration, settings tab,
-  workspace pane) runs **in-page at the app's trust level**, and the consent
-  screen says so out loud. The in-page lane is an extension seam, **not** a
-  sandbox.
+  plugin that contributes a live component (renderer, decoration, profile
+  section, settings tab, workspace pane) runs **in-page at the app's trust
+  level**, and the consent screen says so out loud. The in-page lane is an
+  extension seam, **not** a sandbox.
 - A plugin callback is **not** a component: use `ctx` inside `install`, `run`
   and `match`. The `inject()`-based hooks (`useSelection`, `usePluginRegistry`,
   …) only work inside components — renderers, decorations and settings tabs.
@@ -180,7 +180,7 @@ without a reload.
 
 ## 4. Permissions
 
-`Permission` is a closed union of nine strings; each API demands exactly one:
+`Permission` is a closed union of ten strings; each API demands exactly one:
 
 | permission | API it unlocks |
 |---|---|
@@ -188,11 +188,17 @@ without a reload.
 | `composer-actions` | `addComposerAction` |
 | `commands` | `addCommand` |
 | `member-decorations` | `addMemberDecoration` |
+| `profile-sections` | `addProfileSection` |
 | `activity-renderers` | `addActivityRenderer` |
 | `settings-tabs` | `addSettingsTab` |
 | `styles` | `injectStylesheet` |
 | `workspace-panes` | `addPane` |
 | `native-activity` | `nativeActivity` |
+
+Five of them (`timeline-renderers`, `composer-actions`, `commands`, `styles`,
+`native-activity`) leave the plugin able to run in the **sandbox** lane; the
+other five contribute a live Vue component or a DOM stylesheet and therefore
+force the **trusted** lane (§11).
 
 Calling an API whose permission is not in `manifest.permissions` throws
 immediately — and because the throw happens during `install`, the whole install
@@ -211,9 +217,9 @@ module. For a third-party plugin it is also the input to the lane rule (§11) �
 which is why an undeclared permission is a hard failure, and an *unknown*
 permission refuses the install outright rather than being ignored.
 
-## 5. The nine APIs
+## 5. The ten APIs
 
-`PluginContext` extends `PluginApi`, so the nine methods below are simply
+`PluginContext` extends `PluginApi`, so the ten methods below are simply
 `ctx.addRenderer(…)`, `ctx.addCommand(…)` and so on. All live in
 `packages/ui/src/plugins/api.ts` (permission gate + tracking) over the
 per-shell registries in §1.
@@ -795,8 +801,9 @@ The shell reads only the fields some renderer asks for, and only for members
 the virtualizer has mounted — a shell with no activity plugin fetches nothing.
 The winner is the highest-priority renderer whose field is non-null and whose
 `match` accepts it (a throwing `match` counts as a refusal). With no winner the
-surface shows what it showed before: the status message on the user bar,
-nothing extra on a member row. Validate the value in `match`: it is whatever
+surface falls back to what the shell already knows: the **status message** —
+next to the name on a member row, on the user bar's status line — and nothing
+extra when the user has set none. Validate the value in `match`: it is whatever
 JSON the user's account stored, and any client can write it.
 
 ```ts
@@ -854,9 +861,71 @@ return feed.subscribe((activity) => {
 });
 ```
 
+### 5.10 `addProfileSection(section)` — `profile-sections`
+
+Adds a block **below** the identity on the profile card — the popover a click on
+a member row opens. This is where per-user detail that does not fit a one-line
+status goes: a favourite game, a biography, a link to a hosted profile, a
+mutual-servers list.
+
+```ts
+addProfileSection(section: ProfileSection): Disposable
+
+interface ProfileSection {
+    id: string;                       // keys the registration
+    component: Component;             // receives { member: MemberView, roomId: string, client: ChatClient }
+    priority?: number;                // higher sorts further DOWN. Default 0.
+    match?(member: MemberView): boolean;  // no match → every member
+}
+```
+
+The card itself is **read-only** and owned by the shell: avatar, display name,
+the `@user:server` id and a presence line ("Online · Building Tumult"). It
+carries **no action buttons** — Message, Mention, moderation and the copy pair
+already live in the row's context menu, and a second set of the same commands
+in a second surface would be two implementations of one permission rule. A
+section adds information, not commands.
+
+A section mounts **only while the card is open**, so it can be as lazy as it
+likes: subscribe to `ctx.client.profileField(userId, key)` (§6), fetch, or render
+nothing. Whatever it subscribes to must be released in `onScopeDispose` (or a
+`watchEffect`'s cleanup) — unmounting the card disposes the component's scope
+but does not touch subscriptions the plugin created elsewhere.
+
+`match` runs when the card opens, not on every roster rebuild, so it may be
+more expensive than a member decoration's. `MemberView` is the same shape §5.4
+lists (including `statusMessage` — the user's own status text, `null` when
+unset).
+
+```ts
+const FavouriteGame = defineComponent({
+    props: { member: { type: Object as PropType<MemberView>, required: true } },
+    setup(props) {
+        const feed = ctx.client.profileField(props.member.userId, "cc.example.game");
+        return () => {
+            const value = feed.get() as { game?: unknown } | null;
+            return typeof value?.game === "string"
+                ? h("p", { class: "example-game" }, `Favourite game: ${value.game}`)
+                : null;
+        };
+    },
+});
+
+ctx.addProfileSection({
+    id: "cc.example.favourite-game",
+    component: FavouriteGame,
+    // Invited and banned members have no profile data to read here.
+    match: (member) => member.membership === "join",
+});
+```
+
+Uninstall removes the section with the rest of the plugin's registrations, so
+returning the `Disposable` from `install()` is optional — here it is
+conventional anyway, matching every other API.
+
 ## 6. The context
 
-Beyond the nine APIs, `PluginContext` is the whole read/write surface a plugin
+Beyond the ten APIs, `PluginContext` is the whole read/write surface a plugin
 gets. There is deliberately **no `window`, no `document`, no router and no
 storage** — data flows through the same `ChatClient` contract the UI itself
 uses.
@@ -1021,6 +1090,7 @@ shell.value?.plugins.install(myPlugin);
 | `ComposerActionsKey` | `ComposerActionsRegistry` | `useComposerActions()` → `null` outside a shell |
 | `CommandsKey` | `CommandsRegistry` | `useCommands()` → `null` outside a shell |
 | `MemberDecorationsKey` | `MemberDecorationsRegistry` | `useMemberDecorations()` (throws) |
+| `ProfileSectionsKey` | `ProfileSectionsRegistry` | `useProfileSections()` (throws) |
 | `SettingsTabsKey` | `SettingsTabsRegistry` | `useSettingsTabs()` (throws) |
 | `SelectionKey` | `SelectionContext` | `useSelection()` (throws) |
 | `ActionsKey` | `ActionsContext` | `useActions()` (throws) |
@@ -1032,7 +1102,7 @@ construct the registry yourself from `PluginDeps`:
 | `PluginDeps` field | what to pass |
 |---|---|
 | `client` | a `ChatClient` (the fake from `@tumult/core/fake` is a valid stand-in). |
-| `timeline`, `composerActions`, `commands`, `memberDecorations`, `settingsTabs` | fresh per-shell registry instances. |
+| `timeline`, `composerActions`, `commands`, `memberDecorations`, `profileSections`, `settingsTabs` | fresh per-shell registry instances. |
 | `selection`, `actions` | your `SelectionContext` / `ActionsContext` implementations. |
 | `media` | `{ resolve, resolveDownload, resolveEncrypted }` — wire to the client's media methods. |
 | `injectStylesheet(css, owner)` | the DOM injector; `PluginRegistry` binds each plugin's id (or `"shell"`) as the owner. |
@@ -1044,6 +1114,7 @@ const plugins = new PluginRegistry({
     composerActions: new ComposerActionsRegistry(),
     commands: new CommandsRegistry(),
     memberDecorations: new MemberDecorationsRegistry(),
+    profileSections: new ProfileSectionsRegistry(),
     settingsTabs: new SettingsTabsRegistry(),
     selection,
     actions,
@@ -1054,10 +1125,10 @@ plugins.install(myPlugin);
 ```
 
 The registry also exposes **unpermissioned** `addRenderer` / `addComposerAction`
-/ `addCommand` / `addMemberDecoration` / `addSettingsTab` / `injectStylesheet`
-for the **shell's own** built-ins (the built-in renderers and settings tabs go
-through exactly these). Use `install()` for anything you would call a plugin;
-the unpermissioned methods exist so the shell does not have to fake a manifest.
+/ `addCommand` / `addMemberDecoration` / `addProfileSection` / `addSettingsTab` /
+`injectStylesheet` for the **shell's own** built-ins (the built-in renderers and
+settings tabs go through exactly these). Use `install()` for anything you would
+call a plugin;
 
 ## 9. Testing a plugin
 
@@ -1074,6 +1145,7 @@ const plugins = new PluginRegistry({
     composerActions: new ComposerActionsRegistry(),
     commands: new CommandsRegistry(),
     memberDecorations: new MemberDecorationsRegistry(),
+    profileSections: new ProfileSectionsRegistry(),
     settingsTabs: new SettingsTabsRegistry(),
     selection: {} as SelectionContext,
     actions: {} as ActionsContext,
@@ -1136,6 +1208,13 @@ when the lane rule and the permission list fall out of step.
   (§5.7), but it cannot replace one, reorder the shell or take over a region it
   was not given — the extension points decorate and add, they do not
   restructure. This keeps the layout stable and predictable.
+- **A profile section reads, it does not act.** The member's profile card
+  (§5.10) is a read-only surface: avatar, name, id and presence, plus whatever
+  sections a plugin adds. It carries **no action buttons** — every action a card
+  could offer (Message, Mention, Copy id, moderation) already lives in the row's
+  context menu, and a second set of the same commands in a second surface would
+  be two implementations of one permission rule. A section that wants to act
+  uses the context (`ctx.actions`, `ctx.client`), not a button on the card.
 - **No patch/hook type.** The `Patch` type from the original sketch is dropped
   on purpose: plugins register modules; nothing rewrites code strings on a live
   object.
