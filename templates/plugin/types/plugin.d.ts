@@ -1251,9 +1251,10 @@ export declare function useProfileSections(): ProfileSectionsRegistry;
 /**
  * Where an activity is drawn. `row` is a member-list subtitle and MUST stay
  * one line (the members pane is virtualized and estimates row height); `self`
- * is the user bar's status line.
+ * is the user bar's status line; `card` is the rich member profile card and is
+ * the only variant that renders artwork and progress.
  */
-export type ActivityVariant = "row" | "self";
+export type ActivityVariant = "row" | "self" | "card";
 /** Props every activity component receives. */
 export interface ActivityProps {
 	userId: string;
@@ -1563,6 +1564,13 @@ export interface PluginMedia {
 	/** Encrypted attachment descriptor → loadable URL (fetches + decrypts). */
 	resolveEncrypted(file: EncryptedAttachment): Promise<string>;
 }
+/** One bounded image in a native activity — two at most, large one first. */
+export interface NativeActivityMedia {
+	/** A loadable `https:`/`http:`/`mxc:` URL (or a small `data:image/` URL). */
+	readonly url: string;
+	/** Alt text / hover label for the image. */
+	readonly label?: string;
+}
 /**
  * One native/RPC activity: what a desktop app pushes into Tumult. It mirrors a
  * rich-presence activity document on the wire (no `source`/`assets`
@@ -1582,6 +1590,10 @@ export interface NativeActivity {
 	readonly state?: string;
 	/** Epoch milliseconds the activity started, when the caller knows it. */
 	readonly startedAt?: number;
+	/** Epoch milliseconds the activity ends — enables a live progress bar. */
+	readonly endsAt?: number;
+	/** Up to two images (album art, game banner, small badge), in draw order. */
+	readonly media?: readonly NativeActivityMedia[];
 	/** A short emoji to show by the headline. */
 	readonly emoji?: string;
 }

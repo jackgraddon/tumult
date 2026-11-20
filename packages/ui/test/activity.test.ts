@@ -8,6 +8,7 @@ import { ActivityController } from "../src/activity/controller.ts";
 import {
     ACTIVITY_FIELD_KEY,
     activityHeadline,
+    activityProgress,
     activityStatusText,
     createActivity,
     parseActivity,
@@ -171,6 +172,47 @@ describe("first-party activity document", () => {
         assert.equal(activityHeadline({ v: 1, type: "custom", name: "Focusing" }), "Focusing");
         assert.equal(activityStatusText({ v: 1, type: "playing", name: "Chess", emoji: "♟" }), "♟ Playing Chess");
     });
+
+    it("keeps up to two bounded images and a live progress window", () => {
+        const parsed = parseActivity({
+            v: 1,
+            type: "listening",
+            name: "Song",
+            startedAt: 0,
+            endsAt: 298_000,
+            media: [
+                { url: "https://cdn.example/art.png", label: "Art" },
+                { url: "mxc://example.com/badge" },
+            ],
+        });
+        assert.deepEqual(parsed?.media, [
+            { url: "https://cdn.example/art.png", label: "Art" },
+            { url: "mxc://example.com/badge" },
+        ]);
+        assert.deepEqual(activityProgress(parsed!, 149_000), {
+            percent: 50,
+            elapsed: "2:29",
+            duration: "4:58",
+            ended: false,
+        });
+        assert.equal(activityProgress(parsed!, 400_000)?.percent, 100);
+        assert.equal(activityProgress({ v: 1, type: "playing", name: "Chess", startedAt: 0 }, 2000), null);
+    });
+
+    it("refuses arbitrary URLs, too many images and a broken progress window", () => {
+        assert.equal(parseActivity({ v: 1, type: "playing", name: "Chess", media: [{ url: "javascript:alert(1)" }] }), null);
+        assert.equal(
+            parseActivity({
+                v: 1,
+                type: "playing",
+                name: "Chess",
+                media: [{ url: "https://a/1" }, { url: "https://a/2" }, { url: "https://a/3" }],
+            }),
+            null,
+        );
+        assert.equal(parseActivity({ v: 1, type: "playing", name: "Chess", startedAt: 2000, endsAt: 1000 }), null);
+        assert.deepEqual(parseActivity({ v: 1, type: "playing", name: "Chess", media: [] }), { v: 1, type: "playing", name: "Chess" });
+    });
 });
 
 describe("ActivityController precedence", () => {
@@ -194,6 +236,27 @@ describe("ActivityController precedence", () => {
         await tick();
         assert.equal(parseActivity(h.field.get())?.name, "Manual film", "the saved manual activity returns on clear");
         assert.equal(controller.source.value, "manual");
+        controller.stop();
+    });
+
+    it("passes native artwork and progress through to the shared document", async () => {
+        const h = harness();
+        const controller = new ActivityController(h.client, h.native);
+        await controller.start("@alice-native-media:example.com");
+        const native = {
+            type: "listening" as const,
+            name: "Song",
+            startedAt: 1000,
+            endsAt: 200_000,
+            media: [{ url: "https://cdn.example/art.png", label: "Album art" }],
+        };
+        h.native.set(native);
+        await tick();
+
+        const published = parseActivity(h.field.get());
+        assert.deepEqual(published?.media, native.media);
+        assert.equal(published?.endsAt, native.endsAt);
+        assert.ok(activityProgress(published!), "progress reaches the renderer as bounded document data");
         controller.stop();
     });
 

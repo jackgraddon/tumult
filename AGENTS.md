@@ -210,7 +210,10 @@ chat client should be.
   it, and `plugins/registry.ts` withholds that released plugin's live native feed
   and duplicate settings tab. Web and desktop share one document and one
   Activity settings page; the native half is desktop-only via the existing
-  `window.tumultNative` bridge.
+  `window.tumultNative` bridge. The v1 document carries at most two bounded
+  image URLs plus `startedAt`/`endsAt` progress; the `card` variant renders them
+  on the member profile card, while `row` and `self` stay one line. Discord IPC
+  artwork keys and timestamps map into that document rather than being dropped.
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite. The registry gates
@@ -1204,19 +1207,23 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
   `discord-ipc-server.ts`): Discord-style producers (Cider, games, editors)
   already speak framed JSON over `discord-ipc-N`, so the desktop also listens on
   one of those indices and maps `SET_ACTIVITY` into the SAME native activity feed
-  the loopback TCP RPC publishes. No plugin/renderer change: the Rich Presence
-  plugin consumes the shared bridge. It is a dedicated endpoint, not a Discord
-  proxy — Discord IPC has no "watch another app" command — so Tumult takes index
-  0 when free (zero user config with Discord closed), otherwise the next free
-  index (Discord stays the fallback), and
+  the loopback TCP RPC publishes. The shell-owned controller consumes that feed;
+  no plugin is needed. It is a dedicated endpoint, not a Discord proxy — Discord
+  IPC has no "watch another app" command — so Tumult takes index 0 when free
+  (zero user config with Discord closed), otherwise the next free index (Discord
+  stays the fallback), and
   `TUMULT_DISCORD_IPC_PATH`/`DISCORD_IPC_PATH`/`DISCORD_IPC_SOCKET` bind an exact
-  path. Music's `details`/`state`/`assets.large_text` become track/artist/album.
+  path. Music's `details`/`state`/`assets.large_text` become track/artist/album;
+  `assets.large_image`/`small_image` become two bounded image URLs (`mp:`,
+  `spotify:`, `youtube:`, app-asset ids and direct URLs are recognised) and
+  `timestamps.start`/`end` become progress.
   A `SET_ACTIVITY` with no `activity` key is also a clear: Cider pauses by
   sending just `{ pid }`, so treating only `activity: null` as a clear leaves the
   old track mirrored forever. Framing, stale-socket reclaim, last-writer
   ownership and mapping are unit
   tested; the desktop smoke suite drives a real Discord-style producer through
-  the released plugin into the user bar. VERIFIED with Flatpak Cider: it has
+  the first-party renderer into the user bar and the member profile card.
+  VERIFIED with Flatpak Cider: it has
   `xdg-run/discord-ipc-0`, so Tumult's default host socket at
   `$XDG_RUNTIME_DIR/discord-ipc-0` is enough; the env overrides are read by
   Tumult, not the producer. A stale `discord-ipc-0` symlink in Cider's Flatpak

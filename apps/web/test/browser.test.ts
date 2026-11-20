@@ -568,15 +568,14 @@ describe("browser smoke test (fake client)", () => {
     });
 
     it("renders a member's activity from a profile field in place of the status line", async () => {
-        // The fake seeds Alice's showcase field; the fake-only showcase plugin
-        // registers the renderer, drawing "Playing Chess" in her row's subtitle.
+        // The fake seeds Alice's first-party activity with artwork and progress;
+        // the virtualized row must still show only the one-line text renderer.
         const alice = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Alice/ }) }).first();
         const aliceActivity = alice.locator(".tumult-member-activity");
         await aliceActivity.waitFor({ timeout: 10_000 });
-        assert.deepEqual(
-            (await aliceActivity.allTextContents()).map((text) => text.trim()),
-            ["Playing Chess"],
-        );
+        assert.equal((await aliceActivity.locator(".tumult-activity-headline").textContent())?.trim(), "Playing Chess");
+        assert.equal(await aliceActivity.locator("img").count(), 0, "artwork is card-only");
+        assert.equal(await aliceActivity.locator("[role=progressbar]").count(), 0, "progress is card-only");
     });
 
     it("saves a first-party activity from settings and shows it in the user bar", async () => {
@@ -622,6 +621,18 @@ describe("browser smoke test (fake client)", () => {
         // The card is read-only: it carries no Message/Copy buttons of its own
         // (those live in the row's context menu).
         assert.equal(await card.getByRole("button").count(), 0, "the card is read-only: no action buttons");
+        // The first-party card renderer draws the rich half: bounded artwork and
+        // a live progress window, neither of which belongs in a virtual row.
+        const activity = card.locator(".tumult-profile-card-activity");
+        await activity.waitFor({ timeout: 10_000 });
+        assert.equal(await activity.getAttribute("data-activity-renderer"), "cc.jackg.tumult.activity");
+        const images = activity.locator("img[data-activity-media]");
+        assert.equal(await images.count(), 2, "both bounded images render");
+        assert.match((await images.first().getAttribute("src")) ?? "", /^data:image\/svg\+xml/);
+        const progress = activity.locator("[data-activity-progress]");
+        assert.equal(await progress.count(), 1);
+        assert.match((await progress.getAttribute("aria-valuenow")) ?? "", /^\d+$/);
+        assert.match(await activity.locator(".tumult-activity-progress-time").innerText(), /^\d+:\d{2} \/ \d+:\d{2}$/);
         // A plugin may add a block below the identity.
         assert.match(await card.locator(".tumult-profile-showcase").innerText(), /Favourite game: Chess/);
 

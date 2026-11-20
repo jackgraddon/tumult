@@ -7,9 +7,10 @@ import type { Disposable } from "../plugins/types.ts";
 /**
  * Where an activity is drawn. `row` is a member-list subtitle and MUST stay
  * one line (the members pane is virtualized and estimates row height); `self`
- * is the user bar's status line.
+ * is the user bar's status line; `card` is the rich member profile card and is
+ * the only variant that renders artwork and progress.
  */
-export type ActivityVariant = "row" | "self";
+export type ActivityVariant = "row" | "self" | "card";
 
 /** Props every activity component receives. */
 export interface ActivityProps {

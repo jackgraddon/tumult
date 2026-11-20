@@ -122,6 +122,7 @@ describe("activityFromSetActivity", () => {
                     state: "Album",
                     emoji: "🎵",
                     startedAt: 1_700_000_000_000,
+                    endsAt: 1_700_000_223_000,
                 },
             },
         );
@@ -133,7 +134,55 @@ describe("activityFromSetActivity", () => {
             args: { activity: { type: 2, name: "Cider", details: "Song", timestamps: { start: 1_795_204_516_255 } } },
         });
         assert.equal(change.kind, "set");
-        if (change.kind === "set") assert.equal(change.activity.startedAt, 1_795_204_516_255);
+        if (change.kind === "set") {
+            assert.equal(change.activity.startedAt, 1_795_204_516_255);
+            assert.equal(change.activity.endsAt, undefined);
+        }
+    });
+
+    it("maps Discord artwork keys into two bounded images", () => {
+        const change = activityFromSetActivity({
+            cmd: "SET_ACTIVITY",
+            args: {
+                activity: {
+                    type: 2,
+                    details: "Song",
+                    assets: {
+                        large_image: "mp:external/abc/https%3A%2F%2Fexample.com%2Fart.png",
+                        large_text: "Album art",
+                        small_image: "spotify:abc123",
+                        small_text: "Spotify",
+                    },
+                },
+            },
+        });
+        assert.equal(change.kind, "set");
+        if (change.kind === "set") {
+            assert.deepEqual(change.activity.media, [
+                { url: "https://media.discordapp.net/external/abc/https%3A%2F%2Fexample.com%2Fart.png", label: "Album art" },
+                { url: "https://i.scdn.co/image/abc123", label: "Spotify" },
+            ]);
+        }
+    });
+
+    it("resolves an application asset id through its application and keeps the end time", () => {
+        const change = activityFromSetActivity({
+            cmd: "SET_ACTIVITY",
+            args: {
+                activity: {
+                    type: 0,
+                    name: "VLC",
+                    application_id: "123456",
+                    assets: { large_image: "abc123", large_text: "Cover" },
+                    timestamps: { start: 1_700_000_000, end: 1_700_000_100 },
+                },
+            },
+        });
+        assert.equal(change.kind, "set");
+        if (change.kind === "set") {
+            assert.deepEqual(change.activity.media, [{ url: "https://cdn.discordapp.com/app-assets/123456/abc123.png", label: "Cover" }]);
+            assert.equal(change.activity.endsAt, 1_700_000_100_000);
+        }
     });
 
     it("keeps the application name as the headline for games and shows details below", () => {

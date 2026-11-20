@@ -1011,6 +1011,18 @@
                     "type": "string",
                     "description": "Member profile card width."
                 },
+                "activity-media-size": {
+                    "type": "string",
+                    "description": "Artwork thumbnail side in a profile-card activity."
+                },
+                "activity-media-radius": {
+                    "type": "string",
+                    "description": "Activity artwork corner radius."
+                },
+                "activity-progress-height": {
+                    "type": "string",
+                    "description": "Activity progress bar thickness."
+                },
                 "button-primary-bg": {
                     "type": "string",
                     "description": "Primary button."
@@ -2215,6 +2227,18 @@
                     "profile-card-width": {
                         "type": "string",
                         "description": "Member profile card width."
+                    },
+                    "activity-media-size": {
+                        "type": "string",
+                        "description": "Artwork thumbnail side in a profile-card activity."
+                    },
+                    "activity-media-radius": {
+                        "type": "string",
+                        "description": "Activity artwork corner radius."
+                    },
+                    "activity-progress-height": {
+                        "type": "string",
+                        "description": "Activity progress bar thickness."
                     },
                     "button-primary-bg": {
                         "type": "string",
@@ -3421,6 +3445,18 @@
                     "profile-card-width": {
                         "type": "string",
                         "description": "Member profile card width."
+                    },
+                    "activity-media-size": {
+                        "type": "string",
+                        "description": "Artwork thumbnail side in a profile-card activity."
+                    },
+                    "activity-media-radius": {
+                        "type": "string",
+                        "description": "Activity artwork corner radius."
+                    },
+                    "activity-progress-height": {
+                        "type": "string",
+                        "description": "Activity progress bar thickness."
                     },
                     "button-primary-bg": {
                         "type": "string",

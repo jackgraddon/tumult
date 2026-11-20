@@ -65,6 +65,11 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "member-item-padding-y", tier: "component", kind: "spacing", value: v("space-1"), description: "Member row vertical padding (density anchor)." },
     { name: "profile-card-width", tier: "component", kind: "layout", value: v("layout-profile-card-width"), description: "Member profile card width." },
 
+    // Activity (rich presence)
+    { name: "activity-media-size", tier: "component", kind: "size", description: "Artwork thumbnail side in a profile-card activity." },
+    { name: "activity-media-radius", tier: "component", kind: "radius", value: v("radius-sm"), description: "Activity artwork corner radius." },
+    { name: "activity-progress-height", tier: "component", kind: "size", description: "Activity progress bar thickness." },
+
     // Buttons
     { name: "button-primary-bg", tier: "component", kind: "color", value: v("accent"), description: "Primary button." },
     { name: "button-primary-bg-hover", tier: "component", kind: "color", value: v("accent-hover"), description: "Primary button hover." },

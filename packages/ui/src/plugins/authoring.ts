@@ -109,6 +109,7 @@ export type {
 export type {
     NativeActivity,
     NativeActivityFeed,
+    NativeActivityMedia,
 } from "./types.ts";
 export type {
     MemberDecoration,

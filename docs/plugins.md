@@ -788,7 +788,7 @@ addActivityRenderer(renderer: ActivityRenderer): Disposable
 interface ActivityRenderer {
     id: string;                     // keys the registration
     key: string;                    // the profile field to read, e.g. "app.tumult.activity"
-    component: Component;           // receives { userId, value, variant: "row" | "self" }
+    component: Component;           // receives { userId, value, variant: "row" | "self" | "card" }
     priority?: number;              // highest wins when several accept. Default 0.
     match?(value: unknown): boolean; // accept a non-null value. Default: any.
 }
@@ -800,6 +800,7 @@ Where it draws:
 |---|---|---|
 | `row` | a subtitle under the name in the member list | **one line**, truncated — rows are virtualized on a height estimate |
 | `self` | the user bar's status line (still a button that opens the status editor) | one line |
+| `card` | the member's profile card, below the presence line | may use more space: the first-party renderer draws bounded artwork and progress here |
 
 The shell reads only the fields some renderer asks for, and only for members
 the virtualizer has mounted — a shell with no renderers at all fetches nothing,
@@ -840,7 +841,14 @@ interface NativeActivity {
     readonly details?: string;
     readonly state?: string;
     readonly startedAt?: number;  // epoch ms, when the caller knows it
+    readonly endsAt?: number;     // epoch ms: with startedAt, drives a live progress bar
+    readonly media?: readonly NativeActivityMedia[]; // at most two, large one first
     readonly emoji?: string;
+}
+
+interface NativeActivityMedia {
+    readonly url: string;  // https:, http:, mxc:// or a small data:image/ URL
+    readonly label?: string; // alt text / hover label
 }
 
 interface NativeActivityFeed {
@@ -855,6 +863,11 @@ subscribes is responsible for returning that subscription's disposer from its
 `install()` so uninstall tears it down — the registry does not track it, because
 the feed outlives any single install. A `null` value is a *clear*, delivered
 like any other value. No `source`/`assets` discriminator on the activity.
+Artwork arrives as at most two bounded URLs (not bytes) so the shared document
+stays small and `mxc://` images can use the normal media resolver; other images
+are loaded straight into an `<img>`, never into CSS. The first-party card uses
+`startedAt` + `endsAt` for a live progress bar; without both it shows only the
+elapsed text.
 
 The shell itself is now the primary consumer: it publishes native activity to
 `app.tumult.activity` while a producer is live, holds the user's manual document

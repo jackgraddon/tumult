@@ -59,6 +59,7 @@ function mulberry32(seed: number): () => number {
 const SENDERS = ["@alice:example.com", "@bob:example.com", "@carol:example.com", "@dave:example.com"];
 const DM_NAMES = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy"];
 const SELF_ID = "@demo:example.com";
+const ACTIVITY_FIELD_KEY = "app.tumult.activity";
 const BODIES = [
     "hey, did anyone see the new build?",
     "shipping the shell today, theme tokens and all",
@@ -1174,11 +1175,32 @@ class FakeChatClient implements ChatClient {
     }
 
     /**
-     * Extended profile fields, in memory. Alice carries a value under the
-     * fake-only showcase key so the shell's activity slot has something to
-     * render (`apps/web`'s activity showcase, installed in fake builds only).
+     * Extended profile fields, in memory. Alice carries the shell's first-party
+     * activity with bounded artwork and progress, so both the one-line member
+     * subtitle and the rich profile card have something real to render. The
+     * fake-only showcase key remains for the plugin renderer compatibility test.
      */
     private readonly profileFields = new Map<string, Observable<unknown>>([
+        [
+            `@alice:example.com\u0000${ACTIVITY_FIELD_KEY}`,
+            new Observable<unknown>({
+                v: 1,
+                type: "playing",
+                name: "Chess",
+                startedAt: Date.now() - 45_000,
+                endsAt: Date.now() + 135_000,
+                media: [
+                    {
+                        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23646ffb'/%3E%3Ccircle cx='32' cy='32' r='18' fill='white'/%3E%3C/svg%3E",
+                        label: "Chess board",
+                    },
+                    {
+                        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23f0b232'/%3E%3C/svg%3E",
+                        label: "Opponent",
+                    },
+                ],
+            }),
+        ],
         [
             `@alice:example.com\u0000cc.jackg.tumult.activity-showcase`,
             new Observable<unknown>({ name: "Playing Chess" }),

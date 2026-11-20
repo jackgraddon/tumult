@@ -84,6 +84,32 @@ describe("validateNativeActivity", () => {
         assert.deepEqual(validateNativeActivity({ type: "playing", name: "a", startedAt: Number.NaN }), { type: "playing", name: "a" });
         assert.deepEqual(validateNativeActivity({ type: "playing", name: "a", startedAt: "now" }), { type: "playing", name: "a" });
     });
+
+    it("keeps bounded artwork and a live progress window", () => {
+        const activity = validateNativeActivity({
+            type: "listening",
+            name: "Spotify",
+            startedAt: 1000,
+            endsAt: 200_000,
+            media: [
+                { url: "https://cdn.example/art.png", label: "Album art" },
+                { url: "data:image/svg+xml,%3Csvg/%3E" },
+                { url: "https://cdn.example/third.png" },
+                { url: "javascript:alert(1)" },
+            ],
+        });
+        assert.deepEqual(activity?.endsAt, 200_000);
+        assert.deepEqual(activity?.media, [
+            { url: "https://cdn.example/art.png", label: "Album art" },
+            { url: "data:image/svg+xml,%3Csvg/%3E" },
+        ]);
+    });
+
+    it("drops an end that cannot follow the start", () => {
+        const activity = validateNativeActivity({ type: "playing", name: "VLC", startedAt: 2000, endsAt: 1000 });
+        assert.equal(activity?.startedAt, 2000);
+        assert.equal(activity?.endsAt, undefined);
+    });
 });
 
 describe("LineFramer", () => {

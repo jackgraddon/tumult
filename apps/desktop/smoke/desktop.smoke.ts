@@ -493,13 +493,26 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
             "the Discord IPC sink never completed a handshake",
         );
 
+        const now = Date.now();
         socket.write(
             encodeDiscordFrame(DISCORD_OP.FRAME, {
                 cmd: "SET_ACTIVITY",
                 nonce: "smoke-set",
                 args: {
                     pid: 1,
-                    activity: { type: 2, name: "Cider", details: "IPC Song", state: "IPC Artist" },
+                    activity: {
+                        type: 2,
+                        name: "Cider",
+                        details: "IPC Song",
+                        state: "IPC Artist",
+                        timestamps: { start: now - 30_000, end: now + 90_000 },
+                        assets: {
+                            large_image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23646ffb'/%3E%3C/svg%3E",
+                            large_text: "Album art",
+                            small_image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23f0b232'/%3E%3C/svg%3E",
+                            small_text: "Cider badge",
+                        },
+                    },
                 },
             }),
         );
@@ -512,6 +525,20 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await line.waitFor({ timeout: 10_000 });
         assert.match(await line.innerText(), /Listening to IPC Song/);
         assert.equal(await line.getAttribute("data-activity-type"), "listening");
+
+        // The same native document reaches the profile card for our own member:
+        // Discord artwork and start/end times are not dropped on the way in.
+        const selfMember = page.locator(".tumult-member", { has: page.locator(".tumult-member-name", { hasText: /^Demo/ }) }).first();
+        await selfMember.locator(".tumult-member-main").click();
+        const card = page.locator(".tumult-profile-card", { has: page.locator(".tumult-profile-card-id", { hasText: "@demo:example.com" }) }).first();
+        await card.waitFor({ state: "visible", timeout: 10_000 });
+        const cardActivity = card.locator(".tumult-profile-card-activity");
+        await cardActivity.waitFor({ timeout: 10_000 });
+        assert.equal(await cardActivity.getAttribute("data-activity-renderer"), "cc.jackg.tumult.activity");
+        assert.equal(await cardActivity.locator("img[data-activity-media]").count(), 2);
+        assert.equal(await cardActivity.locator("[data-activity-progress]").count(), 1);
+        await page.keyboard.press("Escape");
+        await card.waitFor({ state: "hidden", timeout: 5_000 });
 
         socket.write(
             encodeDiscordFrame(DISCORD_OP.FRAME, {

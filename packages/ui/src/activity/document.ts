@@ -16,6 +16,18 @@ export const ACTIVITY_FIELD_KEY = "app.tumult.activity";
 export const ACTIVITY_TYPES = ["playing", "listening", "watching", "custom"] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
+/**
+ * One bounded image attached to an activity. Two at most: a large artwork and
+ * an optional small badge, the way Discord draws rich presence. The URL is a
+ * loadable `https:`/`http:`/`mxc:` URL (or a small `data:image/` URL); it is
+ * always put in an `<img src>`, never in CSS, so hostile profile JSON cannot
+ * inject markup or styles.
+ */
+export interface ActivityMedia {
+    readonly url: string;
+    readonly label?: string;
+}
+
 /** The structural shape of the shell's native feed — no plugin import needed. */
 export interface NativeActivityLike {
     type: string;
@@ -24,6 +36,8 @@ export interface NativeActivityLike {
     state?: string;
     emoji?: string;
     startedAt?: number;
+    endsAt?: number;
+    media?: readonly ActivityMedia[];
 }
 
 export interface ActivityDocument {
@@ -34,6 +48,8 @@ export interface ActivityDocument {
     state?: string;
     emoji?: string;
     startedAt?: number;
+    endsAt?: number;
+    media?: readonly ActivityMedia[];
 }
 
 export interface ActivityInput {
@@ -43,9 +59,12 @@ export interface ActivityInput {
     state?: string;
     emoji?: string;
     startedAt?: number;
+    endsAt?: number;
+    media?: readonly ActivityMedia[];
 }
 
-const LIMITS = { name: 128, details: 128, state: 128, emoji: 16 } as const;
+const LIMITS = { name: 128, details: 128, state: 128, emoji: 16, mediaLabel: 128, url: 2048 } as const;
+const MEDIA_MAX = 2;
 
 function optionalText(value: unknown, limit: number): string | undefined {
     if (value === undefined || value === null) return undefined;
@@ -65,6 +84,40 @@ function invalidOptional(value: unknown, parsed: string | undefined): boolean {
     return parsed === undefined;
 }
 
+function validMediaUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const url = value.trim();
+    if (!url || url.length > LIMITS.url) return undefined;
+    if (url.startsWith("mxc://")) return url;
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") return url;
+        // Small inline images are useful for fixture data and native producers
+        // that already hold bytes; the length cap keeps profile JSON bounded.
+        if (parsed.protocol === "data:" && /^data:image\//i.test(url)) return url;
+    } catch {
+        // Not a URL at all.
+    }
+    return undefined;
+}
+
+/** `undefined` means absent; `null` means the document must be refused. */
+function parseMedia(value: unknown): readonly ActivityMedia[] | undefined | null {
+    if (value === undefined || value === null) return undefined;
+    if (!Array.isArray(value) || value.length > MEDIA_MAX) return null;
+    const out: ActivityMedia[] = [];
+    for (const entry of value) {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
+        const raw = entry as Record<string, unknown>;
+        const url = validMediaUrl(raw["url"]);
+        if (!url) return null;
+        const label = optionalText(raw["label"], LIMITS.mediaLabel);
+        if (invalidOptional(raw["label"], label)) return null;
+        out.push(label ? { url, label } : { url });
+    }
+    return out.length ? out : undefined;
+}
+
 function isType(value: unknown): value is ActivityType {
     return typeof value === "string" && (ACTIVITY_TYPES as readonly string[]).includes(value);
 }
@@ -80,6 +133,8 @@ export function parseActivity(value: unknown): ActivityDocument | null {
     const state = optionalText(raw["state"], LIMITS.state);
     const emoji = optionalText(raw["emoji"], LIMITS.emoji);
     const startedAt = validTimestamp(raw["startedAt"]);
+    const endsAt = validTimestamp(raw["endsAt"]);
+    const media = parseMedia(raw["media"]);
     // Empty optional strings normalize to "absent", exactly like the released
     // plugin's validator. An over-long or wrongly typed value is still refused
     // rather than silently dropped, so bad field data is never rendered.
@@ -87,7 +142,20 @@ export function parseActivity(value: unknown): ActivityDocument | null {
     if (invalidOptional(raw["state"], state)) return null;
     if (invalidOptional(raw["emoji"], emoji)) return null;
     if (raw["startedAt"] !== undefined && startedAt === undefined) return null;
-    return { v: 1, type: raw["type"], name, ...(details ? { details } : {}), ...(state ? { state } : {}), ...(emoji ? { emoji } : {}), ...(startedAt !== undefined ? { startedAt } : {}) };
+    if (raw["endsAt"] !== undefined && endsAt === undefined) return null;
+    if (endsAt !== undefined && startedAt !== undefined && endsAt < startedAt) return null;
+    if (media === null) return null;
+    return {
+        v: 1,
+        type: raw["type"],
+        name,
+        ...(details ? { details } : {}),
+        ...(state ? { state } : {}),
+        ...(emoji ? { emoji } : {}),
+        ...(startedAt !== undefined ? { startedAt } : {}),
+        ...(endsAt !== undefined ? { endsAt } : {}),
+        ...(media ? { media } : {}),
+    };
 }
 
 /** Build a document from the settings form, throwing only on a bad name. */
@@ -98,6 +166,9 @@ export function createActivity(input: ActivityInput, now = Date.now()): Activity
     const details = optionalText(input.details, LIMITS.details);
     const state = optionalText(input.state, LIMITS.state);
     const emoji = optionalText(input.emoji, LIMITS.emoji);
+    const endsAt = validTimestamp(input.endsAt);
+    const media = parseMedia(input.media);
+    if (media === null) throw new Error("Attach at most two valid activity images.");
     return {
         v: 1,
         type,
@@ -106,6 +177,8 @@ export function createActivity(input: ActivityInput, now = Date.now()): Activity
         ...(state ? { state } : {}),
         ...(emoji ? { emoji } : {}),
         startedAt: validTimestamp(input.startedAt) ?? now,
+        ...(endsAt !== undefined ? { endsAt } : {}),
+        ...(media ? { media } : {}),
     };
 }
 
@@ -125,8 +198,16 @@ export function sameActivity(a: ActivityDocument | null, b: ActivityDocument | n
         a.details === b.details &&
         a.state === b.state &&
         a.emoji === b.emoji &&
-        a.startedAt === b.startedAt
+        a.startedAt === b.startedAt &&
+        a.endsAt === b.endsAt &&
+        mediaEqual(a.media, b.media)
     );
+}
+
+function mediaEqual(a: readonly ActivityMedia[] | undefined, b: readonly ActivityMedia[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((item, i) => item.url === b[i]!.url && item.label === b[i]!.label);
 }
 
 const HEADLINES: Record<ActivityType, string> = {
@@ -160,4 +241,38 @@ export function activityElapsed(value: ActivityDocument, now = Date.now()): stri
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
     return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+export interface ActivityProgress {
+    /** 0–100, clamped — an inline bar width never needs an unbounded value. */
+    readonly percent: number;
+    readonly elapsed: string;
+    readonly duration: string;
+    readonly ended: boolean;
+}
+
+function clockTime(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const rest = String(seconds % 60).padStart(2, "0");
+    return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
+}
+
+/**
+ * A bounded, live progress view. Both ends must be present: an `endsAt` alone
+ * would put a countdown on a card with no start, and a `startedAt` alone keeps
+ * the existing "elapsed" text rather than inventing a duration.
+ */
+export function activityProgress(value: ActivityDocument, now = Date.now()): ActivityProgress | null {
+    if (value.startedAt === undefined || value.endsAt === undefined) return null;
+    const duration = value.endsAt - value.startedAt;
+    if (duration <= 0) return null;
+    const elapsed = Math.max(0, Math.min(duration, now - value.startedAt));
+    return {
+        percent: Math.min(100, Math.max(0, (elapsed / duration) * 100)),
+        elapsed: clockTime(elapsed),
+        duration: clockTime(duration),
+        ended: now >= value.endsAt,
+    };
 }

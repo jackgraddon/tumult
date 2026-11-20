@@ -18,12 +18,20 @@
  * `net` listening side and the `NATIVE_ACTIVITY_IPC` broadcast on top of it.
  */
 
+/** One bounded image in a native activity — two at most, large one first. */
+export interface NativeActivityMedia {
+    /** A loadable `https:`/`http:`/`mxc:` URL (or a small `data:image/` URL). */
+    url: string;
+    /** Alt text / hover label for the image. */
+    label?: string;
+}
+
 /**
  * One native/RPC activity, the rich-presence vocabulary on the wire. Mirrors the
- * rich-presence plugin's `NativeActivity` (and the feed's same-named type): the
- * host has no notion of a `source` or `assets`, because producers coordinate
- * client-side (last-writer-wins), the way a manual `/activity` and a native one
- * do. Field caps are enforced by the producer before it reaches the host, and
+ * UI feed's `NativeActivity`: the host has no notion of a `source`, because
+ * producers coordinate client-side. Images arrive as at most two bounded URLs,
+ * not bytes, so the renderer can use the existing media pipeline. Field caps are
+ * enforced by the producer before it reaches the host, and
  * {@link validateNativeActivity} re-checks them so a malformed push never lands
  * on the feed.
  */
@@ -38,6 +46,10 @@ export interface NativeActivity {
     state?: string;
     /** Epoch milliseconds the activity started, when the caller knows it. */
     startedAt?: number;
+    /** Epoch milliseconds the activity ends — enables a live progress bar. */
+    endsAt?: number;
+    /** Up to two images (album art, game banner, small badge), in draw order. */
+    media?: NativeActivityMedia[];
     /** A short emoji to show by the headline. */
     emoji?: string;
 }
@@ -45,15 +57,49 @@ export interface NativeActivity {
 /** The rich-presence types a native app may push. */
 export const NATIVE_ACTIVITY_TYPES = ["playing", "listening", "watching", "custom"] as const;
 
-/** Field caps, kept in sync with the rich-presence plugin's `LIMITS`. */
+/** Field caps, kept in sync with the first-party activity document. */
 const NAME_MAX = 128;
 const LINE_MAX = 256;
 const EMOJI_MAX = 32;
+const MEDIA_LABEL_MAX = 128;
+const MEDIA_URL_MAX = 2048;
+const MEDIA_MAX = 2;
 
 /** A single wire message: a `set` with a `value`, or a bare `clear`. */
 export interface NativeActivityMessage {
     op: "set" | "clear";
     value?: unknown;
+}
+
+function validMediaUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const url = value.trim();
+    if (!url || url.length > MEDIA_URL_MAX) return undefined;
+    if (url.startsWith("mxc://")) return url;
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") return url;
+        if (parsed.protocol === "data:" && /^data:image\//i.test(url)) return url;
+    } catch {
+        // Not a URL at all.
+    }
+    return undefined;
+}
+
+/** Tolerant by design: a bad image is dropped, never a reason to lose the text. */
+function validateMedia(value: unknown): NativeActivityMedia[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out: NativeActivityMedia[] = [];
+    for (const entry of value) {
+        if (out.length >= MEDIA_MAX) break;
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+        const raw = entry as Record<string, unknown>;
+        const url = validMediaUrl(raw["url"]);
+        if (!url) continue;
+        const label = trimLen(raw["label"], MEDIA_LABEL_MAX);
+        out.push(label ? { url, label } : { url });
+    }
+    return out.length ? out : undefined;
 }
 
 /**
@@ -77,12 +123,25 @@ export function validateNativeActivity(raw: unknown): NativeActivity | null {
     const details = trimLen(any.details, LINE_MAX);
     const state = trimLen(any.state, LINE_MAX);
     const emoji = trimLen(any.emoji, EMOJI_MAX);
+    const startedAt = validMs(any.startedAt);
+    let endsAt = validMs(any.endsAt);
+    if (startedAt !== undefined) {
+        activity.startedAt = startedAt;
+        if (endsAt !== undefined && endsAt <= startedAt) endsAt = undefined;
+    }
     // `exactOptionalPropertyTypes`: only ever set when non-empty.
     if (details) activity.details = details;
     if (state) activity.state = state;
     if (emoji) activity.emoji = emoji;
-    if (typeof any.startedAt === "number" && Number.isFinite(any.startedAt)) activity.startedAt = any.startedAt as number;
+    if (endsAt !== undefined) activity.endsAt = endsAt;
+    const media = validateMedia(any.media);
+    if (media) activity.media = media;
     return activity;
+}
+
+/** Epoch milliseconds only; a negative or non-finite timestamp is not useful. */
+function validMs(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 /** Trim and cap a string field; empty or non-string → `undefined` (dropped). */

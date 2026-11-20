@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { ChatClient, MemberView } from "@tumult/core/contract";
 
 import { useProfileSections } from "./profileSections.ts";
+import { useActivity } from "./activity.ts";
 import { presenceLabel } from "./presenceLabel.ts";
 import Avatar from "../primitives/Avatar.vue";
 
@@ -14,6 +15,9 @@ const props = defineProps<{
 
 const sections = useProfileSections();
 const resolved = computed(() => sections.resolve(props.member));
+// One more activity subscription, but only while this card is open. The card is
+// the one surface with room for artwork and progress; member rows stay one line.
+const resolvedActivity = useActivity(() => props.member.userId);
 const label = computed(() => presenceLabel(props.member));
 const statusMessage = computed(() => props.member.statusMessage);
 </script>
@@ -34,6 +38,18 @@ const statusMessage = computed(() => props.member.statusMessage);
         <p class="tumult-profile-card-status">
             {{ label }}<template v-if="statusMessage"> · {{ statusMessage }}</template>
         </p>
+        <section
+            v-if="resolvedActivity"
+            class="tumult-profile-card-activity"
+            :data-activity-renderer="resolvedActivity.renderer.id"
+        >
+            <component
+                :is="resolvedActivity.renderer.component"
+                :user-id="member.userId"
+                :value="resolvedActivity.value"
+                variant="card"
+            />
+        </section>
         <template v-if="resolved.length">
             <section v-for="section in resolved" :key="section.id" class="tumult-profile-card-section">
                 <component :is="section.component" :member="member" :room-id="roomId" :client="client" />
@@ -91,6 +107,13 @@ const statusMessage = computed(() => props.member.statusMessage);
     margin: 0;
     color: var(--text-secondary);
     font-size: var(--text-sm);
+}
+
+.tumult-profile-card-activity {
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--space-2);
+    border-top: var(--border-width) solid var(--border-default);
 }
 
 .tumult-profile-card-section {

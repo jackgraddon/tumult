@@ -126,6 +126,40 @@ function object(value: unknown): Record<string, unknown> | null {
         : null;
 }
 
+/** Discord sends epoch milliseconds; some producers still send seconds. */
+function discordTimestamp(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+    return value > 1e12 ? value : value * 1000;
+}
+
+const ASSET_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Resolve the image keys Discord producers use into a URL our `<img>` can load.
+ * External URLs pass through (the shared native validator screens the scheme);
+ * `mp:` media-proxy keys, app asset ids and the common service prefixes become
+ * their public image URLs. Anything else is left out — an opaque key without an
+ * application id is not guessable, and a producer's garbage is never rendered.
+ */
+function assetUrl(value: unknown, applicationId: unknown): string | undefined {
+    const key = text(value);
+    if (!key) return undefined;
+    if (key.startsWith("mxc://") || /^(https?:\/\/|data:image\/)/i.test(key)) return key;
+    const app = text(applicationId);
+    if (key.startsWith("mp:")) return `https://media.discordapp.net/${key.slice(3)}`;
+    if (key.startsWith("spotify:")) {
+        const id = key.slice(8);
+        return ASSET_ID.test(id) ? `https://i.scdn.co/image/${id}` : undefined;
+    }
+    if (key.startsWith("youtube:")) {
+        const id = key.slice(8);
+        return ASSET_ID.test(id) ? `https://img.youtube.com/vi/${id}/0.jpg` : undefined;
+    }
+    return app && ASSET_ID.test(app) && ASSET_ID.test(key)
+        ? `https://cdn.discordapp.com/app-assets/${app}/${key}.png`
+        : undefined;
+}
+
 /** Discord's activity types: Playing, Streaming, Listening, Watching, Competing. */
 function activityType(value: unknown): NativeActivity["type"] | null {
     switch (value) {
@@ -160,8 +194,9 @@ function activityType(value: unknown): NativeActivity["type"] | null {
  * Music producers put the track in `details` and the artist in `state`, so for
  * listening activities the track becomes the headline ("Listening to X") and
  * the artist the second line. For games the Discord `name` (the application)
- * is the headline. Extra Discord-only fields (party, secrets, images) are
- * deliberately dropped: our renderer draws a one-line status, not a card.
+ * is the headline. Artwork and start/end timestamps are carried through as
+ * bounded images and progress; party, secrets and other Discord-only fields
+ * are dropped.
  */
 export function activityFromSetActivity(payload: Record<string, unknown> | null): DiscordActivityChange {
     if (!payload || payload.cmd !== "SET_ACTIVITY") return { kind: "ignore" };
@@ -194,16 +229,19 @@ export function activityFromSetActivity(payload: Record<string, unknown> | null)
     if (!name) return { kind: "ignore" };
 
     const timestamps = object(discord.timestamps);
-    const start = timestamps?.start;
-    // Discord's timestamps are epoch MILLISECONDS. Some producers still send
-    // seconds; anything this large is already ms, so multiplying it would put
-    // the elapsed counter decades in the future.
-    const startedAt =
-        typeof start === "number" && Number.isFinite(start) && start > 0
-            ? start > 1e12
-                ? start
-                : start * 1000
-            : undefined;
+    const startedAt = discordTimestamp(timestamps?.start);
+    const endsAt = discordTimestamp(timestamps?.end);
+
+    // The large asset is the artwork; the small one is a badge. Keep at most two,
+    // in that order, and use the hover text as alt text where Discord supplies it.
+    const media: NonNullable<NativeActivity["media"]> = [];
+    const applicationId = discord.application_id;
+    for (const [imageKey, labelKey] of [["large_image", "large_text"], ["small_image", "small_text"]] as const) {
+        const url = assetUrl(assets?.[imageKey], applicationId);
+        if (!url || media.some((item) => item.url === url)) continue;
+        const label = text(assets?.[labelKey]);
+        media.push(label ? { url, label } : { url });
+    }
 
     const activity = validateNativeActivity({
         type,
@@ -211,6 +249,8 @@ export function activityFromSetActivity(payload: Record<string, unknown> | null)
         details: second === name ? undefined : second,
         state: type === "listening" && largeText && largeText !== name && largeText !== second ? largeText : undefined,
         startedAt,
+        endsAt,
+        ...(media.length ? { media } : {}),
         emoji,
     });
     return activity ? { kind: "set", activity } : { kind: "ignore" };
