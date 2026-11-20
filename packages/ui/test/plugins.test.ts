@@ -650,6 +650,32 @@ describe("nativeActivity is gated by the native-activity permission", () => {
         assert.deepEqual(seen[seen.length - 1]!, expected, "a declared plugin's subscription delivers");
     });
 
+    it("gives the legacy Rich Presence writer an empty feed, but other plugins the live one", () => {
+        const control = makeBridge(null);
+        const deps = makeDeps();
+        deps.nativeActivity = createNativeActivityFeed(control.bridge).feed;
+        const plugins = new PluginRegistry(deps);
+        const legacySeen: (NativeActivity | null)[] = [];
+        const otherSeen: (NativeActivity | null)[] = [];
+
+        plugins.install({
+            manifest: manifest({ id: "app.tumult.rich-presence", permissions: ["native-activity"] }),
+            install(ctx) {
+                return ctx.nativeActivity().subscribe((activity) => legacySeen.push(activity));
+            },
+        });
+        plugins.install({
+            manifest: manifest({ id: "other", permissions: ["native-activity"] }),
+            install(ctx) {
+                return ctx.nativeActivity().subscribe((activity) => otherSeen.push(activity));
+            },
+        });
+
+        control.emit({ type: "playing", name: "VLC" });
+        assert.deepEqual(legacySeen, [null], "the old last-write-wins mirror no longer sees native pushes");
+        assert.deepEqual(otherSeen, [null, { type: "playing", name: "VLC" }]);
+    });
+
     it("uninstall tears a plugin's own subscription down while the feed persists", () => {
         const control = makeBridge(null);
         const controller = createNativeActivityFeed(control.bridge);
@@ -687,5 +713,30 @@ describe("nativeActivity is gated by the native-activity permission", () => {
             { type: "custom", name: "after uninstall" },
             { type: "custom", name: "still alive" },
         ]);
+    });
+});
+
+describe("legacy Rich Presence compatibility", () => {
+    it("replaces the released plugin's settings tab with the shell's, but leaves other plugins' tabs alone", () => {
+        const deps = makeDeps();
+        const plugins = new PluginRegistry(deps);
+        plugins.install({
+            manifest: manifest({ id: "app.tumult.rich-presence", permissions: ["settings-tabs"] }),
+            install(ctx) {
+                ctx.addSettingsTab({ id: "app.tumult.rich-presence.settings", title: "Activity", component: PluginComp });
+            },
+        });
+        plugins.install({
+            manifest: manifest({ id: "other", permissions: ["settings-tabs"] }),
+            install(ctx) {
+                ctx.addSettingsTab({ id: "other.settings", title: "Activity", component: PluginComp });
+            },
+        });
+
+        assert.deepEqual(
+            deps.settingsTabs.all().map((tab) => tab.id),
+            ["other.settings"],
+            "one Activity surface wins, and it is not the legacy plugin's",
+        );
     });
 });

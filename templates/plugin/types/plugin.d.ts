@@ -1263,8 +1263,9 @@ export interface ActivityProps {
 }
 /**
  * Renders a user's activity from one extended-profile field (MSC4133), in
- * place of their status line. Tumult defines no activity schema of its own:
- * the field's shape belongs to whoever registers the renderer.
+ * place of their status line. The shell ships a first-party renderer for
+ * `app.tumult.activity`, but plugins may register their own field and shape;
+ * the highest-priority renderer that accepts a value wins.
  */
 export interface ActivityRenderer {
 	/** Stable, namespaced id — the registry keys by it. */
@@ -1308,7 +1309,8 @@ export declare function useActivityRenderers(): ActivityRenderersRegistry;
  * ordinary status line). Watches only the fields some renderer asks for, so a
  * shell with no activity plugin subscribes to nothing and fetches nothing.
  * The members pane mounts rows only for what the virtualizer renders, so
- * fields are fetched for visible members only.
+ * fields are fetched for visible members only. A shell with no plugin still
+ * reads the first-party field; a shell with no renderers at all reads nothing.
  */
 export declare function useActivity(userId: () => string): ComputedRef<ResolvedActivity | null>;
 /** Props every settings tab receives. */
@@ -1705,7 +1707,7 @@ interface Plugin$1 {
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export declare const PLUGIN_API_VERSION = "1.4.0";
+export declare const PLUGIN_API_VERSION = "1.4.1";
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its
  * leading integer (`"2-beta"` → 2, missing segments → 0); non-numeric text

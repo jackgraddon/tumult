@@ -7,8 +7,9 @@
  * build with vercel.json's headers, the meta CSP holds under app:// (no
  * violations, no console errors), the plugin sandbox frame boots opaque, a
  * native push (and a Discord-style IPC `SET_ACTIVITY`) travels through the
- * released Rich Presence plugin into the user bar's activity line, the
- * navigation guard keeps the window on app:// and
+ * shell-owned activity surface into the user bar (even with the released Rich
+ * Presence plugin installed), native activity outranks a manual one and its
+ * draft returns on clear, the navigation guard keeps the window on app:// and
  * hands http(s) to the OS, the permission handlers deny what they should, and
  * the MAS redirect is caught before the network and replayed into the app's
  * callback route.
@@ -369,12 +370,13 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         socket.destroy();
     });
 
-    it("mirrors a native activity through the released Rich Presence plugin into the user bar", async () => {
-        // The last link the bridge test cannot prove: a real plugin subscribes
-        // to ctx.nativeActivity(), mirrors the push into the extended profile,
-        // and its activity renderer wins the user bar's status line. Use the
-        // exact released bundle, checked against its manifest's hash, so this
-        // covers the artifact users install — not a stand-in with the same API.
+    it("gives native activity priority over a manual one, even with the released plugin installed", async () => {
+        // The last link the bridge test cannot prove: a native push reaches the
+        // shell-owned document, its first-party renderer wins the user bar even
+        // though the old plugin is installed, and a manual draft returns when
+        // the producer clears. Use the exact released bundle, checked against
+        // its manifest's hash, so compatibility is tested against the artifact
+        // users actually install — not a stand-in with the same API.
         const fixtureDir = join(appRoot, "smoke", "fixtures", "rich-presence");
         const bundle = readFileSync(join(fixtureDir, "plugin.js"), "utf8");
         const manifestText = readFileSync(join(fixtureDir, "tumult.plugin.json"), "utf8");
@@ -419,27 +421,67 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
             .waitFor({ timeout: 10_000 });
         await page.keyboard.press("Escape");
 
+        const activityLine = page.locator(".tumult-userbar .tumult-activity--self");
+        const waitForText = async (expected: string): Promise<void> => {
+            const deadline = Date.now() + 10_000;
+            while (Date.now() < deadline) {
+                if ((await activityLine.count()) > 0 && (await activityLine.innerText()).includes(expected)) return;
+                await page.waitForTimeout(100);
+            }
+            assert.fail(`the user bar never showed "${expected}": ${await activityLine.allInnerTexts()}`);
+        };
+        const openActivitySettings = async (): Promise<void> => {
+            // A failed assertion above must not leave the full-screen dialog
+            // covering the gear for every later test.
+            if (await page.locator(".tumult-settings").count()) {
+                await page.keyboard.press("Escape");
+                await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+            }
+            await page.locator(".tumult-userbar-gear").click();
+            await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+            // The released plugin also contributes a tab called "Activity".
+            // Target ours by the id Reka carries in the trigger's generated id.
+            await page.locator('button[role="tab"][id$="trigger-cc.jackg.tumult.activity"]').click();
+        };
+        const closeSettings = async (): Promise<void> => {
+            await page.keyboard.press("Escape");
+            await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+        };
+
+        // Save a manual document first: it is the one a producer must outrank,
+        // and the one that must come back when the producer stops.
+        await openActivitySettings();
+        await page.locator("#tumult-activity-name").fill("Saved Album");
+        await page.getByRole("button", { name: "Save activity" }).click();
+        await waitForText("Saved Album");
+        await closeSettings();
+
         // Push like a co-located native app would. The renderer only mounts
         // when the profile field holds a valid activity document, so seeing
-        // "Playing VLC" proves the whole chain: RPC → bridge → plugin →
-        // extended profile → shell activity slot → DOM.
+        // "Playing VLC" proves the whole chain: RPC → bridge → shell controller
+        // → extended profile → first-party activity slot → DOM.
         const socket = await connectNative();
         await socket.write(JSON.stringify({ op: "set", value: { type: "playing", name: "VLC", details: "Test" } }) + "\n");
-        const line = page.locator(".tumult-rp-activity--self");
-        await line.waitFor({ timeout: 10_000 });
-        assert.match(await line.innerText(), /Playing VLC/);
-        assert.equal(await line.getAttribute("data-activity-type"), "playing");
+        await waitForText("Playing VLC");
+        assert.equal(await activityLine.getAttribute("data-activity-type"), "playing");
+        assert.equal(await page.locator(".tumult-rp-activity--self").count(), 0, "the old plugin's renderer must not shadow ours");
 
         await socket.write(JSON.stringify({ op: "clear" }) + "\n");
-        await line.waitFor({ state: "detached", timeout: 10_000 });
+        await waitForText("Saved Album");
         socket.destroy();
+
+        // Leave no manual activity behind for the IPC test that follows.
+        await openActivitySettings();
+        await page.getByRole("button", { name: "Clear", exact: true }).click();
+        await activityLine.waitFor({ state: "detached", timeout: 10_000 });
+        await closeSettings();
     });
 
-    it("mirrors Discord IPC SET_ACTIVITY through the released plugin into the user bar", async () => {
+    it("mirrors Discord IPC SET_ACTIVITY through the shell's native feed into the user bar", async () => {
         // The second producer feeding the same native activity bridge: a
         // Discord-style app handshakes over our dedicated IPC endpoint and sends
-        // SET_ACTIVITY. No plugin or renderer change is involved — the released
-        // Rich Presence bundle installed above consumes the shared feed.
+        // SET_ACTIVITY. The first-party controller consumes the shared feed; the
+        // released plugin installed above is deliberately kept out of it.
         const socket = await connectDiscordIpc();
         const framer = new DiscordFrameFramer();
         const received: DiscordFrame[] = [];
@@ -466,7 +508,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
             "the Discord IPC sink never acknowledged SET_ACTIVITY",
         );
 
-        const line = page.locator(".tumult-rp-activity--self");
+        const line = page.locator(".tumult-userbar .tumult-activity--self");
         await line.waitFor({ timeout: 10_000 });
         assert.match(await line.innerText(), /Listening to IPC Song/);
         assert.equal(await line.getAttribute("data-activity-type"), "listening");

@@ -127,6 +127,15 @@ describe("activityFromSetActivity", () => {
         );
     });
 
+    it("leaves millisecond timestamps alone (Cider sends ms)", () => {
+        const change = activityFromSetActivity({
+            cmd: "SET_ACTIVITY",
+            args: { activity: { type: 2, name: "Cider", details: "Song", timestamps: { start: 1_795_204_516_255 } } },
+        });
+        assert.equal(change.kind, "set");
+        if (change.kind === "set") assert.equal(change.activity.startedAt, 1_795_204_516_255);
+    });
+
     it("keeps the application name as the headline for games and shows details below", () => {
         assert.deepEqual(
             activityFromSetActivity({

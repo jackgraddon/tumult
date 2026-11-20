@@ -18,6 +18,19 @@ import type {
 } from "./types.ts";
 import { checkManifestCompatibility } from "./compat.ts";
 import { createPluginApi } from "./api.ts";
+import { emptyNativeActivityFeed } from "./native-activity.ts";
+
+/**
+ * The released Rich Presence bundle (v0.2.0) mirrors `ctx.nativeActivity()`
+ * into the same profile field the shell now owns. Its last-write-wins clear was
+ * the bug this first-party controller replaces, so it must not get the live
+ * feed any more, and its duplicate settings page is replaced by the shell's.
+ * Its renderer and command keep working on the shell's document; only the
+ * competing writers are removed. The feed is empty rather than absent so the
+ * plugin's immediate-null clear path stays a no-op.
+ */
+const LEGACY_NATIVE_ACTIVITY_PLUGIN = "app.tumult.rich-presence";
+const legacyNativeActivityFeed = emptyNativeActivityFeed();
 
 interface InstalledPlugin {
     plugin: Plugin;
@@ -126,6 +139,7 @@ export class PluginRegistry {
      */
     public install(plugin: Plugin): void {
         const id = plugin.manifest.id;
+        const legacyActivityPlugin = id === LEGACY_NATIVE_ACTIVITY_PLUGIN;
         if (this.installed.has(id)) {
             throw new Error(`[tumult] plugin "${id}" is already installed`);
         }
@@ -160,14 +174,18 @@ export class PluginRegistry {
             addMemberDecoration: (decoration) => this.addMemberDecoration(decoration),
             addProfileSection: (section) => this.addProfileSection(section),
             addActivityRenderer: (renderer) => this.addActivityRenderer(renderer),
-            addSettingsTab: (tab) => this.addSettingsTab(tab),
+            // The released bundle's manual page is the surface this shell now
+            // owns. Keep its renderer/command compatibility, but do not put a
+            // second "Activity" tab in settings: both would write one field.
+            addSettingsTab: (tab) => (legacyActivityPlugin ? () => {} : this.addSettingsTab(tab)),
             addPane: (pane) => this.addPane(pane),
             // The manifest id is the stylesheet's owner, so a failed install
             // and a later uninstall both remove exactly this plugin's styles.
             injectStylesheet: (css) => this.deps.injectStylesheet(css, id),
-            // The shell's native feed (live on desktop, empty on web). The gate
-            // lives in the API layer; here we only supply the feed.
-            nativeActivity: () => this.deps.nativeActivity,
+            // The shell's native feed (live on desktop, empty on web). The one
+            // legacy writer gets an empty feed: Activity is shell-owned now.
+            // The gate lives in the API layer; here we only supply the feed.
+            nativeActivity: () => (legacyActivityPlugin ? legacyNativeActivityFeed : this.deps.nativeActivity),
             track,
         });
         const ctx: PluginContext = {

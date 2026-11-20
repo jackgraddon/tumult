@@ -15,6 +15,10 @@ import { DraftsKey, createDraftStore } from "../timeline/drafts.ts";
 import { MemberDecorationsKey, MemberDecorationsRegistry } from "../members/decorations.ts";
 import { ProfileSectionsKey, ProfileSectionsRegistry } from "../members/profileSections.ts";
 import { ActivityRenderersKey, ActivityRenderersRegistry } from "../members/activity.ts";
+import ActivityLine from "../activity/ActivityLine.vue";
+import { ActivityController, ActivityControllerKey } from "../activity/controller.ts";
+import { ACTIVITY_FIELD_KEY, parseActivity } from "../activity/document.ts";
+import ActivitySettings from "../activity/ActivitySettings.vue";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { createNativeActivityFeed, type NativeActivityFeedController } from "../plugins/native-activity.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
@@ -241,6 +245,11 @@ const media = {
 // (the one declared bridge) and the feed is live; on the web it is undefined,
 // so the feed is empty and a native-presence plugin degrades to the status line.
 const nativeFeed: NativeActivityFeedController = createNativeActivityFeed(window.tumultNative);
+// Activity is first-party: the shell owns the document, the renderer and the
+// precedence rule. The native feed is the high-priority source; a released
+// plugin may still contribute its own renderer, but ours wins the same field.
+const activity = new ActivityController(props.client, nativeFeed.feed);
+provide(ActivityControllerKey, activity);
 const plugins = new PluginRegistry({
     client: props.client,
     timeline: registry,
@@ -282,6 +291,17 @@ plugins.addRenderer("m.room.message", {
 });
 plugins.addRenderer("m.room.message", { component: TextMessage, priority: 0 });
 
+// The first-party activity renderer outranks any plugin's renderer for the
+// same profile field, so a leftover Rich Presence plugin cannot restyle or
+// shadow the unified surface.
+activityRenderers.add({
+    id: "cc.jackg.tumult.activity",
+    key: ACTIVITY_FIELD_KEY,
+    component: ActivityLine,
+    priority: 100,
+    match: (value) => parseActivity(value) !== null,
+});
+
 // The shell's own settings pages, alongside whatever plugins contribute. Pages
 // render inside this shell's tree, so they can inject anything provided here.
 // The account menu deep-links to these ids (`openAppSettings`).
@@ -293,6 +313,13 @@ plugins.addSettingsTab({
     component: AccountPage,
     section: "account",
     priority: 10,
+});
+plugins.addSettingsTab({
+    id: "cc.jackg.tumult.activity",
+    title: "Activity",
+    component: ActivitySettings,
+    section: "account",
+    priority: 5,
 });
 plugins.addSettingsTab({
     id: SETTINGS_SECURITY,
@@ -349,6 +376,17 @@ defineExpose({ registry, plugins, hrefFor });
 const rooms = useSubscribable(props.client.rooms);
 const connection = useSubscribable(props.client.connection);
 const session = useSubscribable(props.client.session);
+// One controller per signed-in user. Native activity can arrive before the
+// profile field is ready, so starting on the session (not on opening settings)
+// is what makes RPC/IPC activity win from the first frame.
+watch(
+    () => session.value?.userId ?? null,
+    (userId) => {
+        if (userId) void activity.start(userId);
+        else activity.stop();
+    },
+    { immediate: true },
+);
 const security = useSubscribable(props.client.security);
 const verification = useSubscribable(props.client.verification);
 
@@ -661,6 +699,8 @@ onBeforeUnmount(() => {
     // Plugins are per-shell: unmount takes every installed one down with it
     // (renderers unregistered, teardowns run) so a re-mount starts clean.
     plugins.uninstallAll();
+    // Stop the activity controller before the feed it reads is torn down.
+    activity.stop();
     // Tear the native feed's bridge subscription down too: the preload's bridge
     // outlives this shell, so a re-mount (logout → login) must not stack feeds
     // onto the same bridge.

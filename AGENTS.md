@@ -202,6 +202,15 @@ chat client should be.
   open. The row's one-line subtitle falls back to `member.statusMessage` when no
   activity renderer claims it (`members/presenceLabel.ts` owns the presence
   wording, shared by the row and the card).
+- Activity is first-party (`packages/ui/src/activity/`), not a plugin:
+  `ActivityController` owns `app.tumult.activity`, publishes native RPC/IPC over
+  the user's manual draft, restores that draft when the producer clears, and
+  mirrors a plain status line only while the shell owns it. `ActivityLine` is
+  registered at priority 100 so a leftover Rich Presence plugin cannot shadow
+  it, and `plugins/registry.ts` withholds that released plugin's live native feed
+  and duplicate settings tab. Web and desktop share one document and one
+  Activity settings page; the native half is desktop-only via the existing
+  `window.tumultNative` bridge.
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite. The registry gates

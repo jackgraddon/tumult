@@ -579,6 +579,31 @@ describe("browser smoke test (fake client)", () => {
         );
     });
 
+    it("saves a first-party activity from settings and shows it in the user bar", async () => {
+        // The unified surface is shell-owned on web as well as desktop: the
+        // settings form writes the same `app.tumult.activity` field the first-
+        // party renderer reads. The native feed is empty here, so this is the
+        // manual half of the precedence rule end to end.
+        await page.locator(".tumult-userbar-gear").click();
+        const dialog = page.locator(".tumult-settings");
+        await dialog.getByRole("tab", { name: "Activity" }).click();
+
+        await dialog.locator("#tumult-activity-name").fill("Tetris");
+        await dialog.locator("#tumult-activity-details").fill("Browser smoke");
+        await dialog.getByRole("button", { name: "Save activity" }).click();
+
+        const line = page.locator(".tumult-userbar .tumult-activity--self");
+        await line.waitFor({ timeout: 10_000 });
+        assert.match(await line.innerText(), /Playing Tetris/);
+        assert.match(await line.innerText(), /Browser smoke/);
+        assert.equal(await line.getAttribute("data-activity-type"), "playing");
+
+        await dialog.getByRole("button", { name: "Clear", exact: true }).click();
+        await line.waitFor({ state: "detached", timeout: 10_000 });
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden", timeout: 5_000 });
+    });
+
     it("clicks a member row to open a read-only profile card, closed by Escape", async () => {
         // The fake seeds Alice's `cc.jackg.tumult.profile-showcase` field; the
         // fake-only `profileShowcase` plugin draws it as a block on her card.
@@ -695,7 +720,7 @@ describe("browser smoke test (fake client)", () => {
         const tabNames = await page.locator(".tumult-settings-tab").allTextContents();
         assert.deepEqual(
             tabNames.map((name) => name.trim()),
-            ["My Account", "Security", "Appearance", "Voice", "Themes", "Installed", "Plugin demo"],
+            ["My Account", "Activity", "Security", "Appearance", "Voice", "Themes", "Installed", "Plugin demo"],
             "the sidebar is not the shell's pages plus the plugin's",
         );
         // A plugin page that names no section lands under the Plugins heading.

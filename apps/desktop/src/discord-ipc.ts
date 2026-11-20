@@ -195,7 +195,15 @@ export function activityFromSetActivity(payload: Record<string, unknown> | null)
 
     const timestamps = object(discord.timestamps);
     const start = timestamps?.start;
-    const startedAt = typeof start === "number" && Number.isFinite(start) && start > 0 ? start * 1000 : undefined;
+    // Discord's timestamps are epoch MILLISECONDS. Some producers still send
+    // seconds; anything this large is already ms, so multiplying it would put
+    // the elapsed counter decades in the future.
+    const startedAt =
+        typeof start === "number" && Number.isFinite(start) && start > 0
+            ? start > 1e12
+                ? start
+                : start * 1000
+            : undefined;
 
     const activity = validateNativeActivity({
         type,

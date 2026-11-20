@@ -774,9 +774,13 @@ plugins should use names — emoji do not follow the theme's colour.
 ### 5.8 `addActivityRenderer(renderer)` — `activity-renderers`
 
 Draws a user's **activity** ("Playing Chess · 12m") in place of their status
-line, from one of their extended-profile fields (MSC4133, see §6). Tumult
-defines no activity format: the field and its shape belong to the plugin that
-registers the renderer, so vanilla Tumult stays spec-only.
+line, from one of their extended-profile fields (MSC4133, see §6). The shell
+ships a first-party document and renderer for `app.tumult.activity` — that is
+the unified surface both the manual Activity settings page and the desktop
+native feed publish to. Plugins may still register their own field and shape;
+the highest-priority renderer that accepts a value wins, and the first-party
+one deliberately uses a high priority so it cannot be shadowed by an older
+plugin on the same field.
 
 ```ts
 addActivityRenderer(renderer: ActivityRenderer): Disposable
@@ -798,8 +802,9 @@ Where it draws:
 | `self` | the user bar's status line (still a button that opens the status editor) | one line |
 
 The shell reads only the fields some renderer asks for, and only for members
-the virtualizer has mounted — a shell with no activity plugin fetches nothing.
-The winner is the highest-priority renderer whose field is non-null and whose
+the virtualizer has mounted — a shell with no renderers at all fetches nothing,
+while the stock shell always has its first-party renderer. The winner is the
+highest-priority renderer whose field is non-null and whose
 `match` accepts it (a throwing `match` counts as a refusal). With no winner the
 surface falls back to what the shell already knows: the **status message** —
 next to the name on a member row, on the user bar's status line — and nothing
@@ -849,9 +854,17 @@ The feed is **shell-owned and shared** across every plugin that declares
 subscribes is responsible for returning that subscription's disposer from its
 `install()` so uninstall tears it down — the registry does not track it, because
 the feed outlives any single install. A `null` value is a *clear*, delivered
-like any other value. No `source`/`assets` discriminator on the activity:
-producers coordinate client-side (last write wins), the same way a manual
-`/activity` and a native one would.
+like any other value. No `source`/`assets` discriminator on the activity.
+
+The shell itself is now the primary consumer: it publishes native activity to
+`app.tumult.activity` while a producer is live, holds the user's manual document
+as a draft, and restores that draft when the producer clears. A plugin may use
+the feed for its own surfaces, but must not implement a second last-write-wins
+writer on the first-party field. For that reason the released
+`app.tumult.rich-presence` v0.2.0 bundle is deliberately handed an **empty**
+feed, and its duplicate settings tab is not registered: its renderer and command
+still work on the shell's document, but its old native mirror and manual page
+cannot race the shell-owned controller.
 
 ```ts
 const feed = ctx.nativeActivity();
