@@ -630,7 +630,7 @@ describe("nativeActivity is gated by the native-activity permission", () => {
         const plugins = new PluginRegistry(deps);
 
         let feedA: NativeActivityFeed | null = null;
-        let seen: (NativeActivity | null)[] = [];
+        const seen: (NativeActivity | null)[] = [];
         plugins.install({
             manifest: manifest({ id: "a", permissions: ["native-activity"] }),
             install(ctx) {
