@@ -21,6 +21,7 @@ import { app, BrowserWindow, desktopCapturer, net, protocol, screen, session, sh
 import type { Session, WebContents } from "electron";
 
 import { callbackTarget, DESKTOP_REDIRECT_URI, isAuthorizationRequest } from "./auth.ts";
+import { startDiscordIpcServer, type DiscordIpcServer } from "./discord-ipc-server.ts";
 import { pluginAssetResponse } from "./plugin-asset.ts";
 import { askingOrigin, callOriginFrom, externalUrl, isAppUrl, loginPending, originOf, permissionAllowed } from "./policy.ts";
 import { NATIVE_ACTIVITY_IPC, resolveNativeActivityPort, startNativeActivityServer, type NativeActivity, type NativeActivityServer } from "./native-activity.ts";
@@ -229,10 +230,13 @@ const WEB_PREFERENCES = {
  */
 const PRELOAD = join(__dirname, "preload.cjs");
 
-// The loopback RPC a native app on this machine connects to. It starts in
-// `whenReady` and closes on `will-quit`; `currentNative` is the last value the
-// feed held, seeded into every window when it loads so a late subscriber sees it.
+// Two producers feed the one native activity bridge: Tumult's own newline-JSON
+// loopback RPC, and a Discord-compatible IPC sink for apps that already publish
+// rich presence that way. Both start in `whenReady`, close on `will-quit`, and
+// publish through `broadcastNative`; `currentNative` is the last value the feed
+// held, seeded into every window so a late subscriber sees it.
 let nativeServer: NativeActivityServer | null = null;
+let discordIpcServer: DiscordIpcServer | null = null;
 let currentNative: NativeActivity | null = null;
 
 /** A native SET/CLEAR: remember it and push it to every window's bridge. */
@@ -377,6 +381,18 @@ app.whenReady().then(() => {
         })
         .catch((error: unknown) => console.error("[tumult] native activity server failed to start", error));
 
+    // A second, Discord-compatible producer: apps that already speak Discord IPC
+    // can publish presence without a Tumult-specific integration. It uses the
+    // same feed, so the plugin and renderer cannot tell the two sources apart.
+    // If every index is occupied (Discord and others are running), the bridge is
+    // simply absent — the same graceful degradation as a taken RPC port.
+    void startDiscordIpcServer({ onActivity: broadcastNative })
+        .then((server) => {
+            discordIpcServer = server;
+            console.info(`[tumult] Discord IPC listening on ${server.path}`);
+        })
+        .catch((error: unknown) => console.info("[tumult] Discord IPC sink not started", error));
+
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) mainWindow = createMainWindow();
     });
@@ -389,8 +405,10 @@ app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
 });
 
-// Release the loopback RPC's port when the app quits so a native app — or the
-// next launch — finds it free; closing on will-quit avoids a TIME_WAIT window.
+// Release both producer endpoints when the app quits: the RPC's port (so a
+// native app — or the next launch — finds it free; will-quit avoids a TIME_WAIT
+// window) and our Discord IPC socket path (so no stale socket is left behind).
 app.on("will-quit", () => {
     void nativeServer?.close();
+    void discordIpcServer?.close();
 });

@@ -90,11 +90,12 @@ language-agnostic: a native process opens a loopback connection to a `node:net`
 server the desktop app runs, and pushes one newline-terminated frame per change.
 
 - **The server** (`src/native-activity.ts`, pure of Electron): a loopback
-  `127.0.0.1` listener on an ephemeral `0` port. Each frame it reads is validated
-  and broadcast to the app's renderer over `NATIVE_ACTIVITY_IPC`, which the
-  context-isolated `src/preload.ts` surfaces as `window.tumultNative` — the one
-  bridge the shell allows. The server is pure of Electron and unit-tested with a
-  real `node:net` client.
+  `127.0.0.1` listener on port `18731` (overridable with
+  `TUMULT_NATIVE_ACTIVITY_PORT`). Each frame it reads is validated and broadcast
+  to the app's renderer over `NATIVE_ACTIVITY_IPC`, which the context-isolated
+  `src/preload.ts` surfaces as `window.tumultNative` — the one bridge the shell
+  allows. The server is pure of Electron and unit-tested with a real `node:net`
+  client.
 - **The wire** (`src/native-wire.ts`, Electron- and IPC-free): the message shape,
   validation, newline framing and port choice, shared by both sides so they
   cannot drift. A native app links *this* module; it is free of `node:net`,
@@ -113,6 +114,22 @@ server the desktop app runs, and pushes one newline-terminated frame per change.
 - **Port choice** (`resolveNativeActivityPort`): default `18731`, overridable by
   `TUMULT_NATIVE_ACTIVITY_PORT`. A co-located app finds the port; a port
   `0`/blank/non-numeric falls back to the default.
+- **Discord-compatible IPC** (`src/discord-ipc.ts` and
+  `src/discord-ipc-server.ts`): the second producer, for apps that already
+  publish rich presence over Discord IPC (Cider, games, editors). Tumult is a
+  *sink*, not a Discord client: it accepts the handshake, framed `SET_ACTIVITY`
+  and `PING` commands, maps Discord's activity types to ours, and publishes to
+  the **same** native feed. The plugin and renderer need no changes, and Discord
+  itself is never contacted or impersonated.
+- **IPC coexistence**: Tumult listens on `discord-ipc-0` when that index is free
+  — with Discord closed, producers find it with their usual 0–9 scan and no
+  configuration. If Discord (or another RPC server) owns index 0, Tumult takes
+  the next free index so Discord keeps working as the fallback; a producer that
+  must reach Tumult can be pointed at one with `TUMULT_DISCORD_IPC_PATH`,
+  `DISCORD_IPC_PATH` or `DISCORD_IPC_SOCKET` (Flatpak apps need the env set in
+  their own sandbox). Music producers normally put the track in `details` and
+  the artist in `state`; those become the "Listening to …" headline and second
+  line, with `assets.large_text` as the album.
 - **The reference demo** (`demo/native-activity.ts`, dev-only — a real
   detector would replace it): a small Node/Node-TS client that pushes a
   demo activity and quits. Not in
@@ -125,6 +142,16 @@ server the desktop app runs, and pushes one newline-terminated frame per change.
 
   On exit the demo clears the feed (the "the app quit, so the activity goes away"
   path); a running app keeps it up.
+- **The Discord IPC demo** (`demo/discord-ipc.ts`, dev-only) does the same through
+  the Discord-compatible endpoint, so you can check the sink without configuring
+  Cider:
+
+  ```
+  pnpm --filter @tumult/desktop demo:discord-ipc --details "Song" --state "Artist" --album "Record" --duration 5
+  ```
+
+  It handshakes, sends a real `SET_ACTIVITY`, waits for Tumult's reply, then
+  clears on the timer or on Ctrl-C. `--clear` sends only the clear.
 
 ## Dev-only environment
 

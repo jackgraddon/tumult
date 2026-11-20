@@ -22,6 +22,7 @@
     "pretest:smoke": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts --fake && node scripts/build.ts",
     "test:smoke": "node --test --import tsx smoke/desktop.smoke.ts",
     "demo:activity": "node demo/native-activity.ts",
+    "demo:discord-ipc": "node demo/discord-ipc.ts",
     "icons": "electron scripts/render-icons.cjs",
     "prepackage": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts && node scripts/build.ts",
     "package": "electron-builder --config electron-builder.config.cjs",

@@ -1191,6 +1191,20 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
     - No CSP violations or console errors on login or the shell.
     - Plugin sandbox frame: `src="/sandbox.html"`, `self.origin === "null"`,
       no localStorage.
+- **Discord IPC sink** (`apps/desktop/src/discord-ipc.ts` +
+  `discord-ipc-server.ts`): Discord-style producers (Cider, games, editors)
+  already speak framed JSON over `discord-ipc-N`, so the desktop also listens on
+  one of those indices and maps `SET_ACTIVITY` into the SAME native activity feed
+  the loopback TCP RPC publishes. No plugin/renderer change: the Rich Presence
+  plugin consumes the shared bridge. It is a dedicated endpoint, not a Discord
+  proxy — Discord IPC has no "watch another app" command — so Tumult takes index
+  0 when free (zero user config with Discord closed), otherwise the next free
+  index (Discord stays the fallback), and
+  `TUMULT_DISCORD_IPC_PATH`/`DISCORD_IPC_PATH`/`DISCORD_IPC_SOCKET` bind an exact
+  path. Music's `details`/`state`/`assets.large_text` become track/artist/album.
+  Framing, stale-socket reclaim, last-writer ownership and mapping are unit
+  tested; the desktop smoke suite drives a real Discord-style producer through
+  the released plugin into the user bar.
 - **Desktop web build = `VITE_DESKTOP=1`**, the ONLY behavioural difference.
   `chat.real.ts` then registers `DESKTOP_REDIRECT_URI`
   (`http://127.0.0.1/auth/callback`, in `apps/web/src/desktop.ts`, which the

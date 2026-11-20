@@ -6,8 +6,9 @@
  * What it proves that unit tests cannot: the app:// scheme really serves the
  * build with vercel.json's headers, the meta CSP holds under app:// (no
  * violations, no console errors), the plugin sandbox frame boots opaque, a
- * native push travels through the released Rich Presence plugin into the user
- * bar's activity line, the navigation guard keeps the window on app:// and
+ * native push (and a Discord-style IPC `SET_ACTIVITY`) travels through the
+ * released Rich Presence plugin into the user bar's activity line, the
+ * navigation guard keeps the window on app:// and
  * hands http(s) to the OS, the permission handlers deny what they should, and
  * the MAS redirect is caught before the network and replayed into the app's
  * callback route.
@@ -17,6 +18,7 @@
  * xvfb.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -31,6 +33,9 @@ import { fileURLToPath } from "node:url";
 
 import type { ElectronApplication, Page } from "playwright";
 import { _electron as electron } from "playwright";
+
+import { DISCORD_OP, DiscordFrameFramer, encodeDiscordFrame } from "../src/discord-ipc.ts";
+import type { DiscordFrame } from "../src/discord-ipc.ts";
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
@@ -59,6 +64,14 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     let nativePort = 0;
     const idpHits: string[] = [];
     const userData = mkdtempSync(join(tmpdir(), "tumult-desktop-smoke-"));
+    // A dedicated Discord IPC endpoint for this run: a Unix socket in the fresh
+    // profile, or a uniquely named pipe on Windows. The app binds exactly this
+    // path, so the test can act as a Discord-style producer without touching a
+    // real Discord install.
+    const discordIpcPath =
+        process.platform === "win32"
+            ? `\\\\.\\pipe\\tumult-smoke-discord-${randomUUID()}`
+            : join(userData, "discord-ipc.sock");
     const consoleErrors: string[] = [];
 
     before(async () => {
@@ -103,6 +116,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
                 TUMULT_WEB_ROOT: join(appRoot, "web-fake"),
                 TUMULT_USER_DATA_DIR: userData,
                 TUMULT_NATIVE_ACTIVITY_PORT: String(nativePort),
+                TUMULT_DISCORD_IPC_PATH: discordIpcPath,
             },
         });
 
@@ -178,6 +192,32 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
                 if (Date.now() >= deadline) throw new Error("the native activity RPC server never accepted a connection");
                 await new Promise((resolve) => setTimeout(resolve, 100));
             }
+        }
+    }
+
+    /** Open the dedicated Discord IPC endpoint the app was told to bind. */
+    async function connectDiscordIpc(): Promise<Socket> {
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            try {
+                return await new Promise((resolve, reject) => {
+                    const socket = connect(discordIpcPath);
+                    socket.once("error", reject);
+                    socket.once("connect", () => resolve(socket));
+                });
+            } catch {
+                if (Date.now() >= deadline) throw new Error("the Discord IPC sink never accepted a connection");
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
+    }
+
+    /** Poll a page-side or in-test condition with the same deadline as other waits. */
+    async function until(condition: () => boolean, message: string): Promise<void> {
+        const deadline = Date.now() + 10_000;
+        while (!condition()) {
+            if (Date.now() >= deadline) throw new Error(message);
+            await new Promise((resolve) => setTimeout(resolve, 25));
         }
     }
 
@@ -391,6 +431,57 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         assert.equal(await line.getAttribute("data-activity-type"), "playing");
 
         await socket.write(JSON.stringify({ op: "clear" }) + "\n");
+        await line.waitFor({ state: "detached", timeout: 10_000 });
+        socket.destroy();
+    });
+
+    it("mirrors Discord IPC SET_ACTIVITY through the released plugin into the user bar", async () => {
+        // The second producer feeding the same native activity bridge: a
+        // Discord-style app handshakes over our dedicated IPC endpoint and sends
+        // SET_ACTIVITY. No plugin or renderer change is involved — the released
+        // Rich Presence bundle installed above consumes the shared feed.
+        const socket = await connectDiscordIpc();
+        const framer = new DiscordFrameFramer();
+        const received: DiscordFrame[] = [];
+        socket.on("data", (chunk) => received.push(...framer.push(chunk)));
+
+        socket.write(encodeDiscordFrame(DISCORD_OP.HANDSHAKE, { v: 1, client_id: "smoke-producer" }));
+        await until(
+            () => received.some((frame) => frame.payload?.evt === "READY"),
+            "the Discord IPC sink never completed a handshake",
+        );
+
+        socket.write(
+            encodeDiscordFrame(DISCORD_OP.FRAME, {
+                cmd: "SET_ACTIVITY",
+                nonce: "smoke-set",
+                args: {
+                    pid: 1,
+                    activity: { type: 2, name: "Cider", details: "IPC Song", state: "IPC Artist" },
+                },
+            }),
+        );
+        await until(
+            () => received.some((frame) => frame.payload?.nonce === "smoke-set"),
+            "the Discord IPC sink never acknowledged SET_ACTIVITY",
+        );
+
+        const line = page.locator(".tumult-rp-activity--self");
+        await line.waitFor({ timeout: 10_000 });
+        assert.match(await line.innerText(), /Listening to IPC Song/);
+        assert.equal(await line.getAttribute("data-activity-type"), "listening");
+
+        socket.write(
+            encodeDiscordFrame(DISCORD_OP.FRAME, {
+                cmd: "SET_ACTIVITY",
+                nonce: "smoke-clear",
+                args: { pid: 1, activity: null },
+            }),
+        );
+        await until(
+            () => received.some((frame) => frame.payload?.nonce === "smoke-clear"),
+            "the Discord IPC sink never acknowledged the clear",
+        );
         await line.waitFor({ state: "detached", timeout: 10_000 });
         socket.destroy();
     });

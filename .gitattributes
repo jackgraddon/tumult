@@ -1,0 +1,4 @@
+# The desktop smoke test installs this released plugin bundle verbatim and checks
+# it against the SHA-256 in its released manifest. Git must not rewrite its line
+# endings on checkout: CRLF changed the bytes and broke the Windows smoke test.
+apps/desktop/smoke/fixtures/rich-presence/* binary
