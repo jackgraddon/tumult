@@ -26,7 +26,7 @@
 import { lstat, unlink } from "node:fs/promises";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { posix } from "node:path";
 
 import {
     activityFromSetActivity,
@@ -66,8 +66,11 @@ export function discordIpcSocketPaths(
     const prefixes = [env.XDG_RUNTIME_DIR, env.TMPDIR, env.TMP, env.TEMP, tmpdir(), "/tmp"]
         .filter((prefix): prefix is string => typeof prefix === "string" && prefix.trim().length > 0)
         .filter((prefix, index, all) => all.indexOf(prefix) === index);
+    // POSIX joining even when this module is imported on Windows: the platform
+    // argument describes the socket namespace being generated (and is how the
+    // unit test checks the Unix order on any host), not the host's path spelling.
     return prefixes.flatMap((prefix) =>
-        Array.from({ length: IPC_INDEXES }, (_, index) => join(prefix, `discord-ipc-${index}`)),
+        Array.from({ length: IPC_INDEXES }, (_, index) => posix.join(prefix, `discord-ipc-${index}`)),
     );
 }
 
