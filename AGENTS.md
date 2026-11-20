@@ -1300,6 +1300,24 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
     (`"Network;Chat;InstantMessaging"`). VERIFIED by unpacking the deb:
     `entry.Categories` shipped as `Network;`, then `Utility;`.
   - `desktopName` + `syncDesktopName` give `StartupWMClass=tumult`.
+- **Manual updates** (`src/updater.ts`, `src/update-state.ts`, `src/launcher.ts`,
+  Settings → Updates): the second narrow bridge (`window.tumultUpdater`) after
+  native activity. The main process owns one bundled `electron-updater`; the
+  renderer only sees immutable snapshots and may ask for `check`/`download`/
+  `install`. `autoDownload` and `autoInstallOnAppQuit` are off — no request or
+  ~120 MB download happens behind the user's back. Only an AppImage (`APPIMAGE`
+  set) or Windows NSIS can self-update; deb/rpm gets an honest unsupported note
+  and `TUMULT_UPDATE_URL` is a dev/test loopback override. AppImage updates with
+  a versioned filename emit `appimage-filename-updated`, and `src/launcher.ts`
+  repoints user `.desktop` entries that still name the old path.
+  electron-builder's GitHub provider in `electron-builder.config.cjs` writes
+  `resources/app-update.yml` plus `latest-linux.yml` / `latest.yml` (AppImage
+  blockmaps are embedded); CI attaches that metadata with the packages to the
+  draft, and GitHub's `/releases/latest` ignoring drafts is the maintainer's
+  publish gate. VERIFIED: the desktop smoke suite serves a loopback generic
+  feed and drives Settings → Updates through the real bridge into an
+  `available` snapshot; failures go through `reportError`. NOT verified: a
+  public published feed (there is no GitHub release yet).
 - **NOT verified:**
   - Windows at all (NSIS build, run).
   - The full Linux desktop session (Wayland/X11) with a fresh build — the

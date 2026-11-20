@@ -5,9 +5,10 @@
  * proxy, `vercel.json`'s rules and the shared desktop constants — and a bundle
  * is what lets the packaged app carry no `node_modules` at all.
  *
- * A second bundle, the one native bridge the shell breaks its bridge-less
- * stance for: `src/preload.ts` → `dist/preload.cjs`, the context-isolated
- * `window.tumultNative` the main window loads (the auth child window loads none).
+ * A second bundle, the context-isolated preload the shell breaks its
+ * bridge-less stance for: `src/preload.ts` → `dist/preload.cjs`, exposing only
+ * `window.tumultNative` and `window.tumultUpdater` to the main window (the auth
+ * child window loads none).
  */
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -41,9 +42,9 @@ await build({
 });
 
 /**
- * The native bridge the shell breaks its bridge-less stance for: the main
- * window's `preload.cjs` (a sandbox, context-isolated `contextBridge` exposing
- * `window.tumultNative`), built alongside `main.cjs` from the same source.
+ * The two narrow native bridges: the main window's `preload.cjs` (a sandbox,
+ * context-isolated `contextBridge` exposing `window.tumultNative` and
+ * `window.tumultUpdater`), built alongside `main.cjs` from the same source.
  */
 await build({
     entryPoints: [join(appRoot, "src", "preload.ts")],

@@ -3,29 +3,35 @@
  *
  * A shell, not a second app: it serves `apps/web`'s production build from the
  * privileged scheme `app://tumult/` (never `file://`), and owns what a browser
- * would otherwise own — navigation, permissions, the screen picker and the MAS
- * login redirect.
+ * would otherwise own — navigation, permissions, the screen picker, the MAS
+ * login redirect and manual app updates.
  *
- * It also runs the one native bridge the shell breaks its bridge-less stance for:
- * a loopback RPC a native app (`src/native-activity.ts`) connects to, relayed to
- * each window's `contextBridge` preload (`src/preload.ts`) as `window.tumultNative`.
- * The page itself gets no Node and no arbitrary bridge — only that one declared
- * value through `contextBridge` — so the app is still the web app by default. The
+ * It also runs the two narrow bridges the shell breaks its bridge-less stance
+ * for: a loopback RPC a native app (`src/native-activity.ts`) connects to,
+ * relayed to each window's `contextBridge` preload (`src/preload.ts`) as
+ * `window.tumultNative`; and the updater (`src/updater.ts`), exposed as
+ * `window.tumultUpdater`. The page itself gets no Node and no arbitrary bridge —
+ * only those declared values through `contextBridge` — so the app is still the
+ * web app by default. The
  * pure policy lives in `protocol.ts`, `auth.ts`, `policy.ts` and `native-activity.ts`
  * (all unit tested); this file wires them to Electron.
  */
 import { stat, readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
-import { app, BrowserWindow, desktopCapturer, net, protocol, screen, session, shell } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, screen, session, shell } from "electron";
 import type { Session, WebContents } from "electron";
 
+import { UPDATER_IPC } from "../../web/src/desktop.ts";
+import type { UpdateSnapshot } from "../../../packages/ui/src/updater/bridge.ts";
 import { callbackTarget, DESKTOP_REDIRECT_URI, isAuthorizationRequest } from "./auth.ts";
 import { startDiscordIpcServer, type DiscordIpcServer } from "./discord-ipc-server.ts";
 import { pluginAssetResponse } from "./plugin-asset.ts";
 import { askingOrigin, callOriginFrom, externalUrl, isAppUrl, loginPending, originOf, permissionAllowed } from "./policy.ts";
 import { NATIVE_ACTIVITY_IPC, resolveNativeActivityPort, startNativeActivityServer, type NativeActivity, type NativeActivityServer } from "./native-activity.ts";
 import { APP_ORIGIN, APP_SCHEME, contentTypeFor, requestPath, route } from "./protocol.ts";
+import { createUpdater, type UpdaterController } from "./updater.ts";
+import { unsupportedSnapshot } from "./update-state.ts";
 
 /** Defined by `scripts/build.ts` from the same env the web build reads. */
 declare const __TUMULT_ELEMENT_CALL_URL__: string;
@@ -223,10 +229,11 @@ const WEB_PREFERENCES = {
 } as const;
 
 /**
- * The one native bridge the shell breaks its bridge-less stance for. The main
- * window's preload surfaces the native activity feed as `window.tumultNative`
- * (`NativeActivityFeed`, via `plugins/native-activity.ts`); it lives in `dist/`
- * next to `main.cjs`, and the auth window gets none of it.
+ * The native bridges the shell breaks its bridge-less stance for. The main
+ * window's preload surfaces the activity feed as `window.tumultNative`
+ * (`NativeActivityFeed`, via `plugins/native-activity.ts`) and the updater as
+ * `window.tumultUpdater`; both live in `dist/` next to `main.cjs`, and the auth
+ * window gets neither.
  */
 const PRELOAD = join(__dirname, "preload.cjs");
 
@@ -238,6 +245,27 @@ const PRELOAD = join(__dirname, "preload.cjs");
 let nativeServer: NativeActivityServer | null = null;
 let discordIpcServer: DiscordIpcServer | null = null;
 let currentNative: NativeActivity | null = null;
+// The updater is a main-process controller. The preload forwards three commands
+// and mirrors its snapshots; the renderer never names a feed or a file.
+let updaterController: UpdaterController | null = null;
+
+/** Push every updater state change to every window's preload bridge. */
+function broadcastUpdate(snapshot: UpdateSnapshot): void {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send(UPDATER_IPC.update, snapshot);
+}
+
+function updateEnvironment() {
+    return { platform: process.platform, packaged: app.isPackaged, env: process.env };
+}
+
+// These are registered before `whenReady`, so the preload's synchronous
+// snapshot always has an answer, even during the first navigation.
+ipcMain.on(UPDATER_IPC.snapshot, (event) => {
+    event.returnValue = updaterController?.snapshot() ?? unsupportedSnapshot(updateEnvironment());
+});
+ipcMain.handle(UPDATER_IPC.check, () => updaterController?.check() ?? Promise.resolve(unsupportedSnapshot(updateEnvironment())));
+ipcMain.handle(UPDATER_IPC.download, () => updaterController?.download() ?? Promise.resolve(unsupportedSnapshot(updateEnvironment())));
+ipcMain.on(UPDATER_IPC.install, () => updaterController?.install());
 
 /** A native SET/CLEAR: remember it and push it to every window's bridge. */
 function broadcastNative(activity: NativeActivity | null): void {
@@ -370,6 +398,8 @@ app.whenReady().then(() => {
         }),
     );
     harden(session.defaultSession);
+    updaterController = createUpdater(updateEnvironment());
+    updaterController.onChange(broadcastUpdate);
     mainWindow = createMainWindow();
 
     // The loopback RPC a native app on this machine pushes activity through: the

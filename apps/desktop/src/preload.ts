@@ -1,28 +1,29 @@
 /**
- * The preload: the one declared native bridge the shell breaks its bridge-less
- * stance for (see `plugins/native-activity.ts`).
+ * The preload: the two declared native bridges the shell breaks its bridge-less
+ * stance for (see `plugins/native-activity.ts` and `updater/bridge.ts`).
  *
  * It runs in an ISOLATED world (Electron `contextIsolation`, on by default), so
  * it is NOT a `script-src`-governed script and the app's CSP is untouched — the
- * page never `import`s anything here. It exposes exactly one thing on `window`
+ * page never `import`s anything here. It exposes exactly two things on `window`
  * through {@link contextBridge}: `window.tumultNative`, the
- * `NativeActivityFeed` the shell builds via `createNativeActivityFeed`. It holds
- * the latest activity and a subscriber set, and the main process drives it over
- * {@link NATIVE_ACTIVITY_IPC}: a native `SET_ACTIVITY`/`CLEAR` the RPC server
- * accepted becomes an `ipcRenderer` send the preload turns into a feed change.
+ * `NativeActivityFeed` the shell builds via `createNativeActivityFeed`; and
+ * `window.tumultUpdater`, a narrow view of the main process's updater.
  *
- * The bridge is receive-only from the page: it reads a snapshot and subscribes.
- * The producer is the RPC client on the desktop main side, never a callback into
- * native from the renderer.
+ * The activity bridge is receive-only from the page: it reads a snapshot and
+ * subscribes, and the producer is the RPC client on the desktop main side. The
+ * updater bridge can carry three commands (check, download, install), but the
+ * main process owns every decision: the page cannot name a feed, a path or a
+ * process to launch.
  */
 
 import { contextBridge, ipcRenderer } from "electron";
 
-import { NATIVE_ACTIVITY_IPC } from "../../web/src/desktop.ts";
+import { NATIVE_ACTIVITY_IPC, UPDATER_IPC } from "../../web/src/desktop.ts";
 
-// The bridge's value type, the same shape the shell's `NativeActivityBridge`
-// reads. `import type` only — esbuild erases it, so the renderer-side preload
-// never pulls the RPC server's `node:net` module in.
+// The bridge value types, the same shapes the shell reads. `import type` only —
+// esbuild erases them, so the renderer-side preload never pulls Vue or the RPC
+// server's `node:net` module in.
+import type { UpdateSnapshot } from "../../../packages/ui/src/updater/bridge.ts";
 import type { NativeActivity } from "./native-activity.ts";
 
 /**
@@ -69,3 +70,42 @@ const bridge: TumultNativeBridge = {
 };
 
 contextBridge.exposeInMainWorld("tumultNative", bridge);
+
+/** Mirror `DesktopUpdaterBridge`: a snapshot, a change event and three commands. */
+interface TumultUpdaterBridge {
+    snapshot: () => UpdateSnapshot;
+    onUpdate: (callback: (snapshot: UpdateSnapshot) => void) => () => void;
+    check: () => Promise<UpdateSnapshot>;
+    download: () => Promise<UpdateSnapshot>;
+    install: () => void;
+}
+
+// `sendSync` is deliberate and bounded: it runs once, before any page script,
+// so the settings page can render the true state on its first frame without a
+// loading flicker. Every later change arrives on the push channel.
+let updateSnapshot: UpdateSnapshot = ipcRenderer.sendSync(UPDATER_IPC.snapshot) as UpdateSnapshot;
+const updateSubscribers = new Set<(snapshot: UpdateSnapshot) => void>();
+
+ipcRenderer.on(UPDATER_IPC.update, (_event, next: UpdateSnapshot) => {
+    updateSnapshot = next;
+    for (const callback of updateSubscribers) callback(next);
+});
+
+const updaterBridge: TumultUpdaterBridge = {
+    snapshot: () => updateSnapshot,
+    onUpdate(callback) {
+        updateSubscribers.add(callback);
+        callback(updateSnapshot);
+        let done = false;
+        return () => {
+            if (done) return;
+            done = true;
+            updateSubscribers.delete(callback);
+        };
+    },
+    check: () => ipcRenderer.invoke(UPDATER_IPC.check) as Promise<UpdateSnapshot>,
+    download: () => ipcRenderer.invoke(UPDATER_IPC.download) as Promise<UpdateSnapshot>,
+    install: () => ipcRenderer.send(UPDATER_IPC.install),
+};
+
+contextBridge.exposeInMainWorld("tumultUpdater", updaterBridge);

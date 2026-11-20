@@ -19,6 +19,8 @@ import ActivityLine from "../activity/ActivityLine.vue";
 import { ActivityController, ActivityControllerKey } from "../activity/controller.ts";
 import { ACTIVITY_FIELD_KEY, parseActivity } from "../activity/document.ts";
 import ActivitySettings from "../activity/ActivitySettings.vue";
+import { DesktopUpdaterKey } from "../updater/bridge.ts";
+import UpdaterTab from "../settings/UpdaterTab.vue";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { createNativeActivityFeed, type NativeActivityFeedController } from "../plugins/native-activity.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
@@ -242,9 +244,13 @@ const media = {
     resolveEncrypted: (file: EncryptedAttachment) => props.client.resolveEncryptedMedia(file),
 };
 // The native activity feed. On desktop the preload exposes `window.tumultNative`
-// (the one declared bridge) and the feed is live; on the web it is undefined,
+// (the declared desktop bridge) and the feed is live; on the web it is undefined,
 // so the feed is empty and a native-presence plugin degrades to the status line.
 const nativeFeed: NativeActivityFeedController = createNativeActivityFeed(window.tumultNative);
+// The desktop updater is the second narrow bridge. Web has no installer, so the
+// absence is a null provide and no Updates tab — never a half-wired page.
+const desktopUpdater = window.tumultUpdater ?? null;
+provide(DesktopUpdaterKey, desktopUpdater);
 // Activity is first-party: the shell owns the document, the renderer and the
 // precedence rule. The native feed is the high-priority source; a released
 // plugin may still contribute its own renderer, but ours wins the same field.
@@ -353,6 +359,19 @@ if (tryUseTheme()) {
         title: "Themes",
         component: ThemesTab,
         section: "app",
+    });
+}
+
+// The updater is desktop-only and bridge-gated: dev/unpackaged builds still
+// see the page (with an honest "installed builds" note), but a web tab gets no
+// fake controls.
+if (desktopUpdater) {
+    plugins.addSettingsTab({
+        id: "cc.jackg.tumult.updates",
+        title: "Updates",
+        component: UpdaterTab,
+        section: "app",
+        priority: 7,
     });
 }
 

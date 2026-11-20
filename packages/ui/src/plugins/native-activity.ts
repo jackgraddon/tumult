@@ -1,9 +1,9 @@
 /**
- * The native activity feed, and the one native bridge the shell wires it from.
+ * The native activity feed, and the bridge the shell wires it from.
  *
  * A browser tab cannot observe the operating system, so a "what app am I using"
  * signal simply does not exist on the web. On desktop the shell breaks the
- * bridge-less stance — deliberately, as one narrow, declared exception — by
+ * bridge-less stance — deliberately, as a narrow, declared exception — by
  * having the Electron main process accept a loopback RPC connection (a
  * `SET_ACTIVITY` / `CLEAR` from a native app) and broadcast it to its windows
  * over a `contextBridge` preload that exposes `window.tumultNative`. The preload

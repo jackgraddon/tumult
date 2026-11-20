@@ -8,8 +8,9 @@
  * violations, no console errors), the plugin sandbox frame boots opaque, a
  * native push (and a Discord-style IPC `SET_ACTIVITY`) travels through the
  * shell-owned activity surface into the user bar (even with the released Rich
- * Presence plugin installed), native activity outranks a manual one and its
- * draft returns on clear, the navigation guard keeps the window on app:// and
+ * Presence plugin installed), a Settings click runs a real update check through
+ * the updater bridge against a loopback feed, native activity outranks a manual
+ * one and its draft returns on clear, the navigation guard keeps the window on app:// and
  * hands http(s) to the OS, the permission handlers deny what they should, and
  * the MAS redirect is caught before the network and replayed into the app's
  * callback route.
@@ -19,7 +20,7 @@
  * xvfb.
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -60,6 +61,11 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     let page: Page;
     let idp: Server;
     let idpOrigin = "";
+    // A loopback generic update feed. The real electron-updater checks it in
+    // dev (forceDevUpdateConfig + TUMULT_UPDATE_URL), so a UI click exercises
+    // the whole bridge rather than a stub pretending an update was found.
+    let updateFeed: Server;
+    let updateOrigin = "";
     // The loopback port the app's native-activity RPC server binds (the bridge a
     // co-located native app could reach); the test drives it to relay a SET.
     let nativePort = 0;
@@ -99,6 +105,41 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await new Promise<void>((resolve) => idp.listen(0, "127.0.0.1", resolve));
         idpOrigin = `http://localhost:${(idp.address() as AddressInfo).port}`;
 
+        // `latest-linux.yml` is the channel file electron-updater asks a generic
+        // Linux feed for. Only the check is driven here — downloading would
+        // replace a real AppImage, which no test should do.
+        const updateBytes = Buffer.from("a tiny stand-in for an AppImage");
+        const updateSha512 = createHash("sha512").update(updateBytes).digest("base64");
+        const updateAsset = "Tumult-99.0.0-x86_64.AppImage";
+        const updateYaml = [
+            "version: 99.0.0",
+            "files:",
+            `  - url: ${updateAsset}`,
+            `    sha512: ${updateSha512}`,
+            `    size: ${updateBytes.length}`,
+            `path: ${updateAsset}`,
+            `sha512: ${updateSha512}`,
+            "releaseDate: '2026-11-20T00:00:00.000Z'",
+            "",
+        ].join("\n");
+        updateFeed = createServer((req, res) => {
+            const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+            if (path === "/latest-linux.yml") {
+                res.writeHead(200, { "Content-Type": "text/yaml" });
+                res.end(updateYaml);
+                return;
+            }
+            if (path === `/${updateAsset}`) {
+                res.writeHead(200, { "Content-Type": "application/octet-stream" });
+                res.end(updateBytes);
+                return;
+            }
+            res.writeHead(404);
+            res.end();
+        });
+        await new Promise<void>((resolve) => updateFeed.listen(0, "127.0.0.1", resolve));
+        updateOrigin = `http://127.0.0.1:${(updateFeed.address() as AddressInfo).port}`;
+
         // A loopback port a co-located native app could reach: the test drives
         // the app's native-activity RPC server through it. A throwaway server
         // picks a free ephemeral port; the app's server binds the same number.
@@ -118,6 +159,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
                 TUMULT_USER_DATA_DIR: userData,
                 TUMULT_NATIVE_ACTIVITY_PORT: String(nativePort),
                 TUMULT_DISCORD_IPC_PATH: discordIpcPath,
+                TUMULT_UPDATE_URL: `${updateOrigin}/`,
             },
         });
 
@@ -144,6 +186,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     after(async () => {
         await app?.close();
         await new Promise<void>((resolve) => (idp ? idp.close(() => resolve()) : resolve()));
+        await new Promise<void>((resolve) => (updateFeed ? updateFeed.close(() => resolve()) : resolve()));
         rmSync(userData, { recursive: true, force: true });
     });
 
@@ -176,6 +219,14 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     async function nativeSnapshot(): Promise<unknown> {
         return page.evaluate(() =>
             (window as unknown as { tumultNative?: { snapshot(): unknown } }).tumultNative?.snapshot() ?? null,
+        );
+    }
+
+    /** The main window's updater bridge — the second narrow native surface. */
+    async function updaterSnapshot(): Promise<{ phase: string; version?: string; message?: string }> {
+        return page.evaluate(() =>
+            (window as unknown as { tumultUpdater?: { snapshot(): { phase: string; version?: string; message?: string } } })
+                .tumultUpdater?.snapshot() ?? { phase: "missing" },
         );
     }
 
@@ -368,6 +419,53 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         }
         assert.equal(snapshot, null, "a native CLEAR must clear the bridge");
         socket.destroy();
+    });
+
+    it("runs a real update check from Settings through the desktop bridge", async () => {
+        // The second declared bridge. The main process owns electron-updater;
+        // the preload forwards a snapshot/change event and three commands. Here
+        // the feed is a loopback generic provider, but everything else is real:
+        // UI click → IPC → electron-updater → snapshot → UI.
+        const bridge = await page.evaluate(() => {
+            const target = window as unknown as {
+                tumultUpdater?: {
+                    snapshot(): unknown;
+                    onUpdate(callback: (snapshot: unknown) => void): () => void;
+                    check(): Promise<unknown>;
+                    download(): Promise<unknown>;
+                    install(): void;
+                };
+            };
+            return {
+                has: "tumultUpdater" in target,
+                methods: target.tumultUpdater
+                    ? [target.tumultUpdater.snapshot, target.tumultUpdater.onUpdate, target.tumultUpdater.check, target.tumultUpdater.download, target.tumultUpdater.install].map((fn) => typeof fn)
+                    : [],
+            };
+        });
+        assert.ok(bridge.has, "the main window must expose window.tumultUpdater");
+        assert.deepEqual(bridge.methods, ["function", "function", "function", "function", "function"]);
+        assert.deepEqual(await updaterSnapshot(), { phase: "idle" }, "a feed-configured dev build starts idle, not unsupported");
+
+        await page.locator(".tumult-userbar-gear").click();
+        await page.locator(".tumult-settings").waitFor({ timeout: 10_000 });
+        await page.locator('button[role="tab"][id$="trigger-cc.jackg.tumult.updates"]').click();
+        await page.locator('[data-testid="updater-check"]').click();
+
+        let snapshot = await updaterSnapshot();
+        const deadline = Date.now() + 15_000;
+        while (snapshot.phase !== "available" && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+            snapshot = await updaterSnapshot();
+        }
+        assert.deepEqual(snapshot, { phase: "available", version: "99.0.0" });
+        assert.match(await page.locator('[data-testid="updater-status"]').innerText(), /99\.0\.0/);
+        assert.equal(await page.locator('[data-testid="updater-error"]').count(), 0);
+        assert.equal(await page.locator('[data-testid="updater-download"]').count(), 1);
+        // Deliberately do not click Download: replacing the running AppImage is
+        // what a real release does, not what a smoke test should do.
+        await page.keyboard.press("Escape");
+        await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
     });
 
     it("gives native activity priority over a manual one, even with the released plugin installed", async () => {

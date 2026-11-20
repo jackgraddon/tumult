@@ -1611,8 +1611,8 @@ export interface NativeActivity {
  * a passive detection source) are doing. A browser tab cannot observe the
  * operating system, so on the web this is always empty: a consumer degrades to
  * the plain status line. On desktop the shell bridges a native
- * `window.tumultNative` (the one declared exception to the bridge-less shell)
- * into a live feed; see `native-activity.ts`.
+ * `window.tumultNative` (a declared exception to the bridge-less shell) into a
+ * live feed; see `native-activity.ts`.
  *
  * The feed is shell-owned and shared across plugins: a plugin that consumes it
  * subscribes through this method (which demands `native-activity`), and the

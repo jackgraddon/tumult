@@ -4,7 +4,7 @@
  *
  * The packaged app is three things: the main-process bundle (dist/), the
  * desktop web build (web/) and package.json. No node_modules: esbuild bundles
- * the main process and the package has no runtime dependencies.
+ * the main process (including electron-updater) and the package ships none.
  *
  * The version is the REPO's (root package.json, bumped by `pnpm release`),
  * injected here so the desktop package itself stays at 0.0.0 like the others
@@ -92,5 +92,14 @@ module.exports = {
         deleteAppDataOnUninstall: false,
         shortcutName: "Tumult",
     },
-    publish: null,
+    // Update metadata is generated at package time but never uploaded by the
+    // build: CI attaches it to the draft release with the binaries. Publishing
+    // that release is the maintainer's explicit gate. The public GitHub provider
+    // writes provider config into resources/app-update.yml; electron-updater
+    // reads that file, so the renderer cannot point the app at another feed.
+    publish: {
+        provider: "github",
+        owner: "jackgraddon",
+        repo: "tumult",
+    },
 };

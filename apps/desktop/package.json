@@ -25,7 +25,7 @@
     "demo:discord-ipc": "node demo/discord-ipc.ts",
     "icons": "electron scripts/render-icons.cjs",
     "prepackage": "pnpm --filter @tumult/core build && pnpm --filter @tumult/theme build && node scripts/build-web.ts && node scripts/build.ts",
-    "package": "electron-builder --config electron-builder.config.cjs",
+    "package": "electron-builder --config electron-builder.config.cjs --publish never",
     "dist:linux": "pnpm run prepackage && electron-builder --config electron-builder.config.cjs --linux AppImage deb rpm --x64 --publish never",
     "dist:win": "pnpm run prepackage && electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
   },
@@ -36,5 +36,9 @@
     "playwright": "^1.64.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.7"
+  },
+  "dependencies": {
+    "@tumult/core": "workspace:*",
+    "electron-updater": "6.8.12"
   }
 }

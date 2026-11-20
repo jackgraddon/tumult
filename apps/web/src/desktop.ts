@@ -42,3 +42,17 @@ export const DESKTOP_REDIRECT_URI = "http://127.0.0.1/auth/callback";
  * are the only two places that cross the main/preload boundary.
  */
 export const NATIVE_ACTIVITY_IPC = "tumult-native-activity";
+
+/**
+ * The IPC channels for the updater bridge. The main process owns the updater;
+ * the preload only forwards a snapshot, a change event and three commands.
+ * Kept here, alongside `NATIVE_ACTIVITY_IPC`, so the two processes cannot
+ * disagree on a channel name.
+ */
+export const UPDATER_IPC = {
+    snapshot: "tumult-updater-snapshot",
+    update: "tumult-updater-update",
+    check: "tumult-updater-check",
+    download: "tumult-updater-download",
+    install: "tumult-updater-install",
+} as const;

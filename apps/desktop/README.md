@@ -6,8 +6,9 @@ An Electron shell around `apps/web`. Targets **Linux** (AppImage, deb, rpm) and
 It is a shell, not a second app. The main process serves the web app's
 production build from the privileged scheme `app://tumult/` (never `file://`).
 It owns only what a browser would otherwise own: navigation, permissions, the
-screen picker and the MAS login redirect. There is **no preload**, so the page
-gets no Node and no bridge.
+screen picker, the MAS login redirect and update checks. The preload exposes no
+Node — only two narrow bridges on `window`: `tumultNative` for rich presence and
+`tumultUpdater` for the Settings → Updates page.
 
 ## Commands
 
@@ -60,7 +61,8 @@ client. See the comment in `apps/web/vite.config.ts`.
   system proxy applies.
 - **Hardening**:
   - Every window runs with `contextIsolation`, `sandbox` and `webSecurity`
-    on, `nodeIntegration` off, no `<webview>`, and no preload.
+    on, `nodeIntegration` off, no `<webview>`, and a context-isolated preload
+    that exposes only the two declared bridges.
   - `window.open` never opens a window. http(s) links go to the OS browser
     through `shell.openExternal`, and any other scheme is dropped.
   - The app window can only navigate within `app://tumult`.
@@ -81,9 +83,9 @@ client. See the comment in `apps/web/vite.config.ts`.
 
 ## Native activity / reference client
 
-The one bridge the shell breaks its bridge-less stance for: a native app on this
-machine can tell Tumult **what you are doing** (a game running, a track playing,
-a file open) so a plugin can show rich presence. Web has no equivalent, because
+One exception to the shell's bridge-less stance: a native app on this machine
+can tell Tumult **what you are doing** (a game running, a track playing, a file
+open) so a plugin can show rich presence. Web has no equivalent, because
 a tab cannot read another process — and passive focused-window detection is not
 cross-platform (it does not work on Wayland). So the producer is RPC-first and
 language-agnostic: a native process opens a loopback connection to a `node:net`
@@ -93,9 +95,9 @@ server the desktop app runs, and pushes one newline-terminated frame per change.
   `127.0.0.1` listener on port `18731` (overridable with
   `TUMULT_NATIVE_ACTIVITY_PORT`). Each frame it reads is validated and broadcast
   to the app's renderer over `NATIVE_ACTIVITY_IPC`, which the context-isolated
-  `src/preload.ts` surfaces as `window.tumultNative` — the one bridge the shell
-  allows. The server is pure of Electron and unit-tested with a real `node:net`
-  client.
+  `src/preload.ts` surfaces as `window.tumultNative` — one of the two bridges
+  the shell allows. The server is pure of Electron and unit-tested with a real
+  `node:net` client.
 - **The wire** (`src/native-wire.ts`, Electron- and IPC-free): the message shape,
   validation, newline framing and port choice, shared by both sides so they
   cannot drift. A native app links *this* module; it is free of `node:net`,
@@ -164,14 +166,43 @@ server the desktop app runs, and pushes one newline-terminated frame per change.
   It handshakes, sends a real `SET_ACTIVITY`, waits for Tumult's reply, then
   clears on the timer or on Ctrl-C. `--clear` sends only the clear.
 
+## Updates
+
+The second bridge is `window.tumultUpdater`, used only by **Settings → Updates**.
+The main process owns `electron-updater`; the settings page can ask for a check,
+a download and an install, and observe immutable snapshots. It cannot name a
+feed, a file path or a process to launch. Checks are **manual** — no request or
+~120 MB download happens behind the user's back. Failures go through
+`@tumult/core/errors`, so the page shows a sentence and the raw error is logged.
+
+- **AppImage and NSIS** installs replace themselves in place. AppImage updates
+  are only offered when `APPIMAGE` is set (a deb/rpm launch is owned by the
+  package manager and gets an honest unsupported note). When the new AppImage
+  changes filename, `src/launcher.ts` repoints user `.desktop` launchers that
+  named the old one; an update that silently broke the desktop icon would be
+  worse than no updater.
+- **Publishing**: electron-builder writes `resources/app-update.yml` and
+  `latest-linux.yml` / `latest.yml` from the GitHub provider in
+  `electron-builder.config.cjs`. CI attaches the metadata with the binaries to
+  the draft release; GitHub's `/releases/latest` ignores drafts, so publishing
+  that release is the explicit gate that makes an update visible. The updater
+  verifies the artifact's SHA-512, with AppImage blockmaps embedded in the
+  binary.
+- **Feed override**: `TUMULT_UPDATE_URL` points an unpackaged app at a generic
+  loopback feed. It is a dev/test switch; a packaged build always uses the
+  provider baked into `app-update.yml`.
+
 ## Dev-only environment
 
-These are ignored by a packaged app:
+These are ignored by a packaged app (except `TUMULT_UPDATE_URL`, which is
+ignored unless the app is unpackaged):
 
 - `TUMULT_WEB_ROOT`: serve this directory instead of the bundled `web/`. The
   smoke test uses it to serve `web-fake/`.
 - `TUMULT_USER_DATA_DIR`: use this profile directory. Unpackaged runs default
   to `<appData>/Tumult (dev)`, never the installed app's profile.
+- `TUMULT_UPDATE_URL`: point the updater at a loopback generic feed (the smoke
+  test drives a real check against one).
 
 ## CI
 
@@ -185,8 +216,10 @@ The built packages go two ways, on the run's type:
 - A **`v*` tag** attaches them as **raw release assets** to the draft GitHub
   release that `pnpm release` (scripts/release.ts) cut for that tag, so a user
   downloads the `.AppImage`/`.deb`/`.rpm`/`.exe` uncompressed rather than a zip.
-  The CI never publishes the draft: a maintainer flips it live once the
-  packages are attached (auto-update is a deliberate non-goal, above).
+  `latest-linux.yml`, `latest.yml` and any `.blockmap` files go with them; CI
+  fails the tag run if the channel file was not generated. The CI never
+  publishes the draft: a maintainer flips it live once the packages and update
+  metadata are attached, which is what makes the feed visible to clients.
 
 It needs the **repository variable** `VITE_CLIENT_URI`, which is a public URL,
 not a secret:
@@ -200,7 +233,7 @@ gh variable set VITE_CLIENT_URI --body https://tumult.example.org
 ## Deferred, deliberately (AGENTS.md v1 scope)
 
 - Tray.
-- Auto-update.
+- Silent/background auto-update (checks stay manual).
 - Deep links / custom URL scheme.
 - `safeStorage` for tokens: they stay in the origin's localStorage, as on web.
 - Code signing (Windows SmartScreen will warn).

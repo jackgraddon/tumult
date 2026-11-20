@@ -4,11 +4,12 @@ name: Desktop builds
 # and Windows (NSIS x64). On a v* tag the packages are attached as RAW release
 # assets to the release `pnpm release` cut for that tag (scripts/release.ts), so
 # they download uncompressed rather than as a zipped workflow artifact on the
-# Linux/Windows jobs. A branch push or a manual run has no tag, so there it falls
-# back to a zipped artifact (that is the only thing there to be). No update feed
-# is published: a draft the desktop CI never flips live — a maintainer does, once
-# the packages are attached — and auto-update is a deliberate non-goal (see the
-# README's deferred list).
+# Linux/Windows jobs. The update metadata files (`latest*.yml`, `.blockmap`) ride
+# along: electron-updater in a released AppImage/NSIS install reads the public
+# GitHub release feed. A branch push or a manual run has no tag, so there it
+# falls back to a zipped artifact (that is the only thing there to be). The CI
+# never publishes the draft — a maintainer flips it live once the packages and
+# metadata are attached.
 #
 # Build-time env: the desktop bundles a REAL-client web build, which needs
 # VITE_CLIENT_URI (apps/web/vite.config.ts fails the build without it). It is
@@ -50,15 +51,20 @@ jobs:
           - os: ubuntu-latest
             dist: dist:linux
             artifact: tumult-desktop-linux
+            metadata: apps/desktop/release/latest-linux.yml
             files: |
               apps/desktop/release/*.AppImage
               apps/desktop/release/*.deb
               apps/desktop/release/*.rpm
+              apps/desktop/release/latest-linux.yml
           - os: windows-latest
             dist: dist:win
             artifact: tumult-desktop-windows
+            metadata: apps/desktop/release/latest.yml
             files: |
               apps/desktop/release/*.exe
+              apps/desktop/release/latest.yml
+              apps/desktop/release/*.blockmap
     runs-on: ${{ matrix.os }}
     env:
       VITE_CLIENT_URI: ${{ vars.VITE_CLIENT_URI }}
@@ -149,6 +155,12 @@ jobs:
       run: |
         set -euo pipefail
         tag=${{ github.ref_name }}
+        metadata="${{ matrix.metadata }}"
+        if [ ! -f "$metadata" ]; then
+          echo "::error::$metadata was not generated; a released app would have no update feed."
+          exit 1
+        fi
+        echo "::notice::attaching update metadata $metadata"
         if ! gh release view "$tag" --json tagName >/dev/null 2>&1; then
           echo "::notice::release $tag not found; creating a draft for the packages"
           gh release create "$tag" --draft || true

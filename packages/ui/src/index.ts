@@ -28,6 +28,8 @@ export type {
     NativeActivityBridge,
     NativeActivityFeedController,
 } from "./plugins/native-activity.ts";
+export { DesktopUpdaterKey } from "./updater/bridge.ts";
+export type { DesktopUpdaterBridge, UpdatePhase, UpdateSnapshot } from "./updater/bridge.ts";
 export { sandboxPlugin } from "./plugins/sandbox/host.ts";
 export type { SandboxEntry, SandboxHost, SandboxTransport } from "./plugins/sandbox/host.ts";
 export { createFrameTransport, FRAME_BOOT_TIMEOUT_MS, FRAME_MESSAGE } from "./plugins/sandbox/frame.ts";

@@ -8,8 +8,9 @@
  * pushed to `origin`, and a DRAFT release is cut for the tag with the
  * version's CHANGELOG section as its notes. A maintainer flips it live once
  * the desktop CI (.github/workflows/desktop.yml, triggered by the tag push)
- * has attached the Linux/Windows packages — which it uploads RAW as release
- * assets, not as zipped workflow artifacts.
+ * has attached the Linux/Windows packages and their `latest*.yml` update
+ * metadata — all RAW release assets, not zipped workflow artifacts. Publishing
+ * the release is what makes that feed visible to electron-updater.
  *
  *   pnpm release              # conventional bump, push + draft release
  *   pnpm release v0.2.0       # cut that exact version
