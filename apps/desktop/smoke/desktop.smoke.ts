@@ -5,10 +5,12 @@
  *
  * What it proves that unit tests cannot: the app:// scheme really serves the
  * build with vercel.json's headers, the meta CSP holds under app:// (no
- * violations, no console errors), the plugin sandbox frame boots opaque, the
- * navigation guard keeps the window on app:// and hands http(s) to the OS, the
- * permission handlers deny what they should, and the MAS redirect is caught
- * before the network and replayed into the app's callback route.
+ * violations, no console errors), the plugin sandbox frame boots opaque, a
+ * native push travels through the released Rich Presence plugin into the user
+ * bar's activity line, the navigation guard keeps the window on app:// and
+ * hands http(s) to the OS, the permission handlers deny what they should, and
+ * the MAS redirect is caught before the network and replayed into the app's
+ * callback route.
  *
  * Run: `pnpm --filter @tumult/desktop test:smoke` (its `pretest:smoke` builds
  * core, theme, the fake web build and the main process). Linux CI runs it under
@@ -324,6 +326,72 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
             snapshot = await nativeSnapshot();
         }
         assert.equal(snapshot, null, "a native CLEAR must clear the bridge");
+        socket.destroy();
+    });
+
+    it("mirrors a native activity through the released Rich Presence plugin into the user bar", async () => {
+        // The last link the bridge test cannot prove: a real plugin subscribes
+        // to ctx.nativeActivity(), mirrors the push into the extended profile,
+        // and its activity renderer wins the user bar's status line. Use the
+        // exact released bundle, checked against its manifest's hash, so this
+        // covers the artifact users install — not a stand-in with the same API.
+        const fixtureDir = join(appRoot, "smoke", "fixtures", "rich-presence");
+        const bundle = readFileSync(join(fixtureDir, "plugin.js"), "utf8");
+        const manifestText = readFileSync(join(fixtureDir, "tumult.plugin.json"), "utf8");
+        const manifest = JSON.parse(manifestText) as { id: string; integrity: string };
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bundle));
+        assert.equal(
+            `sha256-${Buffer.from(digest).toString("base64")}`,
+            manifest.integrity,
+            "the Rich Presence fixture does not match its released manifest",
+        );
+
+        // Same two-legged stub as the sandbox install test: the release API is
+        // fetched by the page, the two assets by the main process's proxy.
+        await page.route(`https://api.github.com/repos/jackgraddon/${manifest.id}/releases/latest`, (route) =>
+            route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                headers: { "Access-Control-Allow-Origin": "*" },
+                body: JSON.stringify({ tag_name: "v0.2.0", assets: [{ name: "tumult.plugin.json" }, { name: "plugin.js" }] }),
+            }),
+        );
+        await app.evaluate(({ net }, payload) => {
+            net.fetch = async (input: string | Request) => {
+                const url = typeof input === "string" ? input : input.url;
+                if (url.endsWith("/tumult.plugin.json")) return new Response(payload.manifest, { headers: { "content-type": "application/json" } });
+                if (url.endsWith("/plugin.js")) return new Response(payload.bundle, { headers: { "content-type": "text/javascript" } });
+                return new Response("not found", { status: 404 });
+            };
+        }, { manifest: manifestText, bundle });
+
+        await page.locator(".tumult-userbar-gear").click();
+        await page.getByRole("tab", { name: "Installed" }).click();
+        await page.locator("#tumult-plugin-url").fill(`https://github.com/jackgraddon/${manifest.id}`);
+        await page.getByRole("button", { name: "Check" }).click();
+        await page.locator(".tumult-consent").waitFor({ timeout: 10_000 });
+        await page.getByRole("button", { name: "Install" }).click();
+        // Component permissions force the trusted, in-page lane: a sandboxed
+        // worker could not hand the shell a live Vue renderer.
+        await page
+            .locator(".tumult-plugin", { hasText: "Rich Presence" })
+            .filter({ has: page.locator(".tumult-plugin-lane-trusted") })
+            .waitFor({ timeout: 10_000 });
+        await page.keyboard.press("Escape");
+
+        // Push like a co-located native app would. The renderer only mounts
+        // when the profile field holds a valid activity document, so seeing
+        // "Playing VLC" proves the whole chain: RPC → bridge → plugin →
+        // extended profile → shell activity slot → DOM.
+        const socket = await connectNative();
+        await socket.write(JSON.stringify({ op: "set", value: { type: "playing", name: "VLC", details: "Test" } }) + "\n");
+        const line = page.locator(".tumult-rp-activity--self");
+        await line.waitFor({ timeout: 10_000 });
+        assert.match(await line.innerText(), /Playing VLC/);
+        assert.equal(await line.getAttribute("data-activity-type"), "playing");
+
+        await socket.write(JSON.stringify({ op: "clear" }) + "\n");
+        await line.waitFor({ state: "detached", timeout: 10_000 });
         socket.destroy();
     });
 

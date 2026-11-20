@@ -1,0 +1,19 @@
+{
+    "$schema": "./tumult.plugin.schema.json",
+    "id": "app.tumult.rich-presence",
+    "name": "Rich Presence",
+    "version": "0.2.0",
+    "author": "jackgraddon",
+    "description": "Discord-style activities (Playing / Listening / Watching) on your profile, shown in member lists and the user bar; on desktop, mirror what native apps are doing.",
+    "permissions": [
+        "activity-renderers",
+        "commands",
+        "settings-tabs",
+        "styles",
+        "native-activity"
+    ],
+    "minCore": "1.5.0",
+    "minUI": "1.3.0",
+    "entry": "plugin.js",
+    "integrity": "sha256-f0SEpTc+bC+D6EIFlyrluOsoCeOlpzfCujrthQhhwyk="
+}

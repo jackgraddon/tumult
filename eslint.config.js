@@ -25,6 +25,9 @@ export default tseslint.config(
             "apps/desktop/web/**",
             "apps/desktop/web-fake/**",
             "apps/desktop/release/**",
+            // The pinned third-party release bundle the desktop smoke test
+            // installs verbatim; it is generated code, checked by its hash.
+            "apps/desktop/smoke/fixtures/**",
         ],
     },
     js.configs.recommended,
