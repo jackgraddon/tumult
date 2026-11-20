@@ -153,9 +153,13 @@ describe("activityFromSetActivity", () => {
         });
     });
 
+    it("treats a SET_ACTIVITY with no activity as Cider's pause clear", () => {
+        assert.deepEqual(activityFromSetActivity({ cmd: "SET_ACTIVITY", args: { pid: 12 } }), { kind: "clear" });
+        assert.deepEqual(activityFromSetActivity({ cmd: "SET_ACTIVITY", args: {} }), { kind: "clear" });
+    });
+
     it("ignores other commands and activities with no usable headline", () => {
         assert.deepEqual(activityFromSetActivity({ cmd: "GET_GUILDS", args: {} }), { kind: "ignore" });
-        assert.deepEqual(activityFromSetActivity({ cmd: "SET_ACTIVITY", args: {} }), { kind: "ignore" });
         assert.deepEqual(activityFromSetActivity({ cmd: "SET_ACTIVITY", args: { activity: { type: 2 } } }), {
             kind: "ignore",
         });

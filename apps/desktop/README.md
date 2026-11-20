@@ -120,16 +120,27 @@ server the desktop app runs, and pushes one newline-terminated frame per change.
   *sink*, not a Discord client: it accepts the handshake, framed `SET_ACTIVITY`
   and `PING` commands, maps Discord's activity types to ours, and publishes to
   the **same** native feed. The plugin and renderer need no changes, and Discord
-  itself is never contacted or impersonated.
+  itself is never contacted or impersonated. A `SET_ACTIVITY` with no
+  `activity` key clears the feed too: Cider pauses by sending just `{ pid }`, so
+  a track would otherwise stay mirrored after the music stops.
 - **IPC coexistence**: Tumult listens on `discord-ipc-0` when that index is free
   — with Discord closed, producers find it with their usual 0–9 scan and no
   configuration. If Discord (or another RPC server) owns index 0, Tumult takes
   the next free index so Discord keeps working as the fallback; a producer that
   must reach Tumult can be pointed at one with `TUMULT_DISCORD_IPC_PATH`,
-  `DISCORD_IPC_PATH` or `DISCORD_IPC_SOCKET` (Flatpak apps need the env set in
-  their own sandbox). Music producers normally put the track in `details` and
-  the artist in `state`; those become the "Listening to …" headline and second
-  line, with `assets.large_text` as the album.
+  `DISCORD_IPC_PATH` or `DISCORD_IPC_SOCKET`. These are **Tumult's** overrides:
+  they choose where Tumult binds, not where the producer looks. Flatpak
+  producers follow the same scan inside their sandbox —
+  `--filesystem=xdg-run/discord-ipc-N` exposes Tumult's default host socket at
+  `$XDG_RUNTIME_DIR/discord-ipc-N`, while a producer that only has
+  `xdg-run/app/com.discordapp.Discord:create` looks in that app's private
+  directory (point `TUMULT_DISCORD_IPC_PATH` at
+  `$XDG_RUNTIME_DIR/app/com.discordapp.Discord/discord-ipc-N`, with Discord
+  closed, for those). If Flatpak left a `discord-ipc-N` symlink at the sandbox
+  path, remove that one dangling symlink first: `bwrap` cannot bind-mount over
+  a symlink. Music producers normally put the track in `details` and the artist
+  in `state`; those become the "Listening to …" headline and second line, with
+  `assets.large_text` as the album.
 - **The reference demo** (`demo/native-activity.ts`, dev-only — a real
   detector would replace it): a small Node/Node-TS client that pushes a
   demo activity and quits. Not in

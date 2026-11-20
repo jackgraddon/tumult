@@ -1202,9 +1202,19 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
   index (Discord stays the fallback), and
   `TUMULT_DISCORD_IPC_PATH`/`DISCORD_IPC_PATH`/`DISCORD_IPC_SOCKET` bind an exact
   path. Music's `details`/`state`/`assets.large_text` become track/artist/album.
-  Framing, stale-socket reclaim, last-writer ownership and mapping are unit
+  A `SET_ACTIVITY` with no `activity` key is also a clear: Cider pauses by
+  sending just `{ pid }`, so treating only `activity: null` as a clear leaves the
+  old track mirrored forever. Framing, stale-socket reclaim, last-writer
+  ownership and mapping are unit
   tested; the desktop smoke suite drives a real Discord-style producer through
-  the released plugin into the user bar.
+  the released plugin into the user bar. VERIFIED with Flatpak Cider: it has
+  `xdg-run/discord-ipc-0`, so Tumult's default host socket at
+  `$XDG_RUNTIME_DIR/discord-ipc-0` is enough; the env overrides are read by
+  Tumult, not the producer. A stale `discord-ipc-0` symlink in Cider's Flatpak
+  runtime dir made every new launch fail with "Can't mount on symlink
+  destination" until removed. Producers with only
+  `xdg-run/app/com.discordapp.Discord:create` need the override pointed at that
+  app's runtime directory instead.
 - **Desktop web build = `VITE_DESKTOP=1`**, the ONLY behavioural difference.
   `chat.real.ts` then registers `DESKTOP_REDIRECT_URI`
   (`http://127.0.0.1/auth/callback`, in `apps/web/src/desktop.ts`, which the

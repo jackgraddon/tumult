@@ -152,8 +152,10 @@ function activityType(value: unknown): NativeActivity["type"] | null {
 }
 
 /**
- * Translate a SET_ACTIVITY frame. A null activity is an explicit clear; an
- * unparseable one is ignored (never clear the feed on a producer's garbage).
+ * Translate a SET_ACTIVITY frame. A null activity is an explicit clear, and so
+ * is one with no `activity` key: Cider pauses by sending just `{ pid }`. An
+ * unparseable activity is ignored
+ * (never clear the feed on a producer's garbage).
  *
  * Music producers put the track in `details` and the artist in `state`, so for
  * listening activities the track becomes the headline ("Listening to X") and
@@ -164,7 +166,11 @@ function activityType(value: unknown): NativeActivity["type"] | null {
 export function activityFromSetActivity(payload: Record<string, unknown> | null): DiscordActivityChange {
     if (!payload || payload.cmd !== "SET_ACTIVITY") return { kind: "ignore" };
     const args = object(payload.args);
-    if (!args || !("activity" in args)) return { kind: "ignore" };
+    if (!args) return { kind: "ignore" };
+    // Cider's clear frame is `{ pid }` with no `activity` field. Missing and
+    // explicit null both mean "not playing anything"; only a malformed `args`
+    // itself is ignored.
+    if (!("activity" in args)) return { kind: "clear" };
     const raw = args.activity;
     if (raw === null || raw === undefined) return { kind: "clear" };
     const discord = object(raw);
