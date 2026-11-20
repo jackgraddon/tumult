@@ -27,6 +27,10 @@ module.exports = {
     directories: { output: "release", buildResources: "build" },
     files: ["package.json", "dist/**/*", "!dist/**/*.map", "web/**/*"],
     asar: true,
+    // The legacy AppImage runtime needs FUSE2, which current Fedora/Ubuntu no
+    // longer ship. The static runtime is FUSE-free, so the CI AppImage runs on
+    // the same modern Linux systems we build for (toolset 1.0.3 in v26).
+    toolsets: { appimage: "1.0.3" },
     // Fail the package rather than ship an app with no web build in it.
     beforePack: async () => {
         const { existsSync } = require("node:fs");

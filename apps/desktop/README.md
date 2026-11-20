@@ -210,8 +210,11 @@ gh variable set VITE_CLIENT_URI --body https://tumult.example.org
 
 ## Known Linux caveat
 
-On Ubuntu 24.04+, AppArmor restricts unprivileged user namespaces. An AppImage
-can therefore refuse to start ("The SUID sandbox helper binary was found, but
-is not configured correctly"). The deb/rpm installs set `chrome-sandbox`
-setuid, so they are unaffected. The app never turns its sandbox off. Run the
-AppImage on a system that allows user namespaces, or prefer the deb/rpm.
+The AppImage is built with electron-builder's FUSE-free static runtime
+(`toolsets.appimage = "1.0.3"`), so current Fedora/Ubuntu releases do not need
+`libfuse.so.2`. On Ubuntu 24.04+, AppArmor can still restrict unprivileged user
+namespaces, and an AppImage may refuse to start with "The SUID sandbox helper
+binary was found, but is not configured correctly". The deb/rpm installs set
+`chrome-sandbox` setuid, so they are unaffected. The app never turns its
+sandbox off. If AppArmor blocks the AppImage, run it on a system that allows
+user namespaces or prefer the deb/rpm.

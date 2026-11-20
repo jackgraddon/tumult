@@ -1290,6 +1290,11 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
     SIGKILLs it, because the fuses invalidate the signature; that only
     matters on mac.
   - rpm needs `rpmbuild` (fails on macOS without it; CI installs `rpm`).
+  - AppImage uses the FUSE-free static runtime (`toolsets.appimage = "1.0.3"`).
+    The legacy runtime needs `libfuse.so.2`, which Fedora 43 no longer ships,
+    so a CI-shaped AppImage built before that opt-in failed with `dlopen():
+    error loading libfuse.so.2`; the static-runtime build launches. VERIFIED on
+    Fedora 43 with the repo's electron-builder 26.18.0.
   - `linux.category` is written VERBATIM as `Categories=<value>;` AFTER
     `desktop.entry` is merged, so the full list lives in `category`
     (`"Network;Chat;InstantMessaging"`). VERIFIED by unpacking the deb:
@@ -1297,8 +1302,9 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
   - `desktopName` + `syncDesktopName` give `StartupWMClass=tumult`.
 - **NOT verified:**
   - Windows at all (NSIS build, run).
-  - Running on Linux (Wayland/X11), including the AppImage-under-AppArmor
-    caveat in the README.
+  - The full Linux desktop session (Wayland/X11) with a fresh build — the
+    FUSE-free AppImage was launch-tested under xvfb, and the AppArmor caveat in
+    the README still applies.
   - The display-media handler (macOS screen-recording TCC blocks a headless
     test).
   - Element Call inside the desktop (its widget postMessage origin is
