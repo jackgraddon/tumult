@@ -131,6 +131,14 @@ export interface NativeActivityMedia {
     readonly label?: string;
 }
 
+/** One outbound link in a native activity — two at most, http(s) only. */
+export interface NativeActivityButton {
+    /** Short call-to-action text (1–32 characters). */
+    readonly label: string;
+    /** An `https:`/`http:` URL opened when the link is clicked. */
+    readonly url: string;
+}
+
 /**
  * One native/RPC activity: what a desktop app pushes into Tumult. It mirrors a
  * rich-presence activity document on the wire (no `source`/`assets`
@@ -154,6 +162,8 @@ export interface NativeActivity {
     readonly endsAt?: number;
     /** Up to two images (album art, game banner, small badge), in draw order. */
     readonly media?: readonly NativeActivityMedia[];
+    /** Up to two outbound links shown as buttons on the profile card. */
+    readonly buttons?: readonly NativeActivityButton[];
     /** A short emoji to show by the headline. */
     readonly emoji?: string;
 }

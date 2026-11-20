@@ -108,6 +108,7 @@ export type {
 } from "../members/activity.ts";
 export type {
     NativeActivity,
+    NativeActivityButton,
     NativeActivityFeed,
     NativeActivityMedia,
 } from "./types.ts";

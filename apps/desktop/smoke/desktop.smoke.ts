@@ -512,6 +512,10 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
                             small_image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23f0b232'/%3E%3C/svg%3E",
                             small_text: "Cider badge",
                         },
+                        buttons: [
+                            { label: "Listen on Cider", url: "https://music.example.com/ipc-song" },
+                            { label: "Open album", url: "https://music.example.com/ipc-album" },
+                        ],
                     },
                 },
             }),
@@ -537,6 +541,21 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         assert.equal(await cardActivity.getAttribute("data-activity-renderer"), "cc.jackg.tumult.activity");
         assert.equal(await cardActivity.locator("img[data-activity-media]").count(), 2);
         assert.equal(await cardActivity.locator("[data-activity-progress]").count(), 1);
+        const links = cardActivity.locator("a[data-activity-button]");
+        assert.deepEqual(await links.allTextContents(), ["Listen on Cider", "Open album"]);
+        assert.equal(await links.first().getAttribute("href"), "https://music.example.com/ipc-song");
+
+        // A link is still an outbound link: Electron hands it to the OS browser
+        // and the app window stays on app://tumult.
+        await app.evaluate(() => {
+            (globalThis as unknown as { __opened: string[] }).__opened.length = 0;
+        });
+        await links.first().click();
+        await page.waitForTimeout(250);
+        const opened = await app.evaluate(() => [...(globalThis as unknown as { __opened: string[] }).__opened]);
+        assert.deepEqual(opened, ["https://music.example.com/ipc-song"]);
+        assert.match(page.url(), /^app:\/\/tumult\//);
+
         await page.keyboard.press("Escape");
         await card.waitFor({ state: "hidden", timeout: 5_000 });
 
@@ -630,6 +649,11 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     });
 
     it("keeps the window on app:// and hands http(s) links to the OS browser", async () => {
+        // Earlier activity-link clicks also use this hook; this test pins only
+        // the navigations it performs itself.
+        await app.evaluate(() => {
+            (globalThis as unknown as { __opened: string[] }).__opened.length = 0;
+        });
         const before = page.url();
         await page.evaluate(() => {
             window.location.assign("https://example.org/navigated");

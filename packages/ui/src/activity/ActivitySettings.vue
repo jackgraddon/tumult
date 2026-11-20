@@ -10,11 +10,19 @@ defineProps<SettingsTabProps>();
 
 const activity = useActivityController();
 
+interface ButtonDraft {
+    label: string;
+    url: string;
+}
+
+const MAX_BUTTONS = 2;
+
 const type = ref<string>("playing");
 const name = ref("");
 const details = ref("");
 const state = ref("");
 const emoji = ref("");
+const buttons = ref<ButtonDraft[]>([]);
 const busy = ref(false);
 const saved = ref(false);
 const error = ref("");
@@ -28,6 +36,7 @@ watch(
         details.value = document?.details ?? "";
         state.value = document?.state ?? "";
         emoji.value = document?.emoji ?? "";
+        buttons.value = (document?.buttons ?? []).map((button) => ({ label: button.label, url: button.url }));
         saved.value = false;
         error.value = "";
     },
@@ -44,8 +53,21 @@ async function save(): Promise<void> {
     busy.value = true;
     saved.value = false;
     error.value = "";
+    // An untouched empty row is not a button; a half-filled one is a validation
+    // error from the shared document rather than a link with no label or URL.
+    const cleaned = buttons.value
+        .map((button) => ({ label: button.label.trim(), url: button.url.trim() }))
+        .filter((button) => button.label || button.url);
     try {
-        await activity.setManual({ type: type.value, name: name.value, details: details.value, state: state.value, emoji: emoji.value });
+        await activity.setManual({
+            type: type.value,
+            name: name.value,
+            details: details.value,
+            state: state.value,
+            emoji: emoji.value,
+            buttons: cleaned,
+        });
+        buttons.value = cleaned;
         saved.value = true;
     } catch (cause) {
         error.value = reportError(cause, "Couldn't save your activity");
@@ -66,11 +88,21 @@ async function clear(): Promise<void> {
         details.value = "";
         state.value = "";
         emoji.value = "";
+        buttons.value = [];
     } catch (cause) {
         error.value = reportError(cause, "Couldn't clear your activity");
     } finally {
         busy.value = false;
     }
+}
+
+function addButton(): void {
+    if (buttons.value.length >= MAX_BUTTONS) return;
+    buttons.value = [...buttons.value, { label: "", url: "" }];
+}
+
+function removeButton(index: number): void {
+    buttons.value = buttons.value.filter((_, at) => at !== index);
 }
 
 function onMirror(event: Event): void {
@@ -157,6 +189,51 @@ function onMirror(event: Event): void {
                     autocomplete="off"
                 />
             </div>
+            <div class="tumult-dialog-field tumult-activity-buttons-field">
+                <div class="tumult-activity-buttons-heading">
+                    <span class="tumult-dialog-label">Buttons <span class="tumult-activity-optional">optional</span></span>
+                    <button
+                        type="button"
+                        class="tumult-dialog-button tumult-activity-add-button"
+                        :disabled="busy || buttons.length >= MAX_BUTTONS"
+                        @click="addButton"
+                    >
+                        Add button
+                    </button>
+                </div>
+                <p class="tumult-settings-note">
+                    Up to two links, shown on your profile card. Labels are short; URLs must be http(s).
+                </p>
+                <div v-for="(button, index) in buttons" :key="index" class="tumult-activity-button-row">
+                    <input
+                        v-model="button.label"
+                        class="tumult-dialog-input"
+                        type="text"
+                        :aria-label="`Activity button ${index + 1} label`"
+                        maxlength="32"
+                        autocomplete="off"
+                        placeholder="Listen on…"
+                    />
+                    <input
+                        v-model="button.url"
+                        class="tumult-dialog-input"
+                        type="url"
+                        :aria-label="`Activity button ${index + 1} URL`"
+                        maxlength="512"
+                        autocomplete="off"
+                        placeholder="https://…"
+                    />
+                    <button
+                        type="button"
+                        class="tumult-dialog-button tumult-activity-remove-button"
+                        :aria-label="`Remove activity button ${index + 1}`"
+                        :disabled="busy"
+                        @click="removeButton(index)"
+                    >
+                        Remove
+                    </button>
+                </div>
+            </div>
 
             <p v-if="error || activity.error.value" class="tumult-dialog-error" role="alert">
                 {{ error || activity.error.value }}
@@ -215,5 +292,27 @@ function onMirror(event: Event): void {
 .tumult-activity-optional {
     color: var(--text-muted);
     font-weight: var(--weight-normal);
+}
+.tumult-activity-buttons-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+.tumult-activity-add-button,
+.tumult-activity-remove-button {
+    width: auto;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+}
+.tumult-activity-buttons-field .tumult-settings-note {
+    margin: var(--space-1) 0 0;
+}
+.tumult-activity-button-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
 }
 </style>

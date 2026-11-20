@@ -140,6 +140,32 @@ describe("activityFromSetActivity", () => {
         }
     });
 
+    it("carries Cider-style buttons through the shared native validator", () => {
+        const change = activityFromSetActivity({
+            cmd: "SET_ACTIVITY",
+            args: {
+                activity: {
+                    type: 2,
+                    name: "Cider",
+                    details: "Song",
+                    buttons: [
+                        { label: "Listen on Apple Music", url: "https://music.apple.com/song" },
+                        { label: "Open album", url: "http://example.com/album" },
+                        { label: "Third", url: "https://example.com/third" },
+                        { label: "Bad", url: "javascript:alert(1)" },
+                    ],
+                },
+            },
+        });
+        assert.equal(change.kind, "set");
+        if (change.kind === "set") {
+            assert.deepEqual(change.activity.buttons, [
+                { label: "Listen on Apple Music", url: "https://music.apple.com/song" },
+                { label: "Open album", url: "http://example.com/album" },
+            ]);
+        }
+    });
+
     it("maps Discord artwork keys into two bounded images", () => {
         const change = activityFromSetActivity({
             cmd: "SET_ACTIVITY",
@@ -232,7 +258,7 @@ describe("activityFromSetActivity", () => {
         assert.equal(change.kind, "set");
         if (change.kind === "set") {
             assert.equal(change.activity.name.length, 128);
-            assert.equal(change.activity.details?.length, 256);
+            assert.equal(change.activity.details?.length, 128);
         }
     });
 });

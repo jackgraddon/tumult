@@ -26,6 +26,14 @@ export interface NativeActivityMedia {
     label?: string;
 }
 
+/** One outbound link in a native activity — two at most, http(s) only. */
+export interface NativeActivityButton {
+    /** Short call-to-action text (1–32 characters). */
+    label: string;
+    /** The http(s) URL opened when the link is clicked. */
+    url: string;
+}
+
 /**
  * One native/RPC activity, the rich-presence vocabulary on the wire. Mirrors the
  * UI feed's `NativeActivity`: the host has no notion of a `source`, because
@@ -50,6 +58,8 @@ export interface NativeActivity {
     endsAt?: number;
     /** Up to two images (album art, game banner, small badge), in draw order. */
     media?: NativeActivityMedia[];
+    /** Up to two outbound links shown as buttons on the profile card. */
+    buttons?: NativeActivityButton[];
     /** A short emoji to show by the headline. */
     emoji?: string;
 }
@@ -59,11 +69,14 @@ export const NATIVE_ACTIVITY_TYPES = ["playing", "listening", "watching", "custo
 
 /** Field caps, kept in sync with the first-party activity document. */
 const NAME_MAX = 128;
-const LINE_MAX = 256;
-const EMOJI_MAX = 32;
+const LINE_MAX = 128;
+const EMOJI_MAX = 16;
 const MEDIA_LABEL_MAX = 128;
 const MEDIA_URL_MAX = 2048;
 const MEDIA_MAX = 2;
+const BUTTON_LABEL_MAX = 32;
+const BUTTON_URL_MAX = 512;
+const BUTTON_MAX = 2;
 
 /** A single wire message: a `set` with a `value`, or a bare `clear`. */
 export interface NativeActivityMessage {
@@ -102,6 +115,34 @@ function validateMedia(value: unknown): NativeActivityMedia[] | undefined {
     return out.length ? out : undefined;
 }
 
+function validButtonUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const url = value.trim();
+    if (!url || url.length > BUTTON_URL_MAX) return undefined;
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" || parsed.protocol === "http:" ? url : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Tolerant like media: one bad link must not cost the producer's activity. */
+function validateButtons(value: unknown): NativeActivityButton[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out: NativeActivityButton[] = [];
+    for (const entry of value) {
+        if (out.length >= BUTTON_MAX) break;
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+        const raw = entry as Record<string, unknown>;
+        const label = trimLen(raw["label"], BUTTON_LABEL_MAX);
+        const url = validButtonUrl(raw["url"]);
+        if (!label || !url) continue;
+        out.push({ label, url });
+    }
+    return out.length ? out : undefined;
+}
+
 /**
  * Whether `raw` is the `value` of a `set` message, and if so the normalized
  * activity. Trims each string, drops empty optionals, caps lengths, and requires
@@ -136,6 +177,8 @@ export function validateNativeActivity(raw: unknown): NativeActivity | null {
     if (endsAt !== undefined) activity.endsAt = endsAt;
     const media = validateMedia(any.media);
     if (media) activity.media = media;
+    const buttons = validateButtons(any.buttons);
+    if (buttons) activity.buttons = buttons;
     return activity;
 }
 

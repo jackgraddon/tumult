@@ -576,6 +576,7 @@ describe("browser smoke test (fake client)", () => {
         assert.equal((await aliceActivity.locator(".tumult-activity-headline").textContent())?.trim(), "Playing Chess");
         assert.equal(await aliceActivity.locator("img").count(), 0, "artwork is card-only");
         assert.equal(await aliceActivity.locator("[role=progressbar]").count(), 0, "progress is card-only");
+        assert.equal(await aliceActivity.locator("[data-activity-button]").count(), 0, "buttons are card-only");
     });
 
     it("saves a first-party activity from settings and shows it in the user bar", async () => {
@@ -589,6 +590,9 @@ describe("browser smoke test (fake client)", () => {
 
         await dialog.locator("#tumult-activity-name").fill("Tetris");
         await dialog.locator("#tumult-activity-details").fill("Browser smoke");
+        await dialog.getByRole("button", { name: "Add button" }).click();
+        await dialog.locator('[aria-label="Activity button 1 label"]').fill("Read more");
+        await dialog.locator('[aria-label="Activity button 1 URL"]').fill("https://example.com/tetris");
         await dialog.getByRole("button", { name: "Save activity" }).click();
 
         const line = page.locator(".tumult-userbar .tumult-activity--self");
@@ -596,6 +600,10 @@ describe("browser smoke test (fake client)", () => {
         assert.match(await line.innerText(), /Playing Tetris/);
         assert.match(await line.innerText(), /Browser smoke/);
         assert.equal(await line.getAttribute("data-activity-type"), "playing");
+        assert.equal(await line.locator("[data-activity-button]").count(), 0, "the user bar stays one line");
+        assert.equal(await dialog.locator(".tumult-dialog-error").count(), 0);
+        assert.equal(await dialog.locator('[aria-label="Activity button 1 label"]').inputValue(), "Read more");
+        assert.equal(await dialog.locator('[aria-label="Activity button 1 URL"]').inputValue(), "https://example.com/tetris");
 
         await dialog.getByRole("button", { name: "Clear", exact: true }).click();
         await line.waitFor({ state: "detached", timeout: 10_000 });
@@ -633,6 +641,15 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(await progress.count(), 1);
         assert.match((await progress.getAttribute("aria-valuenow")) ?? "", /^\d+$/);
         assert.match(await activity.locator(".tumult-activity-progress-time").innerText(), /^\d+:\d{2} \/ \d+:\d{2}$/);
+        // Buttons are outbound links, not shell actions: the card stays read-only
+        // while still carrying the producer's two calls to action.
+        const links = activity.locator("a[data-activity-button]");
+        assert.equal(await links.count(), 2);
+        assert.deepEqual(await links.allTextContents(), ["Watch game", "Open board"]);
+        assert.equal(await links.first().getAttribute("href"), "https://example.com/chess/watch");
+        assert.equal(await links.first().getAttribute("target"), "_blank");
+        assert.equal(await links.first().getAttribute("rel"), "noopener noreferrer nofollow");
+        assert.equal(await links.first().getAttribute("referrerpolicy"), "no-referrer");
         // A plugin may add a block below the identity.
         assert.match(await card.locator(".tumult-profile-showcase").innerText(), /Favourite game: Chess/);
 

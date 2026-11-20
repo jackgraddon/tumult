@@ -48,7 +48,7 @@ describe("validateNativeActivity", () => {
         assert.ok(activity);
         assert.equal(activity!.type, "listening");
         assert.equal(activity!.name, "Spotify");
-        assert.equal(activity!.details!.length, 256);
+        assert.equal(activity!.details!.length, 128);
         assert.equal(activity!.state, "Now playing the album of the day");
         assert.equal(activity!.startedAt, 1700000000000);
         assert.equal(activity!.emoji, "🎵");
@@ -102,6 +102,25 @@ describe("validateNativeActivity", () => {
         assert.deepEqual(activity?.media, [
             { url: "https://cdn.example/art.png", label: "Album art" },
             { url: "data:image/svg+xml,%3Csvg/%3E" },
+        ]);
+    });
+
+    it("keeps at most two safe outbound buttons", () => {
+        const activity = validateNativeActivity({
+            type: "listening",
+            name: "Cider",
+            buttons: [
+                { label: "  Listen on Apple Music  ", url: " https://music.apple.com/song " },
+                { label: "Open album", url: "http://example.com/album" },
+                { label: "Too many", url: "https://example.com/third" },
+                { label: "Bad scheme", url: "javascript:alert(1)" },
+                { label: "Too long", url: `https://example.com/${"x".repeat(513)}` },
+                { label: "x".repeat(40), url: "https://example.com/clipped" },
+            ],
+        });
+        assert.deepEqual(activity?.buttons, [
+            { label: "Listen on Apple Music", url: "https://music.apple.com/song" },
+            { label: "Open album", url: "http://example.com/album" },
         ]);
     });
 

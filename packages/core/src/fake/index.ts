@@ -1199,6 +1199,10 @@ class FakeChatClient implements ChatClient {
                         label: "Opponent",
                     },
                 ],
+                buttons: [
+                    { label: "Watch game", url: "https://example.com/chess/watch" },
+                    { label: "Open board", url: "https://example.com/chess/board" },
+                ],
             }),
         ],
         [

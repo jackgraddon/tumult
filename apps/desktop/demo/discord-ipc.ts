@@ -19,6 +19,11 @@ import { discordIpcSocketPaths } from "../src/discord-ipc-server.ts";
 
 type ActivityType = "playing" | "listening" | "watching" | "custom";
 
+interface ButtonArg {
+    label: string;
+    url: string;
+}
+
 interface Args {
     path: string | undefined;
     type: ActivityType;
@@ -26,6 +31,7 @@ interface Args {
     details: string | undefined;
     state: string | undefined;
     album: string | undefined;
+    buttons: ButtonArg[];
     clear: boolean;
     durationMs: number | null;
 }
@@ -46,7 +52,9 @@ Options:
   --details <text>    Discord's details line — for music, the track title.
   --state <text>      Discord's state line — for music, the artist.
   --album <text>      assets.large_text — shown as the album/medium line.
-  --clear             Send an empty activity, then exit.
+  --button <label> <url>
+                       A rich-presence link; repeat up to two times.
+   --clear             Send an empty activity, then exit.
   --duration <sec>    Clear and exit after N seconds. Default: until Ctrl-C/SIGTERM.
   -h, --help          Show this help.
 
@@ -60,6 +68,18 @@ function value(key: string, argv: string[]): string | undefined {
     if (at === -1) return undefined;
     const next = argv[at + 1];
     return next && !next.startsWith("--") ? next : undefined;
+}
+
+function buttonValues(argv: string[]): ButtonArg[] {
+    const out: ButtonArg[] = [];
+    for (let at = 0; at < argv.length - 2; at += 1) {
+        if (argv[at] !== "--button") continue;
+        const label = argv[at + 1]!;
+        const url = argv[at + 2]!;
+        if (!label.startsWith("--") && !url.startsWith("--")) out.push({ label, url });
+        at += 2;
+    }
+    return out;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -77,6 +97,7 @@ function parseArgs(argv: string[]): Args {
         details: value("details", argv),
         state: value("state", argv),
         album: value("album", argv),
+        buttons: buttonValues(argv).slice(0, 2),
         clear: argv.includes("--clear"),
         durationMs: durationRaw ? Math.max(0, Number(durationRaw) * 1000) : null,
     };
@@ -171,6 +192,7 @@ async function main(): Promise<void> {
     if (args.details) activity.details = args.details;
     if (args.state) activity.state = args.state;
     if (args.album) activity.assets = { large_text: args.album };
+    if (args.buttons.length) activity.buttons = args.buttons;
     activity.timestamps = { start: Math.floor(Date.now() / 1000) };
     await setActivity(activity, "demo-set");
     log(`reporting (${args.type}) ${[args.app, args.details, args.state, args.album].filter(Boolean).join(" — ")}`);

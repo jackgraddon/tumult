@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**302 tokens** — 92 primitives, 112 semantic, 98 component.
+**303 tokens** — 92 primitives, 112 semantic, 99 component.
 
 ## Primitives
 
@@ -275,6 +275,7 @@ everything built on it.
 | `--member-item-padding-y` | spacing | `var(--space-1)` | Member row vertical padding (density anchor). |
 | `--profile-card-width` | layout | `var(--layout-profile-card-width)` | Member profile card width. |
 | `--activity-media-size` | size | `64px` | Artwork thumbnail side in a profile-card activity. |
+| `--activity-media-small-size` | size | `28px` | Small badge side in a profile-card activity. |
 | `--activity-media-radius` | radius | `var(--radius-sm)` | Activity artwork corner radius. |
 | `--activity-progress-height` | size | `4px` | Activity progress bar thickness. |
 | `--button-primary-bg` | color | `var(--accent)` | Primary button. |

@@ -1015,6 +1015,10 @@
                     "type": "string",
                     "description": "Artwork thumbnail side in a profile-card activity."
                 },
+                "activity-media-small-size": {
+                    "type": "string",
+                    "description": "Small badge side in a profile-card activity."
+                },
                 "activity-media-radius": {
                     "type": "string",
                     "description": "Activity artwork corner radius."
@@ -2231,6 +2235,10 @@
                     "activity-media-size": {
                         "type": "string",
                         "description": "Artwork thumbnail side in a profile-card activity."
+                    },
+                    "activity-media-small-size": {
+                        "type": "string",
+                        "description": "Small badge side in a profile-card activity."
                     },
                     "activity-media-radius": {
                         "type": "string",
@@ -3449,6 +3457,10 @@
                     "activity-media-size": {
                         "type": "string",
                         "description": "Artwork thumbnail side in a profile-card activity."
+                    },
+                    "activity-media-small-size": {
+                        "type": "string",
+                        "description": "Small badge side in a profile-card activity."
                     },
                     "activity-media-radius": {
                         "type": "string",

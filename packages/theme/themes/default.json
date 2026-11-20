@@ -250,6 +250,7 @@
     "member-item-padding-y": "var(--space-1)",
     "profile-card-width": "var(--layout-profile-card-width)",
     "activity-media-size": "64px",
+    "activity-media-small-size": "28px",
     "activity-media-radius": "var(--radius-sm)",
     "activity-progress-height": "4px",
     "button-primary-bg": "var(--accent)",

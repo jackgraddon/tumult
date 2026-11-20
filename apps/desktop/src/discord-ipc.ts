@@ -195,8 +195,8 @@ function activityType(value: unknown): NativeActivity["type"] | null {
  * listening activities the track becomes the headline ("Listening to X") and
  * the artist the second line. For games the Discord `name` (the application)
  * is the headline. Artwork and start/end timestamps are carried through as
- * bounded images and progress; party, secrets and other Discord-only fields
- * are dropped.
+ * bounded images and progress, and up to two call-to-action links as buttons;
+ * party, secrets and other Discord-only fields are dropped.
  */
 export function activityFromSetActivity(payload: Record<string, unknown> | null): DiscordActivityChange {
     if (!payload || payload.cmd !== "SET_ACTIVITY") return { kind: "ignore" };
@@ -251,6 +251,7 @@ export function activityFromSetActivity(payload: Record<string, unknown> | null)
         startedAt,
         endsAt,
         ...(media.length ? { media } : {}),
+        buttons: discord.buttons,
         emoji,
     });
     return activity ? { kind: "set", activity } : { kind: "ignore" };

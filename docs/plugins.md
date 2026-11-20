@@ -800,7 +800,14 @@ Where it draws:
 |---|---|---|
 | `row` | a subtitle under the name in the member list | **one line**, truncated — rows are virtualized on a height estimate |
 | `self` | the user bar's status line (still a button that opens the status editor) | one line |
-| `card` | the member's profile card, below the presence line | may use more space: the first-party renderer draws bounded artwork and progress here |
+| `card` | the member's profile card, below the presence line | may use more space: the first-party renderer draws bounded artwork, progress and up to two outbound link-buttons here |
+
+The shell's own `app.tumult.activity` document adds optional `media` (at most two
+bounded image URLs), `startedAt`/`endsAt` (a live progress window) and `buttons`
+(at most two `{ label, url }` pairs; labels 1–32 characters, http(s) URLs up to
+512). Buttons render as links, never shell action buttons, so the profile card
+stays read-only. The row and self variants stay one line: artwork, progress and
+buttons are card-only.
 
 The shell reads only the fields some renderer asks for, and only for members
 the virtualizer has mounted — a shell with no renderers at all fetches nothing,
@@ -843,12 +850,18 @@ interface NativeActivity {
     readonly startedAt?: number;  // epoch ms, when the caller knows it
     readonly endsAt?: number;     // epoch ms: with startedAt, drives a live progress bar
     readonly media?: readonly NativeActivityMedia[]; // at most two, large one first
+    readonly buttons?: readonly NativeActivityButton[]; // at most two outbound links
     readonly emoji?: string;
 }
 
 interface NativeActivityMedia {
     readonly url: string;  // https:, http:, mxc:// or a small data:image/ URL
     readonly label?: string; // alt text / hover label
+}
+
+interface NativeActivityButton {
+    readonly label: string; // 1–32 characters
+    readonly url: string;   // an http(s) URL, up to 512 characters
 }
 
 interface NativeActivityFeed {
@@ -867,7 +880,9 @@ Artwork arrives as at most two bounded URLs (not bytes) so the shared document
 stays small and `mxc://` images can use the normal media resolver; other images
 are loaded straight into an `<img>`, never into CSS. The first-party card uses
 `startedAt` + `endsAt` for a live progress bar; without both it shows only the
-elapsed text.
+elapsed text. `buttons` are links, not commands: the shell renders at most two
+safe http(s) links on the profile card and nowhere else. A malformed native
+button is dropped without losing the rest of the activity.
 
 The shell itself is now the primary consumer: it publishes native activity to
 `app.tumult.activity` while a producer is live, holds the user's manual document

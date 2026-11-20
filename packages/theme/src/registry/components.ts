@@ -67,6 +67,7 @@ export const COMPONENT_TOKENS: TokenDef[] = [
 
     // Activity (rich presence)
     { name: "activity-media-size", tier: "component", kind: "size", description: "Artwork thumbnail side in a profile-card activity." },
+    { name: "activity-media-small-size", tier: "component", kind: "size", description: "Small badge side in a profile-card activity." },
     { name: "activity-media-radius", tier: "component", kind: "radius", value: v("radius-sm"), description: "Activity artwork corner radius." },
     { name: "activity-progress-height", tier: "component", kind: "size", description: "Activity progress bar thickness." },
 

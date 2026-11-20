@@ -12,6 +12,7 @@ import {
     activityStatusText,
     createActivity,
     parseActivity,
+    sameActivity,
 } from "../src/activity/document.ts";
 import type { NativeActivity, NativeActivityFeed } from "../src/plugins/types.ts";
 
@@ -213,6 +214,52 @@ describe("first-party activity document", () => {
         assert.equal(parseActivity({ v: 1, type: "playing", name: "Chess", startedAt: 2000, endsAt: 1000 }), null);
         assert.deepEqual(parseActivity({ v: 1, type: "playing", name: "Chess", media: [] }), { v: 1, type: "playing", name: "Chess" });
     });
+
+    it("keeps up to two outbound buttons with http(s) URLs", () => {
+        const buttons = [
+            { label: "Watch game", url: "https://example.com/watch" },
+            { label: "Open board", url: "http://example.com/board" },
+        ];
+        const parsed = parseActivity({ v: 1, type: "playing", name: "Chess", buttons });
+        assert.deepEqual(parsed?.buttons, buttons);
+        assert.deepEqual(
+            createActivity({ type: "playing", name: "Chess", buttons: [{ label: " Go ", url: " https://example.com/go " }] }, 1).buttons,
+            [{ label: "Go", url: "https://example.com/go" }],
+        );
+        assert.equal(
+            sameActivity(parsed, parseActivity({ v: 1, type: "playing", name: "Chess", buttons: [...buttons] })),
+            true,
+        );
+        assert.equal(
+            sameActivity(parsed, parseActivity({ v: 1, type: "playing", name: "Chess", buttons: [buttons[0]!] })),
+            false,
+        );
+    });
+
+    it("refuses unsafe or malformed buttons rather than rendering them as links", () => {
+        for (const buttons of [
+            [{ label: "Click", url: "javascript:alert(1)" }],
+            [{ label: "Click", url: "data:text/html,hi" }],
+            [{ label: "Click", url: "mxc://example.com/thing" }],
+            [{ label: "", url: "https://example.com" }],
+            [{ label: "Click", url: "" }],
+            [{ label: "x".repeat(33), url: "https://example.com" }],
+            [{ label: "Click", url: `https://example.com/${"x".repeat(513)}` }],
+            [
+                { label: "One", url: "https://example.com/1" },
+                { label: "Two", url: "https://example.com/2" },
+                { label: "Three", url: "https://example.com/3" },
+            ],
+            [{ label: "Click" }],
+        ]) {
+            assert.equal(parseActivity({ v: 1, type: "playing", name: "Chess", buttons }), null, JSON.stringify(buttons));
+        }
+        assert.deepEqual(parseActivity({ v: 1, type: "playing", name: "Chess", buttons: [] }), { v: 1, type: "playing", name: "Chess" });
+        assert.throws(
+            () => createActivity({ type: "playing", name: "Chess", buttons: [{ label: "Bad", url: "file:///etc/passwd" }] }),
+            /activity buttons/,
+        );
+    });
 });
 
 describe("ActivityController precedence", () => {
@@ -249,12 +296,14 @@ describe("ActivityController precedence", () => {
             startedAt: 1000,
             endsAt: 200_000,
             media: [{ url: "https://cdn.example/art.png", label: "Album art" }],
+            buttons: [{ label: "Listen", url: "https://music.example/song" }],
         };
         h.native.set(native);
         await tick();
 
         const published = parseActivity(h.field.get());
         assert.deepEqual(published?.media, native.media);
+        assert.deepEqual(published?.buttons, native.buttons);
         assert.equal(published?.endsAt, native.endsAt);
         assert.ok(activityProgress(published!), "progress reaches the renderer as bounded document data");
         controller.stop();

@@ -211,9 +211,12 @@ chat client should be.
   and duplicate settings tab. Web and desktop share one document and one
   Activity settings page; the native half is desktop-only via the existing
   `window.tumultNative` bridge. The v1 document carries at most two bounded
-  image URLs plus `startedAt`/`endsAt` progress; the `card` variant renders them
+  image URLs, up to two `{ label, url }` outbound buttons (label 1–32, http(s)
+  URL 1–512) and `startedAt`/`endsAt` progress; the `card` variant renders them
   on the member profile card, while `row` and `self` stay one line. Discord IPC
-  artwork keys and timestamps map into that document rather than being dropped.
+  artwork keys, timestamps and buttons map into that document rather than being
+  dropped. Buttons are safe `<a>` links, never shell action buttons, so the card
+  stays read-only; the Activity settings page edits the same document.
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite. The registry gates

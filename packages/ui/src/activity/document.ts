@@ -28,6 +28,17 @@ export interface ActivityMedia {
     readonly label?: string;
 }
 
+/**
+ * One outbound link shown as a button on the profile card. Discord allows at
+ * most two, and only http(s) URLs: the label and URL are rendered straight into
+ * an `<a>` by the card, so validation here is the line between a call to action
+ * and a `javascript:` link in someone else's profile JSON.
+ */
+export interface ActivityButton {
+    readonly label: string;
+    readonly url: string;
+}
+
 /** The structural shape of the shell's native feed — no plugin import needed. */
 export interface NativeActivityLike {
     type: string;
@@ -38,6 +49,7 @@ export interface NativeActivityLike {
     startedAt?: number;
     endsAt?: number;
     media?: readonly ActivityMedia[];
+    buttons?: readonly ActivityButton[];
 }
 
 export interface ActivityDocument {
@@ -50,6 +62,7 @@ export interface ActivityDocument {
     startedAt?: number;
     endsAt?: number;
     media?: readonly ActivityMedia[];
+    buttons?: readonly ActivityButton[];
 }
 
 export interface ActivityInput {
@@ -61,10 +74,21 @@ export interface ActivityInput {
     startedAt?: number;
     endsAt?: number;
     media?: readonly ActivityMedia[];
+    buttons?: readonly ActivityButton[];
 }
 
-const LIMITS = { name: 128, details: 128, state: 128, emoji: 16, mediaLabel: 128, url: 2048 } as const;
+const LIMITS = {
+    name: 128,
+    details: 128,
+    state: 128,
+    emoji: 16,
+    mediaLabel: 128,
+    url: 2048,
+    buttonLabel: 32,
+    buttonUrl: 512,
+} as const;
 const MEDIA_MAX = 2;
+const BUTTON_MAX = 2;
 
 function optionalText(value: unknown, limit: number): string | undefined {
     if (value === undefined || value === null) return undefined;
@@ -118,6 +142,34 @@ function parseMedia(value: unknown): readonly ActivityMedia[] | undefined | null
     return out.length ? out : undefined;
 }
 
+function validButtonUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const url = value.trim();
+    if (!url || url.length > LIMITS.buttonUrl) return undefined;
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" || parsed.protocol === "http:" ? url : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Unlike media, a button needs both fields: there is no silent placeholder. */
+function parseButtons(value: unknown): readonly ActivityButton[] | undefined | null {
+    if (value === undefined || value === null) return undefined;
+    if (!Array.isArray(value) || value.length > BUTTON_MAX) return null;
+    const out: ActivityButton[] = [];
+    for (const entry of value) {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
+        const raw = entry as Record<string, unknown>;
+        const label = optionalText(raw["label"], LIMITS.buttonLabel);
+        const url = validButtonUrl(raw["url"]);
+        if (!label || !url) return null;
+        out.push({ label, url });
+    }
+    return out.length ? out : undefined;
+}
+
 function isType(value: unknown): value is ActivityType {
     return typeof value === "string" && (ACTIVITY_TYPES as readonly string[]).includes(value);
 }
@@ -135,6 +187,7 @@ export function parseActivity(value: unknown): ActivityDocument | null {
     const startedAt = validTimestamp(raw["startedAt"]);
     const endsAt = validTimestamp(raw["endsAt"]);
     const media = parseMedia(raw["media"]);
+    const buttons = parseButtons(raw["buttons"]);
     // Empty optional strings normalize to "absent", exactly like the released
     // plugin's validator. An over-long or wrongly typed value is still refused
     // rather than silently dropped, so bad field data is never rendered.
@@ -144,7 +197,7 @@ export function parseActivity(value: unknown): ActivityDocument | null {
     if (raw["startedAt"] !== undefined && startedAt === undefined) return null;
     if (raw["endsAt"] !== undefined && endsAt === undefined) return null;
     if (endsAt !== undefined && startedAt !== undefined && endsAt < startedAt) return null;
-    if (media === null) return null;
+    if (media === null || buttons === null) return null;
     return {
         v: 1,
         type: raw["type"],
@@ -155,6 +208,7 @@ export function parseActivity(value: unknown): ActivityDocument | null {
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(endsAt !== undefined ? { endsAt } : {}),
         ...(media ? { media } : {}),
+        ...(buttons ? { buttons } : {}),
     };
 }
 
@@ -168,7 +222,9 @@ export function createActivity(input: ActivityInput, now = Date.now()): Activity
     const emoji = optionalText(input.emoji, LIMITS.emoji);
     const endsAt = validTimestamp(input.endsAt);
     const media = parseMedia(input.media);
+    const buttons = parseButtons(input.buttons);
     if (media === null) throw new Error("Attach at most two valid activity images.");
+    if (buttons === null) throw new Error("Use at most two activity buttons with a label and an http(s) URL.");
     return {
         v: 1,
         type,
@@ -179,6 +235,7 @@ export function createActivity(input: ActivityInput, now = Date.now()): Activity
         startedAt: validTimestamp(input.startedAt) ?? now,
         ...(endsAt !== undefined ? { endsAt } : {}),
         ...(media ? { media } : {}),
+        ...(buttons ? { buttons } : {}),
     };
 }
 
@@ -200,7 +257,8 @@ export function sameActivity(a: ActivityDocument | null, b: ActivityDocument | n
         a.emoji === b.emoji &&
         a.startedAt === b.startedAt &&
         a.endsAt === b.endsAt &&
-        mediaEqual(a.media, b.media)
+        mediaEqual(a.media, b.media) &&
+        buttonsEqual(a.buttons, b.buttons)
     );
 }
 
@@ -208,6 +266,12 @@ function mediaEqual(a: readonly ActivityMedia[] | undefined, b: readonly Activit
     if (a === b) return true;
     if (!a || !b || a.length !== b.length) return false;
     return a.every((item, i) => item.url === b[i]!.url && item.label === b[i]!.label);
+}
+
+function buttonsEqual(a: readonly ActivityButton[] | undefined, b: readonly ActivityButton[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((item, i) => item.label === b[i]!.label && item.url === b[i]!.url);
 }
 
 const HEADLINES: Record<ActivityType, string> = {

@@ -52,6 +52,9 @@ const mediaImages = computed(() => {
         url ? [{ url, label: labels[index]?.label ?? "" }] : [],
     );
 });
+// Buttons are outbound links from the activity document, never shell actions.
+// Only the card has room for them; row/self keep their fixed one-line height.
+const buttons = computed(() => (card.value ? value.value?.buttons ?? [] : []));
 
 // A live bar needs a clock, but only while a card is open and only when the
 // producer actually gave us both ends. Row/self variants keep the static elapsed
@@ -98,39 +101,62 @@ const title = computed(() =>
         :data-activity-type="value.type"
         :title="title"
     >
-        <span class="tumult-activity-text">
+        <template v-if="props.variant === 'card'">
+            <span class="tumult-activity-card-main">
+                <span v-if="mediaImages.length" class="tumult-activity-media" :data-activity-media-count="mediaImages.length">
+                    <img
+                        v-for="(image, index) in mediaImages"
+                        :key="`${index}-${image.url}`"
+                        class="tumult-activity-media-image"
+                        :src="image.url"
+                        :alt="image.label"
+                        :title="image.label || undefined"
+                        data-activity-media
+                    />
+                </span>
+                <span class="tumult-activity-card-body">
+                    <span class="tumult-activity-text">
+                        <span v-if="value.emoji" class="tumult-activity-emoji">{{ value.emoji }}</span>
+                        <span class="tumult-activity-headline">{{ headline }}</span>
+                        <span v-if="seconds" class="tumult-activity-secondary">{{ seconds }}</span>
+                        <span v-if="elapsed" class="tumult-activity-elapsed">· {{ elapsed }}</span>
+                    </span>
+                    <template v-if="progress">
+                        <span
+                            class="tumult-activity-progress"
+                            role="progressbar"
+                            aria-label="Activity progress"
+                            :aria-valuemin="0"
+                            :aria-valuemax="100"
+                            :aria-valuenow="progressPercent"
+                            data-activity-progress
+                        >
+                            <span class="tumult-activity-progress-fill" :style="{ width: `${progress.percent}%` }"></span>
+                        </span>
+                        <span class="tumult-activity-progress-time">{{ progress.elapsed }} / {{ progress.duration }}</span>
+                    </template>
+                </span>
+            </span>
+            <span v-if="buttons.length" class="tumult-activity-buttons" data-activity-buttons>
+                <a
+                    v-for="(button, index) in buttons"
+                    :key="`${index}-${button.url}`"
+                    class="tumult-activity-button"
+                    :href="button.url"
+                    :title="button.label"
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    referrerpolicy="no-referrer"
+                    data-activity-button
+                >{{ button.label }}</a>
+            </span>
+        </template>
+        <span v-else class="tumult-activity-text">
             <span v-if="value.emoji" class="tumult-activity-emoji">{{ value.emoji }}</span>
             <span class="tumult-activity-headline">{{ headline }}</span>
             <span v-if="seconds" class="tumult-activity-secondary">{{ seconds }}</span>
             <span v-if="elapsed" class="tumult-activity-elapsed">· {{ elapsed }}</span>
         </span>
-        <template v-if="props.variant === 'card'">
-            <span v-if="mediaImages.length" class="tumult-activity-media" :data-activity-media-count="mediaImages.length">
-                <img
-                    v-for="(image, index) in mediaImages"
-                    :key="`${index}-${image.url}`"
-                    class="tumult-activity-media-image"
-                    :src="image.url"
-                    :alt="image.label"
-                    :title="image.label || undefined"
-                    data-activity-media
-                />
-            </span>
-            <template v-if="progress">
-                <span
-                    class="tumult-activity-progress"
-                    role="progressbar"
-                    aria-label="Activity progress"
-                    :aria-valuemin="0"
-                    :aria-valuemax="100"
-                    :aria-valuenow="progressPercent"
-                    data-activity-progress
-                >
-                    <span class="tumult-activity-progress-fill" :style="{ width: `${progress.percent}%` }"></span>
-                </span>
-                <span class="tumult-activity-progress-time">{{ progress.elapsed }} / {{ progress.duration }}</span>
-            </template>
-        </template>
     </component>
 </template>
 
@@ -179,8 +205,8 @@ const title = computed(() =>
     font-variant-numeric: tabular-nums;
 }
 
-/* The profile card is not virtualized: give artwork and progress their own
-   fixed-size block instead of squeezing them onto a one-line subtitle. */
+/* The profile card is not virtualized: Discord-style rich presence gets a
+   media/text row, a live progress bar and up to two outbound link-buttons. */
 .tumult-activity--card {
     flex-direction: column;
     align-items: stretch;
@@ -188,6 +214,20 @@ const title = computed(() =>
     overflow: visible;
     white-space: normal;
     font-size: var(--text-sm);
+}
+.tumult-activity-card-main {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-width: 0;
+}
+.tumult-activity-card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
 }
 .tumult-activity--card .tumult-activity-text {
     flex-wrap: wrap;
@@ -199,8 +239,9 @@ const title = computed(() =>
 }
 .tumult-activity-media {
     display: flex;
-    gap: var(--space-2);
-    align-items: center;
+    flex: none;
+    align-items: flex-end;
+    gap: var(--space-1);
 }
 .tumult-activity-media-image {
     width: var(--activity-media-size);
@@ -209,6 +250,10 @@ const title = computed(() =>
     object-fit: cover;
     border-radius: var(--activity-media-radius);
     background: var(--surface-inset);
+}
+.tumult-activity-media-image:not(:first-child) {
+    width: var(--activity-media-small-size);
+    height: var(--activity-media-small-size);
 }
 .tumult-activity-progress {
     position: relative;
@@ -228,5 +273,35 @@ const title = computed(() =>
 .tumult-activity-progress-time {
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
+}
+.tumult-activity-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+.tumult-activity-button {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: var(--space-1) var(--space-2);
+    border: var(--border-width) solid var(--button-secondary-border);
+    border-radius: var(--control-radius);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tumult-activity-button:hover {
+    background: var(--button-secondary-bg-hover);
+}
+.tumult-activity-button:focus-visible {
+    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
+    outline-offset: var(--hairline);
 }
 </style>
