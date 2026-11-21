@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.3](https://github.com/jackgraddon/tumult/compare/v0.4.2...v0.4.3) (2026-11-21)
+
+
+### Bug Fixes
+
+* **desktop:** self-host color emoji font ([87e223b](https://github.com/jackgraddon/tumult/commit/87e223b35848ceb75ffe9c11d9ebb0506d555455))
+
 ### [0.4.2](https://github.com/jackgraddon/tumult/compare/v0.4.1...v0.4.2) (2026-11-21)
 
 
