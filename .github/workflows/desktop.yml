@@ -110,7 +110,11 @@ jobs:
         sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
     - name: Unit tests (desktop)
-      run: pnpm --filter @tumult/desktop test
+      # The desktop's unit tests import @tumult/core/errors, which resolves to
+      # packages/core/dist — build core first (a clean checkout has no dist).
+      run: |
+        pnpm --filter @tumult/core build
+        pnpm --filter @tumult/desktop test
 
     - name: Desktop smoke test (Linux, under xvfb)
       if: runner.os == 'Linux'
