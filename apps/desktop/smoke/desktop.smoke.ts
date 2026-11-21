@@ -299,11 +299,47 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         assert.deepEqual(consoleErrors, [], "the login page logged errors");
     });
 
+    it("ships a self-hosted color emoji font for the theme's sans stack", async () => {
+        // The system COLRv1 font is rendered as monochrome outlines by some
+        // Linux Mesa/ACO stacks. The web-font path renders its color layers, so
+        // assert COLOR, not just that the family name resolves.
+        const probe = await page.evaluate(async () => {
+            await document.fonts.load('32px "Tumult Emoji"', "😀");
+            await document.fonts.ready;
+            const canvas = document.createElement("canvas");
+            canvas.width = 96;
+            canvas.height = 64;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return { loaded: false, colored: 0, stack: "" };
+            ctx.font = '32px "Tumult Emoji"';
+            ctx.textBaseline = "top";
+            ctx.fillText("😀", 4, 4);
+            const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let colored = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+                const r = pixels[i] ?? 0;
+                const g = pixels[i + 1] ?? 0;
+                const b = pixels[i + 2] ?? 0;
+                const a = pixels[i + 3] ?? 0;
+                if (a > 0 && !(r === g && g === b)) colored += 1;
+            }
+            return {
+                loaded: document.fonts.check('32px "Tumult Emoji"', "😀"),
+                colored,
+                stack: getComputedStyle(document.documentElement).fontFamily,
+            };
+        });
+        assert.equal(probe.loaded, true, "the self-hosted emoji face did not load");
+        assert.ok(probe.colored > 0, "the emoji face rendered without color layers");
+        assert.match(probe.stack, /Tumult Emoji/, "the theme's sans stack does not prefer the self-hosted emoji face");
+    });
+
     it("enforces the build's meta CSP under app://, with no 'unsafe-eval'", async () => {
         const csp = await page.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") ?? "");
         assert.match(csp, /script-src 'self' 'wasm-unsafe-eval' blob:/);
         assert.match(csp, /worker-src 'self' blob:/);
         assert.match(csp, /media-src 'self' blob:/);
+        assert.match(csp, /font-src 'self'/);
         assert.match(csp, /frame-src 'self'/);
         assert.doesNotMatch(csp, /(^|\s)'unsafe-eval'/);
         // The policy is live, not just present. Probed from a blob: script (which

@@ -2063,6 +2063,11 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(dark.inputBorderStyle, "solid", "the login input border did not resolve to the token rule");
         assert.equal(dark.inputBorderWidth, "1px", "the login input border width did not resolve to the token");
         assert.equal(dark.font, dark.fontToken, "the document font did not come from the font token");
+        // The self-hosted face is the fix for Linux hosts that draw the system
+        // COLRv1 emoji as monochrome outlines; it must stay ahead of that system
+        // fallback in the theme's stack (desktop smoke checks it actually draws
+        // color).
+        assert.match(dark.fontToken, /Tumult Emoji/, "the theme stack lost the self-hosted emoji face");
 
         // Light mode reaches the auth surface through the same tokens, not a
         // second hardcoded palette.

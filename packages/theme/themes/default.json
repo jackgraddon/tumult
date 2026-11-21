@@ -41,7 +41,7 @@
     "prim-radius-md": "0.5rem",
     "prim-radius-lg": "0.625rem",
     "prim-radius-full": "9999px",
-    "prim-font-sans": "Figtree, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, \"Noto Color Emoji\", sans-serif",
+    "prim-font-sans": "Figtree, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, \"Tumult Emoji\", \"Noto Color Emoji\", sans-serif",
     "prim-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
     "prim-text-2xs": "0.5625rem",
     "prim-text-xs": "0.75rem",
