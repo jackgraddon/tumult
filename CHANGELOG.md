@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.2](https://github.com/jackgraddon/tumult/compare/v0.4.1...v0.4.2) (2026-11-21)
+
+
+### Features
+
+* **activity:** add rich presence buttons ([3755770](https://github.com/jackgraddon/tumult/commit/37557706905f3ce605129603ccf7875029764141))
+* **activity:** show rich RPC media and progress on profile cards ([ccfe114](https://github.com/jackgraddon/tumult/commit/ccfe114ad24c3b6f1e20bd0b4443b56614ab53b4))
+* **desktop:** a loopback RPC a native app pushes activity through ([1e2b6ff](https://github.com/jackgraddon/tumult/commit/1e2b6ffb152e57ea661a7b7c4d56369e6fcaec65))
+* **desktop:** add manual app updates ([e5012a7](https://github.com/jackgraddon/tumult/commit/e5012a79fc7c96c24ff35847eab78328fe780b8e))
+* **desktop:** Electron shell for Linux and Windows ([414e5e2](https://github.com/jackgraddon/tumult/commit/414e5e263e27e03aac66a6894b4cd262540f299b))
+* **desktop:** sink Discord IPC presence into the native activity feed ([ca4d359](https://github.com/jackgraddon/tumult/commit/ca4d35929b24f4c98a167cf23a08537dad95e0e4))
+* **desktop:** the native activity RPC client and a reference producer ([ccf6b80](https://github.com/jackgraddon/tumult/commit/ccf6b80940d0fcf0ef0f7cc2475ae0406ef9df97))
+* own activity in the shell with native precedence ([d74531f](https://github.com/jackgraddon/tumult/commit/d74531fd715e966c46511cf620957cb93622ac61))
+* **plugins:** a native activity feed, the one native bridge the shell allows ([0ab0960](https://github.com/jackgraddon/tumult/commit/0ab096015e9f3ea52d7afa575cd58560d9bb36fd))
+* **ui:** a click-to-open, read-only member profile card ([a55b340](https://github.com/jackgraddon/tumult/commit/a55b340eb65df1365675e1b798dbeda8cba8e390))
+* **web:** desktop build flag and a reusable plugin-asset proxy ([53535dd](https://github.com/jackgraddon/tumult/commit/53535dd9f131ef58649a43ad4c8d623d8e90dd64))
+
+
+### Bug Fixes
+
+* **desktop:** build FUSE-free AppImages ([26c4c2f](https://github.com/jackgraddon/tumult/commit/26c4c2f213cc946a0f094e04d01812ef951d5dc6))
+* **desktop:** keep simulated Unix IPC paths POSIX on Windows ([0d2264d](https://github.com/jackgraddon/tumult/commit/0d2264d9a1af718f8192003f513d45750534a9ab))
+* **desktop:** permissions by security origin, sign-in window only from /login, no cookies on plugin downloads ([38e80ac](https://github.com/jackgraddon/tumult/commit/38e80ac824e81053692041acb0d7b786a3ff40db))
+* **desktop:** stop a retrying producer from pinning the event loop on no-clear quit ([412ad45](https://github.com/jackgraddon/tumult/commit/412ad452c14fd1dafdb8721767afba4c51357d25))
+* **lint:** use const for the never-reassigned native activity feed record ([6ed92e7](https://github.com/jackgraddon/tumult/commit/6ed92e7722a324fbcd9f975cfc692f5c23cfbfe7))
+* **release:** cut a draft GitHub release and let desktop CI attach the packages ([ef858a9](https://github.com/jackgraddon/tumult/commit/ef858a93997ce3aba37ec91e08d429e61ee00f95))
+* **ui:** render color emoji in reaction controls ([d38c1df](https://github.com/jackgraddon/tumult/commit/d38c1df555b99bea3ced9da7b3bb8ce8850db678))
+* **voice:** stop advertising an SFU we are not on after a join race ([4308513](https://github.com/jackgraddon/tumult/commit/43085134e0bf1627ed6fd1633573fa6d32941570))
+
 ### [0.4.1](https://github.com/jackgraddon/tumult/compare/v0.4.0...v0.4.1) (2026-10-31)
 
 
