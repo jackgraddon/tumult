@@ -56,7 +56,7 @@ everything built on it.
 | `--prim-radius-md` | radius | `0.5rem` | Default radius. |
 | `--prim-radius-lg` | radius | `0.625rem` | Large radius. |
 | `--prim-radius-full` | radius | `9999px` | Pills / avatars. |
-| `--prim-font-sans` | typography | `Figtree, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif` | UI font stack. |
+| `--prim-font-sans` | typography | `Figtree, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Color Emoji", sans-serif` | UI font stack. |
 | `--prim-font-mono` | typography | `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace` | Mono stack. |
 | `--prim-text-2xs` | typography | `0.5625rem` | 9px. |
 | `--prim-text-xs` | typography | `0.75rem` | 12px. |

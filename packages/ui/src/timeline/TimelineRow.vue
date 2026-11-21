@@ -727,6 +727,7 @@ function cancelEdit(): void {
     border-radius: var(--radius-full);
     background: var(--surface-pane);
     color: var(--text-primary);
+    font: inherit;
     font-size: var(--text-xs);
     cursor: pointer;
 }
@@ -769,6 +770,7 @@ function cancelEdit(): void {
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
+    font: inherit;
     font-size: var(--icon-md);
     cursor: pointer;
 }
