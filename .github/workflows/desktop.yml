@@ -156,6 +156,11 @@ jobs:
       # can race to that create, so it is best-effort: the upload below is the
       # real gate and fails the run if the release is truly unreachable.
       if: github.ref_type == 'tag'
+      env:
+        # `gh` does not read GITHUB_TOKEN; it wants GH_TOKEN. `contents: write`
+        # is already declared at the top of the workflow, so the token carries
+        # release write access.
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         tag=${{ github.ref_name }}

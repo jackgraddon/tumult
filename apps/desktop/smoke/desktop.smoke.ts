@@ -30,7 +30,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { ElectronApplication, Page } from "playwright";
@@ -105,12 +105,18 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await new Promise<void>((resolve) => idp.listen(0, "127.0.0.1", resolve));
         idpOrigin = `http://localhost:${(idp.address() as AddressInfo).port}`;
 
-        // `latest-linux.yml` is the channel file electron-updater asks a generic
-        // Linux feed for. Only the check is driven here — downloading would
-        // replace a real AppImage, which no test should do.
+        // electron-updater asks a generic feed for a PLATFORM-SPECIFIC channel
+        // file: `latest-linux.yml` on Linux, `latest.yml` on Windows ("due to
+        // historical reasons", per Provider.getDefaultChannelName). Serving
+        // only the Linux name made the Windows update check 404, which failed
+        // this test and left the settings dialog open for the ones after it.
+        // Only the check is driven here — downloading would replace a real
+        // AppImage / installer, which no test should do.
+        const isWindows = process.platform === "win32";
         const updateBytes = Buffer.from("a tiny stand-in for an AppImage");
         const updateSha512 = createHash("sha512").update(updateBytes).digest("base64");
-        const updateAsset = "Tumult-99.0.0-x86_64.AppImage";
+        const updateAsset = isWindows ? "Tumult-99.0.0-x64.exe" : "Tumult-99.0.0-x86_64.AppImage";
+        const channelFile = isWindows ? "latest.yml" : "latest-linux.yml";
         const updateYaml = [
             "version: 99.0.0",
             "files:",
@@ -124,7 +130,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         ].join("\n");
         updateFeed = createServer((req, res) => {
             const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-            if (path === "/latest-linux.yml") {
+            if (path === `/${channelFile}`) {
                 res.writeHead(200, { "Content-Type": "text/yaml" });
                 res.end(updateYaml);
                 return;
@@ -188,6 +194,18 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await new Promise<void>((resolve) => (idp ? idp.close(() => resolve()) : resolve()));
         await new Promise<void>((resolve) => (updateFeed ? updateFeed.close(() => resolve()) : resolve()));
         rmSync(userData, { recursive: true, force: true });
+    });
+
+    // Several tests open the full-screen settings dialog. If one fails before
+    // closing it, the overlay's nav intercepts the next test's gear click and
+    // the failure cascades into a handful of unrelated tests (that is exactly
+    // what happened when the Windows update-check fixture 404'd). Start every
+    // test from a dialog-free shell.
+    beforeEach(async () => {
+        if (await page.locator(".tumult-settings").count()) {
+            await page.keyboard.press("Escape");
+            await page.locator(".tumult-settings").waitFor({ state: "hidden", timeout: 5_000 });
+        }
     });
 
     async function watchCsp(target: Page): Promise<void> {
