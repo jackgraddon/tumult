@@ -52,19 +52,16 @@ jobs:
             dist: dist:linux
             artifact: tumult-desktop-linux
             metadata: apps/desktop/release/latest-linux.yml
-            files: |
-              apps/desktop/release/*.AppImage
-              apps/desktop/release/*.deb
-              apps/desktop/release/*.rpm
-              apps/desktop/release/latest-linux.yml
+            # One LINE, not a `|` block: GitHub injects this value verbatim into
+            # the run script, so newlines become separate shell commands (bash
+            # then tries to execute latest-linux.yml as a script). One line is
+            # one `gh release upload` call with all the expanded globs as args.
+            files: apps/desktop/release/*.AppImage apps/desktop/release/*.deb apps/desktop/release/*.rpm apps/desktop/release/latest-linux.yml
           - os: windows-latest
             dist: dist:win
             artifact: tumult-desktop-windows
             metadata: apps/desktop/release/latest.yml
-            files: |
-              apps/desktop/release/*.exe
-              apps/desktop/release/latest.yml
-              apps/desktop/release/*.blockmap
+            files: apps/desktop/release/*.exe apps/desktop/release/latest.yml apps/desktop/release/*.blockmap
     runs-on: ${{ matrix.os }}
     env:
       VITE_CLIENT_URI: ${{ vars.VITE_CLIENT_URI }}
@@ -174,7 +171,7 @@ jobs:
           echo "::notice::release $tag not found; creating a draft for the packages"
           gh release create "$tag" --draft || true
         fi
-        # matrix.files is a multi-line glob list; left unquoted, bash expands each
-        # into the files present and hands them to `gh release upload`, which
-        # uploads the raw bytes. `--clobber` makes a re-run idempotent.
+        # matrix.files is one line of globs; left unquoted, bash expands them
+        # into the files present and hands them all to `gh release upload`,
+        # which uploads the raw bytes. `--clobber` makes a re-run idempotent.
         gh release upload --clobber "$tag" ${{ matrix.files }}
