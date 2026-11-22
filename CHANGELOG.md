@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.4](https://github.com/jackgraddon/tumult/compare/v0.4.3...v0.4.4) (2026-11-22)
+
+
+### Features
+
+* sort DMs by recency with selectable order ([473b315](https://github.com/jackgraddon/tumult/commit/473b315c15618664c0b07af2e248018a133ed1e7))
+
+
+### Bug Fixes
+
+* **chat:** mark rooms read on open and anchor the timeline ([53c4b6a](https://github.com/jackgraddon/tumult/commit/53c4b6a0252bf29d1952b8685206f70b1c531dde))
+
 ### [0.4.3](https://github.com/jackgraddon/tumult/compare/v0.4.2...v0.4.3) (2026-11-21)
 
 
