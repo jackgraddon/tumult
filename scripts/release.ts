@@ -143,14 +143,14 @@ function runStandardVersion(extra: readonly string[]): number {
 }
 
 /** Push the just-cut release commit and annotated tag to `origin`. */
-function pushReleaseTag(): void {
+function pushReleaseTag(): number {
     // `--follow-tags` pushes the annotated tag `standard-version` created for the
     // release commit; the suggested command the tool itself prints.
     const result = spawnSync("git", ["push", "--follow-tags", "origin", "HEAD"], {
         stdio: "inherit",
         cwd: repoRoot,
     });
-    process.exit(result.status ?? 1);
+    return result.status ?? 1;
 }
 
 /** Whether a GitHub release already exists for `tag` (so we do not clobber one). */
@@ -169,17 +169,17 @@ function releaseExists(tag: string): boolean {
  * "latest". The release is not clobbered: a re-run or a competing CI run that
  * already cut it is left with its notes and assets.
  */
-function cutRelease(tag: string): void {
+function cutRelease(tag: string): number {
     if (releaseExists(tag)) {
         console.log(`release ${tag} already exists; leaving its notes and assets as-is`);
-        return;
+        return 0;
     }
     const version = tag.slice(1);
     const args = ["release", "create", tag, "--draft", "--title", tag];
     if (isPrereleaseVersion(version)) args.push("--prerelease");
     args.push("--notes", changelogNotes(readChangelog(), version));
     const result = spawnSync("gh", args, { stdio: "inherit", cwd: repoRoot });
-    process.exit(result.status ?? 1);
+    return result.status ?? 1;
 }
 
 function main(): void {
@@ -210,8 +210,9 @@ function main(): void {
     // is nothing new to push or publish.
     const tag = `v${repoVersion()}`;
     if (!listLocalTags().includes(tag)) return;
-    pushReleaseTag();
-    cutRelease(tag);
+    const pushStatus = pushReleaseTag();
+    if (pushStatus !== 0) process.exit(pushStatus);
+    process.exit(cutRelease(tag));
 }
 
 const invoked = process.argv[1]?.replaceAll("\\", "/");
