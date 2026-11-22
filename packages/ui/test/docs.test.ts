@@ -12,13 +12,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
+import { CONTRACT_VERSION } from "@tumult/core/contract";
+
+import { PLUGIN_API_VERSION } from "../src/plugins/compat.ts";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const docsDir = join(here, "..", "..", "..", "docs");
 const srcDir = join(here, "..", "src");
+const templateDir = join(here, "..", "..", "..", "templates", "plugin");
 
 const pluginsDoc = readFileSync(join(docsDir, "plugins.md"), "utf8");
+const templateReadme = readFileSync(join(templateDir, "README.md"), "utf8");
 const typesSource = readFileSync(join(srcDir, "plugins", "types.ts"), "utf8");
 const indexSource = readFileSync(join(srcDir, "index.ts"), "utf8");
+
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
 /** The `PLUGIN_PERMISSIONS` members — the single source the `Permission`
  * union, the schema enum and the installer all derive from. */
@@ -120,6 +128,33 @@ describe("docs/plugins.md", () => {
                     }
                 }
             }
+        }
+    });
+
+    it("states the live counts of permissions and APIs", () => {
+        const count = (n: number) => NUMBER_WORDS[n] ?? String(n);
+        const expected = `one of the ${count(permissionNames().length)} permissions or ${count(apiMethods().length)} APIs`;
+        assert.ok(
+            pluginsDoc.includes(expected),
+            `docs/plugins.md should say "${expected}" — the API count drifted`,
+        );
+    });
+
+    it("keeps the plugin template README in step with the API", () => {
+        for (const permission of permissionNames()) {
+            assert.ok(
+                templateReadme.includes(`\`${permission}\``),
+                `the template README does not mention the permission: ${permission}`,
+            );
+        }
+        for (const [label, version] of [
+            ["minUI (plugin API)", PLUGIN_API_VERSION],
+            ["minCore (chat contract)", CONTRACT_VERSION],
+        ]) {
+            assert.ok(
+                templateReadme.includes(`\`${version}\``),
+                `the template README should state ${label} ${version}`,
+            );
         }
     });
 });

@@ -3,8 +3,9 @@ import { ref, type Ref } from "vue";
 import type { Disposable } from "./types.ts";
 
 /**
- * A tiny keyed contribution list — the shared machinery behind the
- * composer-action, command and member-decoration registries.
+ * A tiny keyed contribution list — the shared machinery behind the seven
+ * keyed registries: composer actions, commands, member decorations, profile
+ * sections, activity renderers, settings tabs and workspace panes.
  *
  * Same snapshot-plus-version-counter shape as `TimelineRegistry`: the entries
  * array is a plain array invisible to Vue, so every reader (`all`, `get`, …)

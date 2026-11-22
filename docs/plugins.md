@@ -31,10 +31,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 - The **lane is derived, never declared** (`deriveLane`): a plugin whose
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
   loaded into a **Worker inside an opaque-origin sandbox frame** and reaches
-  the shell only through the bridge; a
-  plugin that contributes a live component (renderer, decoration, profile
-  section, settings tab, workspace pane) runs **in-page at the app's trust
-  level**, and the consent screen says so out loud. The in-page lane is an
+  the shell only through the bridge; a plugin that contributes a live component
+  (renderer, decoration, profile section, activity renderer, settings tab,
+  workspace pane) or reads the native activity feed runs **in-page at the app's
+  trust level**, and the consent screen says so out loud. The in-page lane is an
   extension seam, **not** a sandbox.
 - A plugin callback is **not** a component: use `ctx` inside `install`, `run`
   and `match`. The `inject()`-based hooks (`useSelection`, `usePluginRegistry`,
@@ -54,14 +54,15 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/installControls.ts` | `PluginInstallControls` + `PluginInstallKey` — the install seam the app implements |
 | `packages/ui/src/plugins/authoring.ts` | the plugin-AUTHOR surface: an explicit re-export of exactly what a plugin may see, and the sole input to the generated `templates/plugin/types/plugin.d.ts` |
 | `packages/ui/src/plugins/InstallConsentDialog.vue` | the consent screen (a `RoomDialog` composition) |
-| `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind three of the APIs |
+| `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind seven of the APIs |
 | `packages/ui/src/plugins/sandbox/protocol.ts` | the Worker bridge's wire contract (message kinds, the client method/feed name lists, capability snapshot) |
 | `packages/ui/src/plugins/sandbox/host.ts` | `sandboxPlugin()` — the host facade that runs a bundle over a `SandboxTransport` and answers its RPCs |
 | `packages/ui/src/plugins/sandbox/frame.ts` | `createFrameTransport` (host half: hidden frame, port hand-off, buffering, boot deadline) and `startSandboxFrame` (the frame's bootstrap: first port from the parent only, inner Worker, error relay) |
 | `packages/ui/src/plugins/sandbox/worker/runtime.ts` | the Worker-side runtime factory (rebuilds `PluginContext` over RPC; tested in-process) |
 | `packages/ui/src/plugins/sandbox/worker/shim.ts` | `@tumult/ui/sandbox` — binds the runtime to the real Worker globals |
 | `packages/ui/src/plugins/styles.ts` | `injectStylesheet` — the owner-tagged `<style>` injector and its CSP guard |
-| `packages/ui/src/plugins/lane.ts` | `deriveLane`, `PluginLane`, `SANDBOXABLE_PERMISSIONS` — the trust-lane rule (§11): every-sandboxable → Worker, any component permission → in-page |
+| `packages/ui/src/plugins/lane.ts` | `deriveLane`, `PluginLane`, `SANDBOXABLE_PERMISSIONS` — the trust-lane rule (§11): every-sandboxable → Worker, anything else → in-page |
+| `packages/ui/src/plugins/native-activity.ts` | `NativeActivityFeed` / `NativeActivity` — the shell-owned native feed; `nativeActivity`'s target |
 | `packages/ui/src/plugins/compat.ts` | `PLUGIN_API_VERSION`, `compareVersions`, `checkManifestCompatibility` — the install-time `minUI`/`minCore` gate |
 | `packages/ui/src/plugins/schema.ts` | `validatePluginManifest` + the release `tumult.plugin.json` schema builder |
 | `packages/ui/src/plugins/vueBridge.ts` | `installVueBridge` — hands a third-party bundle the host's `vue` (`globalThis.__tumult.vue`), so a bundled copy can `inject()` |
@@ -69,8 +70,10 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/timeline/composer-actions.ts` | `ComposerActionsRegistry` + `ComposerAction` |
 | `packages/ui/src/timeline/commands.ts` | `CommandsRegistry` + `Command` (name normalization, `suggest()`, `resolve()`) |
 | `packages/ui/src/members/decorations.ts` | `MemberDecorationsRegistry` + `MemberDecoration` |
+| `packages/ui/src/members/profileSections.ts` | `ProfileSectionsRegistry` + `ProfileSection` — `addProfileSection`'s target |
+| `packages/ui/src/members/activity.ts` | `ActivityRenderersRegistry` + `ActivityRenderer` and `useActivity` — `addActivityRenderer`'s target |
 | `packages/ui/src/settings/tabs.ts` | `SettingsTabsRegistry` + `SettingsTab` |
-| `packages/ui/src/panes/registry.ts` | `WorkspacePanesRegistry` + `WorkspacePane` (`useWorkspacePanes`) — the 6th extension point; `addPane`'s target |
+| `packages/ui/src/panes/registry.ts` | `WorkspacePanesRegistry` + `WorkspacePane` (`useWorkspacePanes`) — the workspace-pane extension point; `addPane`'s target |
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
 | `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
@@ -79,6 +82,9 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `apps/web/src/plugins/store.ts` | IndexedDB persistence for installed third-party plugins |
 | `apps/web/src/plugins/controller.ts` | `PluginInstallControls` implementation — prepare → consent → commit → persist, and the boot restore |
 | `packages/ui/test/plugins.test.ts` | the registry's unit contract (lifecycle, permissions, isolation) |
+| `packages/ui/test/docs.test.ts` | this document's guard: permissions, `ctx.*` calls and imports against the source |
+| `packages/ui/test/plugin-types.test.ts` | the vendored author types are exactly what the generator emits |
+| `packages/ui/test/plugin-schema.test.ts` | the release schema, validator and lane rule stay in step |
 | `apps/web/test/browser.test.ts` | one end-to-end assertion per extension point, in a real browser |
 
 The split mirrors the theme package: `packages/ui` owns the **structure** of the
@@ -195,10 +201,11 @@ without a reload.
 | `workspace-panes` | `addPane` |
 | `native-activity` | `nativeActivity` |
 
-Five of them (`timeline-renderers`, `composer-actions`, `commands`, `styles`,
-`native-activity`) leave the plugin able to run in the **sandbox** lane; the
-other five contribute a live Vue component or a DOM stylesheet and therefore
-force the **trusted** lane (§11).
+Three of them (`composer-actions`, `commands`, `styles`) leave the plugin able
+to run in the **sandbox** lane. The other seven force the **trusted** lane: six
+contribute a live Vue component (`timeline-renderers`, `member-decorations`,
+`profile-sections`, `activity-renderers`, `settings-tabs`, `workspace-panes`),
+and `native-activity` reads the desktop's in-page-only native bridge (§11).
 
 Calling an API whose permission is not in `manifest.permissions` throws
 immediately — and because the throw happens during `install`, the whole install
@@ -1217,6 +1224,7 @@ Run them (build `theme` and `core` first — `ui` resolves them through `dist`):
 pnpm --filter @tumult/theme build && pnpm --filter @tumult/core build
 pnpm --filter @tumult/ui test        # the registry's unit contract
 pnpm --filter @tumult/ui emit:schema # after changing the manifest schema
+pnpm --filter @tumult/ui emit:types  # after changing the plugin-author surface
 pnpm --filter @tumult/web test:browser   # one live assertion per extension point
 ```
 
@@ -1230,7 +1238,7 @@ assertion there.
 This document is guarded too: `packages/ui/test/docs.test.ts` parses the fenced
 code here and fails if it declares a permission or calls a `ctx.*` API that does
 not exist, imports a name `@tumult/ui` does not export, or forgets to document
-one of the seven permissions or seven APIs. Change the API and that test names the
+one of the ten permissions or ten APIs. Change the API and that test names the
 stale line. The release schema is guarded separately:
 `packages/ui/test/plugin-schema.test.ts` fails when the committed schema files
 drift from the builder, when the schema and the runtime validator disagree, or
@@ -1304,7 +1312,7 @@ deriveLane({ permissions: ["timeline-renderers"] });          // "trusted"
 | lane | how it loads | what it may declare |
 |---|---|---|
 | `sandbox` | the bundle is loaded and run **inside a Worker in an opaque-origin frame**; every shell touch is an RPC over the bridge | `commands`, `composer-actions`, `styles` |
-| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including the component permissions (`timeline-renderers`, `member-decorations`, `activity-renderers`, `settings-tabs`, `workspace-panes`) and `native-activity` |
+| `trusted` | the bundle is loaded **in-page**, at the app's trust level | anything, including the component permissions (`timeline-renderers`, `member-decorations`, `profile-sections`, `activity-renderers`, `settings-tabs`, `workspace-panes`) and `native-activity` |
 
 Nothing in the manifest chooses this. `deriveLane` reads the declared
 permissions, and the consent screen prints the resulting lane in plain words.
@@ -1426,9 +1434,10 @@ seven differences the boundary forces:
 - **The two synchronous members are snapshots.** `supportsThreads()` and
   `hasMoreRooms()` cannot await across a boundary, so their values ride along
   with the init/handshake messages rather than being guessed.
-- **Component permissions are refused.** `addRenderer`, `addMemberDecoration` and
-  `addSettingsTab` throw with "require the trusted lane" — the lane rule already
-  excludes a plugin that declares them, so this is a backstop, not a path.
+- **Component permissions are refused.** `addRenderer`, `addMemberDecoration`,
+  `addProfileSection`, `addActivityRenderer`, `addSettingsTab` and `addPane`
+  throw with "require the trusted lane" — the lane rule already excludes a
+  plugin that declares them, so this is a backstop, not a path.
 
 Because the host applies every contribution through the real `ctx`, a sandbox
 plugin hits the **same** `api.ts` permission gate as an in-page one; there is no

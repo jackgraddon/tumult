@@ -10,7 +10,8 @@ publishes what Tumult installs.
    directory. Your repository URL is what people paste into Tumult.
 2. **Edit `src/index.ts` and `tumult.plugin.json`.** Keep the two manifests in
    step: `tumult.plugin.json` is what Tumult reads, `src/index.ts` is what your
-   code carries (Tumult checks they agree before running anything).
+   code carries (Tumult checks their `id` and `permissions` agree before
+   running the bundle).
 3. **Install and build.**
 
    ```sh
@@ -52,10 +53,11 @@ publishes what Tumult installs.
 
 Your bundle exports a `Plugin`: a manifest plus `install(ctx)`. Everything
 else goes through `ctx` — the chat client, the room selection, media
-resolution, and the seven extension points (timeline renderers, composer
-actions, slash commands, member decorations, settings tabs, stylesheets,
-workspace panes), each
-gated by a **permission** you declare:
+resolution, and the ten extension APIs (timeline renderers, composer actions,
+slash commands, member decorations, profile-card sections, activity renderers,
+settings tabs, workspace panes, stylesheets and the native activity feed), each
+gated by a **permission** you declare. See `docs/plugins.md` in the Tumult
+repository for the full API reference:
 
 ```ts
 import type { Plugin } from "@tumult/ui";
@@ -90,8 +92,12 @@ neither does a reviewer:
 
 | permission | lane |
 |---|---|
-| `commands`, `composer-actions`, `styles` | **sandbox** — your code runs inside a Worker and reaches Tumult only through the message bridge. No DOM, no `window`. |
-| `timeline-renderers`, `member-decorations`, `profile-sections`, `settings-tabs`, `workspace-panes` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
+| `commands`, `composer-actions`, `styles` | **sandbox** — your code runs inside a Worker in an opaque-origin frame and reaches Tumult only through the message bridge. No DOM, no `window`. |
+| `timeline-renderers`, `member-decorations`, `profile-sections`, `activity-renderers`, `settings-tabs`, `workspace-panes`, `native-activity` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
+
+`native-activity` is trusted even though it contributes no component: its feed
+lives on the desktop preload's `window.tumultNative` bridge, which a sandboxed
+Worker cannot reach. On the web that feed is always empty.
 
 Stay in the sandbox if you can. A plugin that only sends messages, reacts,
 transforms text or ships stylesheets can do a lot without ever needing the DOM.
@@ -99,9 +105,9 @@ transforms text or ships stylesheets can do a lot without ever needing the DOM.
 ### Vue components
 
 A component permission (`timeline-renderers`, `member-decorations`,
-`profile-sections`, `settings-tabs`, `workspace-panes`) means you contribute a
-Vue component, which
-puts you in the trusted lane. Import `vue` normally for its types, and build
+`profile-sections`, `activity-renderers`, `settings-tabs`, `workspace-panes`)
+means you contribute a Vue component, which puts you in the trusted lane.
+Import `vue` normally for its types, and build
 through `vite.config.ts` with `@vitejs/plugin-vue` — Vite compiles your SFCs and
 aliases `vue` to `src/shims/vue.ts`. That shim forwards to the host's Vue
 instance, because a second copy of Vue in your bundle would render but could
@@ -119,7 +125,8 @@ attach — keep CSS in a TypeScript string and inject it with
 `minUI` (the plugin API) and `minCore` (the chat-client contract) are enforced:
 Tumult refuses to install a plugin asking for a newer version than it
 provides. Omit them until you actually need them. The versions these vendored
-types describe are both `1.1.0` (`minUI` and `minCore`).
+types describe are `1.4.1` (`minUI`, the plugin API) and `1.7.0` (`minCore`, the
+chat-client contract); both are declared at the end of `types/plugin.d.ts`.
 
 ## Versioning and updates
 

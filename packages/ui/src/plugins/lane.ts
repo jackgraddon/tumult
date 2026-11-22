@@ -4,14 +4,15 @@
  * A plugin's lane is computed from the permissions it asks for, at load
  * time, by the host: nothing in the manifest can claim a lane, and there is
  * no reviewer to petition. A plugin that only needs data-in/capability-out
- * APIs (commands, composer actions, stylesheets) is loaded into a Worker inside an
- * opaque-origin sandbox frame (`sandbox/frame.ts`) and
- * reaches the shell exclusively through the RPC bridge — no DOM, no window,
- * no session storage. A plugin that contributes a live Vue component (a
- * timeline renderer, a member decoration, a profile section, a settings tab)
- * cannot be marshalled across a postMessage boundary, so it runs in-page, at
- * the app's own trust level, and the installer says exactly that before
- * installing.
+ * APIs (commands, composer actions, stylesheets) is loaded into a Worker inside
+ * an opaque-origin sandbox frame (`sandbox/frame.ts`) and reaches the shell
+ * exclusively through the RPC bridge — no DOM, no window, no session storage.
+ * A plugin that contributes a live Vue component (a timeline renderer, member
+ * decoration, profile section, activity renderer, settings tab or workspace
+ * pane) cannot be marshalled across a postMessage boundary, so it runs in-page,
+ * at the app's own trust level, and the installer says exactly that before
+ * installing. `native-activity` joins them even though it contributes no
+ * component: its feed lives on the desktop preload's in-page bridge.
  *
  * The double enforcement: this rule decides WHERE the module loads, and
  * `api.ts`'s permission gate decides WHAT the bridge answers — a sandboxed
@@ -46,9 +47,9 @@ const SANDBOXABLE = new Set<string>(SANDBOXABLE_PERMISSIONS);
 /**
  * Derive a plugin's lane from its declared permissions: `sandbox` when every
  * permission is sandboxable (including the degenerate none), `trusted` when
- * any component-capable permission appears. The installer calls this before
- * showing consent, so the badge the user sees is this function — not a claim
- * from the manifest.
+ * any permission is outside that set — a component-bearing one or
+ * `native-activity`. The installer calls this before showing consent, so the
+ * badge the user sees is this function — not a claim from the manifest.
  */
 export function deriveLane(manifest: { permissions: readonly Permission[] }): PluginLane {
     return manifest.permissions.every((permission) => SANDBOXABLE.has(permission))

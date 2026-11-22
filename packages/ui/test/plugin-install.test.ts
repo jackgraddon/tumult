@@ -342,6 +342,9 @@ describe("consent copy stays in step with the permission list", () => {
         assert.equal(LANE_SUMMARY.sandbox.warning, null);
         assert.ok(LANE_SUMMARY.trusted.warning !== null);
         assert.match(LANE_SUMMARY.trusted.label, /app/);
+        // native-activity forces this lane without contributing a component,
+        // so the explanation has to name it too.
+        assert.match(LANE_SUMMARY.trusted.blurb, /native activity/);
     });
 
     it("describePermission falls back to the raw name for an unknown value", () => {

@@ -3,6 +3,7 @@
     "private": true,
     "version": "1.0.0",
     "type": "module",
+    "packageManager": "pnpm@11.13.1",
     "description": "Template for a Tumult plugin: a manifest, a bundle, and a release workflow.",
     "scripts": {
         "build": "vite build",

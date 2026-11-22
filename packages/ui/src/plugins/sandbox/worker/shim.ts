@@ -7,9 +7,15 @@
  * `runtime.ts`, which takes those as an injected `SandboxScope` so the entire
  * host↔worker protocol can be tested in-process without a browser.
  *
- * A sandbox plugin's `ctx` differs from the in-page one in five ways, each
+ * A sandbox plugin's `ctx` differs from the in-page one in seven ways, each
  * forced by the boundary rather than chosen:
  *
+ *   - **The client is policed, not reflected.** `policy.ts` classifies every
+ *     `ChatClient` member; a sandboxed plugin may only use the invocation-scoped
+ *     subset and is refused everything else.
+ *   - **Invocation contexts cross as data.** `{ roomId, client, args, raw }`
+ *     cannot be structured-cloned, so the host sends opaque `{ kind: "client" }`
+ *     and `{ kind: "hostfn" }` references that answer only while it runs.
  *   - **Subscriptions become pushes.** A feed's snapshot lives on the host, so
  *     each feed is opened once by key; `.get()` reads the latest pushed value.
  *   - **`media.resolve*` mints its own URL.** A `blob:` URL made on the host is
@@ -21,9 +27,10 @@
  *   - **The two synchronous members are cached.** `supportsThreads()` and
  *     `hasMoreRooms()` cannot await across a boundary, so their values arrive as
  *     a pushed snapshot (see `SandboxCapabilities`) rather than being guessed.
- *   - **Component permissions are refused.** A renderer/decoration/settings-tab
- *     is a live Vue component, which the lane rule already excludes; the stubs
- *     throw rather than register nothing.
+ *   - **Component permissions are refused.** All six component-bearing APIs
+ *     (renderer, decoration, profile section, activity renderer, settings tab,
+ *     pane) are live Vue components, which the lane rule already excludes; the
+ *     stubs throw rather than register nothing.
  */
 
 import { createSandboxRuntime, type SandboxScope } from "./runtime.ts";

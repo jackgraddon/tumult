@@ -72,9 +72,14 @@ describe("generated plugin types", () => {
             "ComposerAction",
             "Command",
             "MemberDecoration",
+            "ProfileSection",
+            "ActivityRenderer",
+            "NativeActivityFeed",
             "SettingsTab",
+            "WorkspacePane",
             "deriveLane",
             "PLUGIN_PERMISSIONS",
+            "PLUGIN_API_VERSION",
         ]) {
             assert.ok(
                 new RegExp(`\\b${name}\\b`).test(committed),

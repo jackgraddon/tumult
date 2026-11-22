@@ -1759,9 +1759,9 @@ export declare const SANDBOXABLE_PERMISSIONS: readonly Permission[];
 /**
  * Derive a plugin's lane from its declared permissions: `sandbox` when every
  * permission is sandboxable (including the degenerate none), `trusted` when
- * any component-capable permission appears. The installer calls this before
- * showing consent, so the badge the user sees is this function — not a claim
- * from the manifest.
+ * any permission is outside that set — a component-bearing one or
+ * `native-activity`. The installer calls this before showing consent, so the
+ * badge the user sees is this function — not a claim from the manifest.
  */
 export declare function deriveLane(manifest: {
 	permissions: readonly Permission[];

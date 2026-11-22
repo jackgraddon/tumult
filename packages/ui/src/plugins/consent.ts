@@ -56,8 +56,8 @@ export const LANE_SUMMARY = {
     trusted: {
         label: "Runs as part of the app",
         blurb:
-            "This plugin adds its own interface components, so it has to run inside the app " +
-            "itself — not in a sandbox.",
+            "This plugin adds its own interface components or reads the desktop's native " +
+            "activity feed, so it has to run inside the app itself — not in a sandbox.",
         warning:
             "A plugin in this lane runs with the same access the app has: it can read your " +
             "messages, your session, and anything else the app can. Only install it if you trust " +
