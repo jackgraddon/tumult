@@ -6,36 +6,32 @@ import {
     PluginInstallKey,
     ThemeKey,
     TumultShell,
-    type Plugin,
     type PluginRegistry,
     type RoomSelection,
 } from "@tumult/ui";
 import type { ChatClient } from "@tumult/core";
 
 import { decodeGuildId, decodeRoomId } from "../routing.ts";
-import DemoPoll from "../renderers/DemoPoll.vue";
-import { activityShowcase, adminBadge, profileShowcase, reactLastAction, settingsShowcase, shrugCommand, workspaceShowcase } from "../plugins/showcase.ts";
 import { pluginInstallController } from "../plugins/controller.ts";
 import { themeController } from "../theme/controller.ts";
 
 /**
- * The reference plugin: registers the demo-poll timeline renderer through the
- * plugin API (manifest + permission + context) instead of poking the registry
- * directly. A game renderer follows this exact shape.
+ * The shell installs no plugins by default. The fake-mode browser suite opts
+ * into the kept reference plugins with a stored flag so every extension point
+ * stays covered; a query parameter is handy for a one-off fake-mode inspection.
+ * The real build never reads either — the flag is compiled out with the mode.
  */
-const demoPoll: Plugin = {
-    manifest: {
-        id: "cc.jackg.tumult.demo-poll",
-        name: "Demo Poll",
-        version: "1.0.0",
-        author: "Tumult",
-        description: "Renders cc.jackg.tumult.demo.poll events as a poll.",
-        permissions: ["timeline-renderers"],
-    },
-    install(ctx) {
-        ctx.addRenderer("cc.jackg.tumult.demo.poll", { component: DemoPoll, priority: 10 });
-    },
-};
+function wantsReferencePlugins(): boolean {
+    if (import.meta.env.MODE !== "fake") return false;
+    try {
+        return (
+            new URLSearchParams(window.location.search).get("reference-plugins") === "1" ||
+            window.localStorage.getItem("tumult.referencePlugins") === "1"
+        );
+    } catch {
+        return false;
+    }
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -78,16 +74,16 @@ onMounted(async () => {
     } catch (cause) {
         startError.value = reportError(cause, "Couldn't connect to your homeserver");
     }
-    // Install the reference plugins from the app, proving the extension seam
-    // lives outside packages/ui and flows through the manifest/permission path.
-    shell.value?.plugins.install(demoPoll);
-    shell.value?.plugins.install(shrugCommand);
-    shell.value?.plugins.install(reactLastAction);
-    shell.value?.plugins.install(adminBadge);
-    if (import.meta.env.MODE === "fake") shell.value?.plugins.install(activityShowcase);
-    if (import.meta.env.MODE === "fake") shell.value?.plugins.install(profileShowcase);
-    shell.value?.plugins.install(settingsShowcase);
-    shell.value?.plugins.install(workspaceShowcase);
+    // Opt-in only, and dynamically imported so the reference components never
+    // enter the normal startup path. See `plugins/reference.ts` for the code.
+    if (shell.value && wantsReferencePlugins()) {
+        try {
+            const { installReferencePlugins } = await import("../plugins/reference.ts");
+            installReferencePlugins(shell.value.plugins);
+        } catch (cause) {
+            console.error("[tumult] Couldn't load the reference plugins:", cause);
+        }
+    }
 
     // Third-party installs: hand the controller the shell's registry, then
     // re-hash and load every enabled stored plugin. Failures are reported per

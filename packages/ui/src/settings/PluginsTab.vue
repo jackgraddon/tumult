@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { reportError } from "@tumult/core/errors";
+import { computed, ref, shallowRef } from "vue";
 
 import { usePluginRegistry } from "../plugins/registry.ts";
 import { tryUsePluginInstall } from "../plugins/installControls.ts";
 import { LANE_SUMMARY } from "../plugins/consent.ts";
+import type {
+    AvailablePluginUpdate,
+    InstalledPluginView,
+} from "../plugins/installControls.ts";
 import type { PluginManifest } from "../plugins/types.ts";
 import type { SettingsTabProps } from "./tabs.ts";
 import InstallConsentDialog from "../plugins/InstallConsentDialog.vue";
@@ -33,6 +38,17 @@ const installed = computed(() => install?.installed.value ?? []);
 const pending = computed(() => install?.pending.value ?? null);
 const busy = computed(() => install?.busy.value ?? false);
 
+/** One row's last update check, keyed by plugin id. */
+interface UpdateRowState {
+    latestVersion: string | null;
+    latestTag: string | null;
+    update: AvailablePluginUpdate | null;
+    error: string;
+}
+const updateStates = shallowRef<Record<string, UpdateRowState>>({});
+const checkingUpdates = ref(false);
+const updatesError = ref("");
+
 // A plugin the install controller knows about is third-party even when it is
 // not yet in `installed`: the controller registers a freshly installed plugin
 // before its record is written, and a record we refused to load never reaches
@@ -51,6 +67,44 @@ async function onInstall(): Promise<void> {
     if (!outcome.ok) installError.value = outcome.error ?? "Could not read that repository.";
 }
 
+/**
+ * A check is read-only: the app fetches the latest release manifests and tells
+ * us which versions are newer. The "Update" button it reveals goes back through
+ * the same prepare/consent path as a pasted URL, so no code is loaded here.
+ */
+async function onCheckUpdates(): Promise<void> {
+    if (!install || checkingUpdates.value || busy.value) return;
+    checkingUpdates.value = true;
+    updatesError.value = "";
+    updateStates.value = {};
+    try {
+        const results = await install.checkForUpdates();
+        const next: Record<string, UpdateRowState> = {};
+        for (const result of results) {
+            next[result.id] = {
+                latestVersion: result.latestVersion,
+                latestTag: result.latestTag,
+                update: result.update,
+                error: result.error ?? "",
+            };
+        }
+        updateStates.value = next;
+    } catch (cause) {
+        updatesError.value = reportError(cause, "Couldn't check for plugin updates");
+    } finally {
+        checkingUpdates.value = false;
+    }
+}
+
+async function onUpdate(entry: InstalledPluginView): Promise<void> {
+    if (!install || busy.value) return;
+    installError.value = "";
+    // A stored record keeps `owner/repo`, so preparing it resolves the latest
+    // release rather than the tag the user installed earlier.
+    const outcome = await install.prepare(entry.sourceUrl);
+    if (!outcome.ok) installError.value = outcome.error ?? "Could not prepare that update.";
+}
+
 async function onConfirm(): Promise<void> {
     if (!install) return;
     confirmError.value = "";
@@ -60,6 +114,9 @@ async function onConfirm(): Promise<void> {
         return;
     }
     url.value = "";
+    // Installed versions (and possibly hashes) just changed; every earlier
+    // comparison is now stale.
+    updateStates.value = {};
 }
 
 function onCancel(): void {
@@ -106,6 +163,22 @@ async function onEnable(id: string): Promise<void> {
             <button type="button" class="tumult-plugin-button" @click="reload">Reload now</button>
         </p>
 
+        <div v-if="install && installed.length > 0" class="tumult-plugin-updates">
+            <button
+                type="button"
+                class="tumult-plugin-button"
+                data-testid="plugin-updates-check"
+                :disabled="busy || checkingUpdates"
+                @click="onCheckUpdates"
+            >
+                {{ checkingUpdates ? "Checking…" : "Check for updates" }}
+            </button>
+            <p v-if="checkingUpdates" class="tumult-settings-note" role="status">
+                Checking installed plugins for newer releases…
+            </p>
+            <p v-if="updatesError" class="tumult-plugin-error" role="alert">{{ updatesError }}</p>
+        </div>
+
         <!-- Third-party installs: enable/disable/remove, lane badge, source. -->
         <ul v-if="installed.length > 0" class="tumult-plugin-list">
             <li v-for="entry in installed" :key="entry.id" class="tumult-plugin">
@@ -130,7 +203,44 @@ async function onEnable(id: string): Promise<void> {
                 <p class="tumult-plugin-perms">
                     Can: {{ entry.permissions.length > 0 ? entry.permissions.join(", ") : "nothing" }}
                 </p>
+                <p
+                    v-if="updateStates[entry.id]?.error"
+                    class="tumult-plugin-error"
+                    role="alert"
+                    data-testid="plugin-update-error"
+                >
+                    {{ updateStates[entry.id]?.error }}
+                </p>
+                <p
+                    v-else-if="updateStates[entry.id]"
+                    class="tumult-plugin-update-status"
+                    role="status"
+                    data-testid="plugin-update-status"
+                >
+                    <template v-if="updateStates[entry.id]?.update">
+                        Version {{ updateStates[entry.id]?.update?.version }} is available<template
+                            v-if="updateStates[entry.id]?.latestTag"
+                        >
+                            ({{ updateStates[entry.id]?.latestTag }})</template
+                        >.
+                    </template>
+                    <template v-else>
+                        You're up to date<template v-if="updateStates[entry.id]?.latestVersion">
+                            (v{{ updateStates[entry.id]?.latestVersion }})</template
+                        >.
+                    </template>
+                </p>
                 <div class="tumult-plugin-actions">
+                    <button
+                        v-if="updateStates[entry.id]?.update"
+                        type="button"
+                        class="tumult-plugin-button"
+                        data-testid="plugin-update"
+                        :disabled="busy"
+                        @click="onUpdate(entry)"
+                    >
+                        Update
+                    </button>
                     <button
                         v-if="entry.enabled"
                         type="button"
@@ -206,7 +316,8 @@ async function onEnable(id: string): Promise<void> {
         </form>
 
         <p class="tumult-settings-note">
-            Nothing updates itself. Re-installing is the update path, and a release that asks for
+            Nothing updates itself. Check for updates reads the latest published version; an update
+            still downloads, verifies the hash and opens the consent screen. A release that asks for
             new permissions always asks you again first.
         </p>
     </section>
@@ -280,8 +391,25 @@ async function onEnable(id: string): Promise<void> {
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
+.tumult-plugin-updates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+.tumult-plugin-updates .tumult-settings-note,
+.tumult-plugin-updates .tumult-plugin-error {
+    margin: 0;
+}
+.tumult-plugin-update-status {
+    margin: var(--space-2) 0 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
 .tumult-plugin-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
     margin-top: var(--space-2);
 }

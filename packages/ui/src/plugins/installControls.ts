@@ -81,6 +81,26 @@ export interface InstallOutcome {
     error: string | null;
 }
 
+/** A published release newer than the installed one. */
+export interface AvailablePluginUpdate {
+    /** The version from the release manifest, not the tag. */
+    version: string;
+    /** The GitHub release tag, for display. */
+    tag: string;
+}
+
+/**
+ * One row of a manual update check. `update` is null both when the check failed
+ * and when the installed version is current; `latestVersion` distinguishes the
+ * two, so the tab can say "up to date (v1.2.3)" without implying a download.
+ */
+export interface PluginUpdateCheck extends InstallOutcome {
+    id: string;
+    latestVersion: string | null;
+    latestTag: string | null;
+    update: AvailablePluginUpdate | null;
+}
+
 /**
  * What the Plugins tab and the consent dialog are handed. The controller owns
  * the network, the store and the registry; the UI only calls these.
@@ -120,6 +140,15 @@ export interface PluginInstallControls {
 
     /** Discard the pending release without installing it. */
     cancel(): void;
+
+    /**
+     * Read each installed plugin's latest GitHub release manifest and report
+     * whether a newer version is published. This downloads no bundle, loads no
+     * code and changes nothing; an actual update still goes through
+     * {@link prepare} and {@link confirm}, including hash verification and
+     * consent.
+     */
+    checkForUpdates(): Promise<PluginUpdateCheck[]>;
 
     /** Load (or reload) one stored plugin: re-hash, then register. */
     enable(id: string): Promise<InstallOutcome>;

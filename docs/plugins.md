@@ -51,7 +51,7 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/source.ts` | `parsePluginSource` — a pasted URL / `owner/repo` → a GitHub `PluginSource`; pure, no network |
 | `packages/ui/src/plugins/verify.ts` | `hashBundle`, `checkReleaseManifest`, `needsConsent` — the trust arithmetic, network-free |
 | `packages/ui/src/plugins/consent.ts` | `PERMISSION_SUMMARY` / `LANE_SUMMARY` — the plain-language consent copy |
-| `packages/ui/src/plugins/installControls.ts` | `PluginInstallControls` + `PluginInstallKey` — the install seam the app implements |
+| `packages/ui/src/plugins/installControls.ts` | `PluginInstallControls` + `PluginInstallKey` — the install seam the app implements, including the read-only `checkForUpdates()` |
 | `packages/ui/src/plugins/authoring.ts` | the plugin-AUTHOR surface: an explicit re-export of exactly what a plugin may see, and the sole input to the generated `templates/plugin/types/plugin.d.ts` |
 | `packages/ui/src/plugins/InstallConsentDialog.vue` | the consent screen (a `RoomDialog` composition) |
 | `packages/ui/src/plugins/contributions.ts` | `ContributionList<T>` — the shared keyed registry behind seven of the APIs |
@@ -76,7 +76,8 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/panes/registry.ts` | `WorkspacePanesRegistry` + `WorkspacePane` (`useWorkspacePanes`) — the workspace-pane extension point; `addPane`'s target |
 | `packages/ui/src/shell/TumultShell.vue` | constructs the one `PluginRegistry`, provides every key, `defineExpose({ registry, plugins, hrefFor })` |
 | `apps/web/src/plugins/showcase.ts` | the app's reference plugins, one per extension point |
-| `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing) |
+| `apps/web/src/plugins/reference.ts` | the explicit installer for those kept reference plugins — fake-mode browser coverage only |
+| `apps/web/src/plugins/installer.ts` | the network + blob-import half of an install (GitHub fetch, hash verify, `loadPlugin` lane routing, latest-release manifest check) |
 | `apps/web/src/plugins/sandbox.worker.ts` | the sandbox's inner Worker entry (one import of `@tumult/ui/sandbox`), inlined into `/sandbox.js` |
 | `apps/web/src/plugins/sandbox.frame.ts` | the sandbox frame's classic bootstrap, served as `/sandbox.js` by `/sandbox.html` (both built by `vite.config.ts`'s `sandboxFrame` plugin) |
 | `apps/web/src/plugins/store.ts` | IndexedDB persistence for installed third-party plugins |
@@ -89,10 +90,11 @@ Companion to `docs/themes.md` (theming, which shares the same
 
 The split mirrors the theme package: `packages/ui` owns the **structure** of the
 extension points and never decides what is installed; the **app** owns
-registration (`apps/web/src/views/AppView.vue` installs the reference plugins).
-A host that renders `TumultShell` without installing anything gets a fully
-working client with no plugin surface — that is a supported configuration, not
-a degraded one.
+registration. The reference plugins are kept as executable documentation but
+are **not installed by default** — the fake-mode browser suite opts in through
+`apps/web/src/plugins/reference.ts` so every seam stays covered. A host that
+renders `TumultShell` without installing anything gets a fully working client
+with no plugin surface — that is the supported default, not a degraded one.
 
 ## 2. Anatomy of a plugin
 
@@ -1251,8 +1253,10 @@ when the lane rule and the permission list fall out of step.
   repositories (the theme gallery's analogue) is planned, but it can only ever
   add a label to a hash — it will never be required to install.
 - **No silent updates.** Nothing polls or replaces an installed plugin behind
-  your back. An update is a user action, and a version that asks for **new**
-  permissions re-opens the consent screen.
+  your back. The Plugins page has a manual **Check for updates** button, but it
+  only reads the latest release manifests: no bundle is downloaded and no code
+  runs until you choose **Update**. An update is a user action, and a version
+  that asks for **new** permissions re-opens the consent screen.
 - **No shell/pane replacement.** A plugin can *add* a region of its own
   (§5.7), but it cannot replace one, reorder the shell or take over a region it
   was not given — the extension points decorate and add, they do not
@@ -1374,6 +1378,15 @@ deployment must ship its own equivalent endpoint; the installer assumes the
 
 Re-installing is the same flow, so a **changed permission list always re-asks**;
 there is no path where new capabilities arrive without a consent screen.
+
+**Checking for updates** is deliberately narrower. `checkForUpdates()` reads the
+`tumult.plugin.json` of each installed plugin's latest GitHub release, compares
+its `version` with the installed manifest, and reports the newest one. It does
+not fetch the bundle, re-hash bytes, register code or write the store. Choosing
+**Update** then runs the full flow above from `owner/repo`, so the version is
+compare-only until the moment a user accepts the verified, consented release.
+A release whose manifest changes the plugin id is refused as an update rather
+than treated as a renamed successor.
 
 ### How the sandbox lane actually runs
 

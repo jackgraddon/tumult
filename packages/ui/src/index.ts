@@ -57,10 +57,12 @@ export type { InstallRecordSummary, ManifestCheck } from "./plugins/verify.ts";
 export { describePermission, LANE_SUMMARY, PERMISSION_SUMMARY } from "./plugins/consent.ts";
 export { PluginInstallKey, usePluginInstall, tryUsePluginInstall } from "./plugins/installControls.ts";
 export type {
+    AvailablePluginUpdate,
     InstallOutcome,
     InstalledPluginView,
     PendingInstall,
     PluginInstallControls,
+    PluginUpdateCheck,
 } from "./plugins/installControls.ts";
 export {
     buildPluginSchema,

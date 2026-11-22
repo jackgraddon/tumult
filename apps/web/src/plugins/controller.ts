@@ -23,17 +23,20 @@ import {
     parsePluginSource,
     addedPermissions,
     checkReleaseManifest,
+    compareVersions,
     deriveLane,
     type InstallOutcome,
     type InstalledPluginView,
     type PendingInstall,
     type PluginInstallControls,
+    type PluginUpdateCheck,
     type Plugin,
     type SandboxHost,
 } from "@tumult/ui";
 
 import {
     InstallError,
+    checkLatestRelease,
     loadPlugin,
     prepareInstall,
     sandboxHost,
@@ -53,11 +56,11 @@ export interface PluginHost {
     uninstall(id: string): boolean;
 }
 
-function fail(error: unknown): InstallOutcome {
+function fail(error: unknown, action = "install the plugin"): InstallOutcome {
     // An InstallError is the installer's own sentence; anything else (a fetch
     // that never answered, IndexedDB) is translated and logged.
     if (error instanceof InstallError) return { ok: false, error: error.message };
-    return { ok: false, error: reportError(error, "Couldn't install the plugin") || "The install was cancelled." };
+    return { ok: false, error: reportError(error, `Couldn't ${action}`) || "The action was cancelled." };
 }
 
 export class AppPluginInstallController implements PluginInstallControls {
@@ -219,6 +222,63 @@ export class AppPluginInstallController implements PluginInstallControls {
             return fail(error);
         } finally {
             this.busy.value = false;
+        }
+    }
+
+    /**
+     * Read every installed plugin's latest release manifest and report which
+     * ones have a newer published version. Check-only: nothing is downloaded,
+     * registered or persisted. `prepare()` remains the only route to a code
+     * change, so an update still passes through hash verification and consent.
+     */
+    public async checkForUpdates(): Promise<PluginUpdateCheck[]> {
+        const records = await listInstalls();
+        return Promise.all(records.map((record) => this.checkOne(record)));
+    }
+
+    private async checkOne(record: InstallRecord): Promise<PluginUpdateCheck> {
+        const none = {
+            id: record.id,
+            latestVersion: null,
+            latestTag: null,
+            update: null,
+        };
+        const source = parsePluginSource(record.source);
+        if (!source) {
+            return {
+                ...none,
+                ok: false,
+                error:
+                    `"${record.manifest.name}" was installed from "${record.source}", which ` +
+                    `is not a GitHub repository, so it cannot be checked.`,
+            };
+        }
+
+        try {
+            const latest = await checkLatestRelease(source);
+            // A repository can change the plugin id in its manifest. Never offer
+            // that as an "update" to a different installed plugin: the consent
+            // dialog's publisher warning covers a moved repo, not an id swap.
+            if (latest.manifest.id !== record.id) {
+                throw new InstallError(
+                    `The latest release of ${record.source} declares plugin id ` +
+                        `"${latest.manifest.id}", not "${record.id}". It was not offered as an update.`,
+                );
+            }
+            const update =
+                compareVersions(latest.manifest.version, record.manifest.version) > 0
+                    ? { version: latest.manifest.version, tag: latest.tag }
+                    : null;
+            return {
+                ...none,
+                ok: true,
+                error: null,
+                latestVersion: latest.manifest.version,
+                latestTag: latest.tag,
+                update,
+            };
+        } catch (error) {
+            return { ...none, ...fail(error, "check for plugin updates") };
         }
     }
 

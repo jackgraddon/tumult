@@ -112,31 +112,42 @@ interface ResolvedRelease {
     manifestUrl: string;
 }
 
+/** The parts of a published release an update check needs (no bundle, no DOM). */
+export interface LatestPluginRelease {
+    manifest: PluginManifest;
+    tag: string;
+    integrity: string;
+}
+
+/** Resolve the release asset for a source, or null when there is no such release. */
+async function resolvePublishedRelease(source: PluginSource): Promise<ResolvedRelease | null> {
+    const release = await fetchJson(releaseApiUrl(source));
+    if (release === null) return null;
+    const manifestName = "tumult.plugin.json";
+    if (!hasReleaseAsset(release, manifestName)) return null;
+    const tag = releaseTag(release);
+    const assetUrl = proxyAssetUrl(source, tag, manifestName);
+    const document = await fetchJson(assetUrl);
+    if (document === null) throw new InstallError("Could not download tumult.plugin.json from the release.");
+    const check = checkReleaseManifest(document);
+    if (!check.ok) throw new InstallError(check.reason);
+    return {
+        release,
+        manifest: check.manifest,
+        lane: check.lane,
+        tag,
+        manifestUrl: assetUrl,
+    };
+}
+
 /**
  * Resolve the release manifest for a source: the release asset (preferred,
  * because that is the document carrying `integrity`), else the raw committed
  * file — which the installer will then reject for want of a hash, honestly.
  */
 async function resolveManifest(source: PluginSource): Promise<ResolvedRelease> {
-    const release = await fetchJson(releaseApiUrl(source));
-    if (release !== null) {
-        const manifestName = "tumult.plugin.json";
-        if (hasReleaseAsset(release, manifestName)) {
-            const tag = releaseTag(release);
-            const assetUrl = proxyAssetUrl(source, tag, manifestName);
-            const document = await fetchJson(assetUrl);
-            if (document === null) throw new InstallError("Could not download tumult.plugin.json from the release.");
-            const check = checkReleaseManifest(document);
-            if (!check.ok) throw new InstallError(check.reason);
-            return {
-                release,
-                manifest: check.manifest,
-                lane: check.lane,
-                tag,
-                manifestUrl: assetUrl,
-            };
-        }
-    }
+    const published = await resolvePublishedRelease(source);
+    if (published) return published;
 
     // No release (or no manifest asset): read the committed file. It will lack
     // `integrity`, and `checkReleaseManifest` will say so — which is the honest
@@ -164,6 +175,28 @@ async function resolveManifest(source: PluginSource): Promise<ResolvedRelease> {
         lane: check.lane,
         tag: source.ref ?? "",
         manifestUrl: fallbackUrl,
+    };
+}
+
+/**
+ * Read the LATEST release's manifest without downloading its bundle. Used by
+ * the Plugins tab's manual "Check for updates" button: no code is loaded, no
+ * hash is checked against bytes we never fetched, and nothing is persisted.
+ * The raw-file fallback is deliberately absent — a check is about published
+ * releases, and an unhashed raw manifest is not an update candidate.
+ */
+export async function checkLatestRelease(source: PluginSource): Promise<LatestPluginRelease> {
+    const latest = await resolvePublishedRelease({ owner: source.owner, repo: source.repo, ref: null });
+    if (!latest) {
+        throw new InstallError(
+            `${source.owner}/${source.repo} has no GitHub release with a tumult.plugin.json ` +
+                `manifest, so there is nothing to check for updates.`,
+        );
+    }
+    return {
+        manifest: latest.manifest,
+        tag: latest.tag,
+        integrity: latest.manifest.integrity ?? "",
     };
 }
 

@@ -55,6 +55,21 @@ const SESSION = {
 };
 
 /**
+ * Seed a fake session, and — only where a test needs them — opt that context
+ * into the kept reference plugins. The app installs no plugins by default, so
+ * the flag is the difference between "clean shell" and "extension-point suite".
+ */
+async function seedSession(context: BrowserContext, referencePlugins = false): Promise<void> {
+    await context.addInitScript(
+        ({ session, enabled }: { session: typeof SESSION; enabled: boolean }) => {
+            localStorage.setItem("tumult.session", JSON.stringify(session));
+            if (enabled) localStorage.setItem("tumult.referencePlugins", "1");
+        },
+        { session: SESSION, enabled: referencePlugins },
+    );
+}
+
+/**
  * Semantic colour tokens: every one of these must differ between the two modes.
  * `--accent` included: the built-in theme uses a light brand colour in dark
  * mode and a darker one in light mode (white text has to stay readable on it),
@@ -201,9 +216,7 @@ describe("browser smoke test (fake client)", () => {
 
         browser = await firefox.launch();
         context = await browser.newContext({ viewport: VIEWPORT });
-        await context.addInitScript((session) => {
-            localStorage.setItem("tumult.session", JSON.stringify(session));
-        }, SESSION);
+        await seedSession(context, true);
 
         page = await context.newPage();
         page.on("console", (message) => {
@@ -275,6 +288,33 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(state.counts.dms > 0, "no DM rows in the room list");
         assert.ok(state.counts.composer, "composer did not render");
         assert.equal(state.overflow.scroll, state.overflow.client, "the shell should not overflow horizontally");
+    });
+
+    it("installs no plugins by default", async () => {
+        // A fresh context with no opt-in flag: the reference files stay on disk
+        // for authors, but a normal shell has no plugin tile, tab or renderer.
+        const clean = await browser.newContext({ viewport: VIEWPORT });
+        try {
+            await seedSession(clean);
+            const cleanPage = await clean.newPage();
+            await cleanPage.goto(`${origin}/dms`, { waitUntil: "load" });
+            await cleanPage.waitForSelector(".tumult-shell", { timeout: 20_000 });
+            await cleanPage.waitForSelector(".tumult-dmlist .tumult-room-item", { timeout: 20_000 });
+            assert.equal(await cleanPage.locator(".tumult-pane-item").count(), 0, "a plugin pane was installed by default");
+
+            await cleanPage.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+            await cleanPage.locator(".tumult-room-item").first().click();
+            await cleanPage.waitForSelector(".tumult-row", { timeout: 10_000 });
+            // The seeded poll event is still in the fake timeline; without its
+            // plugin the row falls back to plain event content.
+            assert.equal(await cleanPage.locator(".tumult-poll").count(), 0, "the demo poll plugin was installed by default");
+
+            await cleanPage.locator(".tumult-userbar-gear").click();
+            const tabs = (await cleanPage.locator(".tumult-settings-tab").allTextContents()).map((name) => name.trim());
+            assert.equal(tabs.includes("Plugin demo"), false, "a plugin settings tab was installed by default");
+        } finally {
+            await clean.close();
+        }
     });
 
     it("orders DMs by recency by default and remembers the chosen sort", async () => {
@@ -459,21 +499,21 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(after.scrollTop > before.scrollTop, "the pinned tail did not follow the growth");
     });
 
-    it("renders the demo poll through the app-installed plugin", async () => {
+    it("renders the demo poll through an explicitly installed reference plugin", async () => {
         // The fake timeline carries a `cc.jackg.tumult.demo.poll` event per room.
-        // Its `.tumult-poll` root only exists when AppView's plugin installed
-        // through PluginRegistry (manifest -> permission -> addRenderer) and the
-        // timeline registry resolved it — the plugin seam end to end in a real
-        // browser, not just the node tests.
+        // Its `.tumult-poll` root only exists when the opted-in reference plugin
+        // installed through PluginRegistry (manifest -> permission -> addRenderer)
+        // and the timeline registry resolved it — the plugin seam end to end in a
+        // real browser, not just the node tests.
         await page.waitForSelector(".tumult-poll", { timeout: 10_000 });
         const question = await page.locator(".tumult-poll-question").first().textContent();
         assert.match(question ?? "", /Lunch\?/, "the demo poll rendered without its question");
     });
 
-    it("renders a composer action contributed by an app-installed plugin", async () => {
-        // The react-last plugin registers this button through PluginRegistry's
-        // `composer-actions` permission, so it only exists when the composer
-        // read the per-shell ComposerActionsRegistry.
+    it("renders a composer action contributed by a reference plugin", async () => {
+        // The react-last reference plugin registers this button through
+        // PluginRegistry's `composer-actions` permission, so it only exists when
+        // the composer read the per-shell ComposerActionsRegistry.
         const action = page.locator('.tumult-composer-action[aria-label="React to the last message"]');
         assert.equal(await action.count(), 1, "the composer action button did not render");
     });
@@ -633,7 +673,7 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(await card.count(), 0);
     });
 
-    it("renders a member decoration from an app-installed plugin", async () => {
+    it("renders a member decoration from a reference plugin", async () => {
         // Alice seeds power level 100, so the admin badge's `match` accepts her.
         await page.waitForSelector(".tumult-members", { timeout: 10_000 });
         await page.waitForSelector(".tumult-admin-badge", { timeout: 10_000 });
@@ -806,7 +846,7 @@ describe("browser smoke test (fake client)", () => {
     it("switches plugin stylesheets off while a security screen is open (F3)", async () => {
         const pluginStyles = page.locator('style[data-tumult-plugin-styles]:not([data-tumult-plugin-styles="shell"])');
         const states = (): Promise<boolean[]> => pluginStyles.evaluateAll((els) => els.map((el) => (el as HTMLStyleElement).disabled));
-        assert.ok((await pluginStyles.count()) > 0, "the fake app installs plugins that inject CSS");
+        assert.ok((await pluginStyles.count()) > 0, "the opted-in reference plugins inject CSS");
         assert.ok((await states()).every((disabled) => !disabled), "plugin CSS is on during normal use");
 
         await page.locator(".tumult-userbar-gear").click();
@@ -1066,9 +1106,7 @@ describe("browser smoke test (fake client)", () => {
         // history.replaceState during initial navigation; tolerate the "navigation
         // interrupted" race that Playwright reports for same-document replaces.
         const cold = await browser.newContext({ viewport: VIEWPORT });
-        await cold.addInitScript((session) => {
-            localStorage.setItem("tumult.session", JSON.stringify(session));
-        }, SESSION);
+        await seedSession(cold, true);
         const coldPage = await cold.newPage();
         const errors: string[] = [];
         coldPage.on("console", (message) => {
@@ -1122,16 +1160,19 @@ describe("browser smoke test (fake client)", () => {
             // A minimal, valid bundle: a logic-only plugin (sandbox lane) that
             // registers a slash command. Its sha256 is computed below from the
             // exact bytes served, so the hash check is exercised for real.
-            const bundle =
+            const bundleFor = (version: string): string =>
                 "export const plugin = { manifest: { id: \"cc.example.remote\", name: \"Remote\", " +
-                "version: \"1.0.0\", permissions: [\"commands\"] }, install(ctx) {} };\n";
-            const encoder = new TextEncoder();
-            const digest = await crypto.subtle.digest("SHA-256", encoder.encode(bundle));
-            let binary = "";
-            for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
-            const integrity = `sha256-${Buffer.from(binary, "binary").toString("base64")}`;
-
-            const manifest = {
+                `version: "${version}", permissions: ["commands"] }, install(ctx) {} };\n`;
+            const hashOf = async (text: string): Promise<string> => {
+                const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+                let binary = "";
+                for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+                return `sha256-${Buffer.from(binary, "binary").toString("base64")}`;
+            };
+            let currentBundle = bundleFor("1.0.0");
+            let currentIntegrity = await hashOf(currentBundle);
+            let currentTag = "v1.0.0";
+            let currentManifest = {
                 id: "cc.example.remote",
                 name: "Remote",
                 version: "1.0.0",
@@ -1139,34 +1180,36 @@ describe("browser smoke test (fake client)", () => {
                 description: "A plugin installed from a repository.",
                 permissions: ["commands"],
                 entry: "plugin.js",
-                integrity,
+                integrity: currentIntegrity,
             };
+            let bundleFetches = 0;
 
             await isolated.route("**/api.github.com/repos/example/remote/releases/latest", (route) =>
                 route.fulfill({
                     status: 200,
                     contentType: "application/json",
                     body: JSON.stringify({
-                        tag_name: "v1.0.0",
+                        tag_name: currentTag,
                         assets: [
                             {
                                 name: "tumult.plugin.json",
-                                browser_download_url: "https://github.com/example/remote/releases/download/v1.0.0/tumult.plugin.json",
+                                browser_download_url: `https://github.com/example/remote/releases/download/${currentTag}/tumult.plugin.json`,
                             },
                             {
                                 name: "plugin.js",
-                                browser_download_url: "https://github.com/example/remote/releases/download/v1.0.0/plugin.js",
+                                browser_download_url: `https://github.com/example/remote/releases/download/${currentTag}/plugin.js`,
                             },
                         ],
                     }),
                 }),
             );
             await isolated.route("**/api/plugin-asset**name=tumult.plugin.json**", (route) =>
-                route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manifest) }),
+                route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentManifest) }),
             );
-            await isolated.route("**/api/plugin-asset**name=plugin.js**", (route) =>
-                route.fulfill({ status: 200, contentType: "text/javascript", body: bundle }),
-            );
+            await isolated.route("**/api/plugin-asset**name=plugin.js**", (route) => {
+                bundleFetches++;
+                return route.fulfill({ status: 200, contentType: "text/javascript", body: currentBundle });
+            });
 
             const installed = await isolated.newPage();
             await installed.goto(origin, { waitUntil: "domcontentloaded" });
@@ -1185,7 +1228,7 @@ describe("browser smoke test (fake client)", () => {
             const consentText = (await consent.textContent()) ?? "";
             assert.match(consentText, /Sandboxed/, "the consent screen is missing the derived lane");
             assert.match(consentText, /slash commands/i, "the consent screen is missing permission copy");
-            assert.ok(consentText.includes(integrity), "the consent screen is missing the verified hash");
+            assert.ok(consentText.includes(currentIntegrity), "the consent screen is missing the verified hash");
 
             await installed.getByRole("button", { name: "Install" }).click();
 
@@ -1211,6 +1254,52 @@ describe("browser smoke test (fake client)", () => {
             assert.match(rowText, /Sandboxed/, "the installed row lost its lane");
             assert.match(rowText, /example\/remote/, "the installed row lost its source");
             assert.match(rowText, /cc\.example\.remote/, "the installed row is not the plugin that was installed");
+
+            // A check against the same release reports up to date and, crucially,
+            // downloads no bundle: it reads the manifest only.
+            assert.equal(bundleFetches, 1, "the install did not download exactly one bundle");
+            await installed.getByTestId("plugin-updates-check").click();
+            const currentStatus = installed.getByTestId("plugin-update-status");
+            await currentStatus.waitFor({ timeout: 10_000 });
+            assert.match((await currentStatus.textContent()) ?? "", /up to date/i, "the current release was not reported as current");
+            assert.equal(bundleFetches, 1, "checking for updates downloaded a bundle");
+            assert.equal(await installedRow.getByTestId("plugin-update").count(), 0, "an up-to-date plugin offered an update");
+
+            // Publish a newer release. The check must find it WITHOUT fetching
+            // the new bundle; clicking the revealed Update button re-enters the
+            // full verified/consented install path for the new bytes.
+            currentTag = "v1.1.0";
+            currentBundle = bundleFor("1.1.0");
+            currentIntegrity = await hashOf(currentBundle);
+            currentManifest = { ...currentManifest, version: "1.1.0", integrity: currentIntegrity };
+
+            await installed.getByTestId("plugin-updates-check").click();
+            const newStatus = installed.getByTestId("plugin-update-status");
+            await newStatus.waitFor({ timeout: 10_000 });
+            const statusText = (await newStatus.textContent()) ?? "";
+            assert.match(statusText, /Version 1\.1\.0 is available/, "the newer release was not offered");
+            assert.match(statusText, /v1\.1\.0/, "the newer release tag was not shown");
+            assert.equal(bundleFetches, 1, "announcing an update downloaded its bundle early");
+
+            await installedRow.getByTestId("plugin-update").click();
+            const updateDialog = installed.locator(".tumult-dialog");
+            await updateDialog.waitFor({ timeout: 10_000 });
+            const updateText = (await updateDialog.textContent()) ?? "";
+            assert.match(updateText, /Update “Remote”/, "the update did not open the update consent screen");
+            assert.match(updateText, /Version 1\.1\.0/, "consent described the wrong version");
+            assert.ok(updateText.includes(currentIntegrity), "consent did not show the new bundle's verified hash");
+            await updateDialog.getByRole("button", { name: "Update" }).click();
+
+            await installed.waitForFunction(
+                () => {
+                    const rows = [...document.querySelectorAll(".tumult-plugin")];
+                    const row = rows.find((element) => element.querySelector(".tumult-plugin-lane-sandbox"));
+                    return row?.querySelector(".tumult-plugin-version")?.textContent?.trim() === "1.1.0";
+                },
+                null,
+                { timeout: 10_000 },
+            );
+            assert.equal(bundleFetches, 2, "the update did not download the new bundle once");
         } finally {
             await isolated.close();
         }
