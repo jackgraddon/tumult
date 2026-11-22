@@ -41,6 +41,7 @@ function summary(overrides: Partial<RoomSummary> = {}): RoomSummary {
         avatarUrl: "mxc://matrix.org/abc",
         isSpace: false,
         parentSpaceIds: ["!space:matrix.org"],
+        lastActivityTs: 0,
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
@@ -128,7 +129,7 @@ describe("shellCache", () => {
             homeserverUrl: ACCOUNT.homeserverUrl,
             lastRoomId: 123,
             // @ts-expect-error deliberately wrong-typed fields: the reader must fall back
-            rooms: [summary({ joinRule: 5, parentSpaceIds: ["!s:matrix.org", 7], favouriteOrder: "x" })],
+            rooms: [summary({ joinRule: 5, parentSpaceIds: ["!s:matrix.org", 7], favouriteOrder: "x", lastActivityTs: "nope" })],
         });
         const snap = readShellSnapshot(store, ACCOUNT);
         assert.equal(snap.savedAt, 0, "non-finite savedAt -> 0");
@@ -136,6 +137,7 @@ describe("shellCache", () => {
         assert.equal(snap.rooms[0]!.joinRule, "invite", "non-string joinRule -> default");
         assert.deepEqual(snap.rooms[0]!.parentSpaceIds, ["!s:matrix.org"], "non-string dropped from list");
         assert.equal(snap.rooms[0]!.favouriteOrder, null, "non-number order -> null");
+        assert.equal(snap.rooms[0]!.lastActivityTs, 0, "non-number activity -> 0");
     });
 
     it("a valid string joinRule passes through unchanged", () => {

@@ -1,8 +1,12 @@
 import type { RoomSummary } from "../contract.ts";
 
+/** Ordering of the DM (orphan) list. Recency is the default, as in other chat apps. */
+export type OrphanSort = "recency" | "name" | "unread";
+
 export interface SpaceTreeOptions {
     maxDepth?: number;
     maxNodes?: number;
+    orphanSort?: OrphanSort;
 }
 
 export interface SpaceNode {
@@ -19,7 +23,7 @@ export interface SpaceNode {
 
 export interface SpaceTree {
     guilds: SpaceNode[];
-    /** Orphaned non-space rooms: the DMs tab. */
+    /** Orphaned non-space rooms: the DMs tab, ordered by {@link SpaceTreeOptions.orphanSort}. */
     orphans: RoomSummary[];
     /**
      * Rooms the user tagged `m.favourite`, sorted by tag `order` (higher values
@@ -38,6 +42,35 @@ const DEFAULT_MAX_NODES = 2000;
 
 function sortRooms(rooms: RoomSummary[]): RoomSummary[] {
     return [...rooms].sort((a, b) => collator.compare(a.name, b.name));
+}
+
+/** Newest activity first; a name tiebreak keeps the order stable and predictable. */
+function compareRecency(a: RoomSummary, b: RoomSummary): number {
+    return b.lastActivityTs - a.lastActivityTs || collator.compare(a.name, b.name);
+}
+
+/** Unread rooms first (mentions above ordinary unread), then newest activity. */
+function compareUnread(a: RoomSummary, b: RoomSummary): number {
+    return (
+        b.highlightCount - a.highlightCount ||
+        b.unreadCount - a.unreadCount ||
+        compareRecency(a, b)
+    );
+}
+
+function sortOrphans(rooms: RoomSummary[], sort: OrphanSort): RoomSummary[] {
+    let compare: (a: RoomSummary, b: RoomSummary) => number;
+    switch (sort) {
+        case "name":
+            compare = (a, b) => collator.compare(a.name, b.name);
+            break;
+        case "unread":
+            compare = compareUnread;
+            break;
+        default:
+            compare = compareRecency;
+    }
+    return [...rooms].sort(compare);
 }
 
 /**
@@ -254,9 +287,12 @@ export function selectSpaceTree(
         if (node) guilds.push(node);
     }
 
-    // Orphans: non-space rooms with no (sanitised) parents.
-    const orphans = sortRooms(
+    // Orphans: non-space rooms with no (sanitised) parents. These are the DMs;
+    // default to recency so the room you last used is at the top, but keep the
+    // other orders available for people who prefer them.
+    const orphans = sortOrphans(
         rooms.filter((r) => !r.isSpace && (parentsOf.get(r.id) ?? []).length === 0),
+        options.orphanSort ?? "recency",
     );
 
     // Favourites: every favourited room, sorted by tag order (higher first, no

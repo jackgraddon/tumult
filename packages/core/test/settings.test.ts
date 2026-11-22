@@ -185,6 +185,7 @@ describe("snapshot settings fields", () => {
             avatarUrl: null,
             isSpace: false,
             parentSpaceIds: [],
+            lastActivityTs: 0,
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,

@@ -114,7 +114,7 @@ function fixtureMedia(uri: string): string | null {
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-function buildRooms(): RoomSummary[] {
+function buildRooms(now: number): RoomSummary[] {
     const rooms: RoomSummary[] = [];
     const space = (id: string, name: string, parents: string[] = [], unread = 0, highlight = 0, favourite = false, favouriteOrder: number | null = null): void => {
         rooms.push({
@@ -124,6 +124,7 @@ function buildRooms(): RoomSummary[] {
             avatarUrl: null,
             isSpace: true,
             parentSpaceIds: parents,
+            lastActivityTs: now,
             unreadCount: unread,
             highlightCount: highlight,
             fullyReadEventId: null,
@@ -143,6 +144,7 @@ function buildRooms(): RoomSummary[] {
             avatarUrl: null,
             isSpace: false,
             parentSpaceIds: parents,
+            lastActivityTs: now,
             unreadCount: unread,
             highlightCount: highlight,
             fullyReadEventId: null,
@@ -190,12 +192,19 @@ function buildRooms(): RoomSummary[] {
     space("!u-aaa:fake", "Unreachable Aye", ["!u-bbb:fake"]);
     chan("!u-note:fake", "lost-note", ["!u-aaa:fake"], 2);
 
-    // Dangling parent → sanitised to orphan.
+    // Dangling parent → sanitised to orphan. Give it old activity so the DM tab's
+    // default recency order starts with the newest real DM, not this fixture.
     chan("!dangling:fake", "dangling", ["!missing:fake"]);
+    const dangling = rooms[rooms.length - 1];
+    if (dangling) dangling.lastActivityTs = now - 24 * 3_600_000;
 
-    // 10 orphans = DMs tab.
+    // 10 orphans = DMs tab. Deliberately reverse-chronological relative to the
+    // names so the default recency order is visibly different from A–Z.
     DM_NAMES.forEach((n, i) => {
-        chan(`!dm-${i}:fake`, n, [], i === 0 ? 105 : i, i === 1 ? 2 : 0);
+        const id = `!dm-${i}:fake`;
+        chan(id, n, [], i === 0 ? 105 : i, i === 1 ? 2 : 0);
+        const room = rooms[rooms.length - 1];
+        if (room) room.lastActivityTs = now - (DM_NAMES.length - i) * 3_600_000;
     });
 
     // Favourites for the rail's Favourites band: spread across guilds (the band
@@ -447,7 +456,7 @@ class FakeChatClient implements ChatClient {
             homeserverUrl: "https://matrix.example.com",
         });
         this.connection = new Observable<ConnectionState>("syncing");
-        this.rooms = new Observable<RoomSummary[]>(buildRooms());
+        this.rooms = new Observable<RoomSummary[]>(buildRooms(now));
         // Fake device is fully healthy: the security banner stays hidden.
         this.security = new Observable<SecurityStatus>({
             checked: true,
@@ -597,6 +606,14 @@ class FakeChatClient implements ChatClient {
         return summary.id;
     }
 
+    /** A sent echo counts as activity, so the room jumps to the top of recency order. */
+    private touchRoom(roomId: string): void {
+        const now = Date.now();
+        (this.rooms as Observable<RoomSummary[]>).update((cur) =>
+            cur.map((r) => (r.id === roomId ? { ...r, lastActivityTs: now } : r)),
+        );
+    }
+
     public async createSpace(params: CreateSpaceParams): Promise<string> {
         return this.pushRoom({
             id: `!created-${this.nextCreated++}:fake`,
@@ -605,6 +622,7 @@ class FakeChatClient implements ChatClient {
             avatarUrl: null,
             isSpace: true,
             parentSpaceIds: [],
+            lastActivityTs: Date.now(),
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
@@ -629,6 +647,7 @@ class FakeChatClient implements ChatClient {
             // The fake writes the same parent link the real one does, so the
             // channel lands under its guild in selectSpaceTree immediately.
             parentSpaceIds: [spaceId],
+            lastActivityTs: Date.now(),
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
@@ -651,6 +670,7 @@ class FakeChatClient implements ChatClient {
             avatarUrl: null,
             isSpace: false,
             parentSpaceIds: [],
+            lastActivityTs: Date.now(),
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
@@ -678,6 +698,7 @@ class FakeChatClient implements ChatClient {
             avatarUrl: null,
             isSpace: false,
             parentSpaceIds: [],
+            lastActivityTs: Date.now(),
             unreadCount: 0,
             highlightCount: 0,
             fullyReadEventId: null,
@@ -874,6 +895,7 @@ class FakeChatClient implements ChatClient {
                 { status: "sending", type: "m.room.message", content },
             );
             obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+            this.touchRoom(roomId);
             setTimeout(() => {
                 obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
             }, 300);
@@ -1376,6 +1398,7 @@ class FakeChatClient implements ChatClient {
             },
         );
         obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+        this.touchRoom(roomId);
         setTimeout(() => {
             obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
         }, 300);
@@ -1409,6 +1432,7 @@ class FakeChatClient implements ChatClient {
             },
         );
         obs.update((cur) => [...cur.slice(-(FAKE_TIMELINE_CAP - 1)), echo]);
+        this.touchRoom(roomId);
         setTimeout(() => {
             obs.update((cur) => cur.map((m) => (m.id === echo.id ? { ...m, status: "sent" as const } : m)));
         }, 300);

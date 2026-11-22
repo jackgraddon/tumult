@@ -66,6 +66,7 @@ export function snapshotRooms(
             avatarUrl: readAvatar(room),
             isSpace: room.isSpaceRoom(),
             parentSpaceIds: [...(parentsByRoomId.get(room.roomId) ?? [])].sort(),
+            lastActivityTs: readLastActivity(room),
             unreadCount: override?.total ?? room.getUnreadNotificationCount(NotificationCountType.Total),
             highlightCount: override?.highlight ?? room.getUnreadNotificationCount(NotificationCountType.Highlight),
             fullyReadEventId: readFullyRead(room),
@@ -95,6 +96,9 @@ export function sameRoomSummaries(a: readonly RoomSummary[], b: readonly RoomSum
             room.topic === other.topic &&
             room.avatarUrl === other.avatarUrl &&
             room.isSpace === other.isSpace &&
+            // A new message moves a DM up the recency list, so a timestamp-only
+            // change must republish the feed too.
+            room.lastActivityTs === other.lastActivityTs &&
             room.unreadCount === other.unreadCount &&
             room.highlightCount === other.highlightCount &&
             // Account data, not send state: republish when the marker moves,
@@ -148,6 +152,19 @@ export function mergeRoomSummaries(
         if (!alive.has(room.id)) merged.push(room);
     }
     return merged;
+}
+
+/**
+ * The newest live event's timestamp. `getLastLiveEvent()` also looks through
+ * threads, so a late thread reply counts as activity — as it does in Discord's
+ * DM list. An empty room has no activity yet and sorts behind every other room.
+ */
+function readLastActivity(room: { getLastLiveEvent?(): { getTs(): number } | undefined }): number {
+    try {
+        return room.getLastLiveEvent?.()?.getTs() ?? 0;
+    } catch {
+        return 0;
+    }
 }
 
 /** The `m.fully_read` room account data, or `null` when never set. */

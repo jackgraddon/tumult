@@ -3,6 +3,7 @@ import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
+import type { OrphanSort } from "@tumult/core/selectors";
 import type { ChatClient, EncryptedAttachment, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection, type SelectionContext } from "../selection.ts";
@@ -38,6 +39,8 @@ import UserBar from "../rail/UserBar.vue";
 import StatusDialog from "../rail/StatusDialog.vue";
 import RoomListPane from "../roomlist/RoomListPane.vue";
 import DmList from "../roomlist/DmList.vue";
+import DmSortMenu from "../roomlist/DmSortMenu.vue";
+import { readDmSort, writeDmSort } from "../roomlist/dmSort.ts";
 import TimelinePane from "../timeline/TimelinePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
@@ -479,7 +482,11 @@ watch(
     { deep: true },
 );
 
-const tree = computed<SpaceTree>(() => selectSpaceTree(rooms.value));
+// DM order is a local view preference. It feeds the tree itself (not just the
+// rendered list) so the default room and every other consumer agree on "first".
+const dmSort = ref<OrphanSort>(readDmSort());
+watch(dmSort, (sort) => writeDmSort(sort));
+const tree = computed<SpaceTree>(() => selectSpaceTree(rooms.value, { orphanSort: dmSort.value }));
 const guildsById = computed(() => new Map(tree.value.guilds.map((g) => [g.room.id, g])));
 const roomsById = computed(() => new Map(rooms.value.map((r) => [r.id, r])));
 
@@ -790,6 +797,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     <div v-else class="tumult-roomlist-pane">
                         <header class="tumult-roomlist-header tumult-roomlist-header-row">
                             <h2>Direct Messages</h2>
+                            <DmSortMenu v-model="dmSort" />
                             <IconButton label="New message" @click="roomAction = { kind: 'create-dm' }">
                                 <Icon name="plus" />
                             </IconButton>
@@ -1165,7 +1173,12 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
     gap: var(--space-2);
 }
 .tumult-roomlist-header h2 {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 </style>

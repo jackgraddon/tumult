@@ -150,6 +150,8 @@ function safeSummary(input: unknown): RoomSummary | null {
     out.parentSpaceIds = Array.isArray(input["parentSpaceIds"])
         ? (input["parentSpaceIds"].filter((v): v is string => typeof v === "string"))
         : [];
+    // Cached from an older contract, or a partial write: no activity is known.
+    out.lastActivityTs = typeof input["lastActivityTs"] === "number" ? input["lastActivityTs"] : 0;
     out.unreadCount = typeof input["unreadCount"] === "number" ? input["unreadCount"] : 0;
     out.highlightCount = typeof input["highlightCount"] === "number" ? input["highlightCount"] : 0;
     out.fullyReadEventId = typeof input["fullyReadEventId"] === "string" ? input["fullyReadEventId"] : null;

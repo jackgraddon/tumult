@@ -4,6 +4,7 @@ import { EventStatus, type MatrixClient } from "matrix-js-sdk";
 
 import { mergeRoomSummaries, sameRoomSummaries, snapshotRooms } from "../src/rooms/snapshot.ts";
 import { retryTextMessage, sendTextMessage } from "../src/rooms/send.ts";
+import { selectSpaceTree } from "../src/selectors/spaceTree.ts";
 import { createFakeChatClient } from "../src/fake/index.ts";
 import type { RoomSummary } from "../src/contract.ts";
 
@@ -26,6 +27,8 @@ interface StubRoom {
     unreadHighlight: number;
     /** The room's m.fully_read account data, when set. */
     fullyRead?: string;
+    /** Newest live event timestamp, when the stub room has one. */
+    lastActivityTs?: number;
 }
 
 function stubRoom(r: StubRoom): Record<string, unknown> {
@@ -56,6 +59,8 @@ function stubRoom(r: StubRoom): Record<string, unknown> {
             type === "m.fully_read" && r.fullyRead
                 ? { getContent: () => ({ event_id: r.fullyRead }) }
                 : undefined,
+        getLastLiveEvent: () =>
+            r.lastActivityTs === undefined ? undefined : { getTs: () => r.lastActivityTs as number },
     };
 }
 
@@ -96,6 +101,7 @@ describe("snapshotRooms", () => {
             avatarUrl: "mxc://x/y",
             isSpace: false,
             parentSpaceIds: [],
+            lastActivityTs: 0,
             unreadCount: 5,
             highlightCount: 1,
             fullyReadEventId: "$read:x",
@@ -106,6 +112,24 @@ describe("snapshotRooms", () => {
             favouriteOrder: null,
             muted: false,
         });
+    });
+
+    it("carries the newest live-event timestamp over the snapshot", () => {
+        const rooms = snapshotRooms(
+            stubClient([
+                {
+                    roomId: GENERAL,
+                    name: "general",
+                    membership: "join",
+                    space: false,
+                    children: [],
+                    unreadTotal: 0,
+                    unreadHighlight: 0,
+                    lastActivityTs: 1_700_000_000_000,
+                },
+            ]),
+        );
+        assert.equal(rooms[0]?.lastActivityTs, 1_700_000_000_000);
     });
 
     it("derives parent links from m.space.child and skips non-joined rooms", () => {
@@ -188,6 +212,7 @@ describe("sameRoomSummaries", () => {
         avatarUrl: null,
         isSpace: false,
         parentSpaceIds: ["!g:x"],
+        lastActivityTs: 1_700_000_000_000,
         unreadCount: 1,
         highlightCount: 0,
         fullyReadEventId: null,
@@ -205,6 +230,7 @@ describe("sameRoomSummaries", () => {
     it("is false on length, unread, parent, name or marker change", () => {
         assert.equal(sameRoomSummaries([a], []), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, unreadCount: 2 }]), false);
+        assert.equal(sameRoomSummaries([a], [{ ...a, lastActivityTs: a.lastActivityTs + 1 }]), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, parentSpaceIds: [] }]), false);
         assert.equal(sameRoomSummaries([a], [{ ...a, name: "random" }]), false);
         // The divider anchor is account data: republish when it moves.
@@ -221,6 +247,7 @@ describe("mergeRoomSummaries", () => {
         avatarUrl: null,
         isSpace: false,
         parentSpaceIds: ["!g:x"],
+        lastActivityTs: 1_700_000_000_000,
         unreadCount: 1,
         highlightCount: 0,
         fullyReadEventId: null,
@@ -382,5 +409,19 @@ describe("fake client retry", () => {
         assert.ok(sent, "fixture has a sent message");
         await client.retry(room.id, sent.id);
         assert.equal(client.timeline(room.id).get().find((m) => m.id === sent.id)?.status, "sent");
+    });
+});
+
+describe("fake recency", () => {
+    it("moves a DM to the top of the list when a message is sent", async () => {
+        const client = createFakeChatClient();
+        const oldest = "!dm-0:fake";
+        assert.notEqual(
+            selectSpaceTree(client.rooms.get()).orphans[0]?.id,
+            oldest,
+            "the fixture starts oldest-first by name, so this proves the move",
+        );
+        await client.send(oldest, "bump");
+        assert.equal(selectSpaceTree(client.rooms.get()).orphans[0]?.id, oldest);
     });
 });

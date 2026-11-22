@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.6.0";
+export declare const CONTRACT_VERSION = "1.7.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -219,6 +219,13 @@ export interface RoomSummary {
 	isSpace: boolean;
 	/** Parent spaces, used to build the guild rail. Empty means orphaned — a DM by our rule. */
 	parentSpaceIds: string[];
+	/**
+	 * Timestamp (ms since epoch) of the newest live event in this room, including
+	 * thread replies; `0` when the room has no loaded events yet. Drives recency
+	 * ordering in the DM list. Changes on sync, so recompute the snapshot rather
+	 * than caching this at selection time.
+	 */
+	lastActivityTs: number;
 	unreadCount: number;
 	highlightCount: number;
 	/**

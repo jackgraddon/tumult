@@ -10,6 +10,7 @@ function room(partial: Partial<RoomSummary> & { id: string; name: string }): Roo
         avatarUrl: null,
         isSpace: false,
         parentSpaceIds: [],
+        lastActivityTs: 0,
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
@@ -37,6 +38,49 @@ describe("selectSpaceTree", () => {
         assert.equal(tree.guilds.length, 1);
         assert.equal(tree.guilds[0]?.rooms.length, 1);
         assert.equal(tree.orphans.length, 1);
+    });
+
+    it("orders DMs by newest activity by default, with name and unread alternatives", () => {
+        const dms = [
+            room({ id: "!alice:1", name: "Alice", lastActivityTs: 1_000 }),
+            room({ id: "!dave:1", name: "Dave", lastActivityTs: 4_000, unreadCount: 1 }),
+            room({ id: "!bob:1", name: "Bob", lastActivityTs: 3_000, highlightCount: 2 }),
+            room({ id: "!carol:1", name: "Carol", lastActivityTs: 2_000 }),
+        ];
+        assert.deepEqual(
+            selectSpaceTree(dms).orphans.map((r) => r.name),
+            ["Dave", "Bob", "Carol", "Alice"],
+            "recency is the default DM order",
+        );
+        assert.deepEqual(
+            selectSpaceTree(dms, { orphanSort: "name" }).orphans.map((r) => r.name),
+            ["Alice", "Bob", "Carol", "Dave"],
+        );
+        assert.deepEqual(
+            selectSpaceTree(dms, { orphanSort: "unread" }).orphans.map((r) => r.name),
+            ["Bob", "Dave", "Carol", "Alice"],
+            "mentions outrank ordinary unread, then recency breaks remaining ties",
+        );
+    });
+
+    it("breaks equal DM activity by name so recency ordering stays stable", () => {
+        const tree = selectSpaceTree([
+            room({ id: "!b:1", name: "Bob", lastActivityTs: 5_000 }),
+            room({ id: "!a:1", name: "Alice", lastActivityTs: 5_000 }),
+        ]);
+        assert.deepEqual(tree.orphans.map((r) => r.name), ["Alice", "Bob"]);
+    });
+
+    it("keeps guild children alphabetical regardless of DM sort", () => {
+        const tree = selectSpaceTree(
+            [
+                space("!g:1", "Guild"),
+                room({ id: "!b:1", name: "beta", parentSpaceIds: ["!g:1"], lastActivityTs: 9_000 }),
+                room({ id: "!a:1", name: "alpha", parentSpaceIds: ["!g:1"], lastActivityTs: 1_000 }),
+            ],
+            { orphanSort: "recency" },
+        );
+        assert.deepEqual(tree.guilds[0]?.rooms.map((r) => r.name), ["alpha", "beta"]);
     });
 
     it("drops dangling / non-space / self parents", () => {

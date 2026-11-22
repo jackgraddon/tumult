@@ -277,6 +277,42 @@ describe("browser smoke test (fake client)", () => {
         assert.equal(state.overflow.scroll, state.overflow.client, "the shell should not overflow horizontally");
     });
 
+    it("orders DMs by recency by default and remembers the chosen sort", async () => {
+        await page.goto(`${origin}/dms`, { waitUntil: "load" });
+        await page.waitForSelector(".tumult-dmlist .tumult-room-item", { timeout: 20_000 });
+        const names = async (): Promise<string[]> =>
+            (await page.locator(".tumult-dmlist .tumult-room-name").allTextContents()).map((name) => name.trim());
+        const sortButton = page.locator(".tumult-dm-sort");
+
+        // The fixtures are named A–J but timestamped newest-last, so this cannot
+        // pass by accidentally keeping the old alphabetical order.
+        assert.deepEqual(await names(), [
+            "Judy", "Ivan", "Heidi", "Grace", "Frank", "Erin", "Dave", "Carol", "Bob", "Alice", "dangling",
+        ]);
+        assert.match(await sortButton.getAttribute("aria-label") ?? "", /Most recent/);
+        assert.equal(await page.evaluate(() => localStorage.getItem("tumult.dmSort")), null);
+
+        try {
+            await sortButton.click();
+            await page.locator(".tumult-menu-item", { hasText: "Name" }).click();
+            assert.deepEqual(await names(), [
+                "Alice", "Bob", "Carol", "dangling", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy",
+            ]);
+            assert.match(await sortButton.getAttribute("aria-label") ?? "", /Name/);
+            assert.equal(await page.evaluate(() => localStorage.getItem("tumult.dmSort")), "name");
+
+            // A reload must restore the choice, not silently fall back to recency.
+            await page.goto(`${origin}/dms`, { waitUntil: "load" });
+            await page.waitForSelector(".tumult-dmlist .tumult-room-item", { timeout: 20_000 });
+            assert.equal((await names())[0], "Alice");
+        } finally {
+            // Leave the shared context in its default state for later tests.
+            await page.locator(".tumult-dm-sort").click();
+            await page.locator(".tumult-menu-item", { hasText: "Most recent" }).click();
+            assert.equal((await names())[0], "Judy");
+        }
+    });
+
     it("navigates guild -> channels -> room with a timeline", async () => {
         await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
         await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });

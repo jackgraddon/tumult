@@ -14,6 +14,7 @@ function room(overrides: Partial<RoomSummary> = {}): RoomSummary {
         avatarUrl: null,
         isSpace: false,
         parentSpaceIds: ["!space:example.com"],
+        lastActivityTs: 0,
         unreadCount: 0,
         highlightCount: 0,
         fullyReadEventId: null,
