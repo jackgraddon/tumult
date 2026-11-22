@@ -438,7 +438,11 @@ export class MatrixChatClient implements ChatClient {
             // recompute off that too: this is the invalidation signal that
             // actually covers read positions.
             client.on(ClientEvent.Event, (event: MatrixEvent) => {
-                if (event.getType() === EventType.Receipt) this.roomList.schedule();
+                const type = event.getType();
+                // The account-data extension also arrives after Complete. It
+                // carries m.fully_read, which positions the "New messages"
+                // divider, so its echo needs the same recompute as a receipt.
+                if (type === EventType.Receipt || type === "m.fully_read") this.roomList.schedule();
             });
 
             // The homeserver has rejected our token and refreshing could not

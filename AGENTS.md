@@ -545,6 +545,10 @@ homeserver. A trap listed here has shipped broken at least once.
   light up the whole loaded window).
 - Private receipts (`m.read.private`) count too; both come from
   `getReadReceiptForUserId(selfId, true, type)`.
+- The fallback `sendReadReceipt()` must pass `unthreaded: true`: a receipt on a
+  thread reply is not a room-level read receipt and cannot clear the badge.
+  Under sliding sync, recompute on `m.fully_read` account data too — its
+  extension lands after `ClientEvent.Sync`, like the receipts one.
 - Space nesting is driven by `m.space.child` / `m.room.parent`, and the state
   key is the WILDCARD `"*"` — reading it under the child room id (or the space
   id) finds nothing, so every child looks parent-less (rooms leak into DMs,
@@ -775,6 +779,17 @@ homeserver. A trap listed here has shipped broken at least once.
   adjusts `scrollTop` itself when a row re-measures (`measureElement`) or history
   prepends, and native scroll anchoring applies the SAME shift a second time —
   the view lands twice as far from where it was ("not pinned to where we load").
+- Pin to the bottom BEFORE deciding the tail is visible and sending a read
+  receipt. The first batch can already be taller than the viewport, so an
+  `isNearBottom()` check on mount reads false at scrollTop 0 and silently skips
+  the receipt. Watch the TAIL EVENT id, not `messages.length` or the first id:
+  core caps a window at 500, so length can stay constant while a new message
+  arrives, and a head drop can change the first id without a room switch. Tail
+  tracking must re-arm when the user scrolls back down — a one-way latch leaves
+  late image/decryption layout shifts unanchored for the rest of the mount.
+- Give the virtualizer `getItemKey` by event id. With its default index keys, a
+  history prepend or head drop reuses one message's measured height for another
+  and the visible range jumps.
 - The smoke test's media fixtures resolve `mxc://fake/media/*` to a fixed 100×100
   SVG on purpose: only a natural size that differs from the event's `info` dims
   makes the measured box provable as the reservation rather than the decoded

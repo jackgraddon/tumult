@@ -255,7 +255,9 @@ export class TimelineFeed {
             // Keep the slice-9 guarantee if the marker endpoint refuses
             // (very old homeserver, or a race the guard didn't catch).
             console.error("[tumult] read marker failed; receipt only", error);
-            await this.matrix.sendReadReceipt(latest);
+            // `unthreaded`: a receipt on a thread reply is not a room-level
+            // read receipt, so it cannot clear the room's unread badge.
+            await this.matrix.sendReadReceipt(latest, undefined, true);
         }
         if (feed) feed.lastReceiptSent = latestId;
     }

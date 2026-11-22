@@ -96,6 +96,11 @@ const density = computed(() => theme?.state.value.density);
 
 const virtualizerOptions = computed(() => ({
     count: rows.value.length,
+    // Key measurements by event id, not array index. A history prepend or the
+    // 500-event head drop shifts every index; with index keys the virtualizer
+    // reuses one row's measured height for a completely different message and
+    // the visible range jumps. The template already keys rows this way.
+    getItemKey: (index: number) => rows.value[index]?.key ?? `empty-${index}`,
     getScrollElement: () => scroller.value,
     estimateSize: (index: number) => {
         const row = rows.value[index];
@@ -107,6 +112,15 @@ const virtualizerOptions = computed(() => ({
         return (row?.dayLabel ? 40 : 68) + delta;
     },
     overscan: 10,
+    // Keep content that is ABOVE the reading position anchored when a row
+    // re-measures (an image finishes decoding, a reply is edited in, a pending
+    // decryption lands). The virtualizer's default skips this while scrolling
+    // backward, which is exactly when a layout shift is most disorienting.
+    // Rows spanning the fold are deliberately left alone: growing them below
+    // the top edge must not drag the reader down (#1218).
+    shouldAdjustScrollPositionOnItemSizeChange: (item: { end: number }, _delta: number, instance: { scrollOffset: number | null }) => {
+        return item.end <= (instance.scrollOffset ?? 0);
+    },
 }));
 const virtualizer = useVirtualizer(virtualizerOptions);
 
@@ -131,53 +145,53 @@ function pinToBottom(): void {
     if (el) el.scrollTop = el.scrollHeight;
 }
 
-/** Id of the first rendered message, so a room switch is distinguishable from growth. */
-const firstMessageId = ref<string | null>(null);
 /** True while the view should keep tracking the latest message. */
 const trackingTail = ref(false);
+
+/** Report the live tail as visible; core ignores repeats for the same event. */
+function reportTailVisible(): void {
+    if (props.messages.length > 0) props.onReadLatest?.();
+}
 
 /**
  * Open (or switch to) a room at its latest message.
  *
- * The `isNearBottom()` guard in the growth watcher is for live updates, where
- * it means "the user is still at the tail". An OPEN must always land on the
- * tail: the first history batch can already be taller than the viewport, so
- * `isNearBottom()` is false before anything has ever pinned, and the open
- * silently lands mid-history (measured: scrollTop 0 of 2802).
+ * The first batch can already be taller than the viewport, so `isNearBottom()`
+ * is false before the first pin (measured: scrollTop 0 of 2802). Never use it
+ * as an open guard: pin first, then report the tail as read. If the feed has
+ * not published anything yet (a cold deep link), the tail watcher below does
+ * the same work when it does arrive.
  */
-function openAtTail(): void {
-    firstMessageId.value = props.messages[0]?.id ?? null;
+async function openAtTail(): Promise<void> {
     trackingTail.value = true;
-    void nextTick(() => pinToBottom());
+    await nextTick();
+    pinToBottom();
+    reportTailVisible();
 }
 
 onMounted(() => {
-    openAtTail();
-    // A pinned tail on open means the latest message is visible: report it
-    // so our read receipt sends.
-    if (isNearBottom()) props.onReadLatest?.();
+    void openAtTail();
     // Fill-forward: short histories never overflow the viewport, so no
     // scroll event will ever fire to trigger pagination. Backfill until the
     // content is scrollable or history runs out.
     void nextTick(() => void fillIfShort());
 });
 
-// Keep the view pinned while new messages arrive at the bottom; never yank
-// the user out of history they scrolled up to read. A prepended history page
-// can also leave the viewport unfilled — fill forward again in that case.
-// A pinned tail on growth means the latest message is visible: report it.
+// Watch the tail EVENT, not `messages.length`: core caps a live window at 500
+// messages, so a busy room keeps the same length while its newest message
+// changes. Watching the first message had the same flaw in reverse — a head
+// drop looked like a room switch and yanked a reader out of history.
 watch(
-    () => props.messages.length,
-    () => {
-        const firstId = props.messages[0]?.id ?? null;
-        if (firstId !== firstMessageId.value) {
-            // A different list: a room switch (or a reset) opens at the tail.
-            openAtTail();
-        } else if (isNearBottom()) {
-            void nextTick(() => pinToBottom());
-            props.onReadLatest?.();
-        }
+    () => props.messages.at(-1)?.id ?? null,
+    (id, previous) => {
+        if (!id || id === previous) return;
         void nextTick(() => void fillIfShort());
+        if (!isNearBottom()) return;
+        trackingTail.value = true;
+        void nextTick(() => {
+            pinToBottom();
+            reportTailVisible();
+        });
     },
 );
 
@@ -186,10 +200,15 @@ watch(
 // bottom. React to the spacer's own height changing (that is the reliable
 // trigger — the virtualizer gives no reactive hook on measurement updates)
 // and re-jump while we still track the tail.
+let pinQueued = false;
 function onSpacerResize(): void {
-    if (!trackingTail.value) return;
+    if (!trackingTail.value || pinQueued) return;
     // One re-pin per batch: every entry asks for the same thing.
-    void nextTick(() => pinToBottom());
+    pinQueued = true;
+    void nextTick(() => {
+        pinQueued = false;
+        if (trackingTail.value) pinToBottom();
+    });
 }
 const spacerObserver = new ResizeObserver(onSpacerResize);
 onScopeDispose(() => spacerObserver.disconnect());
@@ -207,6 +226,8 @@ watch(
         void nextTick(() => {
             const index = rows.value.findIndex((r) => r.message.id === request.id);
             if (index < 0) return;
+            // A queued tail re-pin must not land on top of the jump.
+            trackingTail.value = false;
             virtualizer.value.scrollToIndex(index, { align: "center" });
             flashEventId.value = request.id;
             window.clearTimeout(flashTimer);
@@ -257,10 +278,15 @@ async function maybeLoadMore(fill = false): Promise<void> {
 }
 
 function onScroll(): void {
-    // Scrolling up into history opts the user out of tail tracking — the
-    // size watcher's re-jumps always land at the bottom, so any scroll away
-    // from it is a user decision, not one of our jumps.
-    if (!isNearBottom()) trackingTail.value = false;
+    // Scrolling up into history opts the user out of tail tracking; coming
+    // back down re-arms it (and marks the newly visible tail read). A one-way
+    // latch left late images and decryption upgrades unanchored for the rest
+    // of the mount.
+    const atBottom = isNearBottom();
+    if (atBottom !== trackingTail.value) {
+        trackingTail.value = atBottom;
+        if (atBottom) reportTailVisible();
+    }
     if (scrollQueued) return;
     scrollQueued = true;
     requestAnimationFrame(() => {

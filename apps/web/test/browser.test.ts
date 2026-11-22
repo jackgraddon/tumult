@@ -404,6 +404,61 @@ describe("browser smoke test (fake client)", () => {
         );
     });
 
+    it("marks a room read when it is opened, even with a tall timeline", async () => {
+        // The old open path checked `isNearBottom()` BEFORE pinning, so a first
+        // batch taller than the viewport never sent a receipt. Use the seeded
+        // 99+ room: its badge must disappear from merely looking at it.
+        await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+
+        const room = page.locator(".tumult-room-item", { hasText: "channel-07" }).first();
+        await room.locator(".tumult-badge").waitFor({ timeout: 5_000 });
+        await room.click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+        await room.locator(".tumult-badge").waitFor({ state: "detached", timeout: 10_000 });
+    });
+
+    it("keeps the tail pinned when a rendered row grows", async () => {
+        // channel-07 is still open from the previous test. Its history is
+        // taller than the viewport, so "stuck to the bottom" is a real scroll
+        // position rather than an accordion effect from short content.
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+        await page.waitForTimeout(250);
+        const before = await page.evaluate(() => {
+            const el = document.querySelector<HTMLElement>(".tumult-viewport");
+            if (!el) throw new Error("no timeline viewport");
+            return { gap: el.scrollHeight - el.scrollTop - el.clientHeight, scrollTop: el.scrollTop };
+        });
+        assert.ok(before.gap <= 2, `opening the room left ${before.gap}px between the view and the tail`);
+
+        // Stand in for a late layout shift (an image whose dims arrived after
+        // the event, a decryption upgrade): grow a near-tail row from the DOM.
+        // The virtualizer's row observer and the spacer observer must conspire
+        // to keep the tail pinned rather than leaving it above the new bottom.
+        await page.evaluate(() => {
+            const rows = document.querySelectorAll<HTMLElement>(".tumult-virtual-row");
+            const target = rows[Math.max(0, rows.length - 3)];
+            if (!target) throw new Error("no rendered timeline rows");
+            const growth = document.createElement("div");
+            growth.dataset.testLayoutShift = "true";
+            growth.style.height = "220px";
+            target.appendChild(growth);
+        });
+        await page.waitForTimeout(250);
+        const after = await page.evaluate(() => {
+            const el = document.querySelector<HTMLElement>(".tumult-viewport");
+            if (!el) throw new Error("no timeline viewport");
+            return { gap: el.scrollHeight - el.scrollTop - el.clientHeight, scrollTop: el.scrollTop };
+        });
+        assert.ok(
+            after.gap <= 2,
+            `a row growing by 220px left ${after.gap}px between the view and the tail`,
+        );
+        assert.ok(after.scrollTop > before.scrollTop, "the pinned tail did not follow the growth");
+    });
+
     it("renders the demo poll through the app-installed plugin", async () => {
         // The fake timeline carries a `cc.jackg.tumult.demo.poll` event per room.
         // Its `.tumult-poll` root only exists when AppView's plugin installed

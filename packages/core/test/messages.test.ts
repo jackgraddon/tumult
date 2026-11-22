@@ -349,8 +349,8 @@ describe("TimelineFeed.markRead", () => {
                 if (opts.markerThrows) throw new Error("M_UNRECOGNIZED");
                 stats.markers.push(args);
             },
-            sendReadReceipt: async (event: unknown) => {
-                stats.receipts.push(event);
+            sendReadReceipt: async (event: unknown, _type?: unknown, unthreaded?: boolean) => {
+                stats.receipts.push({ event, unthreaded });
             },
         };
         return { matrix: matrix as unknown as MatrixClient, live, stats };
@@ -431,10 +431,12 @@ describe("TimelineFeed.markRead", () => {
             const { logs } = await withoutConsole("error", () => feed.markRead("!r:x"));
             assert.equal(w.stats.markers.length, 0);
             assert.equal(w.stats.receipts.length, 1, "the slice-9 receipt must survive");
+            const fallback = w.stats.receipts[0] as { event: MappableEvent; unthreaded?: boolean };
+            assert.equal(fallback.event.getId?.(), "$a", "the fallback points at the same event");
             assert.equal(
-                (w.stats.receipts[0] as MappableEvent)?.getId?.(),
-                "$a",
-                "the fallback points at the same event",
+                fallback.unthreaded,
+                true,
+                "a threaded receipt cannot clear the room-level unread badge",
             );
             assert.ok(String(logs[0]?.[0]).includes("read marker failed"));
         } finally {
