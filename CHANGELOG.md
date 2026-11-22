@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.5](https://github.com/jackgraddon/tumult/compare/v0.4.4...v0.4.5) (2026-11-22)
+
+
+### Features
+
+* **plugins:** check for updates and stop installing demo plugins ([23ae7a8](https://github.com/jackgraddon/tumult/commit/23ae7a831d8ce4d59138daec88bb28fd8e4d27e8))
+
+
+### Bug Fixes
+
+* **release:** create the draft after pushing the tag ([58a0d6a](https://github.com/jackgraddon/tumult/commit/58a0d6a4724b4bbcb4b07df2b79cbca21cfdcc46))
+
 ### [0.4.4](https://github.com/jackgraddon/tumult/compare/v0.4.3...v0.4.4) (2026-11-22)
 
 
