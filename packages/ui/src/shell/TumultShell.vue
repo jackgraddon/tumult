@@ -1119,6 +1119,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 .tumult-pane-footer {
     display: flex;
     flex-direction: column;
+    flex: 0 0 auto;
     min-height: 0;
     background: var(--surface-pane);
     border-top: var(--border-width) solid var(--border-default);
