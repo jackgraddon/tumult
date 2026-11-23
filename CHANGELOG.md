@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.7](https://github.com/jackgraddon/tumult/compare/v0.4.6...v0.4.7) (2026-11-23)
+
+
+### Features
+
+* **timeline:** fold metadata events onto their targets ([05c6920](https://github.com/jackgraddon/tumult/commit/05c6920ff190f0567015d4ca3d97c96325196cc7))
+* **ui:** expose Material icon resolver to plugins ([afc0e65](https://github.com/jackgraddon/tumult/commit/afc0e654864845f687d30d326efa57e157537db6))
+* **ui:** unify rail tiles with themeable radii ([179885f](https://github.com/jackgraddon/tumult/commit/179885fbcfc82cad427617958fdbe69cdfe04ddf))
+
 ### [0.4.6](https://github.com/jackgraddon/tumult/compare/v0.4.5...v0.4.6) (2026-11-23)
 
 
