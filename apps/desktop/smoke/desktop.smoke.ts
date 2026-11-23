@@ -562,7 +562,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await page.locator(".tumult-userbar-gear").click();
         await page.getByRole("tab", { name: "Installed" }).click();
         await page.locator("#tumult-plugin-url").fill(`https://github.com/jackgraddon/${manifest.id}`);
-        await page.getByRole("button", { name: "Check" }).click();
+        await page.getByRole("button", { name: "Check", exact: true }).click();
         await page.locator(".tumult-consent").waitFor({ timeout: 10_000 });
         await page.getByRole("button", { name: "Install" }).click();
         // Component permissions force the trusted, in-page lane: a sandboxed
@@ -764,7 +764,7 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
         await page.locator(".tumult-userbar-gear").click();
         await page.getByRole("tab", { name: "Installed" }).click();
         await page.locator("#tumult-plugin-url").fill("https://github.com/example/probe");
-        await page.getByRole("button", { name: "Check" }).click();
+        await page.getByRole("button", { name: "Check", exact: true }).click();
         await page.locator(".tumult-consent").waitFor({ timeout: 10_000 });
         await page.getByRole("button", { name: "Install" }).click();
         await page.locator(".tumult-plugin", { has: page.locator(".tumult-plugin-lane-sandbox") }).waitFor({ timeout: 10_000 });

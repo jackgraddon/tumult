@@ -1219,7 +1219,7 @@ describe("browser smoke test (fake client)", () => {
             await installed.getByRole("tab", { name: "Installed" }).click();
 
             await installed.locator("#tumult-plugin-url").fill("https://github.com/example/remote");
-            await installed.getByRole("button", { name: "Check" }).click();
+            await installed.getByRole("button", { name: "Check", exact: true }).click();
 
             // The consent screen: lane badge, the permission in plain words, and
             // the verified hash — before anything is installed.
@@ -1365,7 +1365,7 @@ describe("browser smoke test (fake client)", () => {
             await probe.locator(".tumult-userbar-gear").click();
             await probe.getByRole("tab", { name: "Installed" }).click();
             await probe.locator("#tumult-plugin-url").fill("https://github.com/example/probe");
-            await probe.getByRole("button", { name: "Check" }).click();
+            await probe.getByRole("button", { name: "Check", exact: true }).click();
             await probe.locator(".tumult-consent").waitFor({ timeout: 10_000 });
             await probe.getByRole("button", { name: "Install" }).click();
             await probe.locator(".tumult-plugin", { has: probe.locator(".tumult-plugin-lane-sandbox") }).waitFor({ timeout: 10_000 });
