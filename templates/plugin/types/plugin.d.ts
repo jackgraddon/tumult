@@ -1735,13 +1735,27 @@ interface Plugin$1 {
  * member, a changed permission meaning, a signature change. Additive and
  * invisible changes may keep it.
  */
-export declare const PLUGIN_API_VERSION = "1.4.1";
+export declare const PLUGIN_API_VERSION = "1.5.0";
 /**
  * Compare two dotted numeric versions ("1.2.3"). Each segment counts its
  * leading integer (`"2-beta"` → 2, missing segments → 0); non-numeric text
  * after the digits is ignored. Returns <0, 0 or >0 like a comparator.
  */
 export declare function compareVersions(a: string, b: string): number;
+/** One Material Design Icon, in a square viewBox, drawn with `currentColor`. */
+export interface PluginIconDef {
+	path: string;
+	viewBox?: number;
+}
+/** The read-only icon surface a trusted plugin can reach at runtime. */
+export interface PluginIconApi {
+	/**
+	 * Resolve a Material Design Icons name (or `pack:name`) to its SVG path.
+	 * First-party names resolve immediately; the rest wait for the lazily
+	 * loaded library. Unknown names resolve to `null`.
+	 */
+	resolve(name: string): Promise<PluginIconDef | null>;
+}
 /** `"sandbox"`: loaded in a Worker, bridged. `"trusted"`: loaded in-page. */
 export type PluginLane = "sandbox" | "trusted";
 /**

@@ -37,6 +37,7 @@ export type { FrameTransport, FrameTransportDeps, MountedFrame, PortLike } from 
 export { SANDBOX_PROTOCOL_VERSION } from "./plugins/sandbox/protocol.ts";
 export type { SandboxCapabilities } from "./plugins/sandbox/protocol.ts";
 export { PLUGIN_API_VERSION, checkManifestCompatibility, compareVersions } from "./plugins/compat.ts";
+export type { PluginIconApi, PluginIconDef } from "./plugins/iconBridge.ts";
 export {
     parsePluginSource,
     sourceSlug,

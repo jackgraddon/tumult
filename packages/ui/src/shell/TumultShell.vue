@@ -25,6 +25,7 @@ import UpdaterTab from "../settings/UpdaterTab.vue";
 import { PluginsKey, PluginRegistry } from "../plugins/registry.ts";
 import { createNativeActivityFeed, type NativeActivityFeedController } from "../plugins/native-activity.ts";
 import { injectStylesheet } from "../plugins/styles.ts";
+import { installIconBridge } from "../plugins/iconBridge.ts";
 import { installVueBridge } from "../plugins/vueBridge.ts";
 import { SettingsTabsKey, SettingsTabsRegistry } from "../settings/tabs.ts";
 import { IconsKey } from "../icons/registry.ts";
@@ -285,7 +286,9 @@ provide(ProfileSectionsKey, profileSections);
 provide(ActivityRenderersKey, activityRenderers);
 provide(SettingsTabsKey, settingsTabs);
 provide(WorkspacePanesKey, panes);
-provide(IconsKey, createIconRegistry());
+const icons = createIconRegistry();
+provide(IconsKey, icons);
+installIconBridge(icons);
 
 // A third-party plugin's bundle shares THIS Vue instance (a second copy would
 // break provide/inject and its own lifecycle hooks), and it reaches it through

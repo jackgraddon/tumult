@@ -66,6 +66,7 @@ Companion to `docs/themes.md` (theming, which shares the same
 | `packages/ui/src/plugins/compat.ts` | `PLUGIN_API_VERSION`, `compareVersions`, `checkManifestCompatibility` — the install-time `minUI`/`minCore` gate |
 | `packages/ui/src/plugins/schema.ts` | `validatePluginManifest` + the release `tumult.plugin.json` schema builder |
 | `packages/ui/src/plugins/vueBridge.ts` | `installVueBridge` — hands a third-party bundle the host's `vue` (`globalThis.__tumult.vue`), so a bundled copy can `inject()` |
+| `packages/ui/src/plugins/iconBridge.ts` | `installIconBridge` — hands a third-party bundle the shell's icon resolver (`globalThis.__tumult.icons`), so custom components use the same Material set |
 | `packages/ui/src/timeline/registry.ts` | `TimelineRegistry` — renderer resolution by event type; `addRenderer`'s target |
 | `packages/ui/src/timeline/composer-actions.ts` | `ComposerActionsRegistry` + `ComposerAction` |
 | `packages/ui/src/timeline/commands.ts` | `CommandsRegistry` + `Command` (name normalization, `suggest()`, `resolve()`) |
@@ -775,6 +776,20 @@ exists today (a bare name is `mdi:name`), but the registry (`IconRegistry`,
 custom one — keeps its own naming instead of being forced into Material's. A
 host adds one with `registry.addPack("solar", pack)`; plugin-supplied packs are
 not exposed yet.
+
+A plugin that renders its **own** component can reach the same resolver at
+runtime through `globalThis.__tumult.icons` (UI API `1.5.0`+):
+
+```ts
+const icon = await globalThis.__tumult.icons.resolve("play");
+// icon → { path: "M8,5.14V19.14L19,12.14L8,5.14Z" } or null
+```
+
+`resolve()` accepts the same bare or `pack:name` names as `icon` fields and
+always returns a promise; unknown names resolve to `null`. Feature-detect the
+global before using it — a plugin that must also run on `1.4.1` can fall back
+to bundling the paths it needs. Only `{ path, viewBox? }` crosses the boundary,
+never markup.
 
 Legacy: a string that is not a valid icon name (an emoji, say) still renders as
 literal text, so a plugin written against the old glyph API keeps working. New

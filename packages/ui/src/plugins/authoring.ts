@@ -135,5 +135,6 @@ export type {
 
 // ── Install-time helpers a plugin may call at runtime ───────────────────────
 export { PLUGIN_API_VERSION, compareVersions } from "./compat.ts";
+export type { PluginIconApi, PluginIconDef } from "./iconBridge.ts";
 export { deriveLane, SANDBOXABLE_PERMISSIONS } from "./lane.ts";
 export type { PluginLane } from "./lane.ts";
