@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.6](https://github.com/jackgraddon/tumult/compare/v0.4.5...v0.4.6) (2026-11-23)
+
+
+### Features
+
+* **calls:** enable native MatrixRTC voice by default ([27c7623](https://github.com/jackgraddon/tumult/commit/27c7623b189282f39a5008a1c7e95a57c41d9ec5))
+
+
+### Bug Fixes
+
+* **desktop:** disambiguate the plugin Check button ([061ae8c](https://github.com/jackgraddon/tumult/commit/061ae8cbd1be8cefc47f75f24b2aec2058301d71))
+
 ### [0.4.5](https://github.com/jackgraddon/tumult/compare/v0.4.4...v0.4.5) (2026-11-22)
 
 
