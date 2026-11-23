@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
 import handler, { MAX_ASSET_BYTES, readCapped } from "../api/plugin-asset.ts";
+import { pluginAssetApi } from "../vite.config.ts";
 
 /** A body delivered in `chunks` pieces of `size` bytes, counting how many were pulled. */
 function chunked(chunks: number, size: number): { body: ReadableStream<Uint8Array>; pulled: () => number } {
@@ -105,5 +106,57 @@ describe("plugin-asset handler", () => {
         assert.equal(out.headers["content-type"], "text/javascript");
         assert.equal(out.headers["content-length"], "17");
         assert.equal(String(out.body), "export default {}");
+    });
+});
+
+/** Pull the dev middleware out of its Vite plugin without starting a server. */
+async function devRoute(method: string, url: string) {
+    const plugin = pluginAssetApi();
+    let middleware: ((req: unknown, res: unknown) => Promise<void>) | undefined;
+    (plugin.configureServer as unknown as (server: unknown) => void)({
+        middlewares: {
+            use(path: string, fn: (req: unknown, res: unknown) => Promise<void>) {
+                assert.equal(path, "/api/plugin-asset");
+                middleware = fn;
+            },
+        },
+    });
+    assert.ok(middleware, "the dev plugin did not register the asset route");
+
+    const out: { status: number; headers: Record<string, string>; body: unknown } = {
+        status: 0,
+        headers: {},
+        body: undefined,
+    };
+    const res = {
+        statusCode: 0,
+        setHeader(key: string, value: string) {
+            out.headers[key.toLowerCase()] = value;
+        },
+        end(body: unknown) {
+            out.body = body;
+        },
+    };
+    await middleware({ method, url } as never, res);
+    out.status = res.statusCode;
+    return out;
+}
+
+describe("vite dev plugin-asset route", () => {
+    it("serves a .json-named asset instead of letting Vite transform the .ts file", async () => {
+        globalThis.fetch = async () => new Response('{"id":"demo"}', { headers: { "content-type": "application/json" } });
+        const out = await devRoute(
+            "GET",
+            `/?${new URLSearchParams({ ...QUERY, name: "tumult.plugin.json" }).toString()}`,
+        );
+        assert.equal(out.status, 200);
+        assert.equal(String(out.body), '{"id":"demo"}');
+        assert.equal(out.headers["content-type"], "application/json");
+    });
+
+    it("validates its query like the Vercel handler", async () => {
+        const out = await devRoute("GET", "/?owner=../evil&repo=x&tag=v1&name=a.json");
+        assert.equal(out.status, 400);
+        assert.deepEqual(JSON.parse(String(out.body)), { error: "Invalid owner" });
     });
 });

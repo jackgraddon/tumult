@@ -2,6 +2,8 @@ import vue from "@vitejs/plugin-vue";
 import type { Plugin, Rollup } from "vite";
 import { build, defineConfig, loadEnv } from "vite";
 
+import { fetchReleaseAsset, validateAssetQuery } from "./api/plugin-asset.ts";
+
 /**
  * Absolute path of the monorepo root — TWO levels above this config's directory
  * (`apps/web` → `apps` → the root). Env files are read from THERE, not from
@@ -142,6 +144,54 @@ function sandboxFrame(connectSrc: string): Plugin {
     };
 }
 
+/**
+ * `api/plugin-asset.ts` is a Vercel function (and the desktop answers the same
+ * URL from its main process), but `vite dev` had no route for it: the request
+ * fell through to the module graph, where a `name=…json` query makes esbuild
+ * pick its JSON loader for the .ts file ("JSON does not support comments").
+ * Answer the same contract here, from the same pure exports, so plugin install
+ * works locally. Builds and previews are untouched — Vercel owns the route
+ * there, and the browser suite stubs it.
+ */
+export function pluginAssetApi(): Plugin {
+    return {
+        name: "tumult-plugin-asset-api",
+        configureServer(server) {
+            server.middlewares.use("/api/plugin-asset", async (req, res) => {
+                const sendJson = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+                    res.statusCode = status;
+                    for (const [key, value] of Object.entries({
+                        "Content-Type": "application/json",
+                        "Cache-Control": "no-store",
+                        ...headers,
+                    })) {
+                        res.setHeader(key, value);
+                    }
+                    res.end(JSON.stringify(body));
+                };
+
+                if (req.method !== "GET") {
+                    sendJson(405, { error: "Method not allowed" }, { Allow: "GET" });
+                    return;
+                }
+                // Connect strips the mount path, leaving the query on req.url.
+                const query = Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams);
+                const valid = validateAssetQuery(query);
+                if (!valid.ok) {
+                    sendJson(400, { error: valid.error });
+                    return;
+                }
+
+                const result = await fetchReleaseAsset(valid.request);
+                for (const [key, value] of Object.entries(result.headers)) res.setHeader(key, value);
+                res.statusCode = result.status;
+                if ("error" in result.body) sendJson(result.status, result.body);
+                else res.end(result.body);
+            });
+        },
+    };
+}
+
 export default defineConfig(({ mode }) => {
     // Resolved against `envDir`, so this sees exactly what `import.meta.env`
     // will see in the bundle — the guard below cannot disagree with the build.
@@ -269,7 +319,7 @@ export default defineConfig(({ mode }) => {
     };
 
     return {
-        plugins: [vue(), cspMeta, sandboxFrame(connectSrc)],
+        plugins: [vue(), cspMeta, sandboxFrame(connectSrc), pluginAssetApi()],
         // Read env files from the repo root, where `vercel pull` writes them and
         // where the local `.env.local` lives. See `envDir` above.
         envDir,
