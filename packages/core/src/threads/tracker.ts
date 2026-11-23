@@ -15,6 +15,7 @@ import type { MessageView, Subscribable, ThreadSummary } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { mapEvent, type MappableEvent } from "../timeline/map.ts";
 import { applyReplyQuotes, latestReceiptable } from "../timeline/feed.ts";
+import { collectRelatedEvents } from "../timeline/relatedEvents.ts";
 
 /**
  * Thread lifecycle events. These fire on the `Room` (which re-emits them from
@@ -181,9 +182,13 @@ export class ThreadTracker {
         const events: MatrixEvent[] = thread ? [...thread.liveTimeline.getEvents()] : [];
         // The SDK only adds the root to the live timeline in some paths.
         if (root && !events.some((e) => e.getId() === root.getId())) events.unshift(root);
+        const related = collectRelatedEvents(events);
         const mapped = events
-            .filter((event) => event.getStateKey() == null)
+            .filter((event) => event.getStateKey() == null && !related.recognized.has(event))
             .map((event) => mapEvent(event as unknown as MappableEvent));
+        for (const message of mapped) {
+            message.relatedEvents = related.byTarget.get(message.id) ?? [];
+        }
         // Same quote resolution as the room feed: a reply in a thread still
         // quotes its target with the target's current body.
         applyReplyQuotes(mapped);

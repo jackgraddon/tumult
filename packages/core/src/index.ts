@@ -27,6 +27,8 @@ export type {
     PresenceState,
     ProfileView,
     ReactionView,
+    RelatedEventKind,
+    RelatedEventView,
     ReplyView,
     RoomPowerLevelsView,
     RoomSettingsPatch,
@@ -71,6 +73,13 @@ export { VerificationManager, toRequestView } from "./verification/manager.ts";
 export type { CrossSigningStatusLike } from "./crypto/restore.ts";
 export type { SecurityQueryInput } from "./crypto/security.ts";
 export { TimelineFeed, TIMELINE_CAP, collectReactions, sameTimeline, assignLatestReaders } from "./timeline/feed.ts";
+export {
+    collectRelatedEvents,
+    BEEPER_SEND_STATUS,
+    BEEPER_VIEW_LIMITED,
+    POLL_RESPONSE_TYPES,
+} from "./timeline/relatedEvents.ts";
+export type { RelatedEventCollection, RelatedEventSource } from "./timeline/relatedEvents.ts";
 export { mapEvent } from "./timeline/map.ts";
 export type { MappableEvent } from "./timeline/map.ts";
 export type { SpaceNode, SpaceTree, SpaceTreeOptions } from "./selectors/spaceTree.ts";

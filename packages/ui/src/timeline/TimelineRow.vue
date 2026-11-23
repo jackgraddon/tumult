@@ -36,6 +36,7 @@ import Avatar from "../primitives/Avatar.vue";
 import RoomDialog from "../rooms/RoomDialog.vue";
 import DecryptionPlaceholder from "./renderers/DecryptionPlaceholder.vue";
 import UnknownEvent from "./renderers/UnknownEvent.vue";
+import RelatedEvents from "./RelatedEvents.vue";
 
 const props = defineProps<{
     message: MessageView;
@@ -298,6 +299,10 @@ function cancelEdit(): void {
                         :message="message"
                     />
                     <component :is="renderer" v-else-if="!editing" :message="message" />
+                    <RelatedEvents
+                        v-if="message.decryption === 'ok' && message.relatedEvents.length > 0"
+                        :events="message.relatedEvents"
+                    />
                     <button
                         v-if="onOpenThread && (threadReplyCount ?? 0) > 0"
                         type="button"

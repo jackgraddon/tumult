@@ -11,10 +11,17 @@ import {
     type SyncState,
 } from "matrix-js-sdk";
 
-import type { MessageView, ReactionView, ReplyView, Subscribable } from "../contract.ts";
+import type {
+    MessageView,
+    ReactionView,
+    RelatedEventView,
+    ReplyView,
+    Subscribable,
+} from "../contract.ts";
 import { collectEdits } from "../rooms/edits.ts";
 import { Observable } from "../observable.ts";
 import { mapEvent, type MappableEvent } from "./map.ts";
+import { capOrphans, collectRelatedEvents, mergeRelatedEvents } from "./relatedEvents.ts";
 
 /** In-memory cap per room: the head drops, scroll anchoring must not break. */
 export const TIMELINE_CAP = 500;
@@ -34,6 +41,8 @@ interface RoomFeed {
     invalidate: (() => void) | null;
     paginating: Promise<boolean> | null;
     lastReceiptSent: string | null;
+    /** Metadata events whose target has not been paginated into the window yet. */
+    orphanRelated: Map<string, RelatedEventView[]>;
 }
 
 /** Shallow snapshot equality. Exported for tests. */
@@ -60,7 +69,8 @@ export function sameTimeline(a: readonly MessageView[], b: readonly MessageView[
             // must republish: without this the fallback quote never upgrades.
             sameReply(m.reply, o.reply) &&
             sameReactions(m.reactions, o.reactions) &&
-            sameReaders(m.readBy, o.readBy)
+            sameReaders(m.readBy, o.readBy) &&
+            sameRelatedEvents(m.relatedEvents, o.relatedEvents)
         );
     });
 }
@@ -86,6 +96,25 @@ function sameReactions(a: readonly ReactionView[], b: readonly ReactionView[]): 
 function sameReaders(a: readonly string[], b: readonly string[]): boolean {
     if (a.length !== b.length) return false;
     return a.every((u, i) => u === b[i]);
+}
+
+function sameRelatedEvents(a: readonly RelatedEventView[], b: readonly RelatedEventView[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((entry, i) => {
+        const other = b[i];
+        return (
+            other !== undefined &&
+            entry.id === other.id &&
+            entry.type === other.type &&
+            entry.relationType === other.relationType &&
+            entry.targetId === other.targetId &&
+            entry.senderId === other.senderId &&
+            entry.timestamp === other.timestamp &&
+            entry.kind === other.kind &&
+            entry.summary === other.summary &&
+            JSON.stringify(entry.content) === JSON.stringify(other.content)
+        );
+    });
 }
 
 /**
@@ -243,7 +272,9 @@ export class TimelineFeed {
         const feed = this.feeds.get(roomId);
         const room = feed?.room ?? this.matrix.getRoom(roomId) ?? undefined;
         if (!room) return;
-        const latest = latestReceiptable(room.getLiveTimeline().getEvents());
+        const events = room.getLiveTimeline().getEvents();
+        const { recognized } = collectRelatedEvents(events);
+        const latest = latestReceiptable(events.filter((event) => !recognized.has(event)));
         const latestId = latest?.getId();
         if (!latest || !latestId) return;
         if (feed && feed.lastReceiptSent === latestId) return;
@@ -338,6 +369,7 @@ export class TimelineFeed {
             invalidate: null,
             paginating: null,
             lastReceiptSent: null,
+            orphanRelated: new Map(),
         };
         this.feeds.set(roomId, feed);
         this.attach(roomId);
@@ -413,11 +445,21 @@ export class TimelineFeed {
         const ownUserId = this.matrix.getUserId() ?? "";
         const annotations = collectReactions(events);
         const edits = collectEdits(events);
+        const related = collectRelatedEvents(events);
         const byId = new Map<string, MatrixEvent>();
         for (const event of events) {
             const id = event.getId();
             if (id) byId.set(id, event);
         }
+        // Metadata whose target has not been paginated in yet is buffered on
+        // the feed, not shown as a blank [type] row. It attaches on a later
+        // rebuild once the target enters the window.
+        const mergedRelated = mergeRelatedEvents(related.byTarget, feed.orphanRelated);
+        const orphans = new Map<string, RelatedEventView[]>();
+        for (const [targetId, entries] of mergedRelated) {
+            if (!byId.has(targetId)) orphans.set(targetId, entries);
+        }
+        feed.orphanRelated = capOrphans(orphans);
         // Readers per message, then collapsed so each reader lands on exactly
         // one (their deepest held) row. `getUsersReadUpTo` covers both
         // `m.read` and `m.read.private`.
@@ -440,7 +482,8 @@ export class TimelineFeed {
                     event.getStateKey() == null &&
                     event.getType() !== EventType.Reaction &&
                     event.getType() !== EventType.RoomRedaction &&
-                    !isAggregatedRelation(event),
+                    !isHiddenAggregatedRelation(event) &&
+                    !related.recognized.has(event),
             )
             .map((event: MatrixEvent) => {
                 const message = mapEvent(event as unknown as MappableEvent);
@@ -457,6 +500,7 @@ export class TimelineFeed {
                         .sort((a, b) => (a.emoji < b.emoji ? -1 : 1));
                 }
                 message.readBy = latestReaders.get(message.id) ?? [];
+                message.relatedEvents = mergedRelated.get(message.id) ?? [];
                 // Edits apply only from the target's own sender, and never
                 // over a redaction tombstone. Latest edit wins (timeline order
                 // in collectEdits).
@@ -487,6 +531,48 @@ export class TimelineFeed {
 export function isAggregatedRelation(event: Pick<MatrixEvent, "getRelation">): boolean {
     const relType = event.getRelation()?.rel_type;
     return relType === RelationType.Annotation || relType === RelationType.Replace;
+}
+
+function validReaction(event: MatrixEvent): boolean {
+    if (event.getStateKey() != null || event.getType() !== EventType.Reaction || event.isRedacted()) {
+        return false;
+    }
+    const relation = event.getRelation();
+    return (
+        relation?.rel_type === RelationType.Annotation &&
+        Boolean(relation.event_id) &&
+        Boolean(relation.key) &&
+        Boolean(event.getSender())
+    );
+}
+
+function validEdit(event: MatrixEvent): boolean {
+    if (event.getStateKey() != null || event.getType() !== EventType.RoomMessage || event.isRedacted()) {
+        return false;
+    }
+    const relation = event.getRelation();
+    if (relation?.rel_type !== RelationType.Replace || !relation.event_id || !event.getSender()) return false;
+    const replacement = event.getContent()["m.new_content"];
+    const body =
+        typeof replacement === "object" && replacement !== null
+            ? (replacement as Record<string, unknown>)["body"]
+            : undefined;
+    return typeof body === "string" && body.length > 0;
+}
+
+/**
+ * Validate before hiding. The spec says an invalid relation must be shown as
+ * its own event; only a well-formed annotation/edit (or a redacted one, which
+ * is a removal rather than an invalid relation) belongs on the target row.
+ */
+export function isHiddenAggregatedRelation(event: MatrixEvent): boolean {
+    if (!isAggregatedRelation(event)) return false;
+    // Until decryption the wire relation is all we can read. Keep it folded
+    // now; after decryption the snapshot rebuilds and an invalid one appears.
+    if (event.getType() === "m.room.encrypted") return true;
+    if (event.isRedacted()) return true;
+    const relType = event.getRelation()?.rel_type;
+    return relType === RelationType.Annotation ? validReaction(event) : validEdit(event);
 }
 
 /**

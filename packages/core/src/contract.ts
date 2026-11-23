@@ -14,7 +14,7 @@
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export const CONTRACT_VERSION = "1.7.0";
+export const CONTRACT_VERSION = "1.8.0";
 
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
@@ -51,6 +51,29 @@ export type MessageStatus = "sending" | "sent" | "failed";
  * as a placeholder rather than dropping the event.
  */
 export type DecryptionStatus = "ok" | "pending" | "failed";
+
+/**
+ * A non-message event that belongs to this message rather than standing alone
+ * in the timeline. Reactions, edits and replies have dedicated fields; this is
+ * the long tail: bridge delivery status, poll votes, custom metadata.
+ */
+export type RelatedEventKind = "delivery" | "poll-vote" | "view-limited" | "metadata";
+
+export interface RelatedEventView {
+    id: string;
+    /** Raw Matrix event type, e.g. `com.beeper.message_send_status`. */
+    type: string;
+    /** Wire relation type used to find the target, e.g. `m.reference`. */
+    relationType: string;
+    targetId: string;
+    senderId: string;
+    timestamp: number;
+    kind: RelatedEventKind;
+    /** Safe one-line summary from known fields; null when none can be derived. */
+    summary: string | null;
+    /** Raw decrypted/plain content, for details and "View source". */
+    content: Readonly<Record<string, unknown>>;
+}
 
 export interface MessageView {
     id: string;
@@ -96,6 +119,11 @@ export interface MessageView {
      * lands. Never null.
      */
     readBy: string[];
+    /**
+     * Metadata events folded onto this row. Never includes reactions, edits or
+     * replies — those keep their own fields. Empty for ordinary messages.
+     */
+    relatedEvents: RelatedEventView[];
 }
 
 /** One quoted target of an inline reply. */

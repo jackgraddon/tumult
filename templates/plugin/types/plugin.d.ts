@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.7.0";
+export declare const CONTRACT_VERSION = "1.8.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -65,6 +65,22 @@ export type MessageStatus = "sending" | "sent" | "failed";
  * as a placeholder rather than dropping the event.
  */
 export type DecryptionStatus = "ok" | "pending" | "failed";
+type RelatedEventKind = "delivery" | "poll-vote" | "view-limited" | "metadata";
+interface RelatedEventView {
+	id: string;
+	/** Raw Matrix event type, e.g. `com.beeper.message_send_status`. */
+	type: string;
+	/** Wire relation type used to find the target, e.g. `m.reference`. */
+	relationType: string;
+	targetId: string;
+	senderId: string;
+	timestamp: number;
+	kind: RelatedEventKind;
+	/** Safe one-line summary from known fields; null when none can be derived. */
+	summary: string | null;
+	/** Raw decrypted/plain content, for details and "View source". */
+	content: Readonly<Record<string, unknown>>;
+}
 export interface MessageView {
 	id: string;
 	/** Matrix event type, e.g. "m.room.message", "cc.jackg.tumult.chess.move". */
@@ -109,6 +125,11 @@ export interface MessageView {
 	 * lands. Never null.
 	 */
 	readBy: string[];
+	/**
+	 * Metadata events folded onto this row. Never includes reactions, edits or
+	 * replies — those keep their own fields. Empty for ordinary messages.
+	 */
+	relatedEvents: RelatedEventView[];
 }
 /** One quoted target of an inline reply. */
 export interface ReplyView {

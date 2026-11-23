@@ -36,6 +36,7 @@ function message(overrides: Partial<MessageView> = {}): MessageView {
         reply: null,
         reactions: [],
         readBy: [],
+        relatedEvents: [],
         ...overrides,
     };
 }

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { EventStatus } from "matrix-js-sdk";
+import { EventStatus, EventType, RelationType } from "matrix-js-sdk";
 
 import { mapEvent, type MappableEvent } from "../src/timeline/map.ts";
 
@@ -38,6 +38,7 @@ describe("mapEvent", () => {
             reply: null,
             reactions: [],
             readBy: [],
+            relatedEvents: [],
             edited: false,
             redacted: false,
         });
@@ -91,7 +92,11 @@ describe("mapEvent", () => {
     });
 });
 
-import { isAggregatedRelation, latestReceiptable } from "../src/timeline/feed.ts";
+import {
+    isAggregatedRelation,
+    isHiddenAggregatedRelation,
+    latestReceiptable,
+} from "../src/timeline/feed.ts";
 
 describe("audit regressions", () => {
     it("latestReceiptable skips our pending local echo", () => {
@@ -101,13 +106,50 @@ describe("audit regressions", () => {
         assert.equal(latestReceiptable([ev("~echo", EventStatus.SENDING)]), undefined);
     });
 
-    it("isAggregatedRelation hides still-encrypted reactions and edits by wire relation", () => {
+    it("isAggregatedRelation recognizes reactions and edits by wire relation", () => {
         const rel = (rel_type: string | undefined) => ({
             getRelation: () => (rel_type ? { rel_type, event_id: "$t" } : null),
         });
-        assert.equal(isAggregatedRelation(rel("m.annotation") as never), true);
-        assert.equal(isAggregatedRelation(rel("m.replace") as never), true);
+        assert.equal(isAggregatedRelation(rel(RelationType.Annotation) as never), true);
+        assert.equal(isAggregatedRelation(rel(RelationType.Replace) as never), true);
         assert.equal(isAggregatedRelation(rel("m.thread") as never), false);
         assert.equal(isAggregatedRelation(rel(undefined) as never), false);
+    });
+
+    it("hides only valid reactions and edits, showing invalid relations independently", () => {
+        const event = (over: Record<string, unknown> = {}) =>
+            ({
+                getRelation: () => ({ rel_type: RelationType.Annotation, event_id: "$t", key: "👍" }),
+                getType: () => EventType.Reaction,
+                getStateKey: () => null,
+                isRedacted: () => false,
+                getSender: () => "@alice:localhost",
+                getContent: () => ({}),
+                ...over,
+            }) as never;
+
+        assert.equal(isHiddenAggregatedRelation(event()), true);
+        assert.equal(isHiddenAggregatedRelation(event({ getType: () => "m.room.encrypted" })), true);
+        assert.equal(isHiddenAggregatedRelation(event({ isRedacted: () => true })), true);
+        assert.equal(
+            isHiddenAggregatedRelation(event({ getRelation: () => ({ rel_type: RelationType.Annotation, event_id: "$t" }) })),
+            false,
+        );
+
+        const edit = event({
+            getType: () => EventType.RoomMessage,
+            getRelation: () => ({ rel_type: RelationType.Replace, event_id: "$t" }),
+            getContent: () => ({ "m.new_content": { msgtype: "m.text", body: "better" } }),
+        });
+        assert.equal(isHiddenAggregatedRelation(edit), true);
+        assert.equal(
+            isHiddenAggregatedRelation(
+                event({
+                    getType: () => EventType.RoomMessage,
+                    getRelation: () => ({ rel_type: RelationType.Replace, event_id: "$t" }),
+                }),
+            ),
+            false,
+        );
     });
 });

@@ -148,6 +148,7 @@ export function mapEvent(event: MappableEvent): MessageView {
         reply,
         reactions: [],
         readBy: [],
+        relatedEvents: [],
         edited: false,
         redacted: event.isRedacted(),
     };

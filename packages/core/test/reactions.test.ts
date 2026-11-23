@@ -140,6 +140,7 @@ describe("sameTimeline", () => {
             reply: null,
             reactions: [],
             readBy: [],
+            relatedEvents: [],
             edited: false,
             redacted: false,
             ...over,
@@ -158,6 +159,25 @@ describe("sameTimeline", () => {
 
     it("treats reader changes as different", () => {
         assert.equal(sameTimeline([view()], [view({ readBy: ["@bob:localhost"] })]), false);
+    });
+
+    it("treats related-event changes as different", () => {
+        const related = {
+            id: "$status",
+            type: "com.beeper.message_send_status",
+            relationType: "m.reference",
+            targetId: "$m:x",
+            senderId: "@bridge:localhost",
+            timestamp: 2,
+            kind: "delivery" as const,
+            summary: "Sent via iMessage",
+            content: { status: "SUCCESS" },
+        };
+        assert.equal(sameTimeline([view()], [view({ relatedEvents: [related] })]), false);
+        assert.equal(
+            sameTimeline([view({ relatedEvents: [related] })], [view({ relatedEvents: [related] })]),
+            true,
+        );
     });
 });
 

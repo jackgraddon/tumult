@@ -167,6 +167,7 @@ function view(over: Partial<MessageView> = {}): MessageView {
         reply: null,
         reactions: [],
         readBy: [],
+        relatedEvents: [],
         ...over,
     };
 }

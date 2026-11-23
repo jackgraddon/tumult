@@ -510,6 +510,31 @@ describe("browser smoke test (fake client)", () => {
         assert.match(question ?? "", /Lunch\?/, "the demo poll rendered without its question");
     });
 
+    it("folds bridge metadata onto its target and degrades malformed metadata honestly", async () => {
+        const target = page.locator(".tumult-virtual-row", { hasText: "sent through iMessage" }).first();
+        await target.scrollIntoViewIfNeeded();
+        const related = target.locator(".tumult-related");
+        assert.equal(await related.count(), 1, "the target message has no related-events cluster");
+        assert.match(
+            (await related.locator(".tumult-related-summary").first().textContent()) ?? "",
+            /2 related updates/,
+            "folded metadata events did not attach to their target",
+        );
+        assert.equal(
+            await related.locator('[data-kind="delivery"][data-event-type="com.beeper.message_send_status"]').count(),
+            1,
+            "the Beeper status is not summarized on the target",
+        );
+
+        const malformed = page.locator(".tumult-virtual-row", { hasText: "Can't display this bridge send status yet" }).first();
+        await malformed.scrollIntoViewIfNeeded();
+        assert.equal(
+            await malformed.locator('[data-unsupported-event][data-event-type="com.beeper.message_send_status"]').count(),
+            1,
+            "a malformed metadata event should keep an honest fallback row",
+        );
+    });
+
     it("renders a composer action contributed by a reference plugin", async () => {
         // The react-last reference plugin registers this button through
         // PluginRegistry's `composer-actions` permission, so it only exists when
@@ -2469,7 +2494,7 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-message-menu", { state: "detached", timeout: 5_000 });
 
         // Bob sits below us (50): the delete appears, and it looks destructive.
-        await openMessageMenu("Unsupported event");
+        await openMessageMenu("Can't display this event");
         assert.equal(
             await menuItem("Delete message").count(),
             1,

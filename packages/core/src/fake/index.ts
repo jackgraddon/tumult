@@ -93,6 +93,7 @@ function msg(
         content: { msgtype: "m.text", body },
         reactions: [],
         readBy: [],
+        relatedEvents: [],
         edited: false,
         redacted: false,
         reply: null,
@@ -292,6 +293,48 @@ function buildTimeline(roomId: string, rand: () => number, now: number): Message
         msg(`${roomId}:poll`, "@alice:example.com", "Lunch poll", now - 3600_000, {
             type: "cc.jackg.tumult.demo.poll",
             content: { question: "Lunch?", options: ["ramen", "tacos", "salad"] },
+        }),
+        // Bridge metadata is folded onto the target by core; the fake seeds
+        // the finished snapshot directly so the browser can assert the seam.
+        msg(`${roomId}:bridge-target`, "@alice:example.com", "sent through iMessage", now - 3700_000, {
+            relatedEvents: [
+                {
+                    id: `${roomId}:bridge-metadata`,
+                    type: "org.example.tumult.delivery_update",
+                    relationType: "m.reference",
+                    targetId: `${roomId}:bridge-target`,
+                    senderId: "@bridge:example.com",
+                    timestamp: now - 3600_000,
+                    kind: "metadata",
+                    summary: "Related update: recipient acknowledged",
+                    content: {
+                        "m.relates_to": { rel_type: "m.reference", event_id: `${roomId}:bridge-target` },
+                        state: "acknowledged",
+                    },
+                },
+                {
+                    id: `${roomId}:bridge-status`,
+                    type: "com.beeper.message_send_status",
+                    relationType: "m.reference",
+                    targetId: `${roomId}:bridge-target`,
+                    senderId: "@bridge:example.com",
+                    timestamp: now - 3650_000,
+                    kind: "delivery",
+                    summary: "Delivered via iMessage to 1 person",
+                    content: {
+                        "m.relates_to": { rel_type: "m.reference", event_id: `${roomId}:bridge-target` },
+                        network: "imessage",
+                        status: "SUCCESS",
+                        delivered_to_users: ["@bob:example.com"],
+                    },
+                },
+            ],
+        }),
+        // A recognized metadata type with no relation is malformed: it stays a
+        // row and gets the honest "can't display" fallback.
+        msg(`${roomId}:bridge-malformed`, "@bridge:example.com", "", now - 3500_000, {
+            type: "com.beeper.message_send_status",
+            content: { network: "imessage", status: "SUCCESS" },
         }),
         msg(`${roomId}:future`, "@bob:example.com", "from the future", now - 1800_000, {
             type: "cc.jackg.tumult.unknown.future",
