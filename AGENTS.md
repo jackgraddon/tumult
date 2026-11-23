@@ -1003,7 +1003,8 @@ homeserver. A trap listed here has shipped broken at least once.
   provider. Compatibility mode on purpose: state-event membership (any
   homeserver), identity `<user_id>:<device_id>`. Moving to Matrix-2.0 mode
   (sticky events, `/get_token`, hashed identities) is a deliberate protocol
-  change confined to `sfu.ts` + the join config. Opt-in via `VITE_VOICE=1`.
+  change confined to `sfu.ts` + the join config. On by default in real builds;
+  `VITE_VOICE=0` opts out.
   `livekit-client` is `import()`ed only in `voice/media.ts` (lazy chunk; the fake
   build and main chunk never carry it — the smoke test's leak regexp covers it)
   and the E2EE worker is built by the HOST (`createE2EEWorker`, a Vite
@@ -1129,8 +1130,9 @@ homeserver. A trap listed here has shipped broken at least once.
     longer a `member` object; matrix-widget-api 1.20 matches (and types the
     delegate's `url`). The driver forwards both bodies VERBATIM, so an
     embedded app on either shape reaches the homeserver intact.
-- Off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is false and
-  the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
+- Native voice is on by default in real builds; `VITE_VOICE=0` opts out. Element
+  Call is off by default: no `VITE_ELEMENT_CALL_URL` means `supportsCalls()` is
+  false and the UI shows nothing. The URL's ORIGIN is added to CSP `frame-src`
   (`apps/web/vite.config.ts`; otherwise `frame-src 'none'`). Production gets that
   policy as a `<meta>` the BUILD writes into `index.html` (right after
   `<meta charset>`), because `vercel.json` is static and cannot see the env.

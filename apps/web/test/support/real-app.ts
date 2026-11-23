@@ -99,9 +99,12 @@ export interface RealApp {
 export async function serveRealApp(options: { port: number; voice?: boolean; env?: Record<string, string> }): Promise<RealApp> {
     const workDir = mkdtempSync(join(tmpdir(), "tumult-real-app-"));
     const outDir = join(workDir, "dist");
-    if (options.voice) process.env["VITE_VOICE"] = "1";
-    // Build-time env (e.g. VITE_ELEMENT_CALL_URL). Each test file is its own
-    // process, so this does not leak into another file's build.
+    // Native voice is on by default in real builds; the embedded-call test opts
+    // out explicitly. Each test file is its own process, so this does not leak
+    // into another file's build.
+    if (options.voice === false) process.env["VITE_VOICE"] = "0";
+    else if (options.voice === true) process.env["VITE_VOICE"] = "1";
+    // Other build-time env (e.g. VITE_ELEMENT_CALL_URL).
     for (const [key, value] of Object.entries(options.env ?? {})) process.env[key] = value;
     process.env["VITE_CLIENT_URI"] ??= "https://tumult.test";
     await build({ root: appRoot, mode: "production", logLevel: "error", build: { outDir } });

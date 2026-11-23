@@ -2,10 +2,10 @@
  * The embedded Element Call path — calls without native voice — through the
  * real app against the MatrixRTC stack in `tests/rtc/`.
  *
- * Tumult has two call paths. Native voice (VITE_VOICE) is covered by
- * rtc-media.test.ts. This is the other: no VITE_VOICE, a VITE_ELEMENT_CALL_URL,
- * and the call app runs as a cross-origin widget iframe that our
- * CallWidgetDriver answers (packages/core/src/call/). It is the fallback for a
+ * Tumult has two call paths. Native voice (on by default in real builds) is
+ * covered by rtc-media.test.ts. This is the other: VITE_VOICE=0 to opt out, a
+ * VITE_ELEMENT_CALL_URL, and the call app runs as a cross-origin widget iframe
+ * that our CallWidgetDriver answers (packages/core/src/call/). It is the fallback for a
  * deployment without native voice, so it must work on its own.
  *
  * The call app is Element Call's published EMBEDDED package (the release
@@ -162,9 +162,9 @@ describe("embedded Element Call through the real app", { skip: !enabled && "set 
         console.log(`[element-call] serving ${root} on ${EC_ORIGIN}`);
         callServer = await serveStatic(root, EC_PORT);
         console.log("[element-call] building and serving the real app");
-        // No VITE_VOICE: the call menu takes the embedded path. The build puts
-        // this origin in the CSP's frame-src.
-        app = await serveRealApp({ port: PORT, env: { VITE_ELEMENT_CALL_URL: EC_ORIGIN } });
+        // Native voice is on by default in real builds, so opt out to keep the
+        // call menu on the embedded path. The build puts this origin in frame-src.
+        app = await serveRealApp({ port: PORT, voice: false, env: { VITE_ELEMENT_CALL_URL: EC_ORIGIN } });
 
         console.log(`[element-call] app on ${app.origin}; registering`);
         const suffix = Date.now().toString(36);

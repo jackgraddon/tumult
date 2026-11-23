@@ -17,7 +17,8 @@ name: Desktop builds
 # comes from a repository VARIABLE (Settings → Secrets and variables → Actions →
 # Variables), set once:
 #   gh variable set VITE_CLIENT_URI --body https://tumult.example.org
-# Optional, same mechanism: VITE_ELEMENT_CALL_URL, VITE_VOICE.
+# Optional, same mechanism: VITE_ELEMENT_CALL_URL (Element Call off unless set)
+# and VITE_VOICE (native voice ON by default; set the variable to 0 to disable).
 # (release.yml gets the web deploy's env from `vercel pull` instead; the desktop
 # has no Vercel project, and needs no Vercel token to build.)
 

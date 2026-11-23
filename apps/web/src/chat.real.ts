@@ -35,12 +35,12 @@ const appClientUri: string = clientUri ?? "";
 const elementCallUrl = import.meta.env.VITE_ELEMENT_CALL_URL;
 
 /**
- * Optional: native audio voice (MatrixRTC + LiveKit, no iframe). Opt-in rather
- * than detected because it needs a LiveKit focus this deployment cannot know
- * about (a user's homeserver may advertise one, and a call already running in a
- * room is joined with ITS focus); with the flag off no voice control is drawn.
+ * Native audio voice (MatrixRTC + LiveKit, no iframe) is on by default: no
+ * deployment-specific focus is needed (the user's homeserver advertises one,
+ * and a call already running in a room is joined with ITS focus). `VITE_VOICE=0`
+ * opts out for a deployment that cannot offer MatrixRTC.
  */
-const voiceEnabled = import.meta.env.VITE_VOICE === "1";
+const voiceEnabled = import.meta.env.VITE_VOICE !== "0";
 
 /**
  * The desktop build (`VITE_DESKTOP=1`, built by `apps/desktop`) is served from

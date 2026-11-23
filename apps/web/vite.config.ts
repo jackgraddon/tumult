@@ -193,9 +193,9 @@ export default defineConfig(({ mode }) => {
     // The embedded call app (Element Call) is a cross-origin iframe, so its
     // origin must be named in `frame-src`; without the directive a frame falls
     // back to `default-src 'self'` and is blocked. Unset means calls are off
-    // (the client reports `supportsCalls() === false`), so no call origin is
-    // allowed at all. Only the ORIGIN is allowed, never the path: the app is
-    // addressed by origin, and a path in CSP would silently stop matching on
+    // (the client reports `supportsCalls() === false`), so no embedded-call
+    // origin is allowed at all. Only the ORIGIN is allowed, never the path: the
+    // app is addressed by origin, and a path in CSP would silently stop matching on
     // redirect. `'self'` is for the plugin sandbox frame (/sandbox.html). It
     // admits any same-origin page, which opens nothing: every page on this
     // origin is ours, and the sandbox attribute plus /sandbox.html's own CSP

@@ -228,7 +228,9 @@ not a secret:
 gh variable set VITE_CLIENT_URI --body https://tumult.example.org
 ```
 
-`VITE_ELEMENT_CALL_URL` and `VITE_VOICE` are optional, set the same way.
+`VITE_ELEMENT_CALL_URL` is optional, set the same way (Element Call stays off
+unless it is set). Native voice is on by default; set `VITE_VOICE` to `0` to
+disable it.
 
 ## Deferred, deliberately (AGENTS.md v1 scope)
 

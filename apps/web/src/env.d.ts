@@ -8,7 +8,7 @@ interface ImportMetaEnv {
      * root. Unset disables calls. See .env.example.
      */
     readonly VITE_ELEMENT_CALL_URL?: string;
-    /** `"1"` turns on native audio voice. See .env.example. */
+    /** Native audio voice is on by default; `"0"` turns it off. See .env.example. */
     readonly VITE_VOICE?: string;
     /**
      * `"1"` in the desktop shell's build (`apps/desktop/scripts/build-web.ts`):
