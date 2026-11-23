@@ -4,6 +4,10 @@
  * render this element so a tile's box, states and focus ring have a single
  * owner. Content is a slot: an Avatar for identities, an Icon for chrome.
  */
+import { useRailAnimations } from "./railAnimation.ts";
+
+const animating = useRailAnimations();
+
 defineProps<{
     /** Accessible name (also the tooltip's text in each caller). */
     label: string;
@@ -20,6 +24,7 @@ defineProps<{
         v-bind="href === undefined ? { type: 'button' } : { href }"
         :aria-label="label"
         :aria-current="active ? 'page' : undefined"
+        :data-animate="animating === true ? 'true' : undefined"
     >
         <slot />
     </component>
@@ -46,14 +51,21 @@ defineProps<{
     text-decoration: none;
     cursor: pointer;
     transition:
-        background-color var(--motion-fast) var(--motion-ease),
-        border-radius var(--motion-fast) var(--motion-ease);
+        background-color var(--rail-tile-motion-duration) var(--rail-tile-motion-ease),
+        border-radius var(--rail-tile-motion-duration) var(--rail-tile-motion-ease);
+}
+/* Cold boot resolves the route before the room list, so the active tile can
+   flip after mount. That is not a user action and must not animate. */
+.tumult-rail-tile:not([data-animate="true"]) {
+    transition: none;
 }
 .tumult-rail-tile:hover {
     background: var(--rail-item-bg-hover);
 }
 /* Selected is the one state where the circle opens up into a squircle; the
-   radii are theme tokens so a theme decides both shapes. */
+   radii are theme tokens so a theme decides both shapes. The idle radius is a
+   percentage on purpose: a fixed oversized radius interpolates as a length and
+   makes this morph snap at the very end instead of easing throughout. */
 .tumult-rail-tile[aria-current="page"] {
     background: var(--rail-item-bg-active);
     border-radius: var(--rail-tile-radius-active);

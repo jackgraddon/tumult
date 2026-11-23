@@ -13,10 +13,13 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "focus-ring-outline", tier: "component", kind: "border-width", value: v("focus-ring-width"), description: "Focus outline thickness." },
 
     // Guild rail
+    { name: "rail-gap", tier: "component", kind: "spacing", value: v("space-2"), description: "Vertical gap between rail tiles." },
     { name: "rail-item-bg-hover", tier: "component", kind: "color", value: v("state-hover"), description: "Rail item hover." },
     { name: "rail-item-bg-active", tier: "component", kind: "color", value: v("state-selected"), description: "Rail item active." },
-    { name: "rail-tile-radius", tier: "component", kind: "radius", value: v("radius-full"), description: "Rail tile radius when idle (circle)." },
+    { name: "rail-tile-radius", tier: "component", kind: "radius", description: "Rail tile radius when idle (circle). Use a percentage so the morph to the active radius is smooth." },
     { name: "rail-tile-radius-active", tier: "component", kind: "radius", value: v("control-radius"), description: "Rail tile radius when selected (squircle)." },
+    { name: "rail-tile-motion-duration", tier: "component", kind: "motion", value: v("motion-base"), description: "Rail tile idle → active transition duration." },
+    { name: "rail-tile-motion-ease", tier: "component", kind: "motion", value: v("motion-ease"), description: "Rail tile idle → active easing." },
 
     // User bar (the account panel at the bottom of the rail + room list)
     { name: "userbar-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "User bar background." },
@@ -43,6 +46,11 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "timeline-row-padding-y", tier: "component", kind: "spacing", value: v("space-1"), description: "Message vertical padding." },
     { name: "timeline-quote-bar-width", tier: "component", kind: "border-width", value: v("border-width-accent"), description: "Quote / reply accent bar." },
     { name: "timeline-flash-duration", tier: "component", kind: "motion", value: v("motion-slow"), description: "Jump-to-message flash." },
+    { name: "skeleton-surface", tier: "component", kind: "color", value: v("surface-inset"), description: "Loading skeleton fill — a surface colour, not content text." },
+    { name: "skeleton-shimmer-surface", tier: "component", kind: "color", value: v("surface-hover"), description: "Loading skeleton shimmer wash." },
+    { name: "skeleton-shimmer-duration", tier: "component", kind: "motion", description: "Loading skeleton shimmer cycle." },
+    { name: "skeleton-shimmer-ease", tier: "component", kind: "motion", value: v("motion-ease"), description: "Loading skeleton shimmer easing." },
+    { name: "navigation-skeleton-duration", tier: "component", kind: "motion", description: "Minimum time a room switch shows its skeleton." },
 
     // Media renderer
     { name: "media-image-max-width", tier: "component", kind: "size", description: "Inline image max width." },

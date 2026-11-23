@@ -366,6 +366,123 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(inRoom.counts.messages > 0, "opening a channel rendered no messages");
     });
 
+    it("starts the rail morph on click, not on initial load", async () => {
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        await seedSession(isolated, false);
+        const target = await isolated.newPage();
+        try {
+            await target.goto(`${origin}/dms`, { waitUntil: "load" });
+            await target.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 20_000 });
+            await target.waitForTimeout(300);
+
+            // Stretch the token so the transition is still running by the time
+            // the first frame after the click is sampled.
+            await target.evaluate(() => {
+                document.documentElement.style.setProperty("--rail-tile-motion-duration", "600ms");
+            });
+
+            const tile = target.locator("a.tumult-guild-item:not([data-pinned])").nth(1);
+            const before = await tile.evaluate((el) => ({
+                current: el.getAttribute("aria-current"),
+                radius: getComputedStyle(el).borderTopLeftRadius,
+                animations: el.getAnimations().length,
+            }));
+            await tile.evaluate((el) => (el as HTMLElement).click());
+            const after = await tile.evaluate(async (el) => {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                return {
+                    current: el.getAttribute("aria-current"),
+                    radius: getComputedStyle(el).borderTopLeftRadius,
+                    animations: el.getAnimations().length,
+                };
+            });
+
+            assert.equal(before.animations, 0, "a rail tile was already animating on load");
+            assert.equal(before.current, null, "the clicked tile was already selected on load");
+            assert.equal(after.current, "page", "the click did not flip the optimistic active state");
+            assert.ok(after.animations > 0, "the click did not start a CSS transition");
+            assert.notEqual(after.radius, "8px", "the morph finished before it was sampled");
+        } finally {
+            await isolated.close();
+        }
+    });
+
+    it("shows both skeletons as soon as a space tile is clicked", async () => {
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        await seedSession(isolated, false);
+        const target = await isolated.newPage();
+        try {
+            await target.goto(`${origin}/dms`, { waitUntil: "load" });
+            await target.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 20_000 });
+            // The seeded space has channels already; stretching the minimum hold
+            // makes the click's acknowledgement observable in a headless run.
+            await target.evaluate(() => {
+                const root = document.documentElement;
+                root.style.setProperty("--navigation-skeleton-duration", "800ms");
+                root.style.setProperty("--skeleton-surface", "rgb(255, 0, 0)");
+                root.style.setProperty("--skeleton-shimmer-surface", "rgb(0, 0, 255)");
+            });
+
+            await target.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+            assert.match(target.url(), /\/g\//, "the tile did not change routes on click");
+            assert.ok(await target.locator(".tumult-roomlist-skeleton").count(), "no channel-list skeleton on click");
+            assert.ok(await target.locator(".tumult-timeline-skeleton").count(), "no timeline skeleton on click");
+
+            const fills = await Promise.all([
+                target
+                    .locator(".tumult-roomlist-skeleton-line")
+                    .first()
+                    .evaluate((el) => getComputedStyle(el).backgroundImage),
+                target
+                    .locator(".tumult-skeleton-line")
+                    .first()
+                    .evaluate((el) => getComputedStyle(el).backgroundImage),
+            ]);
+            for (const fill of fills) {
+                assert.match(fill, /rgb\(255, 0, 0\)/, "the skeleton fill ignores --skeleton-surface");
+                assert.match(fill, /rgb\(0, 0, 255\)/, "the shimmer ignores --skeleton-shimmer-surface");
+            }
+
+            await target.waitForSelector(".tumult-roomlist-skeleton", { state: "detached", timeout: 3_000 });
+            await target.waitForSelector(".tumult-timeline-skeleton", { state: "detached", timeout: 3_000 });
+            assert.ok(await target.locator(".tumult-room-item").count(), "the channels never came back");
+            assert.ok(await target.locator(".tumult-row").count(), "the timeline never came back");
+        } finally {
+            await isolated.close();
+        }
+    });
+
+    it("shows a skeleton while an empty room's snapshot loads, then the honest empty state", async () => {
+        // A fresh context keeps the created room out of the shared shell's fixtures.
+        const isolated = await browser.newContext({ viewport: VIEWPORT });
+        await seedSession(isolated, false);
+        const target = await isolated.newPage();
+        try {
+            await target.goto(`${origin}/`, { waitUntil: "load" });
+            await target.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 20_000 });
+
+            const guild = target.locator("a.tumult-guild-item:not([data-pinned])").first();
+            const box = await guild.boundingBox();
+            assert.ok(box, "the guild tile must be measurable");
+            await target.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
+            await target.waitForSelector(".tumult-menu", { timeout: 5_000 });
+            await target.locator(".tumult-menu .tumult-menu-item", { hasText: "Create channel" }).click();
+
+            await target.waitForSelector(".tumult-dialog", { timeout: 5_000 });
+            await target.locator(".tumult-dialog-input").first().fill("loading-room");
+            await target.locator(".tumult-dialog-button.tumult-dialog-primary").click();
+
+            // The fake creates the room with an empty timeline, which is exactly
+            // the real client's "SDK has not synced it yet" shape.
+            await target.waitForSelector(".tumult-timeline-skeleton", { timeout: 5_000 });
+            assert.ok(await target.locator(".tumult-composer-input").count(), "the loading pane lost its composer");
+            await target.waitForSelector(".tumult-timeline-skeleton", { state: "detached", timeout: 3_000 });
+            assert.ok(await target.locator(".tumult-empty", { hasText: "No messages yet." }).count());
+        } finally {
+            await isolated.close();
+        }
+    });
+
     it("reserves media boxes from event info dims, so decode cannot shift the timeline", async () => {
         // The fake timeline's two newest rows are image events WITH `info`
         // dims (landscape binds the width clamp, portrait the height clamp),
@@ -2288,6 +2405,65 @@ describe("browser smoke test (fake client)", () => {
         ]);
         assert.equal(activeAvatarRadius, activeTileRadius, "the selected avatar must follow the squircle");
         assert.notEqual(activeTileRadius, space![1].radius, "the selected guild must square off");
+    });
+
+    it("drives the rail gap and active transition from theme tokens", async () => {
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 10_000 });
+
+        const cold = await page.evaluate(
+            () =>
+                getComputedStyle(document.querySelector("a.tumult-guild-item:not([data-pinned])")!)
+                    .transitionDuration,
+        );
+        assert.ok(
+            cold.split(",").every((part) => parseFloat(part) === 0),
+            `a rail tile animated before the first click (${cold})`,
+        );
+
+        // The first real pick arms the transition; boot selection never does.
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        const initial = await page.evaluate(() => {
+            const tile = document.querySelector(
+                "a.tumult-guild-item:not([data-pinned]):not([aria-current='page'])",
+            )!;
+            return {
+                gap: getComputedStyle(document.querySelector(".tumult-rail-list")!).rowGap,
+                radius: getComputedStyle(tile).borderTopLeftRadius,
+                duration: getComputedStyle(tile).transitionDuration,
+            };
+        });
+        assert.ok(parseFloat(initial.gap) >= 8, `the rail tiles are still crowded together (${initial.gap})`);
+        // A percentage idle radius interpolates smoothly into the active
+        // squircle; a fixed oversized one only changes in the last frames.
+        assert.equal(initial.radius, "50%", "the idle rail radius cannot ease into the active one");
+        assert.ok(
+            initial.duration.split(",").every((part) => parseFloat(part) > 0),
+            `the rail tile has no transition after a click (${initial.duration})`,
+        );
+
+        try {
+            const overridden = await page.evaluate(() => {
+                const root = document.documentElement;
+                root.style.setProperty("--rail-gap", "16px");
+                root.style.setProperty("--rail-tile-motion-duration", "400ms");
+                return {
+                    gap: getComputedStyle(document.querySelector(".tumult-rail-list")!).rowGap,
+                    duration: getComputedStyle(document.querySelector("a.tumult-guild-item:not([data-pinned])")!)
+                        .transitionDuration,
+                };
+            });
+            assert.equal(overridden.gap, "16px", "--rail-gap does not reach the rail list");
+            assert.ok(
+                overridden.duration.split(",").every((part) => part.trim() === "0.4s"),
+                `--rail-tile-motion-duration does not reach the tile (${overridden.duration})`,
+            );
+        } finally {
+            await page.evaluate(() => {
+                document.documentElement.style.removeProperty("--rail-gap");
+                document.documentElement.style.removeProperty("--rail-tile-motion-duration");
+            });
+        }
     });
 
     it("renders the login view when no session is stored", async () => {

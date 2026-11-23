@@ -160,7 +160,7 @@ const pinnedUnread = computed(() => props.tree.favourites.reduce((n, r) => n + r
 .tumult-rail-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-0-5);
+    gap: var(--rail-gap);
     margin: 0;
     padding: 0 var(--space-2);
     list-style: none;

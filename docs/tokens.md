@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**302 tokens** — 92 primitives, 110 semantic, 100 component.
+**310 tokens** — 92 primitives, 110 semantic, 108 component.
 
 ## Primitives
 
@@ -232,10 +232,13 @@ everything built on it.
 | `--control-radius` | radius | `var(--radius-md)` | Inputs / buttons / rows. |
 | `--focus-ring-color` | color | `var(--focus-ring)` | Focus outline colour. |
 | `--focus-ring-outline` | border-width | `var(--focus-ring-width)` | Focus outline thickness. |
+| `--rail-gap` | spacing | `var(--space-2)` | Vertical gap between rail tiles. |
 | `--rail-item-bg-hover` | color | `var(--state-hover)` | Rail item hover. |
 | `--rail-item-bg-active` | color | `var(--state-selected)` | Rail item active. |
-| `--rail-tile-radius` | radius | `var(--radius-full)` | Rail tile radius when idle (circle). |
+| `--rail-tile-radius` | radius | `50%` | Rail tile radius when idle (circle). Use a percentage so the morph to the active radius is smooth. |
 | `--rail-tile-radius-active` | radius | `var(--control-radius)` | Rail tile radius when selected (squircle). |
+| `--rail-tile-motion-duration` | motion | `var(--motion-base)` | Rail tile idle → active transition duration. |
+| `--rail-tile-motion-ease` | motion | `var(--motion-ease)` | Rail tile idle → active easing. |
 | `--userbar-bg` | color | `var(--surface-raised)` | User bar background. |
 | `--userbar-border` | color | `var(--border-default)` | User bar top border. |
 | `--userbar-height` | size | `56px` | User bar height. |
@@ -257,6 +260,11 @@ everything built on it.
 | `--timeline-row-padding-y` | spacing | `var(--space-1)` | Message vertical padding. |
 | `--timeline-quote-bar-width` | border-width | `var(--border-width-accent)` | Quote / reply accent bar. |
 | `--timeline-flash-duration` | motion | `var(--motion-slow)` | Jump-to-message flash. |
+| `--skeleton-surface` | color | `var(--surface-inset)` | Loading skeleton fill — a surface colour, not content text. |
+| `--skeleton-shimmer-surface` | color | `var(--surface-hover)` | Loading skeleton shimmer wash. |
+| `--skeleton-shimmer-duration` | motion | `1.2s` | Loading skeleton shimmer cycle. |
+| `--skeleton-shimmer-ease` | motion | `var(--motion-ease)` | Loading skeleton shimmer easing. |
+| `--navigation-skeleton-duration` | motion | `320ms` | Minimum time a room switch shows its skeleton. |
 | `--media-image-max-width` | size | `320px` | Inline image max width. |
 | `--media-image-max-height` | size | `240px` | Inline image max height. |
 | `--media-video-max-width` | size | `360px` | Inline video max width. |

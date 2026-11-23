@@ -843,6 +843,10 @@
                     "type": "string",
                     "description": "Focus outline thickness."
                 },
+                "rail-gap": {
+                    "type": "string",
+                    "description": "Vertical gap between rail tiles."
+                },
                 "rail-item-bg-hover": {
                     "type": "string",
                     "description": "Rail item hover."
@@ -853,11 +857,19 @@
                 },
                 "rail-tile-radius": {
                     "type": "string",
-                    "description": "Rail tile radius when idle (circle)."
+                    "description": "Rail tile radius when idle (circle). Use a percentage so the morph to the active radius is smooth."
                 },
                 "rail-tile-radius-active": {
                     "type": "string",
                     "description": "Rail tile radius when selected (squircle)."
+                },
+                "rail-tile-motion-duration": {
+                    "type": "string",
+                    "description": "Rail tile idle → active transition duration."
+                },
+                "rail-tile-motion-ease": {
+                    "type": "string",
+                    "description": "Rail tile idle → active easing."
                 },
                 "userbar-bg": {
                     "type": "string",
@@ -942,6 +954,26 @@
                 "timeline-flash-duration": {
                     "type": "string",
                     "description": "Jump-to-message flash."
+                },
+                "skeleton-surface": {
+                    "type": "string",
+                    "description": "Loading skeleton fill — a surface colour, not content text."
+                },
+                "skeleton-shimmer-surface": {
+                    "type": "string",
+                    "description": "Loading skeleton shimmer wash."
+                },
+                "skeleton-shimmer-duration": {
+                    "type": "string",
+                    "description": "Loading skeleton shimmer cycle."
+                },
+                "skeleton-shimmer-ease": {
+                    "type": "string",
+                    "description": "Loading skeleton shimmer easing."
+                },
+                "navigation-skeleton-duration": {
+                    "type": "string",
+                    "description": "Minimum time a room switch shows its skeleton."
                 },
                 "media-image-max-width": {
                     "type": "string",
@@ -2060,6 +2092,10 @@
                         "type": "string",
                         "description": "Focus outline thickness."
                     },
+                    "rail-gap": {
+                        "type": "string",
+                        "description": "Vertical gap between rail tiles."
+                    },
                     "rail-item-bg-hover": {
                         "type": "string",
                         "description": "Rail item hover."
@@ -2070,11 +2106,19 @@
                     },
                     "rail-tile-radius": {
                         "type": "string",
-                        "description": "Rail tile radius when idle (circle)."
+                        "description": "Rail tile radius when idle (circle). Use a percentage so the morph to the active radius is smooth."
                     },
                     "rail-tile-radius-active": {
                         "type": "string",
                         "description": "Rail tile radius when selected (squircle)."
+                    },
+                    "rail-tile-motion-duration": {
+                        "type": "string",
+                        "description": "Rail tile idle → active transition duration."
+                    },
+                    "rail-tile-motion-ease": {
+                        "type": "string",
+                        "description": "Rail tile idle → active easing."
                     },
                     "userbar-bg": {
                         "type": "string",
@@ -2159,6 +2203,26 @@
                     "timeline-flash-duration": {
                         "type": "string",
                         "description": "Jump-to-message flash."
+                    },
+                    "skeleton-surface": {
+                        "type": "string",
+                        "description": "Loading skeleton fill — a surface colour, not content text."
+                    },
+                    "skeleton-shimmer-surface": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer wash."
+                    },
+                    "skeleton-shimmer-duration": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer cycle."
+                    },
+                    "skeleton-shimmer-ease": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer easing."
+                    },
+                    "navigation-skeleton-duration": {
+                        "type": "string",
+                        "description": "Minimum time a room switch shows its skeleton."
                     },
                     "media-image-max-width": {
                         "type": "string",
@@ -3278,6 +3342,10 @@
                         "type": "string",
                         "description": "Focus outline thickness."
                     },
+                    "rail-gap": {
+                        "type": "string",
+                        "description": "Vertical gap between rail tiles."
+                    },
                     "rail-item-bg-hover": {
                         "type": "string",
                         "description": "Rail item hover."
@@ -3288,11 +3356,19 @@
                     },
                     "rail-tile-radius": {
                         "type": "string",
-                        "description": "Rail tile radius when idle (circle)."
+                        "description": "Rail tile radius when idle (circle). Use a percentage so the morph to the active radius is smooth."
                     },
                     "rail-tile-radius-active": {
                         "type": "string",
                         "description": "Rail tile radius when selected (squircle)."
+                    },
+                    "rail-tile-motion-duration": {
+                        "type": "string",
+                        "description": "Rail tile idle → active transition duration."
+                    },
+                    "rail-tile-motion-ease": {
+                        "type": "string",
+                        "description": "Rail tile idle → active easing."
                     },
                     "userbar-bg": {
                         "type": "string",
@@ -3377,6 +3453,26 @@
                     "timeline-flash-duration": {
                         "type": "string",
                         "description": "Jump-to-message flash."
+                    },
+                    "skeleton-surface": {
+                        "type": "string",
+                        "description": "Loading skeleton fill — a surface colour, not content text."
+                    },
+                    "skeleton-shimmer-surface": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer wash."
+                    },
+                    "skeleton-shimmer-duration": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer cycle."
+                    },
+                    "skeleton-shimmer-ease": {
+                        "type": "string",
+                        "description": "Loading skeleton shimmer easing."
+                    },
+                    "navigation-skeleton-duration": {
+                        "type": "string",
+                        "description": "Minimum time a room switch shows its skeleton."
                     },
                     "media-image-max-width": {
                         "type": "string",

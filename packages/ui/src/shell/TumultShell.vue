@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
 import { selectSpaceTree } from "@tumult/core/selectors";
 import type { OrphanSort } from "@tumult/core/selectors";
 import type { ChatClient, EncryptedAttachment, SpaceTree } from "@tumult/core";
 
 import { SelectionKey, type RoomSelection, type SelectionContext } from "../selection.ts";
+import { RailAnimationsKey } from "../rail/railAnimation.ts";
 import { ActionsKey, type ActionsContext, type LeaveTarget, type MemberModeration } from "../actions.ts";
 import { MediaKey, EncryptedMediaKey, MediaDownloadKey } from "../media.ts";
 import { RegistryKey, TimelineRegistry } from "../timeline/registry.ts";
@@ -96,19 +97,104 @@ function hrefFor(next: RoomSelection): string {
     return next.roomId ? `${guild}/${encodeURIComponent(next.roomId)}` : guild;
 }
 
+/**
+ * The pick a tile was just given, before the router echoes it back as a prop.
+ * Without this the squircle only starts morphing after navigation confirms,
+ * which makes a click feel like it waits. The route still owns the selection;
+ * this is only the optimistic shadow, cleared as soon as it agrees with the
+ * prop (and as a backstop if navigation never lands).
+ */
+const pendingSelection = shallowRef<RoomSelection | null>(null);
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+const railAnimations = ref(false);
+
+function sameSelection(a: RoomSelection, b: RoomSelection): boolean {
+    return a.view === b.view && a.guildId === b.guildId && a.roomId === b.roomId && a.paneId === b.paneId;
+}
+
+function clearPending(): void {
+    pendingSelection.value = null;
+    if (pendingTimer !== null) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+    }
+}
+
+/**
+ * A click is feedback enough that the panes should acknowledge it immediately,
+ * even when the data is cached. This is a minimum skeleton window, not a lie
+ * about missing data: the route has already changed and the real content sits
+ * underneath. The hold is read from the theme so a host can tune the rhythm.
+ */
+const navigationLoading = ref(false);
+const navigationScope = ref<"guild" | "room" | null>(null);
+let navigationTimer: ReturnType<typeof setTimeout> | null = null;
+
+function navigationHoldMs(): number {
+    if (typeof getComputedStyle === "undefined") return 200;
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--navigation-skeleton-duration").trim();
+    const amount = Number.parseFloat(raw);
+    if (!Number.isFinite(amount)) return 200;
+    if (raw.endsWith("ms")) return amount;
+    if (raw.endsWith("s")) return amount * 1000;
+    return amount;
+}
+
+function endNavigation(): void {
+    navigationLoading.value = false;
+    navigationScope.value = null;
+    if (navigationTimer !== null) {
+        clearTimeout(navigationTimer);
+        navigationTimer = null;
+    }
+}
+
+function scopeOf(next: RoomSelection): "guild" | "room" | null {
+    const prev = props.selection;
+    if (next.view !== prev.view || next.guildId !== prev.guildId || next.paneId !== prev.paneId) return "guild";
+    if (next.roomId !== prev.roomId) return "room";
+    return null;
+}
+
+function beginNavigation(next: RoomSelection): void {
+    const scope = scopeOf(next);
+    if (scope === null) return;
+    navigationScope.value = scope;
+    navigationLoading.value = true;
+    if (navigationTimer !== null) clearTimeout(navigationTimer);
+    navigationTimer = setTimeout(endNavigation, navigationHoldMs());
+}
+
+provide(RailAnimationsKey, railAnimations);
+
 const selectionContext: SelectionContext = {
     get current() {
-        return props.selection;
+        return pendingSelection.value ?? props.selection;
     },
     select: (next: RoomSelection) => {
+        railAnimations.value = true;
+        if (!sameSelection(next, props.selection)) {
+            pendingSelection.value = next;
+            if (pendingTimer !== null) clearTimeout(pendingTimer);
+            pendingTimer = setTimeout(clearPending, 1000);
+        }
+        beginNavigation(next);
         // A pick that lands on something to read opens it on a phone — even a
         // re-tap of the room already selected, which changes no selection.
         if (opensScreen(next)) phoneScreen.value = "room";
+        // The host still owns routing; the tile never waits for it to animate.
         emit("select", next);
     },
     hrefFor,
 };
 provide(SelectionKey, selectionContext);
+
+watch(
+    () => props.selection,
+    (now) => {
+        if (pendingSelection.value && sameSelection(now, pendingSelection.value)) clearPending();
+    },
+);
 
 // --- Phone layout ------------------------------------------------------------
 // Side by side needs the rail, the room list AND a usable timeline. Below that
@@ -737,6 +823,8 @@ onBeforeUnmount(() => {
     // Persist any half-typed draft still pending its debounce so a room switch or
     // logout doesn't lose it, and clear the timer so nothing writes past teardown.
     drafts.flush();
+    if (pendingTimer !== null) clearTimeout(pendingTimer);
+    endNavigation();
     props.client.setRoomSelection(null);
     layoutObserver?.disconnect();
 });
@@ -794,6 +882,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :guild="activeGuild"
                         :selection="selection"
                         :has-more="moreRooms"
+                        :loading="navigationLoading && navigationScope === 'guild'"
                         @create-channel="openCreateChannel()"
                         @load-more="loadMoreRooms"
                     />
@@ -845,6 +934,7 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                         :room="activeRoom"
                         :threads-enabled="threadsEnabled"
                         :settings-allowed="settingsAllowed"
+                        :loading="navigationLoading"
                         @open-thread="openThread"
                         @settings="settingsOpen = true"
                     />

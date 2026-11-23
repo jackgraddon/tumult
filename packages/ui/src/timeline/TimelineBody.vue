@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onScopeDispose, shallowRef, watch } from "vue";
+import { onScopeDispose, ref, shallowRef, watch } from "vue";
 import type {
     AttachmentSendResult,
     ChatClient,
@@ -14,6 +14,7 @@ import { useSubscribable } from "../subscribable.ts";
 import { useFeedsReady } from "../feedsReady.ts";
 import { useRoomPower } from "../members/power.ts";
 import TimelineViewport from "./TimelineViewport.vue";
+import TimelineSkeleton from "./TimelineSkeleton.vue";
 import MessageComposer from "./MessageComposer.vue";
 
 const props = defineProps<{
@@ -25,6 +26,8 @@ const props = defineProps<{
     fullyReadEventId?: string | null | undefined;
     /** Search result jump: scroll the viewport to this id (nonce = repeat-safe). */
     focusRequest?: { id: string; nonce: number } | null | undefined;
+    /** Brief minimum skeleton while a rail click's route settles. */
+    loading?: boolean | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -50,6 +53,35 @@ const messages = source ? useSubscribable(source) : null;
 // feed that will not come (a failed start), and saying "loading" would lie.
 const feedsReady = useFeedsReady(props.client);
 const session = useSubscribable(props.client.session);
+
+/**
+ * An empty snapshot means either "the SDK has not synced this room yet" or a
+ * genuinely empty room — the contract does not distinguish them. Show the
+ * skeleton for the short wait, then fall back to the viewport's honest "No
+ * messages yet." A room whose snapshot arrives synchronously never shows it.
+ */
+const showSkeleton = ref(messages !== null && messages.value.length === 0);
+let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
+if (showSkeleton.value) {
+    skeletonTimer = setTimeout(() => {
+        skeletonTimer = null;
+        showSkeleton.value = false;
+    }, 600);
+}
+watch(
+    () => messages?.value.length ?? 0,
+    (count) => {
+        if (count === 0) return;
+        showSkeleton.value = false;
+        if (skeletonTimer !== null) {
+            clearTimeout(skeletonTimer);
+            skeletonTimer = null;
+        }
+    },
+);
+onScopeDispose(() => {
+    if (skeletonTimer !== null) clearTimeout(skeletonTimer);
+});
 
 // Power levels gate the message menu's moderation actions. `useRoomPower`
 // resolves to null while the feed is unknown (and before start(), where
@@ -185,7 +217,25 @@ function sendAttachments(
         <p>{{ feedsReady ? "Messages can't be loaded right now." : "Loading messages…" }}</p>
     </div>
     <div v-else class="tumult-timeline-body">
-        <TimelineViewport :messages="messages" :room-id="props.roomId" :power="power" :load-more="loadMore" :on-toggle-reaction="toggleReaction" :on-read-latest="readLatest" :own-user-id="session?.userId" :on-edit-message="editMessage" :on-redact-message="redactMessage" :on-retry-send="retrySend" :fully-read-event-id="fullyReadEventId" :focus-request="focusRequest" :on-open-thread="threadsEnabled ? openThread : undefined" :on-reply="startReply" :thread-replies="threadReplies" />
+        <TimelineSkeleton v-if="showSkeleton || props.loading" />
+        <TimelineViewport
+            v-else
+            :messages="messages"
+            :room-id="props.roomId"
+            :power="power"
+            :load-more="loadMore"
+            :on-toggle-reaction="toggleReaction"
+            :on-read-latest="readLatest"
+            :own-user-id="session?.userId"
+            :on-edit-message="editMessage"
+            :on-redact-message="redactMessage"
+            :on-retry-send="retrySend"
+            :fully-read-event-id="fullyReadEventId"
+            :focus-request="focusRequest"
+            :on-open-thread="threadsEnabled ? openThread : undefined"
+            :on-reply="startReply"
+            :thread-replies="threadReplies"
+        />
         <MessageComposer
             :room-id="props.roomId"
             :client="props.client"

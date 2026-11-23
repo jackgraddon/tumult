@@ -15,6 +15,8 @@ const props = defineProps<{
     threadsEnabled?: boolean;
     /** Hide the settings gear for members who cannot send state events. */
     settingsAllowed?: boolean;
+    /** Brief minimum skeleton while a rail click's route settles. */
+    loading?: boolean | undefined;
 }>();
 
 // Must be declared and re-emitted: an undeclared listener on this component
@@ -89,6 +91,7 @@ watch(
             :threads-enabled="threadsEnabled"
             :fully-read-event-id="room.fullyReadEventId"
             :focus-request="focusRequest"
+            :loading="loading"
             @open-thread="(id) => emit('open-thread', id)"
         />
         <div v-else class="tumult-timeline-empty">

@@ -97,7 +97,7 @@ const messages: PreviewMessage[] = [
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--rail-gap);
     padding: var(--space-2) 0;
     background: var(--surface-rail);
 }
