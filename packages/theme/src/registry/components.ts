@@ -13,9 +13,10 @@ export const COMPONENT_TOKENS: TokenDef[] = [
     { name: "focus-ring-outline", tier: "component", kind: "border-width", value: v("focus-ring-width"), description: "Focus outline thickness." },
 
     // Guild rail
-    { name: "rail-indicator", tier: "component", kind: "color", value: v("accent"), description: "Selected guild indicator." },
     { name: "rail-item-bg-hover", tier: "component", kind: "color", value: v("state-hover"), description: "Rail item hover." },
     { name: "rail-item-bg-active", tier: "component", kind: "color", value: v("state-selected"), description: "Rail item active." },
+    { name: "rail-tile-radius", tier: "component", kind: "radius", value: v("radius-full"), description: "Rail tile radius when idle (circle)." },
+    { name: "rail-tile-radius-active", tier: "component", kind: "radius", value: v("control-radius"), description: "Rail tile radius when selected (squircle)." },
 
     // User bar (the account panel at the bottom of the rail + room list)
     { name: "userbar-bg", tier: "component", kind: "color", value: v("surface-raised"), description: "User bar background." },

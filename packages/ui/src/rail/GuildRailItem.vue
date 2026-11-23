@@ -23,6 +23,7 @@ import { buildSpaceMenu, type SpaceMenuAction } from "./spaceMenu.ts";
 import { buildRoomMenu, type RoomMenuAction } from "../roomlist/roomMenu.ts";
 import Avatar from "../primitives/Avatar.vue";
 import UnreadBadge from "../primitives/UnreadBadge.vue";
+import RailTile from "./RailTile.vue";
 
 const props = defineProps<{
     /** Omitted when this tile is a favourite room (opens the room). Present for a
@@ -48,7 +49,7 @@ function selectTarget(): RoomSelection {
     return props.favourite ? { view: "dms", roomId: props.favourite } : { view: "guild", guildId: props.guildId };
 }
 
-/** `aria-current` + active pill: honoured for whichever mode this tile is. */
+/** The selected state (squircle + filled tile) for either mode of this tile. */
 function currentFlag(): "page" | undefined {
     const cur = selection.current;
     if (props.favourite) {
@@ -112,21 +113,17 @@ function run(action: SpaceMenuAction | RoomMenuAction): void {
                     <!-- A pinned tile gets the room menu, a guild tile the space one. -->
                     <ContextMenuRoot>
                         <ContextMenuTrigger as-child>
-                            <a
+                            <RailTile
                                 class="tumult-guild-item"
                                 :data-pinned="favourite ? 'true' : undefined"
+                                :label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
                                 :href="selection.hrefFor(selectTarget())"
-                                :aria-current="currentFlag()"
-                                :aria-label="`${name}${unread > 0 ? `, ${unread} unread` : ''}`"
+                                :active="currentFlag() === 'page'"
                                 @click.prevent="selection.select(selectTarget())"
                             >
-                                <span
-                                    class="tumult-guild-pill"
-                                    :data-active="currentFlag() === 'page'"
-                                />
                                 <Avatar :label="name" :src="avatarUrl ?? undefined" size="lg" />
                                 <UnreadBadge class="tumult-guild-badge" :count="unread" :highlight="highlight > 0" />
-                            </a>
+                            </RailTile>
                         </ContextMenuTrigger>
                         <ContextMenuPortal>
                             <ContextMenuContent class="tumult-menu">
@@ -158,42 +155,14 @@ function run(action: SpaceMenuAction | RoomMenuAction): void {
 </template>
 
 <style scoped>
-.tumult-guild-item {
-    position: relative;
-    display: flex;
-    justify-content: center;
-    padding: var(--space-1) 0;
-    border-radius: var(--control-radius);
-    transition: background-color var(--motion-fast) var(--motion-ease);
-}
-.tumult-guild-item:hover {
-    background: var(--rail-item-bg-hover);
-}
-.tumult-guild-pill {
-    position: absolute;
-    left: 0;
-    top: var(--space-2);
-    bottom: var(--space-2);
-    width: var(--rail-pill-width);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    background: transparent;
-}
-.tumult-guild-pill[data-active="true"] {
-    background: var(--rail-indicator);
+/* The avatar fills the tile, so it follows the tile's idle/active radius
+   instead of Avatar's own rounded-square `lg` shape. */
+.tumult-guild-item :deep(.tumult-avatar[data-size]) {
+    border-radius: inherit;
 }
 .tumult-guild-badge {
     position: absolute;
     right: var(--space-1-5);
     bottom: var(--space-0-5);
-}
-</style>
-
-<style>
-.tumult-tooltip {
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--control-radius);
-    background: var(--surface-active);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
 }
 </style>

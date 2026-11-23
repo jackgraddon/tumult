@@ -695,17 +695,9 @@
                     "type": "string",
                     "description": "Scrollbar thickness."
                 },
-                "rail-pill-width": {
-                    "type": "string",
-                    "description": "Guild selection pill."
-                },
                 "rail-item-size": {
                     "type": "string",
                     "description": "Rail button size."
-                },
-                "rail-favourite-min-width": {
-                    "type": "string",
-                    "description": "Favourite band item."
                 },
                 "timeline-gutter-width": {
                     "type": "string",
@@ -851,10 +843,6 @@
                     "type": "string",
                     "description": "Focus outline thickness."
                 },
-                "rail-indicator": {
-                    "type": "string",
-                    "description": "Selected guild indicator."
-                },
                 "rail-item-bg-hover": {
                     "type": "string",
                     "description": "Rail item hover."
@@ -862,6 +850,14 @@
                 "rail-item-bg-active": {
                     "type": "string",
                     "description": "Rail item active."
+                },
+                "rail-tile-radius": {
+                    "type": "string",
+                    "description": "Rail tile radius when idle (circle)."
+                },
+                "rail-tile-radius-active": {
+                    "type": "string",
+                    "description": "Rail tile radius when selected (squircle)."
                 },
                 "userbar-bg": {
                     "type": "string",
@@ -1916,17 +1912,9 @@
                         "type": "string",
                         "description": "Scrollbar thickness."
                     },
-                    "rail-pill-width": {
-                        "type": "string",
-                        "description": "Guild selection pill."
-                    },
                     "rail-item-size": {
                         "type": "string",
                         "description": "Rail button size."
-                    },
-                    "rail-favourite-min-width": {
-                        "type": "string",
-                        "description": "Favourite band item."
                     },
                     "timeline-gutter-width": {
                         "type": "string",
@@ -2072,10 +2060,6 @@
                         "type": "string",
                         "description": "Focus outline thickness."
                     },
-                    "rail-indicator": {
-                        "type": "string",
-                        "description": "Selected guild indicator."
-                    },
                     "rail-item-bg-hover": {
                         "type": "string",
                         "description": "Rail item hover."
@@ -2083,6 +2067,14 @@
                     "rail-item-bg-active": {
                         "type": "string",
                         "description": "Rail item active."
+                    },
+                    "rail-tile-radius": {
+                        "type": "string",
+                        "description": "Rail tile radius when idle (circle)."
+                    },
+                    "rail-tile-radius-active": {
+                        "type": "string",
+                        "description": "Rail tile radius when selected (squircle)."
                     },
                     "userbar-bg": {
                         "type": "string",
@@ -3138,17 +3130,9 @@
                         "type": "string",
                         "description": "Scrollbar thickness."
                     },
-                    "rail-pill-width": {
-                        "type": "string",
-                        "description": "Guild selection pill."
-                    },
                     "rail-item-size": {
                         "type": "string",
                         "description": "Rail button size."
-                    },
-                    "rail-favourite-min-width": {
-                        "type": "string",
-                        "description": "Favourite band item."
                     },
                     "timeline-gutter-width": {
                         "type": "string",
@@ -3294,10 +3278,6 @@
                         "type": "string",
                         "description": "Focus outline thickness."
                     },
-                    "rail-indicator": {
-                        "type": "string",
-                        "description": "Selected guild indicator."
-                    },
                     "rail-item-bg-hover": {
                         "type": "string",
                         "description": "Rail item hover."
@@ -3305,6 +3285,14 @@
                     "rail-item-bg-active": {
                         "type": "string",
                         "description": "Rail item active."
+                    },
+                    "rail-tile-radius": {
+                        "type": "string",
+                        "description": "Rail tile radius when idle (circle)."
+                    },
+                    "rail-tile-radius-active": {
+                        "type": "string",
+                        "description": "Rail tile radius when selected (squircle)."
                     },
                     "userbar-bg": {
                         "type": "string",

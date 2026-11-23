@@ -11,7 +11,7 @@ the token — an installed theme is a sparse overlay on this document (see
 references rather than colours: overriding the primitive they point at moves
 everything built on it.
 
-**303 tokens** — 92 primitives, 112 semantic, 99 component.
+**302 tokens** — 92 primitives, 110 semantic, 100 component.
 
 ## Primitives
 
@@ -190,9 +190,7 @@ everything built on it.
 | `--avatar-stack-overlap` | size | `var(--prim-size-stack-overlap)` | Read-receipt stack overlap. |
 | `--hairline` | size | `var(--prim-size-hairline)` | Divider thickness. |
 | `--scrollbar-width` | size | `var(--prim-size-scrollbar)` | Scrollbar thickness. |
-| `--rail-pill-width` | size | `var(--prim-size-indicator)` | Guild selection pill. |
 | `--rail-item-size` | size | `var(--prim-size-xl)` | Rail button size. |
-| `--rail-favourite-min-width` | size | `30px` | Favourite band item. |
 | `--timeline-gutter-width` | size | `var(--prim-size-md)` | Message gutter. |
 | `--badge-min-size` | size | `var(--prim-size-xs)` | Unread badge. |
 | `--presence-dot-size` | size | `var(--prim-size-2xs)` | Presence dot. |
@@ -234,9 +232,10 @@ everything built on it.
 | `--control-radius` | radius | `var(--radius-md)` | Inputs / buttons / rows. |
 | `--focus-ring-color` | color | `var(--focus-ring)` | Focus outline colour. |
 | `--focus-ring-outline` | border-width | `var(--focus-ring-width)` | Focus outline thickness. |
-| `--rail-indicator` | color | `var(--accent)` | Selected guild indicator. |
 | `--rail-item-bg-hover` | color | `var(--state-hover)` | Rail item hover. |
 | `--rail-item-bg-active` | color | `var(--state-selected)` | Rail item active. |
+| `--rail-tile-radius` | radius | `var(--radius-full)` | Rail tile radius when idle (circle). |
+| `--rail-tile-radius-active` | radius | `var(--control-radius)` | Rail tile radius when selected (squircle). |
 | `--userbar-bg` | color | `var(--surface-raised)` | User bar background. |
 | `--userbar-border` | color | `var(--border-default)` | User bar top border. |
 | `--userbar-height` | size | `56px` | User bar height. |

@@ -33,11 +33,10 @@ const messages: PreviewMessage[] = [
     <div class="tumult-preview" aria-hidden="true" inert>
         <div class="tumult-preview-rail">
             <span class="tumult-preview-guild" data-active="true">
-                <span class="tumult-preview-pill" />
-                <Avatar label="Tumult" size="md" />
+                <Avatar label="Tumult" size="lg" />
             </span>
-            <span class="tumult-preview-guild"><Avatar label="Design" size="md" /></span>
-            <span class="tumult-preview-guild"><Avatar label="Games" size="md" /></span>
+            <span class="tumult-preview-guild"><Avatar label="Design" size="lg" /></span>
+            <span class="tumult-preview-guild"><Avatar label="Games" size="lg" /></span>
         </div>
         <div class="tumult-preview-rooms">
             <span class="tumult-preview-heading">Tumult</span>
@@ -102,21 +101,22 @@ const messages: PreviewMessage[] = [
     padding: var(--space-2) 0;
     background: var(--surface-rail);
 }
+/* Same idle circle / selected squircle as the real rail, from the same tokens. */
 .tumult-preview-guild {
-    position: relative;
     display: flex;
+    align-items: center;
     justify-content: center;
-    width: 100%;
+    width: var(--rail-item-size);
+    height: var(--rail-item-size);
+    border-radius: var(--rail-tile-radius);
+    background: var(--surface-pane);
 }
-.tumult-preview-pill {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: var(--rail-pill-width);
-    height: var(--avatar-sm);
-    border-radius: 0 var(--radius-full) var(--radius-full) 0;
-    background: var(--rail-indicator);
-    transform: translateY(-50%);
+.tumult-preview-guild[data-active] {
+    border-radius: var(--rail-tile-radius-active);
+    background: var(--rail-item-bg-active);
+}
+.tumult-preview-guild :deep(.tumult-avatar) {
+    border-radius: inherit;
 }
 
 /* Room list */

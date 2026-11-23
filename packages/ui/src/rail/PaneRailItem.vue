@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Icon from "../icons/Icon.vue";
 import { computed } from "vue";
+import RailTile from "./RailTile.vue";
 import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from "reka-ui";
 
 import { useSelection } from "../selection.ts";
@@ -26,18 +27,16 @@ const initial = computed(() => props.pane.label.trim().charAt(0) || "?");
         <TooltipRoot>
             <TooltipTrigger as-child>
                 <li>
-                    <a
+                    <RailTile
                         class="tumult-pane-item"
+                        :label="pane.label"
                         :href="selection.hrefFor({ view: 'pane', paneId: pane.id })"
-                        :aria-current="isCurrent ? 'page' : undefined"
-                        :aria-label="pane.label"
+                        :active="isCurrent"
                         @click.prevent="selection.select({ view: 'pane', paneId: pane.id })"
                     >
-                        <span class="tumult-pane-glyph" aria-hidden="true">
-                            <Icon v-if="pane.icon" :name="pane.icon" :fallback="initial" />
-                            <template v-else>{{ initial }}</template>
-                        </span>
-                    </a>
+                        <Icon v-if="pane.icon" :name="pane.icon" :fallback="initial" />
+                        <template v-else>{{ initial }}</template>
+                    </RailTile>
                 </li>
             </TooltipTrigger>
             <TooltipPortal>
@@ -46,37 +45,3 @@ const initial = computed(() => props.pane.label.trim().charAt(0) || "?");
         </TooltipRoot>
     </TooltipProvider>
 </template>
-
-<style scoped>
-.tumult-pane-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--rail-item-size);
-    height: var(--rail-item-size);
-    margin: 0 auto;
-    border-radius: var(--control-radius);
-    background: var(--surface-pane);
-    color: var(--text-primary);
-    font-size: var(--icon-md);
-    line-height: var(--leading-none);
-    text-decoration: none;
-    transition: background-color var(--motion-fast) var(--motion-ease);
-}
-.tumult-pane-item[aria-current="page"] {
-    background: var(--rail-item-bg-active);
-}
-.tumult-pane-item:hover {
-    background: var(--rail-item-bg-hover);
-}
-.tumult-pane-glyph {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    font-weight: var(--weight-semibold);
-}
-</style>

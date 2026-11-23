@@ -2199,6 +2199,72 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(!heading.clipped, `"${heading.text}" is clipped by the rail`);
     });
 
+    it("renders every rail tile from one box, squaring only the selected one", async () => {
+        // Spaces, pinned rooms, DMs and the add button used to be four separate
+        // boxes (row-width vs tile-width, circle vs rounded square). Every tile
+        // is one element now; this pins the geometry and the theme-driven radii.
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await page.waitForSelector("a[data-pinned]", { timeout: 10_000 });
+
+        const measure = (selector: string) =>
+            page.locator(selector).first().evaluate((node) => {
+                const box = node.getBoundingClientRect();
+                return {
+                    width: Math.round(box.width),
+                    height: Math.round(box.height),
+                    radius: getComputedStyle(node).borderRadius,
+                    shared: node.classList.contains("tumult-rail-tile"),
+                };
+            });
+
+        const idle = ["a.tumult-guild-item:not([data-pinned])", "a[data-pinned]", "button.tumult-rail-add-button"];
+        // A pane tile is contributed by a plugin earlier in this shared run.
+        if (await page.locator("a.tumult-pane-item").count()) idle.push("a.tumult-pane-item");
+        const measured = await Promise.all(
+            [...idle, "a.tumult-dms-item"].map(async (selector) => [selector, await measure(selector)] as const),
+        );
+        const [space, ...rest] = measured;
+        for (const [selector, tile] of measured) {
+            assert.ok(tile.shared, `the ${selector} tile is not rendered by RailTile`);
+        }
+        for (const [selector, tile] of rest) {
+            assert.deepEqual(
+                [tile.width, tile.height],
+                [space![1].width, space![1].height],
+                `the ${selector} tile is not the same size as a space tile`,
+            );
+        }
+        for (const [selector, tile] of measured.slice(0, -1)) {
+            assert.equal(tile.radius, space![1].radius, `the ${selector} tile has a different idle radius`);
+        }
+        // The avatar fills its tile, so its own `lg` radius must not leave a
+        // rounded square pasted over the circle.
+        const avatarRadius = await page
+            .locator("a.tumult-guild-item:not([data-pinned]) .tumult-avatar")
+            .first()
+            .evaluate((node) => getComputedStyle(node).borderRadius);
+        assert.equal(avatarRadius, space![1].radius, "the space avatar must follow the tile radius");
+
+        assert.equal(await page.locator("a.tumult-dms-item").getAttribute("aria-current"), "page");
+        assert.notEqual(
+            measured.at(-1)![1].radius,
+            space![1].radius,
+            "the selected tile must square off",
+        );
+
+        // Selecting a guild squares both the tile and the avatar inside it.
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        const active = page.locator('a.tumult-guild-item[aria-current="page"]').first();
+        await active.waitFor({ timeout: 10_000 });
+        const [activeTileRadius, activeAvatarRadius] = await Promise.all([
+            active.evaluate((node) => getComputedStyle(node).borderRadius),
+            active.locator(".tumult-avatar").evaluate((node) => getComputedStyle(node).borderRadius),
+        ]);
+        assert.equal(activeAvatarRadius, activeTileRadius, "the selected avatar must follow the squircle");
+        assert.notEqual(activeTileRadius, space![1].radius, "the selected guild must square off");
+    });
+
     it("renders the login view when no session is stored", async () => {
         // A clean context: the shared one seeds a session before every load.
         const fresh = await browser.newContext({ viewport: VIEWPORT });

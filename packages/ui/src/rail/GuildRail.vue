@@ -17,6 +17,7 @@ import type { SpaceTree } from "@tumult/core";
 import GuildRailItem from "./GuildRailItem.vue";
 import DmsRailItem from "./DmsRailItem.vue";
 import PaneRailItem from "./PaneRailItem.vue";
+import RailTile from "./RailTile.vue";
 import type { WorkspacePane } from "../panes/registry.ts";
 
 const props = defineProps<{
@@ -82,30 +83,25 @@ const pinnedUnread = computed(() => props.tree.favourites.reduce((n, r) => n + r
                             </button>
                         </li>
                         <template v-if="!pinnedCollapsed">
-                            <li
+                            <GuildRailItem
                                 v-for="fave in tree.favourites"
                                 :key="fave.id"
-                                class="tumult-rail-fav-item"
-                                :aria-hidden="fave.unreadCount > 0 ? undefined : 'true'"
-                            >
-                                <GuildRailItem
-                                    :favourite="fave.id"
-                                    :room="fave"
-                                    :name="fave.name"
-                                    :avatar-url="fave.avatarUrl"
-                                    :unread="fave.unreadCount"
-                                    :highlight="fave.highlightCount"
-                                />
-                            </li>
+                                :favourite="fave.id"
+                                :room="fave"
+                                :name="fave.name"
+                                :avatar-url="fave.avatarUrl"
+                                :unread="fave.unreadCount"
+                                :highlight="fave.highlightCount"
+                            />
                         </template>
                     </template>
                     <li class="tumult-rail-sep" aria-hidden="true" />
-                    <li class="tumult-rail-add">
+                    <li>
                         <DropdownMenuRoot>
                             <DropdownMenuTrigger as-child>
-                                <button type="button" class="tumult-rail-add-button" aria-label="Add a server">
+                                <RailTile class="tumult-rail-add-button" label="Add a server">
                                     <Icon name="plus" />
-                                </button>
+                                </RailTile>
                             </DropdownMenuTrigger>
                             <DropdownMenuPortal>
                                 <DropdownMenuContent class="tumult-menu" side="right" align="start">
@@ -217,45 +213,11 @@ const pinnedUnread = computed(() => props.tree.favourites.reduce((n, r) => n + r
     margin-left: auto;
     color: var(--text-primary);
 }
-.tumult-rail-fav-item {
-    display: inline-flex;
-    padding-top: var(--space-0-5);
-    align-items: center;
-    justify-content: center;
-    min-width: var(--rail-favourite-min-width);
-    margin: var(--space-0-5) 0;
-}
-.tumult-rail-fav-item:focus-visible {
-    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
-    outline-offset: var(--focus-ring-offset);
-}
-.tumult-rail-add {
-    display: flex;
-    justify-content: center;
-    padding: var(--space-1) 0;
-}
+/* Every rail tile owns its box in RailTile; only the size alias remains here
+   so a theme sizing the add control from control-lg still has an effect. */
 .tumult-rail-add-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     width: var(--control-lg);
     height: var(--control-lg);
-    border: var(--border-width) solid var(--border-default);
-    border-radius: var(--radius-full);
-    background: var(--surface-base);
-    color: var(--text-secondary);
-    font-size: var(--icon-lg);
-    line-height: var(--leading-none);
-    cursor: pointer;
-}
-.tumult-rail-add-button:hover {
-    border-color: transparent;
-    background: var(--accent);
-    color: var(--button-primary-text);
-}
-.tumult-rail-add-button:focus-visible {
-    outline: var(--focus-ring-outline) solid var(--focus-ring-color);
-    outline-offset: var(--focus-ring-offset);
 }
 .tumult-scrollbar {
     width: var(--scrollbar-width);
