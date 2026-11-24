@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.9](https://github.com/jackgraddon/tumult/compare/v0.4.8...v0.4.9) (2026-11-24)
+
+
+### Bug Fixes
+
+* **ui:** keep pane footer from shrinking under tall content ([0736e32](https://github.com/jackgraddon/tumult/commit/0736e326ab6d59aa857dc35167a2931eae86e4e8))
+* **ui:** keep reaction popover anchored when pointer leaves row ([4cacaa5](https://github.com/jackgraddon/tumult/commit/4cacaa54a9193285fc68f29f7e9306a2b974b175))
+* **web:** serve plugin-asset route in the dev server ([194bc30](https://github.com/jackgraddon/tumult/commit/194bc309d6424ff37e5b4c3843d8b3a1c3ad83ef))
+
 ### [0.4.8](https://github.com/jackgraddon/tumult/compare/v0.4.7...v0.4.8) (2026-11-23)
 
 
