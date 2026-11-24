@@ -158,6 +158,8 @@ const hasMenu = computed(
 );
 
 const sourceOpen = ref(false);
+/** Keeps the hover bar (and thus the popover's anchor) mounted while reacting. */
+const reactionOpen = ref(false);
 const deleteOpen = ref(false);
 const deleting = ref(false);
 const deleteError = ref("");
@@ -254,6 +256,7 @@ function cancelEdit(): void {
                 :data-grouped="grouped ? 'true' : 'false'"
                 :data-status="message.status"
                 :data-decryption="message.decryption"
+                :data-reacting="reactionOpen ? 'true' : 'false'"
             >
                 <Avatar
                     v-if="!grouped"
@@ -404,7 +407,7 @@ function cancelEdit(): void {
                     >
                         <Icon name="message-text" /> thread
                     </button>
-                    <PopoverRoot v-if="onToggleReaction && message.decryption === 'ok'">
+                    <PopoverRoot v-if="onToggleReaction && message.decryption === 'ok'" v-model:open="reactionOpen">
                         <PopoverTrigger as-child>
                             <button type="button" class="tumult-reaction-add" aria-label="Add reaction"><Icon name="emoticon-plus-outline" /></button>
                         </PopoverTrigger>
@@ -603,7 +606,14 @@ function cancelEdit(): void {
     background: var(--surface-pane);
     box-shadow: var(--shadow-sm);
 }
-.tumult-row:hover .tumult-row-actions {
+/*
+    The popover is portalled, so the pointer can leave the row while it is open.
+    Keeping the bar displayed then preserves the trigger's box: `display: none`
+    gives it a zero rect, which makes Reka's floating positioning park the
+    popover at 0,0 until the pointer comes back.
+*/
+.tumult-row:hover .tumult-row-actions,
+.tumult-row[data-reacting="true"] .tumult-row-actions {
     display: flex;
 }
 .tumult-row-edit,

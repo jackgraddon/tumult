@@ -2692,6 +2692,42 @@ describe("browser smoke test (fake client)", () => {
         await page.waitForSelector(".tumult-message-menu", { state: "detached", timeout: 5_000 });
     });
 
+    it("keeps the hover reaction popover anchored when the pointer leaves the row", async () => {
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().click();
+        await page.waitForSelector(".tumult-room-item", { timeout: 10_000 });
+        await page.locator(".tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+
+        const row = page.locator(".tumult-virtual-row", { hasText: "react to this" }).first();
+        await row.scrollIntoViewIfNeeded();
+        await row.hover();
+        await row.locator(".tumult-reaction-add").click();
+
+        const popover = page.locator(".tumult-reaction-popover");
+        await popover.waitFor({ timeout: 5_000 });
+        const anchored = await popover.boundingBox();
+        assert.ok(anchored, "the reaction popover has no box");
+
+        // The content is portalled, so the pointer can leave the row while it is
+        // open. Hiding the hover bar used to zero the trigger's rect, and Reka's
+        // floating positioning parked the popover at 0,0 — right out from under
+        // the pointer trying to reach an emoji.
+        await page.mouse.move(20, 20);
+        await page.waitForTimeout(100);
+        const afterLeave = await popover.boundingBox();
+        assert.ok(afterLeave, "the reaction popover vanished");
+        assert.ok(
+            Math.abs(afterLeave.x - anchored.x) < 8 && Math.abs(afterLeave.y - anchored.y) < 8,
+            `the reaction popover jumped from ${JSON.stringify(anchored)} to ${JSON.stringify(afterLeave)}`,
+        );
+
+        // It must still be clickable where it claims to be.
+        // 🚀 is deliberately absent from this fixture's existing reactions.
+        await popover.locator(".tumult-reaction-pick", { hasText: /^🚀$/ }).click();
+        await row.locator(".tumult-reaction-chip", { hasText: "🚀" }).waitFor({ timeout: 5_000 });
+        await page.keyboard.press("Escape");
+    });
+
     it("reacts and inspects a message through the menu", async () => {
         // Submenu: nested one level, opened by hover like a user would.
         await openMessageMenu("react to this");
