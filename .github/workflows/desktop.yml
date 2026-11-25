@@ -53,16 +53,26 @@ jobs:
             dist: dist:linux
             artifact: tumult-desktop-linux
             metadata: apps/desktop/release/latest-linux.yml
-            # One LINE, not a `|` block: GitHub injects this value verbatim into
-            # the run script, so newlines become separate shell commands (bash
-            # then tries to execute latest-linux.yml as a script). One line is
-            # one `gh release upload` call with all the expanded globs as args.
+            # `files` is one LINE: GitHub injects it verbatim into the release
+            # step's run script, so newlines would become separate shell commands
+            # (bash then tries to execute latest-linux.yml as a script).
             files: apps/desktop/release/*.AppImage apps/desktop/release/*.deb apps/desktop/release/*.rpm apps/desktop/release/latest-linux.yml
+            # upload-artifact does NOT split a space-separated string; it needs
+            # one pattern per line, hence a second shape for the branch run.
+            artifact_files: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+              apps/desktop/release/*.rpm
+              apps/desktop/release/latest-linux.yml
           - os: windows-latest
             dist: dist:win
             artifact: tumult-desktop-windows
             metadata: apps/desktop/release/latest.yml
             files: apps/desktop/release/*.exe apps/desktop/release/latest.yml apps/desktop/release/*.blockmap
+            artifact_files: |
+              apps/desktop/release/*.exe
+              apps/desktop/release/latest.yml
+              apps/desktop/release/*.blockmap
     runs-on: ${{ matrix.os }}
     env:
       VITE_CLIENT_URI: ${{ vars.VITE_CLIENT_URI }}
@@ -138,7 +148,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: ${{ matrix.files }}
+        path: ${{ matrix.artifact_files }}
         if-no-files-found: error
 
     - name: Attach packages to the release
