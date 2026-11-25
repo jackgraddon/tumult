@@ -82,7 +82,10 @@ defineProps<{
 .tumult-tooltip {
     padding: var(--space-1) var(--space-2);
     border-radius: var(--control-radius);
-    background: var(--surface-active);
+    /* `--surface-active` is a translucent hover tint, not a surface: the
+       rail showing through it left the label hard to read. Tooltips are
+       popovers, so use the same solid surface as the other ones. */
+    background: var(--popover-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
 }

@@ -2407,6 +2407,30 @@ describe("browser smoke test (fake client)", () => {
         assert.notEqual(activeTileRadius, space![1].radius, "the selected guild must square off");
     });
 
+    it("gives rail tooltips a solid popover surface", async () => {
+        await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 10_000 });
+        await page.locator("a.tumult-guild-item:not([data-pinned])").first().hover();
+        const tooltip = page.locator(".tumult-tooltip").first();
+        await tooltip.waitFor({ state: "visible", timeout: 5_000 });
+
+        // Compare against a probe using the token, not a literal colour: the
+        // theme authors colours in OKLCH, so getComputedStyle never says rgb().
+        const [actual, solid] = await Promise.all([
+            tooltip.evaluate((node) => getComputedStyle(node).backgroundColor),
+            page.evaluate(() => {
+                const probe = document.createElement("div");
+                probe.style.background = "var(--popover-bg)";
+                document.body.append(probe);
+                const colour = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return colour;
+            }),
+        ]);
+        assert.equal(actual, solid, "the rail tooltip is not using the solid popover surface");
+        await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2);
+    });
+
     it("drives the rail gap and active transition from theme tokens", async () => {
         await page.goto(`${origin}/dms`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("a.tumult-guild-item:not([data-pinned])", { timeout: 10_000 });
