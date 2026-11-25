@@ -787,6 +787,15 @@ homeserver. A trap listed here has shipped broken at least once.
   arrives, and a head drop can change the first id without a room switch. Tail
   tracking must re-arm when the user scrolls back down — a one-way latch leaves
   late image/decryption layout shifts unanchored for the rest of the mount.
+- The tail-change watcher must trust the `trackingTail` latch BEFORE consulting
+  `isNearBottom()`, then pin and report. A row can grow between the tail change
+  and the callback (echo confirmation, decryption, media decode), so a stale
+  near-bottom reading vetoes the receipt: `m.fully_read` stays behind our own
+  message and the "New messages" divider sits under it until somebody else
+  posts. The divider itself anchors on the first message from SOMEONE ELSE
+  after the marker (`timeline/unreadDivider.ts`) — our own sends are never
+  unread, however far the marker lags. Window focus/visibility re-reports the
+  tail when it is on screen; reading history keeps its place.
 - Give the virtualizer `getItemKey` by event id. With its default index keys, a
   history prepend or head drop reuses one message's measured height for another
   and the visible range jumps.

@@ -6,6 +6,7 @@ import type { MessageView, RoomPowerLevelsView } from "@tumult/core";
 import { tryUseTheme } from "../theme/controls.ts";
 import { densityRowDelta } from "../theme/density.ts";
 import TimelineRow from "./TimelineRow.vue";
+import { unreadDividerIndex } from "./unreadDivider.ts";
 
 const props = defineProps<{
     messages: readonly MessageView[];
@@ -57,11 +58,14 @@ function dayLabel(ts: number): string {
     });
 }
 
+const dividerIndex = computed(() =>
+    unreadDividerIndex(props.messages, props.fullyReadEventId, props.ownUserId),
+);
+
 const rows = computed<Row[]>(() => {
     const out: Row[] = [];
     let prevDayKey = "";
     let prevSender = "";
-    const marker = props.fullyReadEventId;
     for (let i = 0; i < props.messages.length; i++) {
         const m = props.messages[i];
         if (!m) continue;
@@ -72,9 +76,7 @@ const rows = computed<Row[]>(() => {
             message: m,
             grouped: !newDay && m.senderId === prevSender && m.decryption === "ok",
             dayLabel: newDay ? dayLabel(m.timestamp) : null,
-            // The divider sits on the first message NEWER than the marker —
-            // i.e. the row right after the marker itself.
-            unreadBefore: marker != null && props.messages[i - 1]?.id === marker,
+            unreadBefore: i === dividerIndex.value,
         });
         prevDayKey = dayKey;
         prevSender = m.senderId;
@@ -177,6 +179,26 @@ onMounted(() => {
     void nextTick(() => void fillIfShort());
 });
 
+/**
+ * Returning to an active window with the tail on screen is also "looking at
+ * the messages". Catch the read marker up on focus/visibility rather than
+ * leaving a stale "New messages" banner up until the next unrelated event.
+ * Reading history keeps its place: we only report while tracking the tail.
+ */
+function onWindowActive(): void {
+    if (document.visibilityState !== "visible") return;
+    if (!trackingTail.value && !isNearBottom()) return;
+    reportTailVisible();
+}
+onMounted(() => {
+    window.addEventListener("focus", onWindowActive);
+    document.addEventListener("visibilitychange", onWindowActive);
+});
+onScopeDispose(() => {
+    window.removeEventListener("focus", onWindowActive);
+    document.removeEventListener("visibilitychange", onWindowActive);
+});
+
 // Watch the tail EVENT, not `messages.length`: core caps a live window at 500
 // messages, so a busy room keeps the same length while its newest message
 // changes. Watching the first message had the same flaw in reverse — a head
@@ -186,7 +208,13 @@ watch(
     (id, previous) => {
         if (!id || id === previous) return;
         void nextTick(() => void fillIfShort());
-        if (!isNearBottom()) return;
+        // A row can grow between the change and this callback (echo
+        // confirmation, late decryption, media decode), so `isNearBottom()`
+        // can read false for a frame while we are still tracking the tail.
+        // Trust the latch first, then pin and report: vetoing on a stale
+        // measurement here left our own sends below the fully-read marker
+        // until somebody else posted and re-ran the read path.
+        if (!trackingTail.value && !isNearBottom()) return;
         trackingTail.value = true;
         void nextTick(() => {
             pinToBottom();
