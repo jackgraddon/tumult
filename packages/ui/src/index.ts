@@ -52,6 +52,7 @@ export {
     hashBundle,
     hashMismatchReason,
     needsConsent,
+    permissionsChanged,
     samePermissionSet,
 } from "./plugins/verify.ts";
 export type { InstallRecordSummary, ManifestCheck } from "./plugins/verify.ts";

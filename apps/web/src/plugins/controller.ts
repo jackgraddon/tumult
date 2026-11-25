@@ -19,12 +19,12 @@ import { shallowRef, type Ref } from "vue";
 import {
     hashBundle,
     hashMismatchReason,
-    needsConsent,
     parsePluginSource,
     addedPermissions,
     checkReleaseManifest,
     compareVersions,
     deriveLane,
+    permissionsChanged,
     type InstallOutcome,
     type InstalledPluginView,
     type PendingInstall,
@@ -210,7 +210,11 @@ export class AppPluginInstallController implements PluginInstallControls {
                 sourceUrl: prepared.url,
                 tag: prepared.tag,
                 integrity: prepared.integrity,
-                changed: summary !== null && needsConsent(prepared.manifest, summary),
+                // Consent still gates every update (new bytes are new code), but
+                // the warning about changed capabilities is only honest when the
+                // permission set actually differs. A version/hash bump on its
+                // own re-asks without claiming something new was requested.
+                permissionsChanged: permissionsChanged(prepared.manifest, summary),
                 added: summary ? addedPermissions(prepared.manifest, summary) : [],
                 previousVersion: previous?.manifest.version ?? null,
                 previousSource: previous?.source ?? null,

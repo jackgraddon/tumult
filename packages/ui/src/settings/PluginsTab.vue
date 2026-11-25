@@ -4,7 +4,7 @@ import { computed, ref, shallowRef } from "vue";
 
 import { usePluginRegistry } from "../plugins/registry.ts";
 import { tryUsePluginInstall } from "../plugins/installControls.ts";
-import { LANE_SUMMARY } from "../plugins/consent.ts";
+import { describePermission, LANE_SUMMARY } from "../plugins/consent.ts";
 import type {
     AvailablePluginUpdate,
     InstalledPluginView,
@@ -200,9 +200,15 @@ async function onEnable(id: string): Promise<void> {
                     <a :href="entry.sourceUrl" target="_blank" rel="noopener noreferrer">{{ entry.source }}</a>
                     <template v-if="entry.tag"> ({{ entry.tag }})</template>
                 </p>
-                <p class="tumult-plugin-perms">
-                    Can: {{ entry.permissions.length > 0 ? entry.permissions.join(", ") : "nothing" }}
-                </p>
+                <div class="tumult-plugin-perms">
+                    <p class="tumult-plugin-perms-label">Can</p>
+                    <ul v-if="entry.permissions.length > 0" class="tumult-plugin-perm-list">
+                        <li v-for="permission in entry.permissions" :key="permission">
+                            {{ describePermission(permission) }}
+                        </li>
+                    </ul>
+                    <p v-else class="tumult-plugin-perms-none">Nothing yet.</p>
+                </div>
                 <p
                     v-if="updateStates[entry.id]?.error"
                     class="tumult-plugin-error"
@@ -281,9 +287,15 @@ async function onEnable(id: string): Promise<void> {
                 </p>
                 <code class="tumult-plugin-id">{{ manifest.id }}</code>
                 <p v-if="manifest.description" class="tumult-plugin-desc">{{ manifest.description }}</p>
-                <p class="tumult-plugin-perms">
-                    Permissions: {{ manifest.permissions.join(", ") || "none" }}
-                </p>
+                <div class="tumult-plugin-perms">
+                    <p class="tumult-plugin-perms-label">Can</p>
+                    <ul v-if="manifest.permissions.length > 0" class="tumult-plugin-perm-list">
+                        <li v-for="permission in manifest.permissions" :key="permission">
+                            {{ describePermission(permission) }}
+                        </li>
+                    </ul>
+                    <p v-else class="tumult-plugin-perms-none">Nothing yet.</p>
+                </div>
             </li>
         </ul>
 
@@ -386,11 +398,27 @@ async function onEnable(id: string): Promise<void> {
     color: var(--text-secondary);
 }
 .tumult-plugin-source,
-.tumult-plugin-perms {
+.tumult-plugin-perms-label,
+.tumult-plugin-perms-none {
     margin: var(--space-1) 0 0;
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
+.tumult-plugin-perms-label {
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.tumult-plugin-perm-list {
+    margin: var(--space-1) 0 0;
+    padding-left: var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    list-style: disc;
+}
+.tumult-plugin-perm-list li + li {
+    margin-top: var(--space-1);
+}
+
 .tumult-plugin-updates {
     display: flex;
     flex-wrap: wrap;
@@ -421,9 +449,11 @@ async function onEnable(id: string): Promise<void> {
     color: var(--text-primary);
     font: inherit;
     font-size: var(--text-xs);
+    cursor: pointer;
 }
 .tumult-plugin-button:disabled {
     opacity: var(--state-disabled-opacity);
+    cursor: default;
 }
 .tumult-plugin-remove {
     color: var(--danger, var(--text-primary));

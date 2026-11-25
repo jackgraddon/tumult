@@ -83,9 +83,9 @@ const permissions = computed(() => {
                 <strong>{{ props.pending.source }}</strong>. Updating hands this plugin to a different
                 repository. Only continue if you know why it moved.
             </p>
-            <p v-if="props.pending.changed" class="tumult-consent-changed" role="alert">
-                This release asks for something different from the version you already have. Review
-                the permissions before updating.
+            <p v-if="props.pending.permissionsChanged" class="tumult-consent-changed" role="alert">
+                This release asks for different permissions from the version you already have.
+                Review the list before updating.
             </p>
 
             <p class="tumult-consent-source">
@@ -187,24 +187,22 @@ const permissions = computed(() => {
     font-weight: var(--weight-semibold);
 }
 .tumult-consent-perm-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
     margin: var(--space-1) 0 0;
-    padding: 0;
-    list-style: none;
+    padding-left: var(--space-4);
+    list-style: disc;
 }
 .tumult-consent-perm {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
     color: var(--text-secondary);
     font-size: var(--text-sm);
+}
+.tumult-consent-perm + .tumult-consent-perm {
+    margin-top: var(--space-1);
 }
 .tumult-consent-perm-new {
     color: var(--text-primary);
 }
 .tumult-consent-perm-tag {
+    margin-left: var(--space-2);
     padding: 0 var(--space-1);
     border-radius: var(--radius-sm);
     background: var(--accent);

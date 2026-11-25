@@ -1397,6 +1397,21 @@ describe("browser smoke test (fake client)", () => {
             assert.match(rowText, /example\/remote/, "the installed row lost its source");
             assert.match(rowText, /cc\.example\.remote/, "the installed row is not the plugin that was installed");
 
+            // A permission list is a list, one item per permission, not a
+            // comma-joined paragraph inside the row.
+            const rowPerms = installedRow.locator(".tumult-plugin-perm-list li");
+            assert.equal(await rowPerms.count(), 1, "the installed row did not list its one permission");
+            assert.match((await rowPerms.first().textContent()) ?? "", /slash commands/i, "the list lost the permission copy");
+
+            // Every enabled button in the plugin area advertises itself as a
+            // button. `:disabled` is excluded: a disabled control is not a
+            // click target, and keeping `default` there avoids a false affordance.
+            const cursors = await installed
+                .locator(".tumult-plugin-button:not(:disabled)")
+                .evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).cursor));
+            assert.ok(cursors.length > 0, "no enabled plugin buttons were measured");
+            assert.ok(cursors.every((cursor) => cursor === "pointer"), `plugin buttons had cursors: ${cursors.join(", ")}`);
+
             // A check against the same release reports up to date and, crucially,
             // downloads no bundle: it reads the manifest only.
             assert.equal(bundleFetches, 1, "the install did not download exactly one bundle");
@@ -1430,6 +1445,20 @@ describe("browser smoke test (fake client)", () => {
             assert.match(updateText, /Update “Remote”/, "the update did not open the update consent screen");
             assert.match(updateText, /Version 1\.1\.0/, "consent described the wrong version");
             assert.ok(updateText.includes(currentIntegrity), "consent did not show the new bundle's verified hash");
+            // A version/hash bump with the SAME permission set is still a
+            // consent screen (new bytes), but it must not claim the release
+            // asked for something different. That warning is for a real
+            // permission change.
+            assert.equal(
+                await updateDialog.locator(".tumult-consent-changed").count(),
+                0,
+                "a version-only update was described as a permission change",
+            );
+            assert.equal(
+                await updateDialog.locator(".tumult-consent-perm-list").evaluate((node) => getComputedStyle(node).listStyleType),
+                "disc",
+                "the consent permissions rendered as a paragraph, not a list",
+            );
             await updateDialog.getByRole("button", { name: "Update" }).click();
 
             await installed.waitForFunction(

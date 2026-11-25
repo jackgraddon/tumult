@@ -92,6 +92,21 @@ export function samePermissionSet(a: readonly Permission[], b: readonly Permissi
     return b.every((permission) => set.has(permission));
 }
 
+/**
+ * Whether the permission SET actually differs from the installed copy.
+ *
+ * Distinct from {@link needsConsent}: a version or hash bump still asks for
+ * consent because the bytes changed, but it is not a new request for
+ * capabilities and must not produce the "something different" warning. Removed
+ * and reordered permissions count as a change, as in `samePermissionSet`.
+ */
+export function permissionsChanged(
+    manifest: PluginManifest,
+    previous: InstallRecordSummary | null,
+): boolean {
+    return previous !== null && !samePermissionSet(previous.permissions, manifest.permissions);
+}
+
 /** Permissions this manifest gained relative to a prior record (for the copy). */
 export function addedPermissions(
     manifest: PluginManifest,

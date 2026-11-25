@@ -58,10 +58,12 @@ export interface PendingInstall {
     /** `sha256-<base64>` the bundle already hashed to. */
     integrity: string;
     /**
-     * True when a record for this id already exists and its permissions/hash
-     * changed — so the dialog leads with "this asks for something new".
+     * True only when the permission set differs from the installed copy. A
+     * version or hash bump still re-opens consent (new bytes are a new thing to
+     * accept), but it is NOT a permissions change and must not lead the dialog
+     * with "this asks for something different".
      */
-    changed: boolean;
+    permissionsChanged: boolean;
     /** Permissions the pending manifest gains over the stored record. */
     added: Permission[];
     /** The installed version being replaced, or `null` for a fresh install. */

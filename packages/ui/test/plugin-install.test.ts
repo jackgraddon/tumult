@@ -28,11 +28,13 @@ import {
     hashBundle,
     hashMismatchReason,
     needsConsent,
+    permissionsChanged,
     samePermissionSet,
 } from "../src/plugins/verify.ts";
 import { describePermission, LANE_SUMMARY, PERMISSION_SUMMARY } from "../src/plugins/consent.ts";
 import { PLUGIN_PERMISSIONS } from "../src/plugins/types.ts";
 import type { PluginManifest } from "../src/plugins/types.ts";
+import type { InstallRecordSummary } from "../src/plugins/verify.ts";
 import { SANDBOXABLE_PERMISSIONS } from "../src/plugins/lane.ts";
 
 describe("parsePluginSource", () => {
@@ -318,6 +320,19 @@ describe("needsConsent / permissions", () => {
         assert.equal(samePermissionSet(["commands", "styles"], ["styles", "commands"]), true);
         assert.equal(samePermissionSet(["commands"], ["commands", "styles"]), false);
         assert.equal(samePermissionSet(["commands", "commands"], ["commands"]), false);
+    });
+
+    it("permissionsChanged ignores version and hash bumps with the same permissions", () => {
+        const previous: InstallRecordSummary = {
+            id: manifest.id,
+            version: "1.0.0",
+            permissions: ["styles", "commands"],
+            integrity: manifest.integrity,
+        };
+        assert.equal(permissionsChanged({ ...manifest, version: "1.1.0", integrity: "sha256-BBB=" }, previous), false);
+        assert.equal(permissionsChanged({ ...manifest, permissions: ["commands", "styles", "settings-tabs"] }, previous), true);
+        assert.equal(permissionsChanged({ ...manifest, permissions: ["commands"] }, previous), true);
+        assert.equal(permissionsChanged(manifest, null), false);
     });
 });
 
