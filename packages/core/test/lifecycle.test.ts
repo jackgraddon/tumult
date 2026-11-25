@@ -6,10 +6,12 @@ import { createFakeChatClient } from "../src/fake/index.ts";
 import {
     createChannel,
     createDm,
+    createGroup,
     createSpace,
     inviteToRoom,
     joinRoom,
     leaveRoom,
+    listPublicRooms,
     searchUserDirectory,
 } from "../src/rooms/lifecycle.ts";
 import { selectSpaceTree } from "../src/selectors/spaceTree.ts";
@@ -60,6 +62,7 @@ function lifecycleStub(opts: {
     invites: [string, string][];
     leaves: string[];
     joins: string[];
+    publicRoomCalls: Record<string, unknown>[];
 } {
     const created: CreateRoomOpts[] = [];
     const state: StateCall[] = [];
@@ -67,6 +70,7 @@ function lifecycleStub(opts: {
     const invites: [string, string][] = [];
     const leaves: string[] = [];
     const joins: string[] = [];
+    const publicRoomCalls: Record<string, unknown>[] = [];
     const matrix = {
         getDomain: () => (opts.domain === undefined ? "localhost" : opts.domain),
         createRoom: async (o: CreateRoomOpts) => {
@@ -102,8 +106,12 @@ function lifecycleStub(opts: {
             invites.push([roomId, userId]);
             return {};
         },
+        publicRooms: async (options: Record<string, unknown>) => {
+            publicRoomCalls.push(options);
+            return { chunk: [] };
+        },
     } as unknown as MatrixClient;
-    return { matrix, created, state, accountData, invites, leaves, joins };
+    return { matrix, created, state, accountData, invites, leaves, joins, publicRoomCalls };
 }
 
 describe("createSpace", () => {
@@ -261,6 +269,83 @@ describe("createDm", () => {
         const { matrix, accountData } = lifecycleStub();
         await createDm(matrix, { userId: "@bob:localhost" });
         assert.deepEqual(accountData[0]!.content, { "@bob:localhost": ["!new1:localhost"] });
+    });
+});
+
+describe("createGroup", () => {
+    it("creates a named, unparented private room with every invitee", async () => {
+        const { matrix, created, state, accountData } = lifecycleStub();
+        const roomId = await createGroup(matrix, {
+            name: "  Weekend trip  ",
+            userIds: ["@bob:localhost", "@carol:localhost", "@bob:localhost", "  "],
+        });
+        assert.equal(roomId, "!new1:localhost");
+        const opts = created[0]!;
+        assert.equal(opts.name, "Weekend trip");
+        assert.equal(opts.preset, "private_chat");
+        assert.deepEqual(opts.invite, ["@bob:localhost", "@carol:localhost"], "deduped and trimmed");
+        assert.equal(opts.is_direct, undefined, "a group is not filed as a DM");
+        assert.equal(opts.creation_content, undefined, "and is not a space");
+        assert.deepEqual(accountData, [], "no m.direct write");
+        assert.equal(state.length, 1, "calls are still opened to members");
+    });
+
+    it("encrypts only when asked", async () => {
+        const { matrix, created } = lifecycleStub();
+        await createGroup(matrix, { name: "Trip", userIds: ["@bob:localhost"], encrypted: true });
+        assert.deepEqual(created[0]!.initial_state, [
+            { type: "m.room.encryption", content: { algorithm: "m.megolm.v1.aes-sha2" } },
+        ]);
+    });
+
+    it("refuses an empty invite list before touching the server", async () => {
+        const { matrix, created } = lifecycleStub();
+        await assert.rejects(() => createGroup(matrix, { name: "Empty", userIds: [] }), /at least one/);
+        assert.equal(created.length, 0);
+    });
+});
+
+describe("listPublicRooms", () => {
+    it("passes a generic search term and the limit to the SDK", async () => {
+        const { matrix, publicRoomCalls } = lifecycleStub();
+        await listPublicRooms(matrix, "  music  ", 5);
+        assert.deepEqual(publicRoomCalls, [{ limit: 5, filter: { generic_search_term: "music" } }]);
+    });
+
+    it("omits the filter for an empty term and shapes each hit", async () => {
+        const { matrix, publicRoomCalls } = lifecycleStub();
+        const sdk = matrix as unknown as {
+            publicRooms: (options: Record<string, unknown>) => Promise<{
+                chunk: Record<string, unknown>[];
+            }>;
+        };
+        sdk.publicRooms = async (options) => {
+            publicRoomCalls.push(options);
+            return {
+                chunk: [
+                    {
+                        room_id: "!pub:localhost",
+                        name: "  Public room  ",
+                        topic: "A topic",
+                        num_joined_members: 42,
+                        avatar_url: "mxc://localhost/avatar",
+                    },
+                    { room_id: "!no-name:localhost" },
+                ],
+            };
+        };
+        const rooms = await listPublicRooms(matrix, "   ");
+        assert.deepEqual(publicRoomCalls, [{ limit: 12 }]);
+        assert.deepEqual(rooms, [
+            {
+                roomId: "!pub:localhost",
+                name: "Public room",
+                topic: "A topic",
+                memberCount: 42,
+                avatarUrl: "mxc://localhost/avatar",
+            },
+            { roomId: "!no-name:localhost", name: "!no-name:localhost", topic: "", memberCount: 0, avatarUrl: null },
+        ]);
     });
 });
 

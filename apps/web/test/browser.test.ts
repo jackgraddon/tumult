@@ -194,6 +194,17 @@ describe("browser smoke test (fake client)", () => {
     let builtModules: Map<string, Set<string>>;
     const consoleErrors: string[] = [];
 
+    /** A clean, plugin-free tab on the bare DMs route, with no room memory. */
+    async function openFreshShell(): Promise<{ context: BrowserContext; target: Page }> {
+        const context = await browser.newContext({ viewport: VIEWPORT });
+        await seedSession(context, false);
+        const target = await context.newPage();
+        await target.goto(`${origin}/dms`, { waitUntil: "load" });
+        await target.waitForSelector(".tumult-shell", { timeout: 20_000 });
+        await target.waitForSelector(".tumult-home", { timeout: 20_000 });
+        return { context, target };
+    }
+
     before(async () => {
         // A build, not the dev server: dev serves unminified modules through the
         // dep optimizer, and the dep optimizer is a documented dev-only hazard
@@ -280,13 +291,16 @@ describe("browser smoke test (fake client)", () => {
         );
     });
 
-    it("boots the shell: rail, room list, timeline and composer", async () => {
+    it("boots the shell: rail, room list and an empty pane", async () => {
         const state = await readState(page);
         assert.equal(state.theme, "default", "index.html should scope the default theme");
         assert.equal(state.mode, null, "dark is the default, so no data-mode attribute");
         assert.ok(state.counts.guilds > 0, "no guilds in the rail");
         assert.ok(state.counts.dms > 0, "no DM rows in the room list");
-        assert.ok(state.counts.composer, "composer did not render");
+        // A fresh page has no last-viewed room, so nothing opens on its own.
+        assert.equal(state.counts.messages, 0, "a fresh session opened a timeline");
+        assert.equal(state.counts.composer, false, "a fresh session opened a composer");
+        assert.ok(await page.locator(".tumult-home").count(), "no empty pane on a bare route");
         assert.equal(state.overflow.scroll, state.overflow.client, "the shell should not overflow horizontally");
     });
 
@@ -446,7 +460,10 @@ describe("browser smoke test (fake client)", () => {
             await target.waitForSelector(".tumult-roomlist-skeleton", { state: "detached", timeout: 3_000 });
             await target.waitForSelector(".tumult-timeline-skeleton", { state: "detached", timeout: 3_000 });
             assert.ok(await target.locator(".tumult-room-item").count(), "the channels never came back");
-            assert.ok(await target.locator(".tumult-row").count(), "the timeline never came back");
+            // A space tab with no last-viewed room lands on the empty pane, not
+            // on whichever channel happens to be first.
+            assert.ok(await target.locator(".tumult-home").count(), "the empty pane never came back");
+            assert.equal(await target.locator(".tumult-row").count(), 0, "a fresh space opened a timeline");
         } finally {
             await isolated.close();
         }
@@ -1736,7 +1753,10 @@ describe("browser smoke test (fake client)", () => {
     it("sets a status from the user bar, and the bar shows it", async () => {
         // The fake starts with no status at all, so the bar shows its honest
         // "Set a status" hint; the dialog then writes through `setOwnPresence`
-        // and the bar follows the published feed.
+        // and the bar follows the published feed. A member row needs an open
+        // room, and a fresh tab deliberately opens none.
+        await page.locator(".tumult-room-item").first().click();
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
         const hint = page.locator(".tumult-userbar-status-hint");
         await hint.waitFor({ timeout: 5_000 });
         assert.equal(await hint.textContent(), "Set a status");
@@ -3373,5 +3393,133 @@ describe("browser smoke test (fake client)", () => {
         const gridFinal = await getGrid();
         assert.ok(gridFinal, "grid template must be readable");
         assert.ok(gridFinal?.includes("minmax(0,1fr)") || gridFinal?.includes("1fr") || gridFinal.split(/\s+/).length === 4, "final state must have flexible center");
+    });
+
+    it("opens a bare tab on the empty pane, not on a room", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            assert.match(await target.locator(".tumult-home h2").textContent() ?? "", /Pick up where you left off/);
+            assert.equal(await target.locator(".tumult-row").count(), 0, "a fresh session opened a timeline");
+            assert.equal(await target.locator(".tumult-composer-input").count(), 0, "a fresh session opened a composer");
+            // The rail still names the tab; only the room list's rows are empty.
+            assert.equal(await target.locator("a.tumult-dms-item").getAttribute("aria-current"), "page");
+            assert.equal(await target.locator(".tumult-room-item[aria-current='page']").count(), 0);
+
+            assert.equal(await target.locator(".tumult-home-section").count(), 3);
+            assert.equal(
+                await target.locator('.tumult-home-section[aria-labelledby="tumult-home-recent"] li').count(),
+                3,
+                "the empty pane should offer exactly three recent chats",
+            );
+            assert.equal(
+                await target.locator('.tumult-home-section[aria-labelledby="tumult-home-unread"] li').count(),
+                3,
+                "the empty pane should offer exactly three unreads",
+            );
+            for (const label of ["New direct message", "New group", "Continue reading", "Explore rooms"]) {
+                assert.equal(
+                    await target.locator(".tumult-home-action", { hasText: label }).count(),
+                    1,
+                    `the empty pane is missing ${label}`,
+                );
+            }
+        } finally {
+            await context.close();
+        }
+    });
+
+    it("remembers the open room per view and forgets it on refresh", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            const bob = target.locator(".tumult-dmlist .tumult-room-item", { hasText: "Bob" }).first();
+            await bob.click();
+            await target.waitForSelector(".tumult-row", { timeout: 10_000 });
+            assert.equal(await bob.getAttribute("aria-current"), "page", "the clicked room was not marked selected");
+
+            // Returning to the bare tab recalls the room for THIS view, so the
+            // row stays selected and its timeline is still open.
+            await target.locator("a.tumult-dms-item").click();
+            await target.waitForURL(/\/dms\/?$/, { timeout: 10_000 });
+            await target.waitForSelector(".tumult-row", { timeout: 10_000 });
+            assert.equal(await bob.getAttribute("aria-current"), "page", "the remembered room lost its selection");
+            assert.equal(await target.locator("a.tumult-dms-item").getAttribute("aria-current"), "page");
+            assert.equal(await target.locator(".tumult-row").count() > 0, true, "the remembered room did not open");
+
+            // A refresh is a new page: the memory was never persisted.
+            await target.reload({ waitUntil: "load" });
+            await target.waitForSelector(".tumult-home", { timeout: 20_000 });
+            assert.equal(await target.locator(".tumult-row").count(), 0, "refresh reopened a room");
+            assert.equal(
+                await target.locator(".tumult-room-item[aria-current='page']").count(),
+                0,
+                "refresh selected a room with no explicit route",
+            );
+        } finally {
+            await context.close();
+        }
+    });
+
+    it("creates a group from the empty pane", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            await target.locator(".tumult-home-action", { hasText: "New group" }).click();
+            const dialog = target.locator(".tumult-dialog");
+            await dialog.waitFor({ state: "visible" });
+            assert.match(await dialog.locator(".tumult-dialog-title").textContent() ?? "", /New group/);
+            await dialog.locator('input[placeholder="Weekend trip"]').fill("Weekend plans");
+            await dialog.locator('input[aria-label="Person 1"]').fill("@bob:example.com");
+            await dialog.locator('button[type="submit"]').click();
+            await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+
+            await target.waitForSelector(".tumult-room-item[aria-current='page']", { timeout: 10_000 });
+            assert.match(
+                await target.locator(".tumult-room-item[aria-current='page']").textContent() ?? "",
+                /Weekend plans/,
+                "the new group was not opened and selected",
+            );
+            assert.equal(await target.locator(".tumult-composer-input").count(), 1, "the new group has no composer");
+        } finally {
+            await context.close();
+        }
+    });
+
+    it("joins a public room from Explore", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            await target.locator(".tumult-home-action", { hasText: "Explore rooms" }).click();
+            const dialog = target.locator(".tumult-dialog");
+            await dialog.waitFor({ state: "visible" });
+            await dialog.locator(".tumult-explore-room").first().waitFor({ timeout: 10_000 });
+            assert.match(await dialog.locator(".tumult-explore-room").first().textContent() ?? "", /The Lounge/);
+            await dialog.locator(".tumult-explore-room").first().getByRole("button", { name: "Join" }).click();
+            await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+
+            await target.waitForSelector(".tumult-room-item[aria-current='page']", { timeout: 10_000 });
+            assert.ok(
+                decodeURIComponent(target.url()).includes("!pub-lounge:fake"),
+                "the joined room was not opened",
+            );
+            assert.equal(await target.locator(".tumult-composer-input").count(), 1);
+        } finally {
+            await context.close();
+        }
+    });
+
+    it("Continue reading opens at the first unread instead of the tail", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            await target.locator(".tumult-home-action", { hasText: "Continue reading" }).click();
+            await target.waitForURL(
+                (url) => decodeURIComponent(url.toString()).includes("/g/!guild-a:fake/!a-general:fake"),
+                { timeout: 10_000 },
+            );
+            await target.waitForSelector(".tumult-virtual-row[data-flash='on']", { timeout: 10_000 });
+            assert.ok(
+                await target.locator(".tumult-unread", { hasText: "New messages" }).count(),
+                "the unread divider was not in view",
+            );
+        } finally {
+            await context.close();
+        }
     });
 });

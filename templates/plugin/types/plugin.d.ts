@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.8.0";
+export declare const CONTRACT_VERSION = "1.9.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -189,10 +189,23 @@ export interface CreateDmParams {
 	userId: string;
 	encrypted?: boolean;
 }
+interface CreateGroupParams {
+	name: string;
+	userIds: string[];
+	encrypted?: boolean;
+}
 /** One user-directory hit, as the DM/invite pickers need it. */
 export interface UserSearchResult {
 	userId: string;
 	displayName: string;
+	/** Usually an `mxc://` URI — pass through `resolveMedia()`. */
+	avatarUrl: string | null;
+}
+interface PublicRoomView {
+	roomId: string;
+	name: string;
+	topic: string;
+	memberCount: number;
 	/** Usually an `mxc://` URI — pass through `resolveMedia()`. */
 	avatarUrl: string | null;
 }
@@ -906,11 +919,25 @@ export interface ChatClient {
 	 */
 	createDm(params: CreateDmParams): Promise<string>;
 	/**
+	 * Create a named group chat: an unparented room with `userIds` invited, so
+	 * it lands in DMs alongside the 1:1 conversations. Resolves before sync.
+	 */
+	createGroup(params: CreateGroupParams): Promise<string>;
+	/**
 	 * Join a room by id or `#alias:server`. Also accepts an invite to a room
 	 * we're not in yet. Resolves to the room id; it lands in `rooms` on a
 	 * later sync.
 	 */
 	joinRoom(idOrAlias: string): Promise<string>;
+	/**
+	 * Search the homeserver's public-room directory. An empty term means
+	 * "whatever the server lists first"; a nonempty one is a generic search.
+	 * Results are the raw directory, not rooms we are in — joining is a
+	 * separate `joinRoom` call.
+	 */
+	publicRooms(term?: string, opts?: {
+		limit?: number;
+	}): Promise<PublicRoomView[]>;
 	/**
 	 * Leave a room we're in (or reject an invite). The room leaves `rooms` on
 	 * a later sync; the UI must clear a selection that points at it.

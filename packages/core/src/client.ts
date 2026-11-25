@@ -24,6 +24,7 @@ import type {
     ConnectionState,
     CreateChannelParams,
     CreateDmParams,
+    CreateGroupParams,
     CreateSpaceParams,
     DeviceView,
     EncryptedAttachment,
@@ -35,6 +36,7 @@ import type {
     OwnPresenceState,
     OwnPresenceView,
     ProfileView,
+    PublicRoomView,
     RoomPowerLevelsView,
     RoomSettingsPatch,
     RoomSummary,
@@ -62,10 +64,12 @@ import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
     createChannel,
     createDm,
+    createGroup,
     createSpace,
     inviteToRoom,
     joinRoom,
     leaveRoom,
+    listPublicRooms,
     searchUserDirectory,
 } from "./rooms/lifecycle.ts";
 import { TypingTracker } from "./typing/tracker.ts";
@@ -840,10 +844,22 @@ export class MatrixChatClient implements ChatClient {
         return createDm(client, params);
     }
 
+    public async createGroup(params: CreateGroupParams): Promise<string> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot create a group before start()");
+        return createGroup(client, params);
+    }
+
     public async joinRoom(idOrAlias: string): Promise<string> {
         const client = this.matrix;
         if (!client) throw new Error("Cannot join a room before start()");
         return joinRoom(client, idOrAlias);
+    }
+
+    public async publicRooms(term = "", opts?: { limit?: number }): Promise<PublicRoomView[]> {
+        const client = this.matrix;
+        if (!client) throw new Error("Cannot search public rooms before start()");
+        return listPublicRooms(client, term, opts?.limit);
     }
 
     public async leave(roomId: string): Promise<void> {

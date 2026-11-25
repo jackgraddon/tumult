@@ -8,7 +8,9 @@ import { Preset } from "matrix-js-sdk/lib/@types/partials.js";
 import type {
     CreateChannelParams,
     CreateDmParams,
+    CreateGroupParams,
     CreateSpaceParams,
+    PublicRoomView,
     UserSearchResult,
 } from "../contract.ts";
 import { setMembersCanJoinCalls } from "./calls.ts";
@@ -110,6 +112,27 @@ export async function createDm(matrix: MatrixClient, params: CreateDmParams): Pr
     return roomId;
 }
 
+/**
+ * A group chat is a plain unparented room with a name and several invitees —
+ * there is no Matrix "group" type. It deliberately does NOT write `m.direct`:
+ * that tag is for 1:1 conversations, and filing a group there would make other
+ * clients show it as a person.
+ */
+export async function createGroup(matrix: MatrixClient, params: CreateGroupParams): Promise<string> {
+    const userIds = [...new Set(params.userIds.map((id) => id.trim()).filter((id) => id.length > 0))];
+    if (userIds.length === 0) throw new Error("A group needs at least one person invited");
+    const { room_id: roomId } = await matrix.createRoom({
+        name: params.name.trim(),
+        preset: Preset.PrivateChat,
+        invite: userIds,
+        ...(params.encrypted === true
+            ? { initial_state: [{ type: "m.room.encryption", content: { algorithm: MEGOLM } }] }
+            : {}),
+    });
+    await allowCallsForMembers(matrix, roomId);
+    return roomId;
+}
+
 export async function joinRoom(matrix: MatrixClient, idOrAlias: string): Promise<string> {
     const room = await matrix.joinRoom(idOrAlias);
     return room.roomId;
@@ -121,6 +144,29 @@ export async function leaveRoom(matrix: MatrixClient, roomId: string): Promise<v
 
 export async function inviteToRoom(matrix: MatrixClient, roomId: string, userId: string): Promise<void> {
     await matrix.invite(roomId, userId);
+}
+
+/** How many public rooms to list at once — a picker page, not a full crawl. */
+export const PUBLIC_ROOMS_LIMIT = 12;
+
+/** Public-room directory search. An empty term asks the server for its first page. */
+export async function listPublicRooms(
+    matrix: MatrixClient,
+    term = "",
+    limit = PUBLIC_ROOMS_LIMIT,
+): Promise<PublicRoomView[]> {
+    const trimmed = term.trim();
+    const response = await matrix.publicRooms({
+        limit,
+        ...(trimmed.length > 0 ? { filter: { generic_search_term: trimmed } } : {}),
+    });
+    return response.chunk.map((room) => ({
+        roomId: room.room_id,
+        name: room.name?.trim() || room.canonical_alias || room.room_id,
+        topic: room.topic ?? "",
+        memberCount: room.num_joined_members ?? 0,
+        avatarUrl: typeof room.avatar_url === "string" && room.avatar_url.startsWith("mxc://") ? room.avatar_url : null,
+    }));
 }
 
 /** How many directory results to ask for; plenty for a picker, cheap for the server. */

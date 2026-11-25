@@ -10,6 +10,7 @@ import type {
     ConnectionState,
     CreateChannelParams,
     CreateDmParams,
+    CreateGroupParams,
     CreateSpaceParams,
     DeviceView,
     EncryptedAttachment,
@@ -21,6 +22,7 @@ import type {
     OwnPresenceView,
     PresenceState,
     ProfileView,
+    PublicRoomView,
     RoomPowerLevelsView,
     RoomSettingsPatch,
     RoomSummary,
@@ -58,6 +60,15 @@ function mulberry32(seed: number): () => number {
 
 const SENDERS = ["@alice:example.com", "@bob:example.com", "@carol:example.com", "@dave:example.com"];
 const DM_NAMES = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy"];
+
+/** The fake homeserver's public directory, so Explore has real results to show. */
+const PUBLIC_ROOMS: PublicRoomView[] = [
+    { roomId: "!pub-lounge:fake", name: "The Lounge", topic: "General chatter for everyone", memberCount: 1284, avatarUrl: null },
+    { roomId: "!pub-dev:fake", name: "Developers", topic: "Build things together", memberCount: 417, avatarUrl: null },
+    { roomId: "!pub-gaming:fake", name: "Gaming", topic: "What are you playing?", memberCount: 923, avatarUrl: null },
+    { roomId: "!pub-music:fake", name: "Music", topic: "Share what you're listening to", memberCount: 302, avatarUrl: null },
+    { roomId: "!pub-help:fake", name: "Help & Support", topic: "Questions welcome", memberCount: 88, avatarUrl: null },
+];
 const SELF_ID = "@demo:example.com";
 const ACTIVITY_FIELD_KEY = "app.tumult.activity";
 const BODIES = [
@@ -726,6 +737,41 @@ class FakeChatClient implements ChatClient {
         }, params.userId);
     }
 
+    public async createGroup(params: CreateGroupParams): Promise<string> {
+        const userIds = [...new Set(params.userIds.map((id) => id.trim()).filter((id) => id.length > 0))];
+        if (userIds.length === 0) throw new Error("A group needs at least one person invited");
+        const roomId = this.pushRoom({
+            id: `!created-${this.nextCreated++}:fake`,
+            name: params.name.trim(),
+            topic: null,
+            avatarUrl: null,
+            isSpace: false,
+            // No space parent — the real creator leaves it unparented too, so
+            // the group lands in DMs rather than under a guild.
+            parentSpaceIds: [],
+            lastActivityTs: Date.now(),
+            unreadCount: 0,
+            highlightCount: 0,
+            fullyReadEventId: null,
+            joinRule: "invite",
+            historyVisibility: "shared",
+            canonicalAlias: null,
+            favourite: false,
+            favouriteOrder: null,
+            muted: false,
+        });
+        const roster = this.rosters.get(roomId);
+        if (roster) {
+            for (const userId of userIds) {
+                if (!roster.some((m) => m.userId === userId)) {
+                    roster.push(member(userId, fallbackName(userId), 0, "invite", "unknown", null));
+                }
+            }
+            sortMembers(roster);
+        }
+        return roomId;
+    }
+
     public async joinRoom(idOrAlias: string): Promise<string> {
         if (idOrAlias === FORBIDDEN_ROOM_ALIAS) throw forbiddenJoin(idOrAlias);
         const existing = (this.rooms as Observable<RoomSummary[]>)
@@ -801,6 +847,17 @@ class FakeChatClient implements ChatClient {
         roster.push(member(userId, fallbackName(userId), 0, "invite", "unknown", null));
         sortMembers(roster);
         this.publishRoom(roomId);
+    }
+
+    public async publicRooms(term = "", opts?: { limit?: number }): Promise<PublicRoomView[]> {
+        const trimmed = term.trim().toLowerCase();
+        const hits =
+            trimmed.length === 0
+                ? PUBLIC_ROOMS
+                : PUBLIC_ROOMS.filter((room) =>
+                      [room.name, room.topic, room.roomId].some((field) => field.toLowerCase().includes(trimmed)),
+                  );
+        return hits.slice(0, opts?.limit ?? 12);
     }
 
     public async searchUsers(term: string, opts?: { limit?: number }): Promise<UserSearchResult[]> {

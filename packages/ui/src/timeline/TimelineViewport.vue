@@ -165,8 +165,31 @@ async function openAtTail(): Promise<void> {
     reportTailVisible();
 }
 
+/**
+ * Center a requested message once its row exists, then pulse it so the eye
+ * doesn't hunt for the row. This is also how "Continue reading" avoids the
+ * normal open-at-tail path (which would mark the unread messages read before
+ * the reader ever saw them).
+ */
+async function focusOn(request: { id: string; nonce: number }): Promise<void> {
+    await nextTick();
+    const index = rows.value.findIndex((r) => r.message.id === request.id);
+    if (index < 0) return;
+    // A queued tail re-pin must not land on top of the jump.
+    trackingTail.value = false;
+    virtualizer.value.scrollToIndex(index, { align: "center" });
+    flashEventId.value = request.id;
+    window.clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => {
+        flashEventId.value = null;
+    }, 2400);
+}
+
 onMounted(() => {
-    void openAtTail();
+    // A jump prepared before this viewport mounted arrives with its first
+    // render: a plain watcher would miss it and open at the tail instead.
+    if (props.focusRequest) void focusOn(props.focusRequest);
+    else void openAtTail();
     // Fill-forward: short histories never overflow the viewport, so no
     // scroll event will ever fire to trigger pagination. Backfill until the
     // content is scrollable or history runs out.
@@ -249,19 +272,7 @@ let flashTimer: number | undefined;
 watch(
     () => props.focusRequest,
     (request) => {
-        if (!request) return;
-        void nextTick(() => {
-            const index = rows.value.findIndex((r) => r.message.id === request.id);
-            if (index < 0) return;
-            // A queued tail re-pin must not land on top of the jump.
-            trackingTail.value = false;
-            virtualizer.value.scrollToIndex(index, { align: "center" });
-            flashEventId.value = request.id;
-            window.clearTimeout(flashTimer);
-            flashTimer = window.setTimeout(() => {
-                flashEventId.value = null;
-            }, 2400);
-        });
+        if (request) void focusOn(request);
     },
 );
 

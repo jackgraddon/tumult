@@ -2,6 +2,7 @@
 import Icon from "../icons/Icon.vue";
 import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from "vue";
 import { ConfigProvider } from "reka-ui";
+import { reportError } from "@tumult/core/errors";
 import { selectSpaceTree } from "@tumult/core/selectors";
 import type { OrphanSort } from "@tumult/core/selectors";
 import type { ChatClient, EncryptedAttachment, SpaceTree } from "@tumult/core";
@@ -44,6 +45,8 @@ import DmList from "../roomlist/DmList.vue";
 import DmSortMenu from "../roomlist/DmSortMenu.vue";
 import { readDmSort, writeDmSort } from "../roomlist/dmSort.ts";
 import TimelinePane from "../timeline/TimelinePane.vue";
+import { unreadDividerIndex } from "../timeline/unreadDivider.ts";
+import HomePane from "../rooms/HomePane.vue";
 import MembersPane from "../members/MembersPane.vue";
 import IconButton from "../primitives/IconButton.vue";
 import SecurityBanner from "../security/SecurityBanner.vue";
@@ -61,6 +64,8 @@ import CreateSpaceDialog from "../rooms/CreateSpaceDialog.vue";
 import CreateChannelDialog from "../rooms/CreateChannelDialog.vue";
 import JoinRoomDialog from "../rooms/JoinRoomDialog.vue";
 import CreateDmDialog from "../rooms/CreateDmDialog.vue";
+import CreateGroupDialog from "../rooms/CreateGroupDialog.vue";
+import ExploreRoomsDialog from "../rooms/ExploreRoomsDialog.vue";
 import InviteDialog from "../rooms/InviteDialog.vue";
 import LeaveConfirmDialog from "../rooms/LeaveConfirmDialog.vue";
 import RoomSettingsDialog from "../rooms/RoomSettingsDialog.vue";
@@ -75,6 +80,7 @@ import AccountPage from "../settings/AccountPage.vue";
 import SecurityPage from "../settings/SecurityPage.vue";
 import { tryUseTheme } from "../theme/controls.ts";
 import { useRoomPower } from "../members/power.ts";
+import { forgetRoom, recallRoom, rememberRoom, type LastRooms } from "./lastRoom.ts";
 
 const props = defineProps<{
     client: ChatClient;
@@ -107,6 +113,20 @@ function hrefFor(next: RoomSelection): string {
 const pendingSelection = shallowRef<RoomSelection | null>(null);
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 const railAnimations = ref(false);
+
+/**
+ * Last opened room per rail view. Page-lifetime only: a browser refresh is a
+ * new page, so the empty pane honestly asks what to read next instead of
+ * silently opening whatever happens to be first. `shellCache.lastRoomId` is a
+ * sync subscription hint, not a UI selection, and deliberately stays separate.
+ */
+const lastRooms: LastRooms = new Map();
+
+/** A "Continue reading" jump, prepared before the room is selected. */
+const continueFocus = shallowRef<{ id: string; nonce: number } | null>(null);
+let focusNonce = 0;
+/** Guards the selection watcher from clearing a jump we are about to make. */
+let pendingContinueRoom: string | null = null;
 
 function sameSelection(a: RoomSelection, b: RoomSelection): boolean {
     return a.view === b.view && a.guildId === b.guildId && a.roomId === b.roomId && a.paneId === b.paneId;
@@ -169,7 +189,7 @@ provide(RailAnimationsKey, railAnimations);
 
 const selectionContext: SelectionContext = {
     get current() {
-        return pendingSelection.value ?? props.selection;
+        return currentSelection();
     },
     select: (next: RoomSelection) => {
         railAnimations.value = true;
@@ -193,6 +213,14 @@ watch(
     () => props.selection,
     (now) => {
         if (pendingSelection.value && sameSelection(now, pendingSelection.value)) clearPending();
+        rememberRoom(lastRooms, now);
+        // A jump belongs to one room only: navigating anywhere else drops it.
+        if (pendingContinueRoom !== null && now.roomId === pendingContinueRoom) {
+            pendingContinueRoom = null;
+        } else {
+            pendingContinueRoom = null;
+            continueFocus.value = null;
+        }
     },
 );
 
@@ -255,6 +283,8 @@ type RoomAction =
     | { kind: "create-channel"; spaceId: string; spaceName: string }
     | { kind: "join" }
     | { kind: "create-dm" }
+    | { kind: "create-group" }
+    | { kind: "explore" }
     | { kind: "invite"; roomId?: string }
     | { kind: "leave"; target: LeaveTarget }
     | { kind: "moderate"; moderation: MemberModeration }
@@ -585,14 +615,38 @@ const activeGuild = computed(() =>
         : undefined,
 );
 
+/** A remembered id is only valid if the room still sits in that same view. */
+function availableRoom(sel: RoomSelection, roomId: string): boolean {
+    if (sel.view === "pane") return false;
+    if (sel.view === "dms") {
+        return [...tree.value.orphans, ...tree.value.favourites].some((room) => room.id === roomId);
+    }
+    return spaceDescendantChannels(sel.guildId ?? "").includes(roomId);
+}
+
+/** What a sidebar row should mark as selected, including a remembered room. */
+function currentSelection(): RoomSelection {
+    const base = pendingSelection.value ?? props.selection;
+    const recalled =
+        base.view === "pane" || base.roomId
+            ? undefined
+            : recallRoom(lastRooms, base, (id) => availableRoom(base, id));
+    const id = recalled ?? base.roomId;
+    return id && id !== base.roomId ? { ...base, roomId: id } : base;
+}
+
+const recalledRoomId = computed(() =>
+    recallRoom(lastRooms, props.selection, (id) => availableRoom(props.selection, id)),
+);
+
 const activeRoom = computed(() => {
-    if (props.selection.roomId) return roomsById.value.get(props.selection.roomId);
-    if (props.selection.view === "dms") return tree.value.orphans[0];
-    const guild = activeGuild.value;
-    return guild?.rooms[0] ?? guild?.spaces[0]?.rooms[0];
+    const id = props.selection.roomId || recalledRoomId.value;
+    return id ? roomsById.value.get(id) : undefined;
 });
 
 const activeRoomId = computed(() => activeRoom.value?.id);
+/** An explicit deep link whose room has not arrived yet still shows a skeleton. */
+const homeLoading = computed(() => navigationLoading.value || Boolean(props.selection.roomId));
 
 // Calls are a capability of the client + the deployment (a call app to embed),
 // not of the shell: no call app configured means no affordance at all.
@@ -730,6 +784,10 @@ function onDmCreated(roomId: string): void {
     void waitForRoom(roomId).then(() => emit("select", { view: "dms", roomId }));
 }
 
+function onGroupCreated(roomId: string): void {
+    onDmCreated(roomId);
+}
+
 /** Walk parent spaces to the rail-level guild a room hangs under. */
 function topSpaceId(roomId: string): string | undefined {
     const seen = new Set<string>([roomId]);
@@ -765,7 +823,37 @@ function onRoomJoined(roomId: string): void {
     });
 }
 
+/**
+ * "Continue reading" prepares the first unread BEFORE selecting the room, so
+ * a freshly mounted viewport opens there instead of pinning to the tail and
+ * marking everything read. A marker outside the loaded window is paged in by
+ * `jumpTo`; if even that cannot find it, we still open the room honestly.
+ */
+async function onContinueReading(roomId: string): Promise<void> {
+    const marker = roomsById.value.get(roomId)?.fullyReadEventId;
+    let firstUnread: string | undefined;
+    if (marker) {
+        try {
+            const inWindow = await props.client.jumpTo(roomId, marker);
+            if (inWindow) {
+                const messages = props.client.timeline(roomId).get();
+                const index = unreadDividerIndex(messages, marker, session.value?.userId);
+                firstUnread = messages[index]?.id;
+            }
+        } catch (cause) {
+            console.error(reportError(cause, "Couldn't load unread messages"));
+        }
+    }
+    continueFocus.value = firstUnread ? { id: firstUnread, nonce: ++focusNonce } : null;
+    pendingContinueRoom = roomId;
+    const guildId = topSpaceId(roomId);
+    selectionContext.select(
+        guildId !== undefined ? { view: "guild", guildId, roomId } : { view: "dms", roomId },
+    );
+}
+
 function onRoomLeft(leftId: string): void {
+    forgetRoom(lastRooms, leftId);
     roomAction.value = null;
     const sel = props.selection;
     if (sel.view === "guild" && sel.guildId === leftId) {
@@ -787,6 +875,7 @@ watch([rooms, connection], () => {
         return;
     }
     if (sel.roomId !== undefined && !roomsById.value.has(sel.roomId)) {
+        forgetRoom(lastRooms, sel.roomId);
         emit(
             "select",
             sel.view === "guild" && sel.guildId !== undefined
@@ -928,13 +1017,23 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                     />
                     <VoiceStage v-if="!activePane && voiceEnabled && activeRoomId" :client="client" :room-id="activeRoomId" />
                     <component :is="activePane.content" v-if="activePane" class="tumult-pane-content" />
+                    <HomePane
+                        v-if="!activePane && !activeRoom"
+                        :rooms="rooms"
+                        :loading="homeLoading"
+                        @create-dm="roomAction = { kind: 'create-dm' }"
+                        @create-group="roomAction = { kind: 'create-group' }"
+                        @explore="roomAction = { kind: 'explore' }"
+                        @continue-reading="onContinueReading"
+                    />
                     <TimelinePane
-                        v-else
+                        v-else-if="!activePane"
                         :client="client"
                         :room="activeRoom"
                         :threads-enabled="threadsEnabled"
                         :settings-allowed="settingsAllowed"
                         :loading="navigationLoading"
+                        :initial-focus="continueFocus"
                         @open-thread="openThread"
                         @settings="settingsOpen = true"
                     />
@@ -1042,6 +1141,18 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
             :open="roomAction?.kind === 'create-dm'"
             @close="roomAction = null"
             @created="onDmCreated"
+        />
+        <CreateGroupDialog
+            :client="client"
+            :open="roomAction?.kind === 'create-group'"
+            @close="roomAction = null"
+            @created="onGroupCreated"
+        />
+        <ExploreRoomsDialog
+            :client="client"
+            :open="roomAction?.kind === 'explore'"
+            @close="roomAction = null"
+            @joined="onRoomJoined"
         />
         <InviteDialog
             :client="client"

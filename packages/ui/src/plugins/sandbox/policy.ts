@@ -86,6 +86,8 @@ export const CLIENT_RULES: Readonly<Record<keyof ChatClient, BridgeRule>> = {
     createSpace: "deny",
     createChannel: "deny",
     createDm: "deny",
+    createGroup: "deny",
+    publicRooms: "deny",
     joinRoom: "deny",
     leave: "deny",
     invite: "deny",

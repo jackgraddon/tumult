@@ -17,6 +17,8 @@ const props = defineProps<{
     settingsAllowed?: boolean;
     /** Brief minimum skeleton while a rail click's route settles. */
     loading?: boolean | undefined;
+    /** "Continue reading" jump prepared before this room mounted. */
+    initialFocus?: { id: string; nonce: number } | null | undefined;
 }>();
 
 // Must be declared and re-emitted: an undeclared listener on this component
@@ -90,7 +92,7 @@ watch(
             :room-id="room.id"
             :threads-enabled="threadsEnabled"
             :fully-read-event-id="room.fullyReadEventId"
-            :focus-request="focusRequest"
+            :focus-request="initialFocus ?? focusRequest"
             :loading="loading"
             @open-thread="(id) => emit('open-thread', id)"
         />
