@@ -206,7 +206,7 @@ ignored unless the app is unpackaged):
 
 ## CI
 
-`github/workflows/desktop.yml` runs on `workflow_dispatch`, `v*` tags and any
+`.github/workflows/desktop.yml` runs on `workflow_dispatch`, `v*` tags and any
 branch that touches `apps/desktop/**`. It runs a matrix of `ubuntu-latest`
 (all three Linux targets, smoke test under xvfb) and `windows-latest` (NSIS).
 

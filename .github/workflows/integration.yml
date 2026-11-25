@@ -55,8 +55,9 @@ jobs:
       - run: pnpm test:integration
 
   rtc:
-    # MatrixRTC stack + the two-browser media test (~5 min). Every trigger runs
-    # it unless a dispatch asked for the synapse suite alone.
+    # MatrixRTC stack: core call/voice integration plus four browser suites
+    # (media, e2ee, network, embedded Element Call). Every trigger runs it unless
+    # a dispatch asked for the synapse suite alone.
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite != 'synapse' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

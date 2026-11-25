@@ -2,24 +2,25 @@
 
 Created: 2026-10-14
 Scope: theme documents, validation and the loader. Companion to
-`docs/tokens.md` (generated reference to all 273 tokens) and `docs/plugins.md`
+`docs/tokens.md` (generated reference to all 310 tokens) and `docs/plugins.md`
 (the sibling extension API).
 
 ## TL;DR
 
-- A theme is a small **JSON document**: an envelope, a flat `tokens` map, and an
-  optional set of per-mode override maps. Nothing else.
+- A theme is a small **JSON document**: an envelope, a flat `tokens` map, and
+  optional per-mode and per-density override maps. Nothing else.
 - It is **validated as a whole**. A document with any error is refused
   completely — no partial application, no half-styled app.
-- Themes are **data, never code**. There is no remote loading, no URL, no
-  `eval`, no user JS. The only opt-in escape hatch is raw CSS, which is a
-  separate explicitly-enabled switch and is guarded (see §7).
+- Themes are **data, never code**. Nothing is fetched from an arbitrary URL,
+  `eval`ed or run as user JS; the gallery's shipped documents are static
+  same-origin JSON. The only opt-in escape hatch is raw CSS, which is a separate
+  explicitly-enabled switch and is guarded (see §7).
 - The built-in theme is `default` (`packages/theme/themes/default.json`,
   compiled at build time into `base.css` + `default.css`). Its name is reserved
   and cannot be replaced or shadowed by a user theme.
 - A theme writes **only what it changes**; every token it omits inherits the
   **built-in document's** value (`packages/theme/themes/default.json`, which
-  covers all 273 registry tokens — a missing one is a build error, not a silent
+  covers all 310 registry tokens — a missing one is a build error, not a silent
   blank).
 - Five **accent themes** ship as data (`apps/web/public/themes/`) and are
   offered in the Appearance tab's gallery. They are sparse overlays — accent
@@ -42,8 +43,8 @@ The built-in theme, `default`:
 |---|---|
 | ![Tumult's built-in theme, dark](images/theme-default-dark.png) | ![Tumult's built-in theme, light](images/theme-default-light.png) |
 
-The Appearance tab shows the gallery — title, blurb and swatch, no tokens until
-you install one:
+The Appearance tab shows the gallery — title, description and swatch, no tokens
+until you install one:
 
 ![The Appearance tab's theme gallery](images/theme-gallery.png)
 
@@ -80,7 +81,7 @@ the built-in document (§5), so the smallest useful theme is three keys:
    ```
 
 2. **Find token names** in the generated [`tokens.md`](./tokens.md) — it lists
-   all 273 with their tier, kind and built-in value. Prefer a *semantic* role
+   all 310 with their tier, kind and built-in value. Prefer a *semantic* role
    (`accent`, `surface-pane`, `danger`) over a primitive: overriding a primitive
    moves every role built on it (§2).
 
@@ -92,7 +93,7 @@ the built-in document (§5), so the smallest useful theme is three keys:
 
 4. **It applies immediately** and is stored in this browser only (§6). Switching
    theme or *Reset* returns to the built-in `default`; nothing is uploaded and
-   no theme is ever fetched from a URL.
+   no arbitrary URL is loaded (gallery documents are shipped same-origin data).
 
 Live editing without saving is the editor's job: a sparse draft writes only the
 tokens you change, previews on the document, and shows the issues while you
@@ -102,7 +103,7 @@ type (§8).
 
 | path | holds |
 |---|---|
-| `packages/theme/src/registry/` | the token registry: 273 `TokenDef`s (name, tier, kind, description; a structural `value` only where one exists) — **structure, no literal values** |
+| `packages/theme/src/registry/` | the token registry: 310 `TokenDef`s (name, tier, kind, description; a structural `value` only where one exists) — **structure, no literal values** |
 | `packages/theme/src/validate/` | the hand-rolled validator (envelope, names, values, references, tiers, cycles) |
 | `packages/theme/src/emit/` | registry → CSS: `base.css`, a theme's override block, serialization |
 | `packages/theme/src/loader.ts` | `loadTheme` / `loadThemeText` — untrusted document in, validated document + CSS (or a refusal) out |
@@ -110,12 +111,12 @@ type (§8).
 | `packages/theme/src/runtime.ts` | the registry-free half: persisted shape, readers, boot helpers, the CSS guard (`@tumult/theme/runtime`) |
 | `packages/theme/src/css-guard.ts` | `findExternalStylesheetReferences` — the shared refusal rule for injected CSS |
 | `packages/theme/src/build/` | node-only build: `compile.ts` (themes → `dist/themes/*.css`), `emit-docs.ts`, and `cli.ts` — the single entry that runs both, so compiling also regenerates the authored docs |
-| `packages/theme/themes/default.json` | the built-in theme's **values**: all 273 tokens + the `light` mode and `compact`/`spacious` density maps. This is the inheritance base an installed theme overlays |
+| `packages/theme/themes/default.json` | the built-in theme's **values**: all 310 tokens + the `light` mode and `compact`/`spacious` density maps. This is the inheritance base an installed theme overlays |
 | `docs/tokens.md` | **generated** token reference (kind, built-in value, description per token) — the list to author against; rebuilt by the theme build, guarded by `test/docs.test.ts` |
 | `docs/theme.schema.json` | **generated** JSON Schema for the envelope — point a theme document's `$schema` at it for editor completion |
 | `apps/web/src/theme/apply.ts` | DOM application: `data-theme` / `data-mode` / `data-density` and the ordered `<style>` slots |
 | `apps/web/src/theme/controller.ts` | the app's `ThemeControls` implementation (store + DOM + a reactive snapshot, plus the gallery fetch) |
-| `apps/web/public/themes/` | the shipped accent **gallery** as data: `index.json` (title/blurb/swatch only) + one document per theme |
+| `apps/web/public/themes/` | the shipped accent **gallery** as data: `index.json` (title/description/swatch only) + one document per theme |
 | `packages/ui/src/settings/AppearanceTab.vue` | the UI: select/install/edit/reset, the gallery, advanced CSS |
 | `packages/ui/src/settings/ThemeEditor.vue` | the token-tree editor with live preview |
 | `packages/ui/src/theme/controls.ts` | the `ThemeControls` / `ThemeKey` seam between the two |
@@ -182,7 +183,7 @@ the effective built-in value as each field's placeholder.
 
 | field | required | rules |
 |---|---|---|
-| `version` | yes | contract version; `1` and `2` are understood today. Anything else is a **warning**, not an error — an unknown version means "this build may not know every token", which is a forward-compatibility signal rather than a broken file. |
+| `version` | yes | contract version; `1` and `2` are understood today. The app's validator treats anything else as an `unsupported-version` **warning**, not an error — an unknown version means "this build may not know every token", a forward-compatibility signal rather than a broken file. Note the generated `theme.schema.json` currently enumerates only `1` and `2`, so an editor using `$schema` will flag any other value even though the app would only warn. |
 | `name` | yes | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` — it becomes the `data-theme` value inside a selector, so a name that could close `:root[data-theme="…"]` is an error. `default` is **reserved** (see §6). |
 | `tokens` | yes | flat map of token name → value. Unknown names are **errors** with a did-you-mean suggestion, because CSS silently drops a token that does not exist. |
 | `modes` | no | map of mode name → partial token map. Mode keys match `^[A-Za-z0-9-]{1,32}$`. |
@@ -380,9 +381,11 @@ theme slot, `preview` writes the preview slot, `setAdvancedCss` writes the
 advanced slot. Everything it exposes is a synchronous call over a
 `shallowRef<ThemeState>` snapshot, so the UI just renders state.
 
-`data-theme` and `data-mode` are set on `document.documentElement`;
-`apps/web/index.html` ships `data-theme="default"` so the very first frame (which
-is the *pre-theme* login surface) already reads from the built-in theme.
+`data-theme`, `data-mode` and `data-density` are set on
+`document.documentElement` (with `data-mode` / `data-density` absent for their
+base values); `apps/web/index.html` ships `data-theme="default"` so the very
+first frame (which is the *pre-theme* login surface) already reads from the
+built-in theme.
 
 ## 6. Storage
 
@@ -395,6 +398,7 @@ One localStorage key holds everything — one read at boot:
   "themes": [ { "name": "my-theme", "json": { /* … */ }, "css": "/* cached emission */" } ],
   "active": "my-theme",      // or "default"
   "mode": "dark",            // "dark" means no data-mode attribute
+  "density": "cozy",         // "cozy" means no data-density attribute
   "advancedCss": ""          // raw CSS, opt-in
 }
 ```
@@ -419,10 +423,10 @@ The store enforces the rest:
   written).
 - `select` only accepts the built-in theme or a stored theme that has an
   emission.
-- A mode is normalised against the active theme (see §3), on both `save` and
-  `select`.
+- A mode and a density are normalised against the active theme (see §3), on both
+  `save` and `select` — an unimplemented choice falls back to `dark` / `cozy`.
 - `setAdvancedCss` runs the CSS guard (§7) before storing.
-- `reset()` clears themes, advanced CSS and the mode.
+- `reset()` clears themes, advanced CSS, the mode and the density.
 
 There is **no sync**: themes are per-browser. `packages/ui` never reads storage;
 the app owns it.
@@ -436,10 +440,9 @@ token, an experiment). Advanced CSS is the explicit escape hatch:
 - It is applied *after* every theme slot, so it wins the cascade.
 - It is guarded exactly like a plugin stylesheet: `@import` and any `url()` that
   is not `data:`, `blob:` or a same-document `#fragment` are **refused** with an
-  error naming the offending declaration. A remote reference under production
-  CSP (`style-src 'self'`) would otherwise fail *silently*, and a silent
-  third-party request from CSS the app cannot audit is exactly what the guard is
-  for.
+  error naming the offending declaration. A remote reference would otherwise be
+  an unaudited third-party request (and under a stricter CSP a silent failure),
+  which is exactly what the guard is for.
 - Turning the checkbox off clears the stored CSS immediately, not on the next
   Apply.
 
@@ -449,10 +452,14 @@ says so. A plugin stylesheet and advanced CSS are at the same trust level: code
 the user chose to run. (A plugin injects one through `ctx.injectStylesheet()` —
 the same guard, the same rule; see `docs/plugins.md` §5.6.)
 
-Production CSP is still an open question: the dev
-policy is `style-src 'self' 'unsafe-inline'`, and a shipped header is the
-recommended delivery. Advanced CSS depends on that decision — a nonce-based
-policy would need the injected `<style>` elements to carry the nonce.
+CSP now ships with the app: `apps/web/vite.config.ts` defines one policy, the
+dev server sends it as a header, and the production build writes it into built
+`index.html` as a `<meta http-equiv="Content-Security-Policy">` right after the
+charset (a static deploy has no header hook, and a meta policy cannot carry
+`frame-ancestors`, which stays in `vercel.json`). The shipped policy includes
+`style-src 'self' 'unsafe-inline'`; raw CSS remains the explicit advanced opt-in,
+and the guard above is what refuses external references — not the CSP. A
+nonce-based policy would need the injected `<style>` elements to carry the nonce.
 
 ## 8. Using the API
 
@@ -526,7 +533,7 @@ if (loaded.css === null) {
 Five accent themes ship **as data** in `apps/web/public/themes/`:
 
 ```
-index.json         [{ id, title, description, swatch: [accent, hover] }, …]
+index.json         { "themes": [{ id, title, description, swatch: [accent, hover] }, …] }
 forest.json        one document per id — a sparse overlay (see below)
 sunset.json
 midnight.json
@@ -535,10 +542,11 @@ crimson.json
 ```
 
 The index carries **no tokens**, only presentation: `AppearanceTab` can render
-every row (title, blurb, swatch chips) before a single document is fetched, and
-the documents are fetched one at a time, on install. A gallery document is a
-deliberately tiny overlay — `accent` + `accent-hover`, in the base map *and* in
-`modes.light` — so it is the concrete illustration of §5's inheritance base:
+every row (title, description, swatch chips) before a single document is
+fetched, and the documents are fetched one at a time, on install. A gallery
+document is a deliberately tiny overlay — `accent` + `accent-hover`, in the base
+map *and* in `modes.light` — so it is the concrete illustration of §5's
+inheritance base:
 everything else (surfaces, text, radii, the font) comes from the built-in
 document.
 

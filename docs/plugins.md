@@ -24,10 +24,13 @@ Companion to `docs/themes.md` (theming, which shares the same
   The registry itself is in-memory; **installed third-party plugins are
   persisted by the app** and re-registered on every boot (§11).
 - **Third-party plugins are installed from a GitHub repository** (§11): the app
-  reads the release's `tumult.plugin.json`, validates it against
-  `docs/plugin.schema.json`, shows a plain-language consent screen, downloads
-  the bundle and refuses it unless its sha256 matches the manifest's
-  `integrity`. There is no central gatekeeper: any repository installs.
+  reads and validates the release's `tumult.plugin.json`, downloads the bundle
+  and refuses it unless its sha256 matches the manifest's `integrity`, *then*
+  shows a plain-language consent screen. No bundle code is imported or executed
+  before consent; accepting only authorizes loading, registering and persisting
+  the already-verified bytes (a stored, previously consented plugin is restored
+  after its own hash check). There is no central gatekeeper: any repository
+  installs.
 - The **lane is derived, never declared** (`deriveLane`): a plugin whose
   permissions are all logic-only (`commands`, `composer-actions`, `styles`) is
   loaded into a **Worker inside an opaque-origin sandbox frame** and reaches
@@ -547,14 +550,18 @@ this order:
 
 | `section` | Heading | The shell's own pages |
 |---|---|---|
-| `"account"` | User settings | My Account (priority 10), Security (0) |
-| `"app"` | App settings | Appearance (10), Themes (0) — only when the app provides theme controls |
+| `"account"` | User settings | My Account (priority 10), Activity (5), Security (0) |
+| `"app"` | App settings | Appearance (10, only with theme controls), Updates (7, desktop bridge), Voice (5, when native voice is supported), Themes (0, only with theme controls) |
 | `"plugins"` | Plugins | Installed (100) |
 
-A page that names no section lands under **Plugins**, after the shell's
-"Installed" list; `priority` orders pages *within* a section, and a section
-with no pages draws no heading. The overlay titles the page with its `title`
-and owns the close button, so a page renders only its body — use the shared
+Activity is the shell's own first-party settings page (§5.8). The app pages are
+conditional: Appearance and Themes need theme controls above the shell, Updates
+needs the desktop updater bridge, and Voice needs `client.supportsVoice()`; a
+host without one simply has no such page. A page that names no section lands
+under **Plugins**, after the shell's "Installed" list; `priority` orders pages
+*within* a section, and a section with no pages draws no heading. The overlay
+titles the page with its `title` and owns the close button, so a page renders
+only its body — use the shared
 `tumult-settings-section` / `tumult-settings-heading` / `tumult-settings-note`
 classes to match the built-in pages (consecutive sections get a divider).
 
@@ -1002,6 +1009,11 @@ uses.
 | `selection` | `{ current, select(next), hrefFor(next) }` — the current room/guild selection and navigation. |
 | `actions` | the cross-pane channel to the shell: `requestLeave(target)` and `requestModeration({ kind, roomId, member })` open its dialogs, `requestMarkRead(roomId)` calls the client (a list row has no client of its own). |
 | `media` | `resolve(mxcUri, size)`, `resolveDownload(mxcUri)`, `resolveEncrypted(file)` — `mxc://` → loadable URL. |
+| `nativeActivity()` | the shell-owned `NativeActivityFeed` (empty on web, live desktop bridge); needs the `native-activity` permission. |
+
+There is no `ctx.activity`: the first-party `app.tumult.activity` document,
+renderer and controller are shell-owned (§5.8). A plugin reads the native feed
+only through `ctx.nativeActivity()`.
 
 Presence is on that same client, and it is a **user-level** setting, not a
 per-device one: `setOwnPresence(presence, statusMessage?)` writes what every
@@ -1156,10 +1168,26 @@ shell.value?.plugins.install(myPlugin);
 | `CommandsKey` | `CommandsRegistry` | `useCommands()` → `null` outside a shell |
 | `MemberDecorationsKey` | `MemberDecorationsRegistry` | `useMemberDecorations()` (throws) |
 | `ProfileSectionsKey` | `ProfileSectionsRegistry` | `useProfileSections()` (throws) |
+| `ActivityRenderersKey` | `ActivityRenderersRegistry` | `useActivityRenderers()` (throws); the shell's first-party `ActivityLine` is registered at priority 100 on `app.tumult.activity` |
 | `SettingsTabsKey` | `SettingsTabsRegistry` | `useSettingsTabs()` (throws) |
+| `WorkspacePanesKey` | `WorkspacePanesRegistry` | `useWorkspacePanes()` (throws) |
+| `IconsKey` | `IconRegistry` | `useIcons()` → `null` outside a shell |
+| `ActivityControllerKey` | the shell's `ActivityController` (first-party document + native feed) | `useActivityController()` exists in the source but is not exported from `@tumult/ui`; no public accessor today |
+| `DesktopUpdaterKey` | `DesktopUpdaterBridge`, or `null` on web | no accessor; inject the exported key directly |
+| `DraftsKey` | the shell's `DraftStore` | `useDrafts()` exists in the source but is not exported from `@tumult/ui`; no public accessor today |
+| `RailAnimationsKey` | `Ref<boolean>` | `useRailAnimations()` exists in the source but is not exported from `@tumult/ui`; no public accessor today |
+| `VoiceRoomsKey` | `Readonly<Ref<Record<string, string[]>>>` | `useVoiceRooms()` exists in the source but is not exported from `@tumult/ui`; no public accessor today |
 | `SelectionKey` | `SelectionContext` | `useSelection()` (throws) |
 | `ActionsKey` | `ActionsContext` | `useActions()` (throws) |
 | `MediaKey` / `MediaDownloadKey` | media resolvers | `useMediaResolver()` / `useMediaDownloadResolver()` → `undefined` outside a shell (the encrypted-media key is internal to `@tumult/ui`) |
+
+"Public" here means exported from `@tumult/ui` (`src/index.ts`); the
+plugin-author surface (`authoring.ts`) is narrower still. `ActivityControllerKey`,
+`DraftsKey`, `RailAnimationsKey` and `VoiceRoomsKey` are shell-internal today
+(neither the key nor its `use…` helper is a public root export); they are listed
+here so a host that renders `TumultShell` knows what it provides. The public
+`useActivity()` reads rendered activity from the renderer registry, not the
+controller.
 
 If you are not rendering `TumultShell` — a harness, a story, a different shell —
 construct the registry yourself from `PluginDeps`:
@@ -1167,9 +1195,10 @@ construct the registry yourself from `PluginDeps`:
 | `PluginDeps` field | what to pass |
 |---|---|
 | `client` | a `ChatClient` (the fake from `@tumult/core/fake` is a valid stand-in). |
-| `timeline`, `composerActions`, `commands`, `memberDecorations`, `profileSections`, `settingsTabs` | fresh per-shell registry instances. |
+| `timeline`, `composerActions`, `commands`, `memberDecorations`, `profileSections`, `activityRenderers`, `settingsTabs`, `panes` | fresh per-shell registry instances; `ActivityRenderersRegistry` takes the client. |
 | `selection`, `actions` | your `SelectionContext` / `ActionsContext` implementations. |
 | `media` | `{ resolve, resolveDownload, resolveEncrypted }` — wire to the client's media methods. |
+| `nativeActivity` | the shell-owned feed handed to `ctx.nativeActivity()`: `emptyNativeActivityFeed()` on web, or `createNativeActivityFeed(window.tumultNative).feed` when the desktop bridge is present. Both helpers are exported from `@tumult/ui`. |
 | `injectStylesheet(css, owner)` | the DOM injector; `PluginRegistry` binds each plugin's id (or `"shell"`) as the owner. |
 
 ```ts
@@ -1180,20 +1209,29 @@ const plugins = new PluginRegistry({
     commands: new CommandsRegistry(),
     memberDecorations: new MemberDecorationsRegistry(),
     profileSections: new ProfileSectionsRegistry(),
+    activityRenderers: new ActivityRenderersRegistry(client),
     settingsTabs: new SettingsTabsRegistry(),
+    panes: new WorkspacePanesRegistry(),
     selection,
     actions,
     media,
+    nativeActivity: emptyNativeActivityFeed(),
     injectStylesheet,
 });
 plugins.install(myPlugin);
 ```
 
+`nativeActivity` is the empty feed on web and a live desktop-bridge feed where
+one exists; a **host** imports `emptyNativeActivityFeed` /
+`createNativeActivityFeed` from `@tumult/ui` to construct the feed it hands to
+the registry. A plugin receives it through `ctx.nativeActivity()`.
+
 The registry also exposes **unpermissioned** `addRenderer` / `addComposerAction`
-/ `addCommand` / `addMemberDecoration` / `addProfileSection` / `addSettingsTab` /
-`injectStylesheet` for the **shell's own** built-ins (the built-in renderers and
-settings tabs go through exactly these). Use `install()` for anything you would
-call a plugin;
+/ `addCommand` / `addMemberDecoration` / `addProfileSection` /
+`addActivityRenderer` / `addSettingsTab` / `addPane` / `injectStylesheet` for the
+**shell's own** built-ins (the built-in renderers, activity renderer and settings
+tabs go through exactly these). Use `install()` for anything you would call a
+plugin; these are not plugin APIs.
 
 ## 9. Testing a plugin
 
@@ -1202,19 +1240,23 @@ over stubs and asserts the registrations — no DOM, no Vue mounting. This is th
 pattern in `packages/ui/test/plugins.test.ts`:
 
 ```ts
-import { PluginRegistry } from "@tumult/ui";
+import { PluginRegistry, emptyNativeActivityFeed } from "@tumult/ui";
 
+const client = {} as ChatClient;
 const plugins = new PluginRegistry({
-    client: {} as ChatClient,
+    client,
     timeline: new TimelineRegistry(),
     composerActions: new ComposerActionsRegistry(),
     commands: new CommandsRegistry(),
     memberDecorations: new MemberDecorationsRegistry(),
     profileSections: new ProfileSectionsRegistry(),
+    activityRenderers: new ActivityRenderersRegistry(client),
     settingsTabs: new SettingsTabsRegistry(),
+    panes: new WorkspacePanesRegistry(),
     selection: {} as SelectionContext,
     actions: {} as ActionsContext,
     media: { resolve: async () => "", resolveDownload: async () => "", resolveEncrypted: async () => "" },
+    nativeActivity: emptyNativeActivityFeed(),
     injectStylesheet: (css, owner) => { /* record it */ return () => { /* remove it */ }; },
 });
 
@@ -1350,13 +1392,16 @@ rule, without being one of them.
    so the release JSON reaches the browser directly — and takes its `tumult.plugin.json`
    asset if there is one, otherwise the file at the tag.
 2. The manifest is validated (`requireIntegrity: true`) and the lane derived.
-3. **Consent.** The app shows the name, author, source link, version, the exact
+3. The bundle is fetched and hashed (`sha256-<base64>` via WebCrypto); a
+   mismatch refuses the install and names both hashes. No code is imported or
+   executed at this point.
+4. **Consent.** The app shows the name, author, source link, version, the exact
    permission list, the lane badge and the hash. For a `trusted` plugin the
    screen says, without hedging, that the plugin runs as part of the app and a
-   malicious one could read what the app can read. Nothing is downloaded until
-   you accept.
-4. The bundle is fetched and hashed (`sha256-<base64>` via WebCrypto); a
-   mismatch refuses the install and names both hashes.
+   malicious one could read what the app can read. Accepting only authorizes
+   loading, registering and persisting the already-verified bytes; the app never
+   runs a bundle before consent. (A stored, previously consented plugin is
+   restored on boot after its stored bytes are re-hashed, with no new prompt.)
 
 ### Fetching release assets (a hard browser constraint)
 
@@ -1376,20 +1421,20 @@ The app's own deployment therefore proxies the two asset downloads. Each goes to
 `github.com/{owner}/{repo}/releases/download/{tag}/{name}` **server-side** and
 forwards the bytes. The proxy is not open: it reconstructs the upstream URL from
 four validated path segments (owner, repo, tag, asset name), so it is not a
-general fetch-as-a-service. The integrity hash in step 4 still runs on the
+general fetch-as-a-service. The integrity hash in step 3 still runs on the
 proxied bytes — the proxy can deny service, but cannot tamper past the hash.
 The raw-file fallback (a repo with no release) fetches
 `raw.githubusercontent.com` directly, which is already CORS-open. A self-hosted
 deployment must ship its own equivalent endpoint; the installer assumes the
 `/api/plugin-asset` route exists.
-5. The manifest is stored, the bundle is stored as text, and the plugin is
-   installed through `PluginRegistry.install()` — so §3's rollback and
+5. **Accept and persist.** The held bundle is loaded and its own exported
+   `manifest` cross-checked against the one the user consented to: a bundle that
+   declares a different id, or a permission the consent screen never showed, is
+   refused. Consent is for the manifest, so the manifest has to be the truth.
+   Only then is the plugin registered through `PluginRegistry.install()` and its
+   record (manifest, bundle text, hash) written — so §3's rollback and
    disposables apply unchanged, and a throw during install means nothing was
-   persisted. Before `install()` runs, the loaded bundle's own exported
-   `manifest` is cross-checked against the one the user consented to: a bundle
-   that declares a different id, or a permission the consent screen never
-   showed, is refused. Consent is for the manifest, so the manifest has to be
-   the truth.
+   persisted.
 
 Re-installing is the same flow, so a **changed permission list always re-asks**;
 there is no path where new capabilities arrive without a consent screen.

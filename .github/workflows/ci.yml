@@ -103,8 +103,9 @@ jobs:
         VITE_CLIENT_URI: https://ci.invalid
       run: pnpm -r build
 
-    # The Docker/Synapse integration suite (tests/synapse/run.sh, via
-    # `pnpm test:integration`) and the live-homeserver test
-    # (`pnpm --filter @tumult/web test:live`) need Docker / a real server and
-    # stay LOCAL tasks. They are kept out of default CI so `main` can stay
-    # green without a Docker-in-Docker runner.
+    # The Docker/Synapse and RTC suites (tests/synapse/run.sh via
+    # `pnpm test:integration`, tests/rtc/run.sh via `pnpm test:rtc`) are out of
+    # THIS gate: integration.yml runs them nightly, on dispatch and on
+    # path-filtered PRs, so `main` stays green without a Docker-in-Docker
+    # runner. The live-homeserver test (`pnpm --filter @tumult/web test:live`)
+    # remains a manual task.

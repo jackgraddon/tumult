@@ -12,24 +12,27 @@ chat client should be.
   Build vertical slices against a written contract: write the flat interface, then
   run one feature end-to-end through both sides, stubbing the contract with a fake
   when data is behind the UI. Read the contract before inventing shapes.
-- **Fork, not a package.** `@tumult/core` ships sources (`src`), never `dist`;
-  `apps/web` takes no reference to it and resolves `@tumult/ui` via tsconfig
-  paths, so slicing off the shell is one import: `apps/web/src/chat.ts` (real
-  client). No Vue in core; the contract lives in `contract.ts` so a renderer
-  extends it without touching core.
+- **Core is a workspace package.** `@tumult/core` is private, compiles to and
+  exports `dist` through `package.json` subpaths; `apps/web` depends on it,
+  project-references it, and imports `@tumult/core/session`.
+  `apps/web/src/chat.ts` is only a `@chat-impl` switcher — the real client is
+  `apps/web/src/chat.real.ts`. `@tumult/ui` still ships sources and is resolved
+  via tsconfig paths. No Vue in core; the contract lives in `contract.ts` so a
+  renderer extends it without touching core.
 - **DOM is the renderer.** The chat pane renders into the DOM via a Vue render
   function; there is no SSR. `@tumult/ui` components are headless behavior +
   structure, token-driven — never layout.
-- **Reactivity is signals, not a store.** Reactivity comes from `@preact/signals-core`
-  (`makeObservable`), a no-op for non-signal code, but versioned (BUMP_TOKEN)
-  because Preact's signals ship under reverts that reset the primitive. Vue's ref
-  lifecycle rides on top of that contract, not the DOM.
+- **Reactivity is observables, not a store.** Reactivity is a hand-rolled
+  `Observable<T>` in `packages/core/src/observable.ts` (`get`/`set`/`update`/
+  `subscribe`, with snapshot identity changing on update), bridged to Vue with
+  `shallowRef` in `packages/ui/src/subscribable.ts`. No Preact signals dependency
+  or symbols.
 - **Layout = chrome vs panes.** The guild rail is CHROME (fixed, non-collapsible
   track); room list, timeline and members are collapsible panes that keep DOM at
   0-width + `inert` when hidden. Splitting rails out of panes is deliberate.
 - **Vertical slices, stub first.** Build a feature end-to-end instead of the data
   layer first — contract shape is unknown until you build the UI. UI knows UI, data
-  knows data. See slices 1–12.
+  knows data.
 - **Recompute, don't patch.** The SDK mutates Room/MatrixEvent in place and fires
   events as invalidation signals; recompute snapshots for a roomId on event, don't
   patch. See Matrix specifics.
@@ -37,24 +40,26 @@ chat client should be.
   were a cautionary tale (too few tokens → broken themes). A versioned token
   contract in three tiers (primitives → semantic → component) with a default
   theme; raw CSS is an explicit advanced opt-in behind strict CSP. See Theming.
-- **Web-first + Electron, deliberate.** v1 targets login/sync/encrypted chat in a
-  browser; desktop comes later. Chosen over Tauri because that stack's Linux WebRTC
-  gaps would have compromised the web-first path; Electron was the most
-  portable-but-stable shell. See v1 scope.
+- **Web-first + Electron shell, deliberate.** Login, sync and encrypted chat
+  work in a plain browser; `apps/desktop` packages that web build for Linux and
+  Windows. Chosen over Tauri because that stack's Linux WebRTC gaps would have
+  compromised the web-first path. See scope below.
 
-## v1 scope — web-first, no scope creep
+## Scope — web-first, no scope creep
 
 - Targets: login, sync, encrypted chat in a plain browser. MAS is the ONLY
   login method.
-- Desktop (Electron, most stable cross-platform): `apps/desktop` packages the
-  web app for Linux and Windows. Desktop-only features stay out of scope
-  (tray, updater, deep links, safeStorage).
-  Tauri rejected for now: Linux WebRTC gaps in system webviews.
+- Desktop: `apps/desktop` is an Electron shell around the web build (Linux and
+  Windows) with a manual, opt-in updater for AppImage and Windows NSIS.
+  Still deferred on desktop: tray, deep links and safeStorage.
+  Tauri rejected: Linux WebRTC gaps in system webviews.
 - Layout: vertical guild rail (Matrix spaces) + DMs tab + members sidebar.
-- Theming + modularity are v1. Games (custom room events: chess,
-  tic-tac-toe, etc.) come AFTER a rock-solid modular web UI.
-- Non-goals v1: games, native voice/video (embedded Element Call is in, see Calls), threads, encrypted search, multi-account,
-  push notifications, desktop shell.
+- Theming + modularity are in. Native voice/video (see Calls) is on by default
+  in real builds; embedded Element Call is optional (`VITE_ELEMENT_CALL_URL`).
+  Threads and browser notifications are implemented.
+- Non-goals: games (custom room events: chess, tic-tac-toe, etc.) and
+  client-side encrypted search come AFTER a rock-solid modular web UI;
+  multi-account and OS push infrastructure stay out of scope.
 
 ## Architecture — UI knows UI, data knows data
 
@@ -101,8 +106,10 @@ chat client should be.
   per crypto DB: set per-user/device `cryptoDatabasePrefix`, delete DB on
   logout. Losing crypto store = losing device keys, so key backup / recovery
   key restore is required.
-- Sync: prefer Simplified Sliding Sync (MSC4186, native Synapse >= 1.114),
-  fallback classic `/sync`. Keep sync layer abstracted so swap is possible.
+- Sync: Simplified Sliding Sync (MSC4186, native Synapse >= 1.114) is supported
+  in core, but `apps/web/src/chat.real.ts` deliberately sets `syncMode:
+  "classic"` for warm incremental startup. Keep the sync layer abstracted so
+  switching modes stays possible.
 - Sync is a lifecycle: PREPARED (may come from cache) / SYNCING /
   RECONNECTING / ERROR / STOPPED / CATCHUP. Register sync listener BEFORE
   `startClient()` or PREPARED is missed. UI must show connection state,
@@ -147,12 +154,13 @@ chat client should be.
   authorize URL → redirect → `completeAuthorizationCodeGrant` → create client
   with tokens. Scope encodes device ID: generate once, persist, reuse (crypto
   identity is tied to it). Revoke token on logout.
-- VERIFIED v43 and v45: the OIDC module is `src/oauth/`, not `src/oidc/`, and the free
-  functions older docs name (`registerOidcClient`,
-  `completeAuthorizationCodeGrant`, `OidcTokenRefresher`) DO NOT EXIST. It is
-  one `OAuth2` class: static `registerClient`, instance
+- VERIFIED v43 and v45: our auth code is `packages/core/src/auth/oauth.ts` (a
+  local `OAuthLogin` wrapping the SDK `OAuth2`); there is no
+  `packages/core/src/oauth/`, and the free functions older docs name
+  (`registerOidcClient`, `completeAuthorizationCodeGrant`, `OidcTokenRefresher`)
+  DO NOT EXIST. It is one SDK `OAuth2` class: static `registerClient`, instance
   `generateAuthorizationCodeGrantUrl` / `completeAuthorizationCodeGrant` /
-  `revokeToken`. Read `src/oauth/` before writing auth code.
+  `revokeToken`. Read `packages/core/src/auth/oauth.ts` before writing auth code.
 - Token refresh needs no manual wiring: pass `oauthClientId` + `refreshToken` +
   `onTokenRefresh` to `createClient` and the SDK refreshes internally.
   `TokenRefresher` is only for driving it yourself.
@@ -190,8 +198,8 @@ chat client should be.
   A click on a member row (a `.tumult-member-main` button *inside* the
   context-menu trigger — two `as-child` triggers on one element fight, so the
   row's context menu stays on the outer div) opens a **read-only profile card**
-  (`members/ProfileCard.vue`, portalled to body via a Reka popover, styled in an
-  unscoped block like the reaction popover): avatar, display name, the
+  (`members/ProfileCard.vue`, portalled to body via a Reka popover, with scoped
+  styles): avatar, display name, the
   `@user:server` id, and a presence line. It carries NO action buttons — Message,
   mention, moderation and the copy pair already live in the row's context menu, so
   a second set in a second surface would be two implementations of one permission
@@ -205,18 +213,23 @@ chat client should be.
 - Activity is first-party (`packages/ui/src/activity/`), not a plugin:
   `ActivityController` owns `app.tumult.activity`, publishes native RPC/IPC over
   the user's manual draft, restores that draft when the producer clears, and
-  mirrors a plain status line only while the shell owns it. `ActivityLine` is
-  registered at priority 100 so a leftover Rich Presence plugin cannot shadow
-  it, and `plugins/registry.ts` withholds that released plugin's live native feed
-  and duplicate settings tab. Web and desktop share one document and one
-  Activity settings page; the native half is desktop-only via the existing
-  `window.tumultNative` bridge. The v1 document carries at most two bounded
-  image URLs, up to two `{ label, url }` outbound buttons (label 1–32, http(s)
-  URL 1–512) and `startedAt`/`endsAt` progress; the `card` variant renders them
-  on the member profile card, while `row` and `self` stay one line. Discord IPC
-  artwork keys, timestamps and buttons map into that document rather than being
-  dropped. Buttons are safe `<a>` links, never shell action buttons, so the card
-  stays read-only; the Activity settings page edits the same document.
+  mirrors a plain status line only while the shell owns it. In core,
+  `activity/own-activity-controller.ts` (`OwnActivityController`) mirrors the
+  document into private account data `app.tumult.activity.state`, ordered by
+  `deviceId` + `updatedAt`: a document written by another device becomes
+  authoritative for this device's display, while a live native producer still
+  takes precedence here. `ActivityLine` is registered at priority 100 so a
+  leftover Rich Presence plugin cannot shadow it, and `plugins/registry.ts`
+  withholds that released plugin's live native feed and duplicate settings tab.
+  Web and desktop share one document and one Activity settings page; the native
+  half is desktop-only via the existing `window.tumultNative` bridge. The v1
+  document carries at most two bounded image URLs, up to two `{ label, url }`
+  outbound buttons (label 1–32, http(s) URL 1–512) and `startedAt`/`endsAt`
+  progress; the `card` variant renders them on the member profile card, while
+  `row` and `self` stay one line. Discord IPC artwork keys, timestamps and
+  buttons map into that document rather than being dropped. Buttons are safe
+  `<a>` links, never shell action buttons, so the card stays read-only; the
+  Activity settings page edits the same document.
 - Timeline dispatches on event type through a small registry with plain
   fallback for unknown types. Custom game events later = registered renderer,
   namespaced under our domain. No timeline rewrite. The registry gates
@@ -433,15 +446,16 @@ chat client should be.
 
 ## Repo ops
 
-- Private repo `jackgraddon/tumult`, branch `main`. `gh` CLI is installed and
+- Public repo `jackgraddon/tumult`, branch `main`. `gh` CLI is installed and
   authed on this device — use it for repo ops.
 - `opencode.json` is local-only and gitignored. Never commit it. `AGENTS.md`,
   `README.md`, and spec docs ARE committed.
-- pnpm workspace. `pnpm dev` (web), `pnpm build`, `pnpm typecheck` from root.
-  `packages/core` must be built before `apps/web` resolves it — `pnpm -r build`
-  handles the order.
+- pnpm workspace. `pnpm dev` (web), `pnpm build`, `pnpm -r typecheck` from root
+  (there is no root `pnpm typecheck`). `packages/core` must be built before
+  `apps/web` resolves it — `pnpm -r build` handles the order.
 - Dev homeserver is `matrix.jackg.cc`, auth at `mas.jackg.cc`. Set
-  `VITE_CLIENT_URI` in `apps/web/.env.local` (gitignored, see `.env.example`).
+  `VITE_CLIENT_URI` in the repo-root `.env.local` (gitignored, see `.env.example`),
+  loaded by Vite via `envDir`.
 - Work with **relative paths** only — base everything off the working directory
   (`$WORKDIR`, normally `/var/home/jack/Documents/Git/tumult`) and reference
   paths as `packages/core/src/client.ts`, `AGENTS.md`, etc. Never use absolute
@@ -451,7 +465,9 @@ chat client should be.
 ## Context for agents
 
 - **Where truth lives:** `packages/core/src/contract.ts` is the UI↔data boundary, `AGENTS.md` is repo ops + verified Matrix traps. Reference both rather than duplicating. Author-facing references: `docs/themes.md` (theme documents + loader), the generated `docs/tokens.md` + `docs/theme.schema.json` (emitted by the theme build, guarded by `packages/theme/test/docs.test.ts`), and `docs/plugins.md` (extension API for authors + hosts, guarded by `packages/ui/test/docs.test.ts`).
-- **Real-client module map.** `packages/core/src/client.ts` (`MatrixChatClient`)
+- **Real-client module map.** `packages/core` publishes `./session`, `./selectors`
+  and `./media` as public `dist` subpaths (alongside `.`, `./fake`, `./contract`
+  and `./errors`). `packages/core/src/client.ts` (`MatrixChatClient`)
   keeps the LIFECYCLE inline — start's `starting ??=` collapse, bootstrap's
   statement + listener-registration order, `this.matrix = client` before the
   trackers, both teardown paths (`detachSessionTrackers()` shared, each path's
@@ -461,7 +477,9 @@ chat client should be.
   members, verification…). Features with state of their own are classes built
   ONCE in the constructor body (their Observables survive stop/start; no field
   initializers that touch them, no parameter properties): `call/rtc.ts`
-  (`RtcFeature`: call + voice), `rooms/profile-controller.ts`,
+  (`RtcFeature`: call + voice), `activity/own-activity-controller.ts`
+  (`OwnActivityController`: cross-device activity state),
+  `rooms/profile-controller.ts`,
   `rooms/own-presence-controller.ts`, `crypto/controller.ts` (security,
   recovery, held key, devices), `rooms/room-list.ts` (`RoomListPublisher`:
   rooms feed, unread, coalescing, warm seed, shell cache, `debugUnread`).
@@ -508,7 +526,7 @@ chat client should be.
   they are content, not chrome. The SVG is sized by `width`/`height` attributes
   because the theme gate forbids literal lengths in a stylesheet.
 - **Theme v1 baseline:** registry (structure only) in `packages/theme/src/registry/`, compiler/validator/loader/store in `packages/theme/src/`, the built-in theme's *values* in `packages/theme/themes/default.json` (the inheritance base, completeness enforced by `compileThemes`), scoped on `:root[data-theme="name"]`; accent gallery data in `apps/web/public/themes/`, self-hosted Figtree in `apps/web/public/fonts/`. The node-only build lives in `packages/theme/src/build/` (`cli.ts` = `compileThemes()` → `dist/themes/*.css` **and** `emitDocs()` → `docs/tokens.md` + `docs/theme.schema.json`); `compile.ts` is a side-effect-free library (no import-time self-exec). Changing the registry or a built-in value means re-running `pnpm --filter @tumult/theme build` and committing the regenerated docs — `packages/theme/test/docs.test.ts` fails on drift.
-- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via a containerised Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker OR Podman, chosen by `tests/container.sh`; with neither, run `gh workflow run integration.yml --ref <branch>` (the workflow must already exist on `main` for dispatch to work), or set `TEST_SYNAPSE_URL` to use an existing server with no container. Images are fully qualified (`docker.io/…`: Podman refuses short names without a TTY), mounts carry `:z` (SELinux), and `override.yaml` is MOUNTED, not copied into `data/` (rootless Podman leaves `data/` owned by the container user). Some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser` (63 pass). It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
+- **Test conventions:** use `node --test "test/**/*.test.ts"` (not `node --test <dir>`), stub via SDK enums (not hand-typed strings), integration tests via a containerised Synapse (`tests/synapse/`, `packages/core/test-integration/`) — Docker OR Podman, chosen by `tests/container.sh`; with neither, run `gh workflow run integration.yml --ref <branch>` (the workflow must already exist on `main` for dispatch to work), or set `TEST_SYNAPSE_URL` to use an existing server with no container. Images are fully qualified (`docker.io/…`: Podman refuses short names without a TTY), mounts carry `:z` (SELinux), and `override.yaml` is MOUNTED, not copied into `data/` (rootless Podman leaves `data/` owned by the container user). Some integration paths are written but unverified. The browser smoke test (`pnpm --filter @tumult/web test:browser`) needs Firefox via `playwright install firefox`; on macOS 27 it fails with "Could not find profile folder" unless `CFFIXED_USER_HOME` points at an EXISTING fresh dir (TCC blocks Firefox's shared app-data lookup; playwright#42768) — VERIFIED working: `mkdir -p ~/.cache/tumult-ff-home && CFFIXED_USER_HOME=~/.cache/tumult-ff-home pnpm --filter @tumult/web test:browser`. It is the only end-to-end check of the token pipeline (theme install, mode/density flip, login font), so run it when theme CSS or the auth surface changes. The fake's `markRead` clears that room's unread/highlight counts (so a badge-clearing flow is testable) but deliberately does NOT advance `fullyReadEventId` — that mid-history marker is the only place the "New messages" divider can render, and advancing it on the first visit would erase the demo. The rail lists guilds in name order before the favourites band, and favourites in `favouriteOrder` order, so "the first guild tile" is Big Guild, not Guild A; Guild A's `general` is also a favourite (its rail tile carries no menu, its room-list row does). A copied value cannot be read back (Firefox grants no `clipboard-read`), so "Copy" items are asserted by wrapping `navigator.clipboard.writeText` through `page.evaluate` with a STRING body (`window.__copied`) — a function body would die in the page (`__name is not defined`).
 
 ## Verified traps from build-out
 
@@ -534,7 +552,7 @@ homeserver. A trap listed here has shipped broken at least once.
   events the extension re-emits as `ClientEvent.Event` too.
 - `tsc` catches more than `node --test` here: strip-only Node ignores
   `readonly`, so assigning to a readonly field runs fine. Always run
-  `pnpm typecheck`, not just tests.
+  `pnpm -r typecheck`, not just tests.
 
 ### Unread & read receipts
 
@@ -1305,7 +1323,7 @@ add an exclusion, 45.1.0 is pinned. Electron is approved in `allowBuilds`, and
     on its busy state).
 - **Plugin assets.** `apps/web/api/plugin-asset.ts` was split into pure
   exports (`validateAssetQuery`, `upstreamUrl`, `fetchReleaseAsset`) with the
-  Vercel handler unchanged in behaviour (its 5 tests still pass). The desktop
+  Vercel handler unchanged in behaviour (its tests still pass). The desktop
   answers `app://tumult/api/plugin-asset` with them via `net.fetch`.
   VERIFIED: a full sandboxed-plugin install through it (the smoke test stubs
   `net.fetch` in the main process via `app.evaluate`; no hook in the app).

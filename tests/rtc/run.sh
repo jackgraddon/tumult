@@ -3,8 +3,7 @@
 # down. KEEP=1 leaves the stack running for debugging. Docker or Podman, see
 # tests/container.sh; host networking, see docker-compose.yml.
 #
-# Five suites, in order (5: apps/web/test/element-call.test.ts — the embedded
-# call app path, as a fallback for native voice):
+# Five groups, in order:
 #  1. packages/core/test-integration/{call,voice}.test.ts — Node: the call
 #     widget driver and the native-voice token exchange against the real stack.
 #  2. apps/web/test/rtc-media.test.ts — two Chromium browsers join one video
@@ -13,7 +12,9 @@
 #     setup, emoji verification, and history restored from the recovery key.
 #  4. apps/web/test/network.test.ts — a device loses the network mid-session:
 #     the app must say so, recover, catch up, and deliver what was sent offline.
-# RTC_MEDIA=0 skips the browser suites (they need Chromium:
+#  5. apps/web/test/element-call.test.ts — the embedded call app path, as a
+#     fallback for native voice.
+# RTC_MEDIA=0 skips the four browser suites (2-5; they need Chromium:
 # `playwright install chromium`).
 set -eu
 
