@@ -3522,4 +3522,46 @@ describe("browser smoke test (fake client)", () => {
             await context.close();
         }
     });
+
+    it("splits the room toolbar into left and right control groups", async () => {
+        const { context, target } = await openFreshShell();
+        try {
+            await target.locator(".tumult-dmlist .tumult-room-item").first().click();
+            await target.waitForSelector(".tumult-row", { timeout: 10_000 });
+            const groups = await target.evaluate(() => {
+                const bar = document.querySelector(".tumult-pane-timeline > .tumult-pane-toolbar");
+                if (!bar) return null;
+                const box = bar.getBoundingClientRect();
+                const style = getComputedStyle(bar);
+                const contentLeft = box.left + parseFloat(style.paddingLeft);
+                const contentRight = box.right - parseFloat(style.paddingRight);
+                return Array.from(bar.children).map((group) => {
+                    const rect = group.getBoundingClientRect();
+                    return {
+                        labels: Array.from(group.querySelectorAll("button")).map(
+                            (button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
+                        ),
+                        left: Math.round(rect.left - contentLeft),
+                        right: Math.round(contentRight - rect.right),
+                    };
+                });
+            });
+            assert.ok(groups, "the room toolbar is missing");
+            assert.equal(groups.length, 2, "the toolbar should have one left and one right group");
+            assert.ok(
+                groups[0]!.labels.includes("Toggle room list"),
+                "the left group should hold the room-list collapser",
+            );
+            assert.ok(groups[1]!.labels.includes("Threads"), "the right group should hold Threads");
+            assert.ok(groups[1]!.labels.includes("Toggle members"), "the right group should hold members");
+            assert.ok(
+                groups[1]!.labels.indexOf("Threads") < groups[1]!.labels.indexOf("Toggle members"),
+                "Threads should sit inboard of the members button",
+            );
+            assert.ok(groups[0]!.left <= 2, "the left group should hug the toolbar's content edge");
+            assert.ok(groups[1]!.right <= 2, "the right group should hug the toolbar's content edge");
+        } finally {
+            await context.close();
+        }
+    });
 });

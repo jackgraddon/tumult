@@ -989,25 +989,29 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
                 </div>
                 <div class="tumult-pane tumult-pane-timeline" :inert="timelineHidden ? true : undefined">
                     <div class="tumult-pane-toolbar">
-                        <IconButton v-if="phone" label="Back to rooms" @click="phoneScreen = 'nav'"><Icon name="chevron-left" /></IconButton>
-                        <IconButton v-else label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
-                        <CallMenu
-                            v-if="!activePane && activeRoomId"
-                            :voice="voiceEnabled"
-                            :calls="callsEnabled && call?.roomId !== activeRoomId"
-                            :active="voice?.roomId === activeRoomId"
-                            @join="(video) => activeRoomId && joinCall(activeRoomId, video)"
-                            @leave="activeRoomId && leaveCall(activeRoomId)"
-                        />
-                        <IconButton v-if="!activePane && phone" label="Show members" @click="phoneScreen = 'members'"><Icon name="account-group" /></IconButton>
-                        <IconButton v-else-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
-                        <IconButton
-                            v-if="!activePane && threadsEnabled && activeRoomId"
-                            label="Threads"
-                            :aria-pressed="threadView !== null"
-                            @click="toggleThreadList"
-                            ><Icon name="forum" /></IconButton
-                        >
+                        <div class="tumult-toolbar-group">
+                            <IconButton v-if="phone" label="Back to rooms" @click="phoneScreen = 'nav'"><Icon name="chevron-left" /></IconButton>
+                            <IconButton v-else label="Toggle room list" @click="emit('toggleRoomList')"><Icon name="menu" /></IconButton>
+                            <CallMenu
+                                v-if="!activePane && activeRoomId"
+                                :voice="voiceEnabled"
+                                :calls="callsEnabled && call?.roomId !== activeRoomId"
+                                :active="voice?.roomId === activeRoomId"
+                                @join="(video) => activeRoomId && joinCall(activeRoomId, video)"
+                                @leave="activeRoomId && leaveCall(activeRoomId)"
+                            />
+                        </div>
+                        <div class="tumult-toolbar-group">
+                            <IconButton
+                                v-if="!activePane && threadsEnabled && activeRoomId"
+                                label="Threads"
+                                :aria-pressed="threadView !== null"
+                                @click="toggleThreadList"
+                                ><Icon name="forum" /></IconButton
+                            >
+                            <IconButton v-if="!activePane && phone" label="Show members" @click="phoneScreen = 'members'"><Icon name="account-group" /></IconButton>
+                            <IconButton v-else-if="!activePane" label="Toggle members" @click="emit('toggleMembers')"><Icon name="account-group" /></IconButton>
+                        </div>
                     </div>
                     <RoomCallStrip
                         v-if="!activePane && voiceEnabled && activeRoomId"
@@ -1356,9 +1360,16 @@ const threadsEnabled = computed(() => connection.value === "syncing" && props.cl
 }
 .tumult-pane-toolbar {
     display: flex;
-    gap: var(--space-1);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     padding: var(--space-1) var(--space-2);
     border-bottom: var(--border-width) solid var(--border-default);
+}
+.tumult-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
 }
 .tumult-roomlist-pane {
     display: flex;
