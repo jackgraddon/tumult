@@ -249,10 +249,11 @@ function signOut(): void {
     flex: 1;
     min-height: 0;
 }
+/* A fixed track: the sidebar never grows, so the page gets the rest. */
 .tumult-settings-nav {
     display: flex;
     flex-direction: column;
-    flex: 1 0 var(--settings-nav-width);
+    flex: 0 0 var(--settings-nav-width);
     overflow-y: auto;
     gap: var(--space-3);
     padding: var(--space-6) var(--space-3) var(--space-4);
@@ -262,7 +263,6 @@ function signOut(): void {
     display: flex;
     flex-direction: column;
     gap: var(--hairline);
-    margin-left: auto;
     width: min(100%, var(--settings-nav-width));
 }
 .tumult-settings-group {
@@ -308,7 +308,6 @@ function signOut(): void {
 .tumult-settings-nav-footer {
     display: flex;
     flex-direction: column;
-    margin-left: auto;
     width: min(100%, var(--settings-nav-width));
     padding-top: var(--space-2);
     border-top: var(--border-width) solid var(--border-default);
@@ -319,13 +318,13 @@ function signOut(): void {
 .tumult-settings-signout:hover {
     color: var(--settings-nav-item-danger);
 }
-/* Both sides share the slack equally, so on a wide screen the nav (right-
-   aligned in its half) and the page (left-aligned in its half) meet near the
-   centre instead of hugging the left edge. */
 .tumult-settings-main {
     flex: 1 1 var(--settings-content-min-width);
     min-width: 0;
     overflow-y: auto;
+    /* Horizontal padding is the small-view gutter: below the column's
+       max-width the margins collapse to 0 and this keeps content off the
+       edge. */
     padding: var(--space-6) var(--space-4);
 }
 
@@ -363,12 +362,14 @@ function signOut(): void {
     outline: var(--focus-ring-outline) solid var(--focus-ring-color);
 }
 [data-layout="narrow"] .tumult-settings-nav {
+    /* Narrow is one screen at a time: the page list takes the whole frame,
+       so the fixed wide-layout track must stretch here. */
+    flex: 1 1 auto;
     padding: var(--space-3);
 }
 [data-layout="narrow"] .tumult-settings-tabs,
 [data-layout="narrow"] .tumult-settings-nav-footer {
     width: 100%;
-    margin-left: 0;
 }
 [data-layout="narrow"] .tumult-settings-tab,
 [data-layout="narrow"] .tumult-settings-signout {
@@ -387,6 +388,8 @@ function signOut(): void {
     flex-direction: column;
     gap: var(--space-4);
     max-width: var(--settings-content-width);
+    /* Centred in the pane, whatever slack the pane has left. */
+    margin-inline: auto;
 }
 .tumult-settings-header {
     display: flex;
