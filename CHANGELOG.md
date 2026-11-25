@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.10](https://github.com/jackgraddon/tumult/compare/v0.4.9...v0.4.10) (2026-11-25)
+
+
+### Features
+
+* **activity:** sync own activity across devices ([a132b1c](https://github.com/jackgraddon/tumult/commit/a132b1cabedde8f0f7b3629c9b5b06b3a157a7ca))
+* **ui:** recall the last room per tab ([460645d](https://github.com/jackgraddon/tumult/commit/460645d5c14b7b52bbfb5196445924f4f3069a9d))
+
+
+### Bug Fixes
+
+* **desktop:** open a room before the profile-card assertion ([acee663](https://github.com/jackgraddon/tumult/commit/acee6638240d19f23b69db6c8306057dc04bdade))
+* **ui:** give rail tooltips a solid popover surface ([4fd2064](https://github.com/jackgraddon/tumult/commit/4fd2064edf8587a78af9d18938e8972776ab6b3d))
+* **ui:** give settings a fixed sidebar and a centred page ([42ce2a3](https://github.com/jackgraddon/tumult/commit/42ce2a37ba6b163c7c26571a941bfd2561f492b3))
+* **ui:** make plugin consent and controls honest ([6decf11](https://github.com/jackgraddon/tumult/commit/6decf118409e74beb619f761e70a9718d099e8e3))
+* **ui:** split room toolbar controls into two groups ([c5d4dce](https://github.com/jackgraddon/tumult/commit/c5d4dce8ca9acc9e58b7926a1e36a5e1adc7dbeb))
+* **ui:** stabilize virtualized timeline layout ([adbf671](https://github.com/jackgraddon/tumult/commit/adbf671f227cc7894f797b965c6197514c3e533c))
+* **ui:** stop own sends from looking unread ([080a941](https://github.com/jackgraddon/tumult/commit/080a94159ecd86255a660e9e6a52d078ebe51ec7))
+
 ### [0.4.9](https://github.com/jackgraddon/tumult/compare/v0.4.8...v0.4.9) (2026-11-24)
 
 
