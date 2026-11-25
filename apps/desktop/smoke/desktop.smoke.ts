@@ -630,6 +630,11 @@ describe("desktop app (fake mode)", { timeout: 180_000 }, () => {
     });
 
     it("mirrors Discord IPC SET_ACTIVITY through the shell's native feed into the user bar", async () => {
+        // A bare /dms now opens the empty pane, so the member list this test
+        // needs is not there until a room is opened explicitly.
+        await page.locator(".tumult-dmlist .tumult-room-item").first().click();
+        await page.locator(".tumult-member-main").first().waitFor({ timeout: 10_000 });
+
         // The second producer feeding the same native activity bridge: a
         // Discord-style app handshakes over our dedicated IPC endpoint and sends
         // SET_ACTIVITY. The first-party controller consumes the shared feed; the
