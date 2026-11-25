@@ -616,6 +616,33 @@ describe("browser smoke test (fake client)", () => {
         assert.ok(after.scrollTop > before.scrollTop, "the pinned tail did not follow the growth");
     });
 
+    it("keeps the tail pinned when the viewport itself changes height", async () => {
+        // Resizing the window (or expanding a voice stage / showing a topic)
+        // changes the scroller's height without changing the spacer or firing a
+        // scroll event. Watching only the spacer left the last messages below
+        // the fold until somebody posted again.
+        await page.goto(
+            `${origin}/g/${encodeURIComponent("!guild-b:fake")}/${encodeURIComponent("!b-7:fake")}`,
+            { waitUntil: "domcontentloaded" },
+        );
+        await page.waitForSelector(".tumult-row", { timeout: 10_000 });
+        await page.waitForTimeout(300);
+        const gap = (): Promise<number> =>
+            page.evaluate(() => {
+                const el = document.querySelector<HTMLElement>(".tumult-viewport");
+                if (!el) throw new Error("no timeline viewport");
+                return el.scrollHeight - el.scrollTop - el.clientHeight;
+            });
+        assert.ok((await gap()) <= 2, "opening the room did not start at the tail");
+        await page.setViewportSize({ width: VIEWPORT.width, height: VIEWPORT.height - 300 });
+        try {
+            await page.waitForTimeout(300);
+            assert.ok((await gap()) <= 2, "shrinking the viewport stranded the tail below the fold");
+        } finally {
+            await page.setViewportSize(VIEWPORT);
+        }
+    });
+
     it("renders the demo poll through an explicitly installed reference plugin", async () => {
         // The fake timeline carries a `cc.jackg.tumult.demo.poll` event per room.
         // Its `.tumult-poll` root only exists when the opted-in reference plugin
@@ -782,7 +809,24 @@ describe("browser smoke test (fake client)", () => {
         );
 
         await page.locator(".tumult-composer-input").press("Enter");
-        await page.locator(".tumult-row", { hasText: "small.txt" }).last().waitFor({ timeout: 10_000 });
+        const fileRow = page.locator(".tumult-row", { hasText: "small.txt" }).last();
+        await fileRow.waitFor({ timeout: 10_000 });
+        // A non-image media row reserves its Download strip before the resolver
+        // answers; the link's appearance must not grow the row under the reader.
+        const reserved = await fileRow.locator(".tumult-media-message-actions").evaluate((el) => {
+            const own = getComputedStyle(el);
+            const root = getComputedStyle(document.documentElement);
+            return {
+                minHeight: Number.parseFloat(own.minHeight),
+                token: Number.parseFloat(root.getPropertyValue("--control-sm")),
+                link: el.querySelector(".tumult-media-message-link") !== null,
+            };
+        });
+        assert.ok(reserved.link, "the file row never offered its download link");
+        assert.ok(
+            reserved.minHeight > 0 && reserved.minHeight === reserved.token,
+            `the download strip was not reserved from the theme token: ${JSON.stringify(reserved)}`,
+        );
         assert.equal(await page.locator(".tumult-row", { hasText: "huge.zip" }).count(), 0);
         // The refused file stays until the user removes it; Send has nothing left to take.
         assert.equal(await huge.count(), 1);

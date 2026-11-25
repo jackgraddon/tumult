@@ -4,7 +4,7 @@ import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { MessageView, RoomPowerLevelsView } from "@tumult/core";
 
 import { tryUseTheme } from "../theme/controls.ts";
-import { densityRowDelta } from "../theme/density.ts";
+import { estimateTimelineRowHeight } from "./rowEstimate.ts";
 import TimelineRow from "./TimelineRow.vue";
 import { unreadDividerIndex } from "./unreadDivider.ts";
 
@@ -104,25 +104,19 @@ const virtualizerOptions = computed(() => ({
     // the visible range jumps. The template already keys rows this way.
     getItemKey: (index: number) => rows.value[index]?.key ?? `empty-${index}`,
     getScrollElement: () => scroller.value,
-    estimateSize: (index: number) => {
-        const row = rows.value[index];
-        // Unmeasured estimate only: the divider's real height lands in
-        // measureElement, but start close so prepends don't jump. Density moves
-        // the message row's own vertical padding.
-        const delta = densityRowDelta(density.value);
-        if (row?.unreadBefore) return (row.dayLabel ? 64 : 92) + delta;
-        return (row?.dayLabel ? 40 : 68) + delta;
-    },
+    estimateSize: (index: number) =>
+        estimateTimelineRowHeight(
+            rows.value[index] ?? { grouped: false, dayLabel: null, unreadBefore: false },
+            density.value,
+        ),
     overscan: 10,
-    // Keep content that is ABOVE the reading position anchored when a row
-    // re-measures (an image finishes decoding, a reply is edited in, a pending
-    // decryption lands). The virtualizer's default skips this while scrolling
-    // backward, which is exactly when a layout shift is most disorienting.
-    // Rows spanning the fold are deliberately left alone: growing them below
-    // the top edge must not drag the reader down (#1218).
-    shouldAdjustScrollPositionOnItemSizeChange: (item: { end: number }, _delta: number, instance: { scrollOffset: number | null }) => {
-        return item.end <= (instance.scrollOffset ?? 0);
-    },
+    // Do not override `shouldAdjustScrollPositionOnItemSizeChange`: the
+    // installed virtual-core already distinguishes FIRST measurement (correct
+    // the estimate→actual delta for anything whose top is above the fold) from
+    // re-measurement (only anchor rows fully above the fold, and not while
+    // scrolling backward). Our old predicate dropped the first-measure branch
+    // and kept the backward one, so a fast scroll or a search jump could land
+    // off-target while an image decoded above it.
 }));
 const virtualizer = useVirtualizer(virtualizerOptions);
 
@@ -225,11 +219,15 @@ watch(
 
 // measureElement corrects the spacer after the estimate, so a jump to the
 // current bottom would otherwise leave the tail stranded above the real
-// bottom. React to the spacer's own height changing (that is the reliable
-// trigger — the virtualizer gives no reactive hook on measurement updates)
-// and re-jump while we still track the tail.
+// bottom. Watch the spacer (the reliable trigger for measurement updates) AND
+// the scroller itself: a topic/typing row appearing, a voice stage expanding,
+// a pane being toggled or a window resize changes the viewport height without
+// changing the spacer or firing `scroll`. Without that second observation the
+// pinned tail sits below the fold until the next message arrives. While the
+// reader is in history (trackingTail false), scrollTop is left alone on either
+// resize, so their reading position does not move.
 let pinQueued = false;
-function onSpacerResize(): void {
+function onLayoutResize(): void {
     if (!trackingTail.value || pinQueued) return;
     // One re-pin per batch: every entry asks for the same thing.
     pinQueued = true;
@@ -238,10 +236,11 @@ function onSpacerResize(): void {
         if (trackingTail.value) pinToBottom();
     });
 }
-const spacerObserver = new ResizeObserver(onSpacerResize);
-onScopeDispose(() => spacerObserver.disconnect());
+const layoutObserver = new ResizeObserver(onLayoutResize);
+onScopeDispose(() => layoutObserver.disconnect());
 onMounted(() => {
-    if (spacer.value) spacerObserver.observe(spacer.value);
+    if (spacer.value) layoutObserver.observe(spacer.value);
+    if (scroller.value) layoutObserver.observe(scroller.value);
 });
 // Search jump: center the hit once its row exists (jumpTo already paged it
 // into the window), then pulse it so the eye doesn't hunt for the row.

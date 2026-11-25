@@ -803,6 +803,27 @@ homeserver. A trap listed here has shipped broken at least once.
   SVG on purpose: only a natural size that differs from the event's `info` dims
   makes the measured box provable as the reservation rather than the decoded
   bytes.
+- Pre-measurement estimates ADD separators to the row; they do not replace it.
+  A day row measured 74px (44px row + 30px divider) and an unread row 66px, but
+  the old estimate said 40px and 92px (`rowEstimate.ts` now uses measured
+  bases: 44 ungrouped / 19 grouped, +30 day, +22 unread; density moves only the
+  ungrouped row's padding). Let installed virtual-core own
+  `shouldAdjustScrollPositionOnItemSizeChange`: it handles first measurement
+  (fixing the estimate→actual delta above the fold) and avoids backward-scroll
+  cascades; our old override kept the latter and dropped the former.
+- Observe the SCROLLER as well as the spacer for tail re-pins. A topic/typing
+  row, voice stage, pane toggle, phone layout or window resize changes the
+  scroller's height with no `scroll` event and no spacer resize; watching only
+  the spacer stranded 300–500px of tail below the fold (VERIFIED at 600px and
+  400px viewport heights). While reading history (`trackingTail` false), leave
+  `scrollTop` alone on either resize.
+- Non-image media reserves its Download strip from the first frame
+  (`min-height: var(--control-sm)`), and `<audio controls>` renders before `src`
+  exists. A resolved file link added 17px and an audio control strip appeared
+  wholesale after the resolver answered; both shifted the row under the reader.
+  Dims-less images still show the filename until decode: without `info.w/h`
+  there is no honest aspect ratio to reserve, so that swap remains a known
+  limitation rather than an invented box.
 
 ### Crypto
 

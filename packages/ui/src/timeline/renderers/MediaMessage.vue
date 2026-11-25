@@ -150,8 +150,12 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
         </template>
 
         <template v-else>
+            <!-- Render the player from the first frame, even before `src`
+                 exists. Inserting <audio controls> on resolution otherwise
+                 adds its whole control strip to the row while the reader is
+                 looking at it; an empty player keeps that box reserved. -->
             <video
-                v-if="kind === 'video' && (src || dims) && status !== 'failed'"
+                v-if="kind === 'video' && status !== 'failed'"
                 class="tumult-media-message-video"
                 :src="src ?? undefined"
                 :data-dims="dims ? 'true' : undefined"
@@ -160,9 +164,9 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
                 preload="metadata"
             ></video>
             <audio
-                v-else-if="kind === 'audio' && src"
+                v-else-if="kind === 'audio' && status !== 'failed'"
                 class="tumult-media-message-audio"
-                :src="src"
+                :src="src ?? undefined"
                 controls
                 preload="metadata"
             ></audio>
@@ -259,6 +263,16 @@ watch([() => props.message.content["url"], encryptedFile], load, { immediate: tr
     display: flex;
     align-items: center;
     gap: var(--space-2);
+}
+/*
+ * The Download link (or the failed-state note and Retry button) appears only
+ * once the resolver answers. Reserve that row from the first frame so a late
+ * result cannot grow the message and shift the timeline under the reader.
+ * `--control-sm` is a theme token, not a literal length, so custom themes keep
+ * control sizing in one place.
+ */
+.tumult-media-message-actions {
+    min-height: var(--control-sm);
 }
 .tumult-media-message-link {
     color: var(--accent);
