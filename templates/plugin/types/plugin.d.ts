@@ -33,7 +33,7 @@ import { Component, ComputedRef, InjectionKey, Ref } from 'vue';
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export declare const CONTRACT_VERSION = "1.9.0";
+export declare const CONTRACT_VERSION = "1.10.0";
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
 	unsubscribe(): void;
@@ -459,6 +459,11 @@ export interface OwnPresenceView {
 	presence: OwnPresenceState;
 	statusMessage: string | null;
 }
+interface OwnActivityView {
+	document: unknown;
+	updatedAt: number;
+	deviceId: string;
+}
 type MemberVerification = "verified" | "unverified" | "unknown";
 /** One member of a room, as the members pane needs it. */
 export interface MemberView {
@@ -648,6 +653,14 @@ export interface ChatClient {
 	 * reports us online to the server on its own.
 	 */
 	ownPresence: Subscribable<OwnPresenceView | null>;
+	/**
+	 * Our own rich activity, mirrored through user account data so changes
+	 * reach every device on this account on the next sync — unlike the public
+	 * `profileField()`, which is a cached REST read. `null` until account data
+	 * has been read; a snapshot with `document: null` is an explicit clear.
+	 * The document is untrusted JSON: validate it before rendering.
+	 */
+	ownActivity: Subscribable<OwnActivityView | null>;
 	/**
 	 * Snapshot feed for one room's timeline.
 	 *
@@ -1023,6 +1036,15 @@ export interface ChatClient {
 	 */
 	setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void>;
 	/**
+	 * Publish our own rich activity to the account's sync-fed channel. `null`
+	 * is an explicit clear (other devices stop showing it); no profile-field
+	 * support is required. The caller still writes the public profile field if
+	 * it wants other users to see the activity — this is the private, live
+	 * copy for the account's own devices. Rejects before `start()` or when the
+	 * homeserver refuses the write.
+	 */
+	setOwnActivity(document: unknown | null): Promise<void>;
+	/**
 	 * Whether this homeserver supports extended profile fields (MSC4133,
 	 * stable or unstable). Resolves `false` before `start()` and when the
 	 * server does not advertise it — `profileField()` then always reads null
@@ -1365,8 +1387,9 @@ export declare function useActivityRenderers(): ActivityRenderersRegistry;
  * ordinary status line). Watches only the fields some renderer asks for, so a
  * shell with no activity plugin subscribes to nothing and fetches nothing.
  * The members pane mounts rows only for what the virtualizer renders, so
- * fields are fetched for visible members only. A shell with no plugin still
- * reads the first-party field; a shell with no renderers at all reads nothing.
+ * fields are fetched for visible members only. Our own first-party field is
+ * read from the sync-fed account-data mirror, falling back to the profile field
+ * until account data answers. A shell with no renderers at all reads nothing.
  */
 export declare function useActivity(userId: () => string): ComputedRef<ResolvedActivity | null>;
 /** Props every settings tab receives. */

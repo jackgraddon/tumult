@@ -11,50 +11,19 @@
  * pulling a UI runtime into a pure test.
  */
 
-export const ACTIVITY_FIELD_KEY = "app.tumult.activity";
+import { ACTIVITY_FIELD_KEY } from "@tumult/core/contract";
+import type { ActivityButton, ActivityDocument, ActivityMedia, ActivityType } from "@tumult/core/contract";
+
+// The value lives in the contract so core can key its account-data mirror on
+// the same field; the parser and renderers keep importing it from here.
+export { ACTIVITY_FIELD_KEY };
+export type { ActivityButton, ActivityDocument, ActivityMedia, ActivityType };
 
 export const ACTIVITY_TYPES = ["playing", "listening", "watching", "custom"] as const;
-export type ActivityType = (typeof ACTIVITY_TYPES)[number];
-
-/**
- * One bounded image attached to an activity. Two at most: a large artwork and
- * an optional small badge, the way Discord draws rich presence. The URL is a
- * loadable `https:`/`http:`/`mxc:` URL (or a small `data:image/` URL); it is
- * always put in an `<img src>`, never in CSS, so hostile profile JSON cannot
- * inject markup or styles.
- */
-export interface ActivityMedia {
-    readonly url: string;
-    readonly label?: string;
-}
-
-/**
- * One outbound link shown as a button on the profile card. Discord allows at
- * most two, and only http(s) URLs: the label and URL are rendered straight into
- * an `<a>` by the card, so validation here is the line between a call to action
- * and a `javascript:` link in someone else's profile JSON.
- */
-export interface ActivityButton {
-    readonly label: string;
-    readonly url: string;
-}
 
 /** The structural shape of the shell's native feed — no plugin import needed. */
 export interface NativeActivityLike {
     type: string;
-    name: string;
-    details?: string;
-    state?: string;
-    emoji?: string;
-    startedAt?: number;
-    endsAt?: number;
-    media?: readonly ActivityMedia[];
-    buttons?: readonly ActivityButton[];
-}
-
-export interface ActivityDocument {
-    v: 1;
-    type: ActivityType;
     name: string;
     details?: string;
     state?: string;

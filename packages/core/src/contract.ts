@@ -14,7 +14,7 @@
  * against this at install (see `@tumult/ui`'s `checkManifestCompatibility`),
  * so it must stay a value module: nothing in it may import the SDK.
  */
-export const CONTRACT_VERSION = "1.9.0";
+export const CONTRACT_VERSION = "1.10.0";
 
 /** Cancels a subscription created by {@link Subscribable.subscribe}. */
 export interface Subscription {
@@ -552,6 +552,53 @@ export interface OwnPresenceView {
     statusMessage: string | null;
 }
 
+/** The public extended-profile field holding the rich activity document. */
+export const ACTIVITY_FIELD_KEY = "app.tumult.activity";
+
+/** The kinds of activity Tumult understands. Plugins may not add new ones. */
+export type ActivityType = "playing" | "listening" | "watching" | "custom";
+
+/** One bounded image in an activity document. */
+export interface ActivityMedia {
+    readonly url: string;
+    readonly label?: string;
+}
+
+/** One outbound link on an activity card. */
+export interface ActivityButton {
+    readonly label: string;
+    readonly url: string;
+}
+
+/**
+ * The one JSON document written to {@link ACTIVITY_FIELD_KEY}. Plain data only:
+ * the UI owns validation (URL schemes, caps, progress window) before rendering.
+ */
+export interface ActivityDocument {
+    v: 1;
+    type: ActivityType;
+    name: string;
+    details?: string;
+    state?: string;
+    emoji?: string;
+    startedAt?: number;
+    endsAt?: number;
+    media?: readonly ActivityMedia[];
+    buttons?: readonly ActivityButton[];
+}
+
+/**
+ * Our own activity as a SYNC-FED snapshot, mirrored from account data so every
+ * device signed into this account sees changes without polling the profile
+ * field. `document: null` is an explicit clear; the whole `null` snapshot means
+ * "no account data yet". The document is raw JSON — validate before rendering.
+ */
+export interface OwnActivityView {
+    document: unknown;
+    updatedAt: number;
+    deviceId: string;
+}
+
 /**
  * Cross-signing trust in a member's identity. `verified`: we (or a device we
  * trust) signed their current identity. `unverified`: we know their identity
@@ -767,6 +814,14 @@ export interface ChatClient {
      * reports us online to the server on its own.
      */
     ownPresence: Subscribable<OwnPresenceView | null>;
+    /**
+     * Our own rich activity, mirrored through user account data so changes
+     * reach every device on this account on the next sync — unlike the public
+     * `profileField()`, which is a cached REST read. `null` until account data
+     * has been read; a snapshot with `document: null` is an explicit clear.
+     * The document is untrusted JSON: validate it before rendering.
+     */
+    ownActivity: Subscribable<OwnActivityView | null>;
     /**
      * Snapshot feed for one room's timeline.
      *
@@ -1133,6 +1188,15 @@ export interface ChatClient {
      * bad value).
      */
     setOwnPresence(presence: OwnPresenceState, statusMessage?: string): Promise<void>;
+    /**
+     * Publish our own rich activity to the account's sync-fed channel. `null`
+     * is an explicit clear (other devices stop showing it); no profile-field
+     * support is required. The caller still writes the public profile field if
+     * it wants other users to see the activity — this is the private, live
+     * copy for the account's own devices. Rejects before `start()` or when the
+     * homeserver refuses the write.
+     */
+    setOwnActivity(document: unknown | null): Promise<void>;
     /**
      * Whether this homeserver supports extended profile fields (MSC4133,
      * stable or unstable). Resolves `false` before `start()` and when the

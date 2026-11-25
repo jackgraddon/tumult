@@ -1,7 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { defineComponent } from "vue";
-import type { ChatClient, ConnectionState, OwnPresenceState, Subscribable, Subscription } from "@tumult/core";
+import type {
+    ChatClient,
+    ConnectionState,
+    OwnActivityView,
+    OwnPresenceState,
+    Subscribable,
+    Subscription,
+} from "@tumult/core";
 
 import { ActivityRenderersRegistry, type ActivityRenderer } from "../src/members/activity.ts";
 import { ActivityController } from "../src/activity/controller.ts";
@@ -109,28 +116,51 @@ function nativeFeed(initial: NativeActivity | null): NativeActivityFeed & { set(
 interface Harness {
     client: ChatClient;
     field: Feed<unknown>;
+    ownActivity: Feed<OwnActivityView | null>;
     connection: Feed<ConnectionState>;
     presence: Feed<{ presence: OwnPresenceState; statusMessage?: string } | null>;
     native: ReturnType<typeof nativeFeed>;
     presenceWrites: Array<string | undefined>;
+    ownWrites: Array<unknown>;
     setSupported(value: boolean): void;
+    /** A write from another device on this account, as Sync would deliver it. */
+    remoteActivity(document: unknown | null): void;
 }
 
-function harness(initialField: unknown = null, initialNative: NativeActivity | null = null): Harness {
+function harness(
+    initialField: unknown = null,
+    initialNative: NativeActivity | null = null,
+    initialOwn: unknown = null,
+): Harness {
     // Core's profileField() is lazy and does NOT deliver on subscribe; the
     // native feed does. The harness deliberately keeps that asymmetry.
     const field = new Feed(initialField, false);
+    const ownActivity = new Feed<OwnActivityView | null>(null, false);
     const connection = new Feed<ConnectionState>("syncing");
     const presence = new Feed<{ presence: OwnPresenceState; statusMessage?: string } | null>({ presence: "online" });
     const presenceWrites: Array<string | undefined> = [];
+    const ownWrites: Array<unknown> = [];
+    let ownStamp = 0;
     let supported = true;
+    const publishOwn = (document: unknown | null, deviceId: string): void => {
+        ownStamp += 1;
+        ownActivity.set({ document: document ?? null, updatedAt: ownStamp, deviceId });
+    };
+    if (initialOwn !== null) publishOwn(initialOwn, "OTHERDEVICE");
     const client = {
         connection,
+        session: { get: () => ({ userId: "@alice-a:example.com", deviceId: "LOCALDEVICE" }) },
+        ownActivity,
         profileFieldsSupported: () => Promise.resolve(supported),
         profileField: () => field,
         setProfileField: (key: string, value: unknown) => {
             assert.equal(key, ACTIVITY_FIELD_KEY);
             field.set(value ?? null);
+            return Promise.resolve();
+        },
+        setOwnActivity: (document: unknown | null) => {
+            ownWrites.push(document ?? null);
+            publishOwn(document, "LOCALDEVICE");
             return Promise.resolve();
         },
         ownPresence: presence,
@@ -143,13 +173,16 @@ function harness(initialField: unknown = null, initialNative: NativeActivity | n
     return {
         client,
         field,
+        ownActivity,
         connection,
         presence,
         native: nativeFeed(initialNative),
         presenceWrites,
+        ownWrites,
         setSupported: (value) => {
             supported = value;
         },
+        remoteActivity: (document) => publishOwn(document, "OTHERDEVICE"),
     };
 }
 
@@ -400,6 +433,8 @@ describe("ActivityController precedence", () => {
         await tick();
         assert.equal(controller.supported.value, true);
         assert.equal(parseActivity(h.field.get())?.name, "Queued game", "the queued document is written once support arrives");
+        assert.equal(h.ownWrites.length, 1, "the account-data copy is retried exactly once");
+        assert.equal(parseActivity(h.ownWrites[0])?.name, "Queued game");
         controller.stop();
     });
 
@@ -418,6 +453,76 @@ describe("ActivityController precedence", () => {
         await tick();
         assert.equal(parseActivity(h.field.get())?.name, "Startup song");
         assert.equal(controller.source.value, "native");
+        controller.stop();
+    });
+
+    it("adopts another device's activity without echoing it back", async () => {
+        const h = harness();
+        const controller = new ActivityController(h.client, h.native);
+        await controller.start("@alice-a:example.com");
+        await tick();
+
+        h.remoteActivity({ v: 1, type: "listening", name: "Remote album" });
+        await tick();
+        await tick();
+
+        assert.equal(controller.draft.value?.name, "Remote album");
+        assert.equal(controller.current.value?.name, "Remote album");
+        assert.deepEqual(h.ownWrites, [], "an incoming sync echo is not written back to the account");
+        controller.stop();
+    });
+
+    it("restores the last server-side document when native clears", async () => {
+        const h = harness(null, null, { v: 1, type: "watching", name: "Remote film" });
+        const controller = new ActivityController(h.client, h.native);
+        await controller.start("@alice-a:example.com");
+        await tick();
+        assert.equal(controller.draft.value?.name, "Remote film");
+
+        h.native.set({ type: "playing", name: "Native game" });
+        await tick();
+        await tick();
+        assert.equal(parseActivity(h.field.get())?.name, "Native game", "native still wins while it is live");
+
+        h.native.set(null);
+        await tick();
+        await tick();
+        assert.equal(parseActivity(h.field.get())?.name, "Remote film", "the other device's document comes back");
+        controller.stop();
+    });
+
+    it("remembers an explicit clear from another device as the restore point", async () => {
+        const h = harness();
+        const controller = new ActivityController(h.client, h.native);
+        await controller.start("@alice-a:example.com");
+        await controller.setManual({ type: "playing", name: "Local game" });
+        await tick();
+
+        h.remoteActivity(null);
+        await tick();
+        assert.equal(controller.draft.value, null, "an explicit clear is not treated as 'no answer yet'");
+
+        h.native.set({ type: "playing", name: "Native game" });
+        await tick();
+        h.native.set(null);
+        await tick();
+        await tick();
+        assert.equal(h.field.get(), null, "the native clear does not resurrect the stale local draft");
+        controller.stop();
+    });
+
+    it("retries an account-data write queued before startClient()", async () => {
+        const h = harness();
+        h.connection.set("starting");
+        const controller = new ActivityController(h.client, h.native);
+        await controller.start("@alice-a:example.com");
+        await controller.setManual({ type: "listening", name: "Queued song" });
+        assert.deepEqual(h.ownWrites, [], "account data cannot be written before the client starts");
+
+        h.connection.set("syncing");
+        await tick();
+        await tick();
+        assert.equal(parseActivity(h.ownWrites.at(-1))?.name, "Queued song");
         controller.stop();
     });
 });

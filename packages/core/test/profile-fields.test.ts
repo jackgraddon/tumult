@@ -1,6 +1,7 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
+import { ACTIVITY_FIELD_KEY } from "../src/contract.ts";
 import { createFakeChatClient } from "../src/fake/index.ts";
 import { assertProfileFieldKey, ProfileFieldStore } from "../src/rooms/profile-fields.ts";
 
@@ -96,6 +97,60 @@ describe("ProfileFieldStore", () => {
         await tick();
         assert.deepEqual(feed.get(), { v: 1 });
         assert.equal(reads.length, 0);
+    });
+});
+
+describe("ProfileFieldStore polling", () => {
+    it("refreshes a short-TTL field while watched, and stops on unsubscribe", async () => {
+        mock.timers.enable({ apis: ["setInterval"] });
+        try {
+            const clock = { now: 0 };
+            const reads: number[] = [];
+            const fields = new ProfileFieldStore(
+                async () => {
+                    reads.push(clock.now);
+                    return reads.length;
+                },
+                {
+                    ttlMs: 1000,
+                    ttlFor: (key) => (key === ACTIVITY_FIELD_KEY ? 15 : 1000),
+                    pollIntervalFor: (key) => (key === ACTIVITY_FIELD_KEY ? 10 : null),
+                    now: () => clock.now,
+                },
+            );
+            const flush = async (): Promise<void> => {
+                await Promise.resolve();
+                await Promise.resolve();
+            };
+            const feed = fields.feed("@alice:example.com", ACTIVITY_FIELD_KEY);
+            const subscription = feed.subscribe(() => {});
+            await flush();
+            assert.deepEqual(reads, [0]);
+
+            clock.now = 10;
+            mock.timers.tick(10);
+            await flush();
+            assert.deepEqual(reads, [0, 10], "a watched activity field refetches on its poll interval");
+
+            clock.now = 11;
+            mock.timers.tick(10);
+            await flush();
+            assert.deepEqual(reads, [0, 10], "a poll inside the short TTL does not hit the server");
+
+            clock.now = 26;
+            mock.timers.tick(10);
+            await flush();
+            assert.deepEqual(reads, [0, 10, 26]);
+            assert.equal(feed.get(), 3);
+
+            subscription.unsubscribe();
+            clock.now = 100;
+            mock.timers.tick(100);
+            await flush();
+            assert.deepEqual(reads, [0, 10, 26], "an unwatched field stops polling");
+        } finally {
+            mock.timers.reset();
+        }
     });
 });
 

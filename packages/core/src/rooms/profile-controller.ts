@@ -1,4 +1,4 @@
-import type { ProfileView, Subscribable } from "../contract.ts";
+import { ACTIVITY_FIELD_KEY, type ProfileView, type Subscribable } from "../contract.ts";
 import type { ClientContext } from "../client-context.ts";
 import { Observable } from "../observable.ts";
 import { fallbackName, readProfile, writeProfile } from "./profile.ts";
@@ -10,6 +10,15 @@ import { assertProfileFieldKey, ProfileFieldStore } from "./profile-fields.ts";
  * the support check and field cache are reset on stop ({@link resetForStop}),
  * since a different session may land on a different server.
  */
+/**
+ * Activity is the one field that changes while someone is looking at a member
+ * row. The homeserver here has MSC4429 (live profile updates in sync) off and
+ * sliding sync has no profile extension, so visible rows poll it on a short
+ * interval. Every other field keeps the cheap five-minute cache.
+ */
+const FIELD_TTL_MS = 5 * 60_000;
+const ACTIVITY_FIELD_TTL_MS = 15_000;
+
 export class ProfileController {
     public readonly feed = new Observable<ProfileView | null>(null);
 
@@ -25,7 +34,9 @@ export class ProfileController {
     public constructor(ctx: ClientContext) {
         this.ctx = ctx;
         this.fields = new ProfileFieldStore((userId, key) => this.readField(userId, key), {
-            ttlMs: 5 * 60_000,
+            ttlMs: FIELD_TTL_MS,
+            ttlFor: (key) => (key === ACTIVITY_FIELD_KEY ? ACTIVITY_FIELD_TTL_MS : FIELD_TTL_MS),
+            pollIntervalFor: (key) => (key === ACTIVITY_FIELD_KEY ? ACTIVITY_FIELD_TTL_MS : null),
         });
     }
 
@@ -108,6 +119,15 @@ export class ProfileController {
         if (!client) return undefined;
         if (!(await this.fieldsSupported())) return null;
         try {
+            // The activity field must be a live read. getExtendedProfileProperty()
+            // prefers the SDK's sync-store cache, and with no MSC4429 profile
+            // extension that cache never refreshes — another device's change
+            // would be pinned at the first value forever. The full-profile
+            // endpoint explicitly bypasses that cache (SDK doc comment).
+            if (key === ACTIVITY_FIELD_KEY) {
+                const profile = await client.getExtendedProfile(userId);
+                return profile[key] ?? null;
+            }
             return (await client.getExtendedProfileProperty(userId, key)) ?? null;
         } catch (error) {
             if ((error as { httpStatus?: number }).httpStatus === 404) return null;

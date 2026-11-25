@@ -114,8 +114,9 @@ function onMirror(event: Event): void {
     <section class="tumult-settings-section">
         <h3 class="tumult-settings-heading">Activity</h3>
         <p class="tumult-settings-note">
-            Your activity appears beside your name and on your profile card. It is stored
-            in an extended profile field, so people who share a room with you can see it.
+            Your activity appears beside your name and on your profile card. Your own
+            devices get it on the next sync; people who share a room with you see the
+            public profile field within about 15 seconds.
         </p>
 
         <p v-if="activity.native.value" class="tumult-activity-notice" role="status">

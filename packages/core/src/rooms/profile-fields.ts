@@ -33,6 +33,8 @@ interface Entry {
     /** When the last real answer landed; 0 = never (or invalidated). */
     fetchedAt: number;
     inflight: boolean;
+    /** Short-TTL keys refresh while watched, not just on the next watch. */
+    timer: ReturnType<typeof setInterval> | null;
 }
 
 /**
@@ -51,13 +53,30 @@ export class ProfileFieldStore {
     private readonly entries = new Map<string, Entry>();
     private readonly read: ProfileFieldRead;
     private readonly ttlMs: number;
+    private readonly ttlFor: (key: string) => number;
+    /**
+     * Keys whose values change while a row is on screen get a timer while
+     * watched: `refreshIfStale` alone only runs when a NEW subscriber arrives,
+     * which leaves an already-open member row stale forever.
+     */
+    private readonly pollIntervalFor: ((key: string) => number | null) | undefined;
     private readonly now: () => number;
     /** Bumped by clear(): a read started before it must not land after it. */
     private generation = 0;
 
-    public constructor(read: ProfileFieldRead, options: { ttlMs: number; now?: () => number }) {
+    public constructor(
+        read: ProfileFieldRead,
+        options: {
+            ttlMs: number;
+            now?: () => number;
+            ttlFor?: (key: string) => number;
+            pollIntervalFor?: (key: string) => number | null;
+        },
+    ) {
         this.read = read;
         this.ttlMs = options.ttlMs;
+        this.ttlFor = options.ttlFor ?? (() => this.ttlMs);
+        this.pollIntervalFor = options.pollIntervalFor;
         this.now = options.now ?? Date.now;
     }
 
@@ -65,12 +84,23 @@ export class ProfileFieldStore {
         const id = `${userId}\u0000${key}`;
         let entry = this.entries.get(id);
         if (!entry) {
+            const interval = this.pollIntervalFor?.(key) ?? null;
             const created: Entry = {
                 feed: new Observable<unknown>(null, {
-                    onFirstSubscribe: () => this.refreshIfStale(userId, key, created),
+                    onFirstSubscribe: () => {
+                        this.refreshIfStale(userId, key, created);
+                        if (interval !== null) {
+                            created.timer = setInterval(() => this.refreshIfStale(userId, key, created), interval);
+                        }
+                    },
+                    onLastUnsubscribe: () => {
+                        if (created.timer !== null) clearInterval(created.timer);
+                        created.timer = null;
+                    },
                 }),
                 fetchedAt: 0,
                 inflight: false,
+                timer: null,
             };
             this.entries.set(id, created);
             entry = created;
@@ -90,6 +120,8 @@ export class ProfileFieldStore {
     public clear(): void {
         this.generation++;
         for (const entry of this.entries.values()) {
+            if (entry.timer !== null) clearInterval(entry.timer);
+            entry.timer = null;
             entry.fetchedAt = 0;
             entry.inflight = false;
             entry.feed.set(null);
@@ -98,7 +130,7 @@ export class ProfileFieldStore {
 
     private refreshIfStale(userId: string, key: string, entry: Entry): void {
         if (entry.inflight) return;
-        if (entry.fetchedAt !== 0 && this.now() - entry.fetchedAt < this.ttlMs) return;
+        if (entry.fetchedAt !== 0 && this.now() - entry.fetchedAt < this.ttlFor(key)) return;
         entry.inflight = true;
         const generation = this.generation;
         void this.read(userId, key).then(

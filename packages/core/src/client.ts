@@ -31,6 +31,7 @@ import type {
     LoginParams,
     MemberView,
     MessageView,
+    OwnActivityView,
     NotificationPermission,
     NotificationState,
     OwnPresenceState,
@@ -59,6 +60,7 @@ import { redactEvent } from "./rooms/redact.ts";
 import { searchRoomHistory } from "./rooms/search.ts";
 import { toggleReaction } from "./rooms/reactions.ts";
 import { OwnPresenceController } from "./rooms/own-presence-controller.ts";
+import { OwnActivityController } from "./activity/own-activity-controller.ts";
 import { ProfileController } from "./rooms/profile-controller.ts";
 import { updateRoomSettings as writeRoomSettings } from "./rooms/settings.ts";
 import {
@@ -169,6 +171,8 @@ export class MatrixChatClient implements ChatClient {
     private readonly profileCtl: ProfileController;
     /** Own presence/status + its heartbeat (rooms/own-presence-controller.ts). */
     private readonly ownPresenceCtl: OwnPresenceController;
+    /** Own rich activity, sync-fed through account data (activity/). */
+    private readonly ownActivityCtl: OwnActivityController;
     /** Security feed, recovery setup/restore, devices (crypto/controller.ts). */
     private readonly cryptoCtl: CryptoController;
     /** The published room list, its warm seed and shell cache (rooms/room-list.ts). */
@@ -243,6 +247,7 @@ export class MatrixChatClient implements ChatClient {
         });
         this.profileCtl = new ProfileController(this.ctx);
         this.ownPresenceCtl = new OwnPresenceController(this.ctx);
+        this.ownActivityCtl = new OwnActivityController(this.ctx);
         this.cryptoCtl = new CryptoController(this.ctx, { rebuildTimelines: () => this.timelines?.rebuildAll() });
         this.roomList = new RoomListPublisher(this.ctx);
     }
@@ -297,6 +302,10 @@ export class MatrixChatClient implements ChatClient {
 
     public get ownPresence(): Subscribable<OwnPresenceView | null> {
         return this.ownPresenceCtl.feed;
+    }
+
+    public get ownActivity(): Subscribable<OwnActivityView | null> {
+        return this.ownActivityCtl.feed;
     }
 
     public async login(params: LoginParams): Promise<void> {
@@ -526,6 +535,10 @@ export class MatrixChatClient implements ChatClient {
             // now, re-assert the user's choice, keep it honest on a heartbeat
             // (registers its UserEvent.Presence listener here, as before).
             this.ownPresenceCtl.start(client);
+            // Own activity is account data: read the cached event and listen for
+            // changes from this OR another device on the account. No profile
+            // support check is needed for this private, sync-fed copy.
+            this.ownActivityCtl.start(client);
             this._media = new MediaResolver(client);
             this._notifications = new NotificationTracker(client);
             this._notifications.subscribe(() => this.publishNotifications());
@@ -663,6 +676,7 @@ export class MatrixChatClient implements ChatClient {
         this._rangeManager = null;
         this.cryptoCtl.clearTimers();
         this.ownPresenceCtl.stop();
+        this.ownActivityCtl.stop();
         this.selfPresenceSubscription?.unsubscribe();
         this.selfPresenceSubscription = null;
         this.matrix = null;
@@ -942,6 +956,10 @@ export class MatrixChatClient implements ChatClient {
         return this.ownPresenceCtl.set(presence, statusMessage);
     }
 
+    public setOwnActivity(document: unknown | null): Promise<void> {
+        return this.ownActivityCtl.set(document);
+    }
+
     public profileFieldsSupported(): Promise<boolean> {
         return this.profileCtl.fieldsSupported();
     }
@@ -1190,6 +1208,7 @@ export class MatrixChatClient implements ChatClient {
         this.sessionState.set(null);
         this.profileCtl.feed.set(null);
         this.ownPresenceCtl.feed.set(null);
+        this.ownActivityCtl.feed.set(null);
         this.roomList.feed.set([]);
     }
 

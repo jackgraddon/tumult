@@ -81,6 +81,8 @@ export const CLIENT_RULES: Readonly<Record<keyof ChatClient, BridgeRule>> = {
     profileFieldsSupported: "deny",
     profile: "deny",
     ownPresence: "deny",
+    ownActivity: "deny",
+    setOwnActivity: "deny",
     profileField: "deny",
     // Room lifecycle and navigation.
     createSpace: "deny",

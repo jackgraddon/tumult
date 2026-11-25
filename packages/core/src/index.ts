@@ -23,6 +23,7 @@ export type {
     MemberView,
     NotificationPermission,
     NotificationState,
+    OwnActivityView,
     OwnPresenceState,
     OwnPresenceView,
     PresenceState,

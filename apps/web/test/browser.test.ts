@@ -945,6 +945,40 @@ describe("browser smoke test (fake client)", () => {
         await dialog.waitFor({ state: "hidden", timeout: 5_000 });
     });
 
+    it("follows another device's activity from account data without a reload", async () => {
+        // The fake-only hook stands in for Sync's account-data extension. The
+        // user bar reads the sync-fed mirror, not the cached public field, so
+        // this must land while the page stays open.
+        const line = page.locator(".tumult-userbar .tumult-activity--self");
+        await page.evaluate(async () => {
+            const fake = (
+                window as unknown as {
+                    __tumultFake?: { simulateRemoteActivity(document: unknown | null): Promise<void> };
+                }
+            ).__tumultFake;
+            if (!fake) throw new Error("fake test hook missing");
+            await fake.simulateRemoteActivity({
+                v: 1,
+                type: "listening",
+                name: "Remote radio",
+                details: "From another device",
+            });
+        });
+        await line.waitFor({ timeout: 10_000 });
+        assert.match(await line.innerText(), /Listening to Remote radio/);
+        assert.match(await line.innerText(), /From another device/);
+
+        await page.evaluate(async () => {
+            const fake = (
+                window as unknown as {
+                    __tumultFake?: { simulateRemoteActivity(document: unknown | null): Promise<void> };
+                }
+            ).__tumultFake;
+            await fake?.simulateRemoteActivity(null);
+        });
+        await line.waitFor({ state: "detached", timeout: 10_000 });
+    });
+
     it("clicks a member row to open a read-only profile card, closed by Escape", async () => {
         // The fake seeds Alice's `cc.jackg.tumult.profile-showcase` field; the
         // fake-only `profileShowcase` plugin draws it as a block on her card.

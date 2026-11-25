@@ -12,7 +12,7 @@
 
 import { reportError } from "@tumult/core/errors";
 import { inject, ref, shallowRef, type InjectionKey, type Ref, type ShallowRef } from "vue";
-import type { ChatClient, OwnPresenceState, Subscription } from "@tumult/core";
+import type { ChatClient, OwnActivityView, OwnPresenceState, Subscription } from "@tumult/core";
 
 import type { Disposable, NativeActivityFeed } from "../plugins/types.ts";
 import {
@@ -83,17 +83,34 @@ export class ActivityController {
     private userId: string | null = null;
     private subscriptions: Disposable[] = [];
     private profileSubscription: Subscription | null = null;
+    private ownSubscription: Subscription | null = null;
     private chain: Promise<void> = Promise.resolve();
     private supportCheck: Promise<void> | null = null;
     private generation = 0;
     private stopped = true;
     /**
-     * A document we intend to publish but could not yet — profile fields are
-     * unavailable before `startClient()`. Once support arrives it is written,
-     * unless the field meanwhile showed an explicit clear from another client.
+     * A document we intend to publish but could not yet. `fieldDirty` waits on
+     * MSC4133 support; `accountDirty` waits on `startClient()`. Both are
+     * retried when their precondition arrives instead of being dropped.
      */
     private fieldDirty = false;
+    private accountDirty = false;
+    /** The last document we tried to make canonical on both channels. */
     private lastPublished: ActivityDocument | null = null;
+    /**
+     * The account-data document we consider canonical. `undefined` means no
+     * answer yet; `null` is an explicit clear. It wins over the slower public
+     * profile field for this user's own display, and is set to the intended
+     * document before a local write so that write's field echo is not read
+     * back as a stale remote value.
+     */
+    private ownActivityDoc: ActivityDocument | null | undefined;
+    /** The last document observed from ANOTHER device on this account. */
+    private remoteDocument: ActivityDocument | null | undefined;
+    /** Writes queued but not settled; dirty retries must not duplicate them. */
+    private pendingPublishes = 0;
+    /** Our device id, used to tell a Sync echo of our own write from a remote one. */
+    private ownDeviceId = "";
     /** `undefined` means no mirror is in flight; `null` means a clear is. */
     private pendingMirror: string | null | undefined;
     private lastMirrored: string | null = null;
@@ -123,6 +140,11 @@ export class ActivityController {
         // made now would answer false and stay false forever.
         this.supported.value = null;
         this.fieldDirty = false;
+        this.accountDirty = false;
+        this.ownActivityDoc = undefined;
+        this.remoteDocument = undefined;
+        this.pendingPublishes = 0;
+        this.ownDeviceId = this.client.session.get()?.deviceId ?? "";
         this.pendingMirror = undefined;
         const storedPrefs = readJson(this.userKey + PREFS_KEY);
         if (storedPrefs && typeof storedPrefs === "object") {
@@ -150,17 +172,37 @@ export class ActivityController {
                 previous = next;
                 this.native.value = next;
                 if (!first || next) {
-                    if (next) void this.publish(next, "native");
-                    else void this.publish(this.draft.value, this.draft.value ? "manual" : "none");
+                    if (next) {
+                        void this.publish(next, "native");
+                    } else {
+                        // A manual edit made on another device is the last
+                        // server-side document we saw; restore that, and only
+                        // fall back to this device's draft when there was none.
+                        const restore = this.remoteDocument !== undefined ? this.remoteDocument : this.draft.value;
+                        void this.publish(restore, restore ? "manual" : "none");
+                    }
                 }
             }),
         );
 
+        // The private, sync-fed copy is authoritative for our OWN display: it
+        // reaches this device from another device on the next sync, while the
+        // public field is a cached REST read. Subscribe before the connection
+        // check so a value already in the SDK's store is adopted immediately.
+        const ownFeed = this.client.ownActivity;
+        this.reconcileOwnActivity(ownFeed.get(), generation, userId);
+        this.ownSubscription = ownFeed.subscribe((value) => {
+            this.reconcileOwnActivity(value, generation, userId);
+        });
+
         // Profile-field support becomes true only once the Matrix client is
-        // started. The connection feed is the honest signal for when to retry;
-        // a transient false must not disable publishing for the whole session.
+        // started. The connection feed is also the honest signal for retrying
+        // an account-data write that arrived too early.
         const connection = this.client.connection.subscribe(() => {
-            void this.ensureSupport(generation, userId);
+            // Wait for the support answer before retrying: a queued manual
+            // write must be published to BOTH channels in one pass, not write
+            // account data while support is still unknown and field later.
+            void this.ensureSupport(generation, userId).then(() => this.flushDirty(generation, userId));
         });
         this.subscriptions.push(() => connection.unsubscribe());
         void this.ensureSupport(generation, userId);
@@ -208,6 +250,43 @@ export class ActivityController {
         });
     }
 
+    /**
+     * Account data is the private, sync-fed copy for this account. A write we
+     * made comes back through Sync too; matching device + stamp is our echo and
+     * must not be mistaken for a manual edit from another device.
+     */
+    private reconcileOwnActivity(view: OwnActivityView | null, generation: number, userId: string): void {
+        if (this.stale(generation, userId)) return;
+        if (!view) {
+            // stop()/logout resets the feed. Keep the last document as the
+            // restore candidate; only the feed's presence is gone.
+            this.ownActivityDoc = undefined;
+            return;
+        }
+        const parsed = parseActivity(view.document);
+        // The writer's device id is the honest echo marker: Sync publishes our
+        // setOwnActivity() call back to us, but another device's write is the
+        // one that should become the restore point after native activity ends.
+        const remote = this.ownDeviceId === "" || view.deviceId !== this.ownDeviceId;
+        if (remote) this.remoteDocument = parsed;
+        this.ownActivityDoc = parsed;
+        if (this.native.value) {
+            // Native still wins, including against a manual edit from another
+            // device. Force a rewrite so the other device learns that too.
+            if (!sameActivity(parsed, this.native.value)) void this.publish(this.native.value, "native", true);
+            return;
+        }
+        this.adoptDocument(parsed, generation, false);
+    }
+
+    /** Retry a write that was queued before the client (or profile support) was ready. */
+    private flushDirty(generation: number, userId: string): void {
+        if (this.stale(generation, userId) || (!this.fieldDirty && !this.accountDirty)) return;
+        if (this.pendingPublishes > 0) return;
+        const document = this.native.value ?? this.draft.value;
+        void this.publish(document, this.native.value ? "native" : document ? "manual" : "none", true);
+    }
+
     private reconcileField(parsed: ActivityDocument | null, generation: number): void {
         if (this.stopped || this.generation !== generation) return;
         if (this.native.value) {
@@ -217,22 +296,45 @@ export class ActivityController {
             if (!sameActivity(parsed, this.native.value)) void this.publish(this.native.value, "native", true);
             return;
         }
+        // Account data reaches our own devices on sync; the public field can
+        // be minutes stale. Once account data has answered, it is the source
+        // of truth and the field is rewritten if another surface lags behind.
+        // While a write is already queued its field echo has not landed yet —
+        // that is not a lag to correct, but the same write in flight.
+        if (
+            this.pendingPublishes === 0 &&
+            this.ownActivityDoc !== undefined &&
+            !sameActivity(parsed, this.ownActivityDoc)
+        ) {
+            void this.publish(this.ownActivityDoc, this.ownActivityDoc ? "manual" : "none", true);
+            return;
+        }
         // A dirty draft was accepted locally while profile fields were still
         // unavailable. An empty field is not an explicit clear in that case.
         if (this.fieldDirty && this.draft.value && !parsed) {
-            void this.publish(this.draft.value, "manual");
+            if (this.pendingPublishes === 0) void this.publish(this.draft.value, "manual");
             return;
         }
-        const previousPublished = this.lastPublished;
-        if (!sameActivity(parsed, this.draft.value)) {
-            this.draft.value = parsed;
-            writeJson(this.userKey + DRAFT_KEY, parsed);
+        // A public-field read is not a cross-device signal: our own writes echo
+        // here too. It only refreshes the draft; `remoteDocument` is reserved
+        // for account data written by a different device.
+        this.adoptDocument(parsed, generation, true);
+    }
+
+    /** Adopt a server-side document as this user's manual draft and display. */
+    private adoptDocument(document: ActivityDocument | null, generation: number, fieldPublished: boolean): void {
+        const previous = this.current.value;
+        if (!sameActivity(document, this.draft.value)) {
+            this.draft.value = document;
+            writeJson(this.userKey + DRAFT_KEY, document);
         }
-        this.lastPublished = parsed;
-        this.fieldDirty = false;
-        this.current.value = parsed;
-        this.source.value = parsed ? "manual" : "none";
-        if (!sameActivity(parsed, previousPublished)) this.queueMirror(parsed, generation);
+        if (fieldPublished) {
+            this.lastPublished = document;
+            this.fieldDirty = false;
+        }
+        this.current.value = document;
+        this.source.value = document ? "manual" : "none";
+        if (!sameActivity(document, previous)) this.queueMirror(document, generation);
     }
 
     /** Tear down this user's subscriptions; a later start reloads their draft. */
@@ -243,6 +345,8 @@ export class ActivityController {
         this.subscriptions = [];
         this.profileSubscription?.unsubscribe();
         this.profileSubscription = null;
+        this.ownSubscription?.unsubscribe();
+        this.ownSubscription = null;
         this.supportCheck = null;
         this.native.value = null;
         this.current.value = null;
@@ -250,6 +354,11 @@ export class ActivityController {
         this.supported.value = null;
         this.error.value = "";
         this.fieldDirty = false;
+        this.accountDirty = false;
+        this.ownActivityDoc = undefined;
+        this.remoteDocument = undefined;
+        this.pendingPublishes = 0;
+        this.ownDeviceId = "";
         this.pendingMirror = undefined;
         this.lastPublished = null;
     }
@@ -285,36 +394,71 @@ export class ActivityController {
         const userId = this.userId;
         const generation = this.generation;
         if (!userId) return Promise.resolve();
-        this.chain = this.chain.then(async () => {
+        this.pendingPublishes += 1;
+        const task = this.chain.then(async () => {
             if (this.stale(generation, userId)) return;
             if (source === "manual" && this.native.value) return;
-            // `lastPublished` only means "the field holds this" after a real
-            // write. While support is unknown we remember the intent in
-            // `fieldDirty`, so the later retry must not short-circuit here.
-            if (!force && !this.fieldDirty && sameActivity(document, this.lastPublished) && source !== "none") {
+            // `lastPublished` is only a short-circuit once BOTH channels are
+            // clean. A queued write (support/client not ready) must retry.
+            if (
+                !force &&
+                !this.fieldDirty &&
+                !this.accountDirty &&
+                sameActivity(document, this.lastPublished) &&
+                source !== "none"
+            ) {
                 this.current.value = document;
                 this.source.value = source;
                 return;
             }
-            let wrote = false;
             this.error.value = "";
-            try {
-                if (this.supported.value) {
+            let fieldWrote = false;
+            let ownWrote = false;
+            // Make the intended document authoritative before writing either
+            // channel: setProfileField() publishes its own echo synchronously,
+            // and that echo must not be read back as a stale remote field.
+            this.ownActivityDoc = document;
+
+            // The public field is how OTHER users see us. Its failure is
+            // reported, but must not stop the private sync-fed copy below.
+            if (this.supported.value) {
+                try {
                     await this.client.setProfileField(ACTIVITY_FIELD_KEY, document);
-                    wrote = true;
+                    fieldWrote = true;
+                } catch (error) {
+                    this.error.value = reportError(error, "Couldn't update your activity");
                 }
-                if (this.stale(generation, userId)) return;
-                // lastPublished means "the field holds this". It stays null
-                // while support is unknown so a later check can publish it.
-                this.lastPublished = document;
-                this.fieldDirty = !wrote;
-                this.current.value = document;
-                this.source.value = source;
-            } catch (error) {
-                this.error.value = reportError(error, "Couldn't update your activity");
-                return;
             }
+            if (this.stale(generation, userId)) return;
+
+            // Account data is how our OWN devices see us immediately. Before
+            // startClient() it cannot be written; the connection watcher
+            // retries it instead of silently dropping the document.
+            const state = this.client.connection.get();
+            if (state === "starting" || state === "stopped") {
+                this.accountDirty = true;
+            } else {
+                try {
+                    await this.client.setOwnActivity(document);
+                    ownWrote = true;
+                    this.ownActivityDoc = document;
+                } catch (error) {
+                    if (this.error.value === "") this.error.value = reportError(error, "Couldn't sync your activity");
+                }
+            }
+            if (this.stale(generation, userId)) return;
+
+            this.lastPublished = document;
+            this.fieldDirty = this.supported.value !== false && !fieldWrote;
+            this.accountDirty = !ownWrote;
+            this.current.value = document;
+            this.source.value = source;
             await this.mirrorActivity(document, generation);
+        });
+        this.chain = task.finally(() => {
+            // A stale chain belongs to a previous start(), which already reset
+            // the counter; it must not decrement the new generation's count.
+            if (!this.stale(generation, userId)) this.pendingPublishes -= 1;
         });
         return this.chain;
     }

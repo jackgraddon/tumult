@@ -18,6 +18,7 @@ import type {
     MessageView,
     NotificationPermission,
     NotificationState,
+    OwnActivityView,
     OwnPresenceState,
     OwnPresenceView,
     PresenceState,
@@ -35,7 +36,7 @@ import type {
     UserSearchResult,
     VerificationState,
 } from "../contract.ts";
-import { CALL_MEMBER_EVENT_TYPE } from "../contract.ts";
+import { ACTIVITY_FIELD_KEY, CALL_MEMBER_EVENT_TYPE } from "../contract.ts";
 import { Observable } from "../observable.ts";
 import { attachmentContent } from "../rooms/attachment-content.ts";
 import { fallbackName } from "../rooms/profile.ts";
@@ -70,7 +71,6 @@ const PUBLIC_ROOMS: PublicRoomView[] = [
     { roomId: "!pub-help:fake", name: "Help & Support", topic: "Questions welcome", memberCount: 88, avatarUrl: null },
 ];
 const SELF_ID = "@demo:example.com";
-const ACTIVITY_FIELD_KEY = "app.tumult.activity";
 const BODIES = [
     "hey, did anyone see the new build?",
     "shipping the shell today, theme tokens and all",
@@ -485,6 +485,8 @@ class FakeChatClient implements ChatClient {
     public readonly notifications: Subscribable<NotificationState>;
     public readonly profile: Subscribable<ProfileView | null>;
     public readonly ownPresence: Subscribable<OwnPresenceView | null>;
+    /** The sync-fed twin of the public activity field, for this account's devices. */
+    public readonly ownActivity: Subscribable<OwnActivityView | null>;
     private readonly _threads: Observable<ThreadSummary[]>;
     private readonly noThreads = new Observable<ThreadSummary[]>([]);
     private readonly timelines = new Map<string, Observable<MessageView[]>>();
@@ -500,6 +502,8 @@ class FakeChatClient implements ChatClient {
     private ownPresenceValue: PresenceState = "online";
     /** Our own status text, mirrored into `ownPresence` and the self roster row. */
     private ownStatusMessage: string | null = null;
+    /** Monotonic so rapid writes never publish account data with the same stamp. */
+    private lastOwnActivityAt = 0;
 
     public constructor(seed: number) {
         this.rand = mulberry32(seed);
@@ -542,6 +546,7 @@ class FakeChatClient implements ChatClient {
         // No status yet: the bar shows its "Set a status" hint, which is also
         // what a fresh real account sees before anyone writes one.
         this.ownPresence = new Observable<OwnPresenceView | null>(null);
+        this.ownActivity = new Observable<OwnActivityView | null>(null);
 
         for (const r of this.rooms.get()) {
             this.rosters.set(r.id, buildRoster(r.id, this.selfMember()));
@@ -579,6 +584,7 @@ class FakeChatClient implements ChatClient {
         (this.session as Observable<SessionView | null>).set(null);
         (this.profile as Observable<ProfileView | null>).set(null);
         (this.ownPresence as Observable<OwnPresenceView | null>).set(null);
+        (this.ownActivity as Observable<OwnActivityView | null>).set(null);
     }
 
     public async start(): Promise<void> {
@@ -1296,6 +1302,32 @@ class FakeChatClient implements ChatClient {
         }
     }
 
+    public async setOwnActivity(document: unknown | null): Promise<void> {
+        const deviceId = this.session.get()?.deviceId ?? "FAKEDEVICE";
+        this.publishOwnActivity(document, deviceId);
+    }
+
+    /**
+     * Browser-smoke hook: a second device on this account writing activity.
+     * The real client gets this from Sync's account-data extension; the fake
+     * publishes straight to the feed but keeps a different device id so the
+     * shell's own-echo filter cannot mistake it for one of its own writes.
+     */
+    public async simulateRemoteActivity(document: unknown | null): Promise<void> {
+        this.publishOwnActivity(document, "FAKE-OTHER-DEVICE");
+        (this.profileField(SELF_ID, ACTIVITY_FIELD_KEY) as Observable<unknown>).set(document ?? null);
+    }
+
+    private publishOwnActivity(document: unknown | null, deviceId: string): void {
+        const updatedAt = Math.max(Date.now(), this.lastOwnActivityAt + 1);
+        this.lastOwnActivityAt = updatedAt;
+        (this.ownActivity as Observable<OwnActivityView | null>).set({
+            document: document ?? null,
+            updatedAt,
+            deviceId,
+        });
+    }
+
     /**
      * Extended profile fields, in memory. Alice carries the shell's first-party
      * activity with bounded artwork and progress, so both the one-line member
@@ -1556,7 +1588,13 @@ class FakeChatClient implements ChatClient {
     }
 }
 
-export function createFakeChatClient(options: FakeOptions = {}): ChatClient {
+/** Test-only controls the fake exposes in addition to the real contract. */
+export interface FakeTestHooks {
+    /** Simulate a write from another device on this account. */
+    simulateRemoteActivity(document: unknown | null): Promise<void>;
+}
+
+export function createFakeChatClient(options: FakeOptions = {}): ChatClient & FakeTestHooks {
     return new FakeChatClient(options.seed ?? 1337);
 }
 

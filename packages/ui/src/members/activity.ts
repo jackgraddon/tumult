@@ -1,5 +1,6 @@
 import { computed, inject, onScopeDispose, shallowRef, watch, type Component, type ComputedRef, type InjectionKey } from "vue";
 import type { ChatClient, Subscription } from "@tumult/core";
+import { ACTIVITY_FIELD_KEY } from "@tumult/core/contract";
 
 import { ContributionList } from "../plugins/contributions.ts";
 import type { Disposable } from "../plugins/types.ts";
@@ -106,8 +107,9 @@ export function useActivityRenderers(): ActivityRenderersRegistry {
  * ordinary status line). Watches only the fields some renderer asks for, so a
  * shell with no activity plugin subscribes to nothing and fetches nothing.
  * The members pane mounts rows only for what the virtualizer renders, so
- * fields are fetched for visible members only. A shell with no plugin still
- * reads the first-party field; a shell with no renderers at all reads nothing.
+ * fields are fetched for visible members only. Our own first-party field is
+ * read from the sync-fed account-data mirror, falling back to the profile field
+ * until account data answers. A shell with no renderers at all reads nothing.
  */
 export function useActivity(userId: () => string): ComputedRef<ResolvedActivity | null> {
     const registry = useActivityRenderers();
@@ -126,16 +128,34 @@ export function useActivity(userId: () => string): ComputedRef<ResolvedActivity 
             // No user yet (signed out) means nothing to read.
             const keys = user && joined ? joined.split("\u0000") : [];
             const next = new Map<string, unknown>();
+            // Our own first-party activity has a live account-data mirror.
+            // Other users (and plugin fields) stay on the cached profile read.
+            const selfId = registry.client.session.get()?.userId ?? null;
+            const ownFeed = registry.client.ownActivity;
             for (const key of keys) {
+                const own = user !== "" && user === selfId && key === ACTIVITY_FIELD_KEY;
                 const feed = registry.client.profileField(user, key);
-                next.set(key, feed.get());
+                const ownView = own ? ownFeed.get() : null;
+                next.set(key, own ? (ownView ? ownView.document ?? null : feed.get()) : feed.get());
                 subscriptions.push(
                     feed.subscribe((value) => {
+                        // Once account data has answered, the public field is
+                        // only the view OTHER users get — never our own read.
+                        if (own && ownFeed.get() !== null) return;
                         const copy = new Map(values.value);
                         copy.set(key, value);
                         values.value = copy;
                     }),
                 );
+                if (own) {
+                    subscriptions.push(
+                        ownFeed.subscribe((view) => {
+                            const copy = new Map(values.value);
+                            copy.set(key, view ? view.document ?? null : feed.get());
+                            values.value = copy;
+                        }),
+                    );
+                }
             }
             values.value = next;
         },
